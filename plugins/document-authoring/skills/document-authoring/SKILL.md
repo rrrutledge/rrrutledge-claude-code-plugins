@@ -241,6 +241,7 @@ The specifics that most often separate a message that reads as Russell's from on
 
 - **Let the thread carry the context.**
   Ask the shortest open question that covers what you need; don't re-name the deliverable or prior exchange already visible.
+  When your own prior message already stated the intent as a promise ("I'll reach out to find a time"), don't re-ask it as a fresh question ("do you have time to talk about X?") — go straight to the concrete next step the promise pointed to (e.g. propose or link a way to book the time).
 - **Put the actual question in the first sentence.**
   Lead a follow-up with the direct ask ("can you suggest any contacts at X or Y?"), not a status/context line that delays it to a later sentence.
 - **Don't re-paste something you already shared upthread** — a link, file, or detail the recipient already has.
