@@ -54,6 +54,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 **Represent every person, event, or document a message references — never leave it as bare text.**
 - **A person you want notified** — use a real @-mention via the platform's mention picker, not a typed `@Name` (which doesn't notify them).
 - **A person referenced but not being addressed, or not on that platform** — link their name to their profile/permalink on the same platform, otherwise to their LinkedIn profile.
+  **On Slack specifically, use a real @-mention for this case too, not a typed name — including Russell's own name.** A labeling reference (an owner tag like "Tom:" heading their action items) still gets the mention picker (`@Tom Sadler`), even though nobody needs to be notified by the label itself, and the same goes for a "Russell:" label on his own items — mention him too (`@Russ`), not just the other names. Slack has no separate "link to profile without pinging" convention the way Confluence/email do, so the mention chip is the only way to represent a person there at all, himself included.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call". Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
