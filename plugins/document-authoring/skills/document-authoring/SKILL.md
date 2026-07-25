@@ -185,6 +185,8 @@ A single clear sentence ending in a question is usually the whole message — re
   Give a plan as one plain line and a decision on your own side as a bare fact - the timing mechanics behind the plan and the parenthetical justifying the decision both come out.
   Don't itemize each individual action once a summary phrase already implies it.
   This applies even when the ruled-out option was worth investigating - state the bottom line the research produced, not the reasoning that got you there.
+  When the task was overdue, a short apology covers both the warm opener and the explanation of what was wrong - skip a separate greeting, skip naming the specific issue, and let "sorry it took so long" carry both.
+  Keep a separate still-open question for its own follow-up message instead of folding it into the same one.
 - **Proposing call times across timezones: filter to the recipient's normal work day, not just your own open calendar.**
   Converting your free slots to their local time isn't enough — a slot that's open for you can still be very late or very early for them. Before offering a window, check it against a normal work day (roughly 8am-6pm) in *their* timezone and drop anything outside it, even if it's technically free on your end.
 
