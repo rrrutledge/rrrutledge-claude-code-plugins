@@ -275,10 +275,12 @@ The specifics that most often separate a message that reads as Russell's from on
   Lead with the answer, then add context — don't bury it behind a preamble or a generic thanks.
   When someone raises more than one point, answer each one by name rather than a single blanket acknowledgment — this includes an earlier, question-free message where they shared research or effort on your behalf: thank them for the specific contribution and note your own follow-through on it before pivoting to a fresh, unrelated ask in the same reply.
   **Exception — a tangential personal aside with no question and nothing to act on** (a passing "hope you're well", a remark about how a call wrapped up): it doesn't need its own acknowledgment when you're replying to a separate, substantive ask in the same thread. Answering the ask is the whole reply.
+  **Answer only what was asked** — don't volunteer a separate, unprompted status update or side thread of your own alongside the answer, even when it's genuinely relevant context. Save it for its own message, or for when it's actually asked about.
 - **Document a sequence as short bullets, and open with the current status** — not a defensive framing line.
   Let the record carry the point; skip the "I've been responsive" editorializing.
 - **Open groups with "Hey guys / folks / everyone"** — but skip the group greeting when replying to a specific quoted message or directly continuing an active conversation thread; the existing context replaces it.
   The greeting alone is what drops: **Open with warmth** still governs, so a short reaction to what they just said ("Sounds great!") still leads before the ask.
+  Skip the warmth too when your own message immediately before this one on the same thread already opened warmly — a follow-up sent right after continues straight into the content instead of re-opening.
 - **Soften a flaw you're flagging in someone else's work into a suggestion, not a defect.** "Website would be good to point to X" reads better than "the website link is broken" when the material belongs to a teammate — say what you'd change, skip diagnosing what's wrong with it.
 - **1:1s often open with no greeting at all, or the person's name.**
 - **Address people by name mid-message** — "Thanks for looking at this, Alex" (see **Links** for representing the name itself — a real @-mention when you want them notified, a link otherwise).
