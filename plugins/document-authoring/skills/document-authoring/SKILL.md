@@ -160,8 +160,8 @@ Messages are **short**. Default to the fewest sentences that carry the point.
 Before finalizing, delete any sentence that restates something already clear from context, offers unrequested help or a next step, or softens an already-polite message further.
 A single clear sentence ending in a question is usually the whole message — resist padding it.
 
-- **A thank-you for a small favor is a name and an exclamation — nothing else.**
-  Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." (How much warmth a close carries is set separately, by relationship — see **Register**.)
+- **A thank-you stands alone — a name and an exclamation, nothing else.**
+  Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." Don't tack on a follow-up question either, even a natural one ("Let me know what happens") — this holds for a real favor or a piece of completed work, not just a small one; trust the other person to follow up on their own and ask the question later if it's still open. (How much warmth a close carries is set separately, by relationship — see **Register**.)
 - **When specific people own the answer, don't explain the architecture — route to them, or when the recipient is that owner, let them supply the mechanism.**
   Name the owners and one concrete next step; drop the conceptual overview.
   When you're writing to the domain expert on the mechanism in play, keep the message at the proposal level and let them fill in the how - don't explain their own system back to them, and don't stack a how-does-it-work question onto the core ask (research the mechanism to inform yourself, not to lecture the expert).
