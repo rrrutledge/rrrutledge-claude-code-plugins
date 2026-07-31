@@ -258,8 +258,9 @@ The specifics that most often separate a message that reads as Russell's from on
   This covers asks the recipient has had time to answer; leave out one you raised in your own immediately-preceding message on the thread, since repeating it hours later reads as nagging rather than nudging.
 - **Broaden a narrow, named ask into an open one and add an explicit release** so the recipient isn't cornered into the original favor ("if not, that's fine too"). Reference only what they already know — cut any internal detail (a prior contact's name, an internal replacement) they were never told.
   A genuine personal aside can open or close the nudge.
-- **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through rather than a status question.**
+- **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through rather than a status question — even when the message's real purpose is to introduce a separate new ask.**
   "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
+  A brief "Sounds good, no problem" is enough of a release before pivoting into the new ask — don't dress the pivot up as a check-in on the stalled item just because a new ask follows it. Phrase that new ask itself as loose timing information ("the time for that is coming up") rather than a dated request ("I wanted to raise our renewal for [period], since it ends [date]") — keep it as open and pin-free as any other tentative ask.
 
 ### Core voice
 
