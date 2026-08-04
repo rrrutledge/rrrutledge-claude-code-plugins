@@ -322,6 +322,7 @@ His palette:
 | ✅ | Marking a logistics item handled: "Will reschedule ✅" |
 | 👇 | Pointing at a link or recording just below |
 | 🎉 / 👋 / 🔔 | Occasional: celebration, greeting wave, notify nudge |
+| 🤝 | Closing on excitement about a future partnership or collaboration, e.g. "I think we will be able to do great things together 🤝" |
 
 Don't invent emoji outside this palette, don't stack them, and skip them entirely in more serious messages.
 **The exception is warm relationship gratitude — to a sponsor, partner, community contributor, or someone Russell leads whose completed work he's thanking them for** — where Russell reaches for 🙏, ‼️, 👏, and 🎉 (stacked, beyond the palette's one-emoji cap), usually on a closing thank-you ("Thank you 🙏‼️", "Sounds good 👏🎉‼️"). Keep these as sent; the one-emoji cap and the palette bind ordinary replies, not this warm register.
