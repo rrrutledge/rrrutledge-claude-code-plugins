@@ -266,6 +266,7 @@ The specifics that most often separate a message that reads as Russell's from on
   "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
   Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
   On a first touch a bare reaction is often enough; hold a worded reply in reserve for the next round, once a second touch is actually due.
+  The same logic covers a personal favor moving through someone else's own effort or relationships, not just corporate process (e.g. a former colleague who offered to make an introduction) — skip both the trust-lead sentence and any direct question about whether they've acted, and close with a bare "Let me know if you hear anything." The favor is entirely theirs to run; asking about their progress on it is still a status question in disguise.
 
 ### Core voice
 
