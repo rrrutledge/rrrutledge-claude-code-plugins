@@ -306,6 +306,7 @@ The specifics that most often separate a message that reads as Russell's from on
   In chat, thanking someone who's taking on work for you is likewise fine, not a tail.
   Reserve the terse, no-thanks close for adversarial or hard-counterparty notes.
 - **Thanking a volunteer, community contributor, or someone Russell leads for real completed work is the exception — warm and effusive is in-voice**, emoji and exclamation marks included ("Thank you for being with us 🙏🙏!!!!", "Sounds good 👏🎉‼️ Thank you for working on it!"). This covers people giving their time freely and staff/team members reporting to him on work that mattered — not paid vendors, arms-length colleagues, or routine replies.
+  This overrides the thank-once default above: an opening "thanks" that's really acknowledging their message or reply doesn't cover a concrete piece of completed work they reported in that same message (e.g. finishing a setup task) — give that work its own explicit closing thank-you too.
 - **Short acknowledgements stand alone** — "correct", "Sounds good!", "Great work", "Me too", "Will reschedule ✅".
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
 - **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
