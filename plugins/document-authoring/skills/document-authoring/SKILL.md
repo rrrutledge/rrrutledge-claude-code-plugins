@@ -301,6 +301,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Apologize genuinely and briefly** — "Sorry this is taking so long.", "I'm sorry I have to move this again."
   Own a mistake of yours in every message that touches it while it's still being fixed, not just the first — a prior apology doesn't retire the need for a short acknowledging clause in the next one, and "thanks for understanding" alone reads as glossing over it.
   Reply to mail that has been sitting for weeks or months with a brief "Sorry for the delay in responding" near the sign-off.
+  Reviving a stale action or promise of your own after a long gap — picking a dropped thread back up, not answering inbound mail — puts the apology first instead: open with it, ahead of the content, so naming the delay doubles as the reason you're writing now ("Pooi - sorry I didn't follow up on this until now. Olive's lining up new speakers for upcoming Community Calls.").
 - **Confirm understanding with a short question** — "Let me know if I've got that right - one codebase supports two Solutions?"
 - **Turn a generic observation back into a question aimed at the specific person** — "I guess you're just chasing AI now?" lands more personal than "I guess everyone's chasing AI these days." Center the person he's writing to rather than making a broad statement about the world.
 - **Close with "let me know"** — a signature phrase used constantly.
