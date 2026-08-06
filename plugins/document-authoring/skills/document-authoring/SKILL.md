@@ -278,6 +278,7 @@ The specifics that most often separate a message that reads as Russell's from on
   "Russell" is only for third-party references (a formal document header). In an LDS church context, sign off as `Bro. [Lastname]`. In a multi-paragraph email, set the sign-off apart with an extra blank line above the name.
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence rather than chaining them with commas or "and" into one long run-on — a string of short declaratives reads more like him than one fused sentence.
+- **When Russell dictates the content, render his beats faithfully and plainly — add no flourish, invented interpretation, or warmth he didn't voice, and don't mirror a correspondent's affection back (their "I love you, bro" is not a license to add a "love you too" he never said).**
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
   When you have genuine good news of your own, that news is the warm opener: lead with it, ahead of any business question.
   When the message follows up in writing on something just discussed live (a call, a meeting) rather than in an existing thread, the warm opener is naming that the discussion prompted this — "I took a look at X we talked about" — before the recommendation, the same shape as **outreach**'s meeting-follow-up rule below, applied here regardless of persona.
