@@ -150,6 +150,7 @@ The goal is that the message reads like Russell wrote it.
 Before drafting, read the thread for relationship signals.
 If it carries personal content — asking about family by name, sharing life milestones, the other person sharing personal updates in return — the contact is a personal friend, and the register shifts significantly: drop the salutation, go much more casual, use emoji freely, and skip structured acknowledgment phrases.
 A personal friend gets "Yup - no problem 👍", not "Hi Max - Thanks for the update. I'll look forward to hearing from you next week!"
+**On an already-running personal-friend thread, drop the name address entirely — even the `1on1` email greeting's "Name - " run-in — and open with a plain reactive word instead** ("Yea, the job market sounds really scary right now."), the way a reply picks a live conversation back up rather than re-announcing who it's for.
 
 **How warm a close is comes down to one axis: whether you and this specific person already have a warm rapport — not their role, rank, or org relative to yours. Decide it here — this is the single source of truth, and the closing rules elsewhere describe only how to execute, not when.**
 Good news can brighten a close, but it modulates warmth *within* the relationship; it never overrides it. When two rules seem to conflict, this axis is the tiebreaker.
@@ -232,6 +233,7 @@ The specifics that most often separate a message that reads as Russell's from on
     Relaying that someone else said the recipient never got back to them goes as a neutral checking question ("Did [name] reach out to you about it?"), so the recipient isn't put on the spot by the complaint itself.
   - **A frustration mentioned as an aside alongside positive news:** close on gratitude for their concrete contribution ("Thanks for the help!"); don't open the frustration thread.
   - **A self-critical admission of falling behind** (e.g. "I've been slack with this, been very busy"): the opposite of a stated constraint — affirm them personally ("You're doing great!") and echo the overwhelm back with warmth ("There is so much to do...") rather than releasing the pressure and stopping tersely. They're describing their own effort, not asking to be let off the hook, so match it with reassurance, not a brush-off. A genuine one-off emoji outside the usual palette (e.g. 😩) is fine here for shared commiseration over workload.
+  - **A vulnerable family or health detail shared as an aside, between personal friends:** match it with a brief reciprocal disclosure of your own, when you genuinely have one, rather than a follow-up question — trading a like-for-like personal share deepens a personal-friend exchange more than probing further does.
 - **Let the reply itself acknowledge their stated next step or a reported completed action.**
   They've said what they'll do, or that they already did it; restating the specifics back to them, even positively, adds pressure and implies they needed reminding — a generic "thanks for doing it" carries the acknowledgment without the recap.
   Where you do respond to it, affirm in a way that removes the constraint, or hedge the callback so they're free to be where they actually are.
@@ -303,6 +305,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Reply to mail that has been sitting for weeks or months with a brief "Sorry for the delay in responding" near the sign-off.
 - **Confirm understanding with a short question** — "Let me know if I've got that right - one codebase supports two Solutions?"
 - **Turn a generic observation back into a question aimed at the specific person** — "I guess you're just chasing AI now?" lands more personal than "I guess everyone's chasing AI these days." Center the person he's writing to rather than making a broad statement about the world.
+- **Downplay your own good fortune when it lands right next to someone else's stated concern for people struggling with the same thing** — hedge it ("If things end up positive for me I'll feel really fortunate") instead of stating your own good leads as a settled fact, so it doesn't read as brushing past what they just said about others having it rough.
 - **Close with "let me know"** — a signature phrase used constantly.
   Reach for it over near-variants ("just say the word" → "just let me know").
 - **Close nearly any ask, offer, or unsolicited handoff with an explicit no-pressure release** — "If not, then it's fine too - no problem." / "Either way is fine." — so saying no, or not using what you sent, costs the recipient nothing. This is a default habit, not special to money or a formal commitment.
