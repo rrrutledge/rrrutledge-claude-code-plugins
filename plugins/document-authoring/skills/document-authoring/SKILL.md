@@ -195,6 +195,7 @@ A single clear sentence ending in a question is usually the whole message — re
   When you do put a position to a group, open the floor to everyone ("others, weigh in as well") rather than aiming a pointed question at one named person.
 - **Proposing call times across timezones: filter to the recipient's normal work day, not just your own open calendar.**
   Converting your free slots to their local time isn't enough — a slot that's open for you can still be very late or very early for them. Before offering a window, check it against a normal work day (roughly 8am-6pm) in *their* timezone and drop anything outside it, even if it's technically free on your end.
+  Once you've committed to stating the time in their zone, don't also parenthetically restate it in yours — that's the same restating-context-already-clear cut **Brevity** already governs, just applied to a clause instead of a whole sentence.
 
 ### Holding the voice
 
@@ -300,7 +301,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Ellipses for softening** — "If you need to leave you can just say so ... especially if we're going over time."
 - **Apologize genuinely and briefly** — "Sorry this is taking so long.", "I'm sorry I have to move this again."
   Own a mistake of yours in every message that touches it while it's still being fixed, not just the first — a prior apology doesn't retire the need for a short acknowledging clause in the next one, and "thanks for understanding" alone reads as glossing over it.
-  Reply to mail that has been sitting for weeks or months with a brief "Sorry for the delay in responding" near the sign-off.
+  Reply to mail that's sat unanswered — weeks or months, or just a few days when the ask itself was time-sensitive (e.g. scheduling) — with a brief delay apology folded right into the opening line, not saved for near the sign-off.
 - **Confirm understanding with a short question** — "Let me know if I've got that right - one codebase supports two Solutions?"
 - **Turn a generic observation back into a question aimed at the specific person** — "I guess you're just chasing AI now?" lands more personal than "I guess everyone's chasing AI these days." Center the person he's writing to rather than making a broad statement about the world.
 - **Close with "let me know"** — a signature phrase used constantly.
