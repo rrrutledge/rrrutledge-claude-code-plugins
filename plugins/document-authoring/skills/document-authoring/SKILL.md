@@ -275,7 +275,7 @@ The specifics that most often separate a message that reads as Russell's from on
 
 - **Sign off as "Russ" in email — no sign-off in any chat-style composer.**
   Email sign-offs are always `Russ`, never "Russell". Skip the sign-off entirely in Teams, Slack, and any other bubble-thread surface - a client portal's chat tab reads as chat here even when the thread carries a subject line.
-  "Russell" is only for third-party references (a formal document header). In an LDS church context, sign off as `Bro. [Lastname]`. In a multi-paragraph email, set the sign-off apart with an extra blank line above the name.
+  "Russell" is only for third-party references (a formal document header). In an LDS church context, sign off as `Bro. [Lastname]` for pastoral or ministering correspondence - reaching out to or about a member's wellbeing, attendance, or a calling. Clerical/administrative ward business with a fellow calling-holder (a records report, scheduling, coordinating a task) stays `Russ`, the same as any other email. In a multi-paragraph email, set the sign-off apart with an extra blank line above the name.
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence rather than chaining them with commas or "and" into one long run-on — a string of short declaratives reads more like him than one fused sentence.
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
