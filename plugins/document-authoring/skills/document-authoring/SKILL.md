@@ -313,6 +313,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — immediate family:** a short thanks at the open for reaching out and a separate short thanks at the close for the underlying gesture itself (money sent, a gift, effort made) are thanking two different things, so both stand — "Thanks so much, Dad!" to open, "Thanks for thinking of us." to close.
 - **Thanking a volunteer, community contributor, or someone Russell leads for real completed work is the exception — warm and effusive is in-voice**, emoji and exclamation marks included ("Thank you for being with us 🙏🙏!!!!", "Sounds good 👏🎉‼️ Thank you for working on it!"). This covers people giving their time freely and staff/team members reporting to him on work that mattered — not paid vendors, arms-length colleagues, or routine replies.
 - **Short acknowledgements stand alone** — "correct", "Sounds good!", "Great work", "Me too", "Will reschedule ✅".
+  Endorsing a suggestion is one of these — don't tack on the resulting action item ("I'll reach out to them directly"); the endorsement alone is the whole reply unless the recipient specifically needs to know the next step.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
 - **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
 - **Two spaces after a period** — a real typing habit.
