@@ -120,6 +120,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a financial model, in developer hours, of the value of sharing and reuse") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" — the link and the one line are the whole message.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
+  **Answer exactly what was asked — a genuine caveat or discrepancy about the material stays out too, unless the recipient asked about it.** This holds even when the gap is real and the attachment itself doesn't explain it (a legal-name technicality on a filed document). Volunteering it reads as due diligence to Russell but as an unprompted complication to the reader; say only what answers their request, most of all with an external or formal reviewer (an auditor, compliance, legal) who asked for one specific thing.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
 
 ### Reports, reviews & status updates
@@ -351,6 +352,7 @@ A second exception is personal-friend banter (per **Register** above) — joking
 - **Email subject**: a short noun phrase, no trailing `?` even when the email asks a question.
 - **Energizing close** — how to execute a warm close, when **Register** calls for one: end with a brief forward-looking note ("Looking forward to it!", "This'll be great") instead of a helper-offer tail.
   When onboarding a partner or sponsor, that close can be the concrete next step their deliverable unlocks.
+  When the recipient relayed or is coordinating someone else's request rather than asking on their own behalf (forwarding an auditor's or partner's ask), thank them for handling it ("Thanks for shepherding this through.") rather than defaulting to a generic forward-looking line.
   Skip the note when sharing news into someone else's channel or group, or when the message already states a concrete next step (a call, a follow-up date) - that action is the close, not an added enthusiasm line on top of it.
   These skip-exceptions apply only when **Register** hasn't already called for warmth via the leadership axis — where it has, the close holds regardless of what the message is about.
 - **React to the specific thing they shared, and warm a rote close into genuine interest.**
