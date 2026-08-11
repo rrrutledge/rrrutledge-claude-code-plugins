@@ -191,6 +191,7 @@ A single clear sentence ending in a question is usually the whole message — re
   Don't itemize each individual action once a summary phrase already implies it.
   This applies even when the ruled-out option was worth investigating - state the bottom line the research produced, not the reasoning that got you there.
   Flagging another party's numeric or factual error is the same move: state the corrected value inline next to the wrong one ("reads $1,358 (should be $1,958)") so they don't have to derive it, and cut the account of how you verified it.
+  Telling someone that something they thought was missing is actually already there follows the same move: give its exact location inline ("it's on page 3, right above the signature block") rather than quoting the source material in full, and skip guessing why they missed it or offering to restructure the document.
   **When a live discussion is already scheduled to follow** (a call, a meeting), this goes further: report the observations and stop - don't propose your own fix or float a question in writing, since working out what to do about it is what the live conversation is for.
   When you do put a position to a group, open the floor to everyone ("others, weigh in as well") rather than aiming a pointed question at one named person.
 - **Proposing call times across timezones: filter to the recipient's normal work day, not just your own open calendar.**
