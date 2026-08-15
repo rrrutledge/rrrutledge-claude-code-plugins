@@ -226,6 +226,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Adding a second ask mid-thread: lead into it, don't tack the ask on cold — but don't reuse one fixed opener every time.** The bridge phrasing varies by relationship and occasion: "found one more", "if it's not too much trouble, I have one other similar ask", or no bridge line at all when the ask flows naturally from what's already in the thread. Scope: this is for tacking a new point onto something you already sent. When several points are compiled into one message from the start (e.g. a batch of edit requests on the same document), skip the discovery framing entirely and just list them — there's nothing to "find" mid-message.
 - **Adding a new recipient to an existing thread: state the action, don't address them.**
   "Adding Hong directly here as well." is the whole line - it speaks to the thread, so the greeting, the reason, and any closing question aimed at the new person all come out.
+  **Exception — re-adding someone who was already on the thread and got dropped:** italicize it with a trailing ellipsis instead of a period, e.g. "*Re-adding Shane ...*"
 - **Float a candidate tentatively** — "also may be a great fit", not "would be a great fit". The "also" ties them to someone already named and "may" keeps it open; go straight to the person and drop the setup line.
 - **When confirming an ask, give the "why" — not how-to steps.**
   Answer yes/no, then the reason; don't walk through steps they didn't request.
