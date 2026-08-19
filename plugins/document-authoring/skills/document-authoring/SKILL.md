@@ -374,6 +374,7 @@ A second exception is a genuine joke or callback landing at a message's close �
   When onboarding a partner or sponsor, that close can be the concrete next step their deliverable unlocks.
   Skip the note when sharing news into someone else's channel or group, when the message already states a concrete next step (a call, a follow-up date), or when the note would restate something the recipient hasn't agreed to yet - see the Asks "when a contact declines" rule; a plain thanks or "no worries" still closes the message fine.
   These skip-exceptions apply only when **Register** hasn't already called for warmth via the leadership axis — where it has, the close holds regardless of what the message is about.
+  **A bare scheduling/logistics reply is the one exception that holds even under peer warmth** - pointing someone to a booking link or confirming a time is already the whole content, so a tacked-on forward-looking line reads as padding rather than warmth; skip the close and let the logistics stand alone.
 - **React to the specific thing they shared, and warm a rote close into genuine interest.**
   Respond to the concrete detail they mentioned (where they're job-hunting, what they're building) rather than a generic well-wish, and swap "let me know how it goes" for real forward-looking interest when you care how it turns out — especially in a follow-up, where the latest message may already name the forward path.
   When someone offers sympathy or help on the job search, give a real reason or a concrete ask, not a vague status.
