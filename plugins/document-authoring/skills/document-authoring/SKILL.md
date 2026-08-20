@@ -124,6 +124,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
 - **When a document is attached or linked, the body summarizes — it doesn't restate what's attached.**
   Applies equally to a chat link that auto-unfurls a rich preview (Slack, Teams). Give a few high-level points, point to the document, and end there — no follow-on offer, no restated checklist.
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a financial model, in developer hours, of the value of sharing and reuse") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" — the link and the one line are the whole message.
+  **Sharing several resources at once (a bulleted round-up after a call): give each its own bare gist line, not a sales pitch.** State plainly what the linked thing is or says — never why it's relevant to the reader's specific situation ("used to work through exactly the problems we discussed", "should be useful if you need to make that case") — the reader draws that connection themselves from having just talked about it.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
@@ -401,6 +402,7 @@ A second exception is a genuine joke or callback landing at a message's close �
   Gauge interest and invite a conversation ("is this of interest?", "can we talk?"); name the commitment lightly and later, after they've engaged.
   Ask one thing, not a menu of next steps.
   The same softening governs pivoting an already-warm thread toward a commitment: keep it to one open "is that something we could explore together?" and cut both the concrete call-to-action and the list of benefits — then close with a no-pressure release per **Core voice**, same as any other ask.
+  **A resource round-up right after a first meeting carries no ask at all.** Sending what you promised to share (patterns, a paper, event info) is the whole message — don't also stack a scheduling link or name a harder commitment (sponsorship, a recurring check-in) in the same email; let the resources land first and raise the bigger ask once they've had a chance to engage with them.
 - **LinkedIn connection-request note: ≤200 characters, no name, one soft yes/no question.**
   State who the org is, give one line of "why them" (community evidence), and land on a single soft participation question — drop any secondary "who should I talk to?" ask, and don't sign it.
 - *Samples:*
