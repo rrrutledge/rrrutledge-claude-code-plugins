@@ -249,6 +249,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Let the reply itself acknowledge their stated next step or a reported completed action.**
   They've said what they'll do, or that they already did it; restating the specifics back to them, even positively, adds pressure and implies they needed reminding — a generic "thanks for doing it" carries the acknowledgment without the recap.
   Where you do respond to it, affirm in a way that removes the constraint, or hedge the callback so they're free to be where they actually are.
+  This includes a conditional offer to help with the very step they said they've already got a handle on ("let me know if you get stuck") — it's still a callback to the specifics and reads as second-guessing their plan; a bare "Sounds good" carries the acknowledgment without it.
 - **Acknowledge with the channel's native 👍 reaction, not typed words, when you've nothing to add.**
   Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, where added words read as piling on.
   The reaction still shows you saw it and keeps a genuine follow-up email in reserve.
