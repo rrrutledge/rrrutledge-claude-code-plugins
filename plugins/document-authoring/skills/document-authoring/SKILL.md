@@ -56,7 +56,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 
 **Represent every person, event, or document a message references — never leave it as bare text.**
 - **A person you want notified** — use a real @-mention via the platform's mention picker, not a typed `@Name` (which doesn't notify them).
-- **A person referenced but not being addressed, or not on that platform** — link their name to their profile/permalink on the same platform, otherwise to their LinkedIn profile.
+- **A person referenced but not being addressed, or not on that platform** — link their name to their profile/permalink on the same platform, otherwise to their LinkedIn profile. Re-link their name on every message that mentions them, even a repeat mention already linked earlier in the same thread — a person's profile link is exempt from "Don't re-paste" below, which is for a shared document/file/detail, not a person reference.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
@@ -271,7 +271,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Don't re-paste something you already shared upthread** — a link, file, or detail the recipient already has.
   Just ask plainly.
   Exception: the first nudge that directly addresses someone previously only cc'd should restate the concrete ask, since they may not have engaged.
-- **A repeat nudge on an already-unanswered ask shrinks further than the first** — drop the warm-up context line and any separate reassurance clause, and ask one direct binary question with the release folded into the question itself rather than tacked on after.
+- **A repeat nudge on an already-unanswered ask shrinks further than the first** — drop the warm-up context line, and keep it to the direct question plus, when a release fits, one short plain release sentence right after it ("If not then that's OK too.") rather than a warmer or more elaborate reassurance clause.
 - **Lead with a genuine fresh reason when you have one** — the timely hook or honest trigger for writing now, not "circling back" or "just checking in". Skip recapping what you already sent and cut the offer-to-help tail. Release the timeline through the question's own open phrasing, not by tacking on a separate "no rush" reassurance clause at the end — that's a helper tail like any other.
 - **On a sent deliverable, confirm receipt, not review, and release the timeline** — "did you get it? Look at it on whatever schedule works", not "did you get a chance to look at it?"
 - **On unanswered outreach with no attachment, use a plain open prod with a "let me know" close** — "wanted to ask again about this. Let me know what you think." Don't use receipt-confirm framing here.
