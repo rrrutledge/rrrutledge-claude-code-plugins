@@ -344,7 +344,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Short acknowledgements stand alone** — "correct", "Sounds good!", "Great work", "Me too", "Will reschedule ✅".
   **When someone directly answers a question you asked — especially confirming a temporary or interim fix — the bare acknowledgment is the whole reply.**
   Don't tack on a follow-on concern, a comment on material they linked, or a forward-looking line, even when accurate; raise a new point later as its own message if it still matters once the interim state has had time to bite.
-- **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
+- **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…" The same hedge covers a claim you can't fully verify on the other end — whether something you sent actually landed, or will — "on my side it looks like it went out", "maybe check spam", "hopefully it lands" — rather than asserting the outcome as settled.
 - **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
 - **Two spaces after a period** — a real typing habit.
 
@@ -379,7 +379,7 @@ A third exception is the terse thread-continuation opener in Slack or Teams (see
 - **Email reply flow**: always **Reply All**, never plain Reply, to preserve every CC.
   Reply into an existing thread on the same topic rather than composing new, even when it isn't a direct response to any single message.
 - **Email sign-off**: just `Russ` on its own line — no valediction before it, and no closing word fused onto that same line (no "Thanks, Russ", "Best, Russ", or similar; the line is `Russ` alone, full stop). A genuine thanks belongs in the body as its own sentence (see **Light, genuine appreciation**), not welded onto the sign-off — and skip it entirely when there's nothing yet to thank the recipient for, e.g. a first-touch ask where they haven't done anything for you yet.
-  **When a real signature block (name, title, org) auto-appends below the body, skip the `Russ` sign-off line too — write nothing after the last content sentence.** The auto-appended signature already names him, so a `Russ` line above it is redundant; the signature block itself is the close, the same way it would be on paper letterhead. (The ISC Gmail account's `gmail.js` does this automatically — see the `gmail` skill for how to stage a draft there correctly.)
+  **When a real signature block (name, title, org) auto-appends below the body, a bare `Russ` sign-off line is redundant — skip it, but keep a closing line the message actually earns** (a genuine "Thank you!" per **Light, genuine appreciation**). The auto-appended signature already names him; a real closer still belongs above it, the same way it would sit above a printed letterhead signature. (The ISC Gmail account's `gmail.js` does this automatically — see the `gmail` skill for how to stage a draft there correctly.)
 - **Email subject**: a short noun phrase, no trailing `?` even when the email asks a question.
 - **Energizing close** — how to execute a warm close, when **Register** calls for one: end with a brief forward-looking note ("Looking forward to it!", "This'll be great") instead of a helper-offer tail.
   When onboarding a partner or sponsor, that close can be the concrete next step their deliverable unlocks.
