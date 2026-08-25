@@ -298,6 +298,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — immediate family (parents, siblings):** sign off `Love, Russell`, not bare `Russ`.
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence rather than chaining them with commas or "and" into one long run-on — a string of short declaratives reads more like him than one fused sentence.
+  **Exception — an observation and the reaction it prompts:** when the second clause is a direct feeling or judgment about the first, rejoin them with "and" into one sentence, often closing with "!" — "The Lord has a lot of trust in you, and I think that trust is well placed!" reads warmer than splitting the observation from the reaction to it.
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
   Aim that warm line - whether it opens or closes the message - at the person or their intent: affirm the specific, genuine thing they're actually doing or thinking about, rather than restating the deliverable as the thing you're glad of.
   A closing compliment, most of all to someone Russell leads or a member of his community, lands as real appreciation of what they're already doing - not a generic welcome or a forward-looking invitation to do more.
