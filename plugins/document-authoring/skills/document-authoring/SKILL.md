@@ -411,6 +411,8 @@ A third exception is the terse thread-continuation opener in Slack or Teams (see
 **`outreach` — offering a resource or asking someone to adopt something:**
 - After a recent meeting or interaction, acknowledge it first ("Thanks for the great call.") then transition to the action — skip only for transactional one-liners with close collaborators.
 - Lead with the person's name, then hand them the thing plainly with the link anchored to its title.
+- **When handing over both something the recipient asked for and something of your own, put their ask first and treat your own work as a brief aside.**
+  Deliver the requested resource(s) as the substance of the message, then mention your own related piece low-key near the end ("I also wrote up my own [Title](URL) recently") rather than leading with it or giving it equal billing.
 - Frame as helpful and low-pressure; invite a look.
 - **Inviting someone into a new format or initiative: describe concretely how it works and the payoff it produces, then close by asking what they think of it.**
 - Land on a single concrete question or request (see **Asks**).
