@@ -57,6 +57,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 **Represent every person, event, or document a message references — never leave it as bare text.**
 - **A person you want notified** — use a real @-mention via the platform's mention picker, not a typed `@Name` (which doesn't notify them).
 - **A person referenced but not being addressed, or not on that platform** — link their name to their profile/permalink on the same platform, otherwise to their LinkedIn profile.
+  **Skip the link when the message is a short acknowledgment on a thread that already established who they are** — the recipient has already discussed that person at length earlier in the same thread, so a fresh profile link is decoration, not information.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
@@ -173,6 +174,7 @@ A single clear sentence ending in a question is usually the whole message — re
   Splitting a chained sentence per the "own sentence" rule can leave a clause that only restates what the sentence next to it already implies; a closing "you too" line that just hands back a wish the correspondent voiced in the message being answered is the same move. Cut both rather than keeping them just because they're now their own sentence.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
   Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." (How much warmth a close carries is set separately, by relationship — see **Register**.)
+  **When thanking someone for more than one favor in the same short message, roll them into one sentence rather than a paragraph per item** — the message stays a single quick acknowledgment instead of growing one block per thing thanked for.
 - **When specific people own the answer, don't explain the architecture — route to them, or when the recipient is that owner, let them supply the mechanism.**
   Name the owners and one concrete next step; drop the conceptual overview.
   When you're writing to the domain expert on the mechanism in play, keep the message at the proposal level and let them fill in the how - don't explain their own system back to them, and don't stack a how-does-it-work question onto the core ask (research the mechanism to inform yourself, not to lecture the expert).
