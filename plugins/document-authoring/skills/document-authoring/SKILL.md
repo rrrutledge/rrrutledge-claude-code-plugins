@@ -127,6 +127,8 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
+- **A billing or reimbursement line states the fact and stops — no justifying paragraph per item.**
+  An itemized charge or reimbursement request needs the number and what it's for, not a paragraph explaining why it's billed that way (a usage split he can't cleanly track, why a category applies) or a closing "let me know if you need anything else" — the recipient processes what's stated; the reasoning is a helper tail like any other.
 
 ### Reports, reviews & status updates
 
