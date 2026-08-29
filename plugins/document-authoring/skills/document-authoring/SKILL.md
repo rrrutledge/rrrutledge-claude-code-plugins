@@ -292,6 +292,8 @@ The specifics that most often separate a message that reads as Russell's from on
   "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
   Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
   On a first touch a bare reaction is often enough; hold a worded reply in reserve for the next round, once a second touch is actually due.
+  **When a worded nudge is needed even on a first touch** — a bare reaction would land on a message old enough to be buried under everything sent since — keep the question open rather than a two-option status check: "Did you hear at all how this went?" beats "did this go through, or is it still in progress?"
+  This is still a first touch, not the repeat-nudge or restated-factual-question cases above, which stay binary on purpose.
 
 ### Core voice
 
