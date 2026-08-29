@@ -260,6 +260,8 @@ The specifics that most often separate a message that reads as Russell's from on
   On Gmail, use the emoji-reaction reply: a bare 👍, no body.
 - **Reassurance about a side detail the recipient only flagged in passing comes out** (the general rule is in `authoring-rules`).
   They mentioned it in passing; answering it in kind, or not at all, matches the weight they gave it.
+- **A personal question you asked that they skipped answering in their reply stays skipped.**
+  They chose not to address it, and naming it again - however softly - puts them on the spot to explain the omission, so answer only what they did say and leave the rest alone.
 - **Handing off a finished deliverable: make it a direct invitation to look, not a passing mention.**
   Give the artifact its own sentence and invite the reader to open it, rather than burying it in a subordinate clause.
   **Exception — a quick status flag that has supporting detail behind it:** state the findings plainly and stop; don't auto-attach the backing document unless handing it off is the actual point of the message. Share it separately, if and when it's asked for.
@@ -400,6 +402,7 @@ A third exception is the terse thread-continuation opener in Slack or Teams (see
   When someone offers sympathy or help on the job search, give a real reason or a concrete ask, not a vague status.
   When a contact offers to connect you with their contacts, respond with self-initiated follow-through ("I'll check through them and let you know"), not a direct ask for the intro now.
   When they share a job-search resource or lead instead of an offer to connect people, thank them briefly and name the concrete future ask it earns ("if I see something where you're connected, I'll reach out for your take or an introduction") - the one reciprocal case where naming a future ask belongs.
+  Reserve that future-ask line for an actual named lead or resource - when what they shared is vague encouragement or praise with nothing concrete behind it (e.g. "I think you'd be great at X, I'll let you know if I see something"), a bare brief thanks is the whole reply; Brevity's cut-the-unrequested-next-step rule wins here.
   With nothing new to react to, a business note to a long-standing warm contact still closes on a genuine personal check-in ("Let me know how you're doing.") rather than a transactional "let me know if you have any questions" - and never on an outcome they haven't confirmed yet.
 - **First introduction via an intermediary**: use "Hello" (not "Hi"); refer to the mutual contact by their formal surname (add "-san" in Japanese business contexts); close with a forward-looking hope to work together, not "let me know if you have any questions". **Name the topic you want to discuss, not the specific angle it might fit** (a prospective event slot, a program tie-in) - save that detail for once the conversation's underway. Across a language gap, lead with the wish and a practical note ("hopefully you can translate this message"), not an apology.
 - Short, conversational, considerate of their time and life.
