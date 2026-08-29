@@ -171,8 +171,8 @@ A single clear sentence ending in a question is usually the whole message — re
 
 - **A clause split out of a run-on, or a sign-off line that echoes something the correspondent already said, still counts as restatement.**
   Splitting a chained sentence per the "own sentence" rule can leave a clause that only restates what the sentence next to it already implies; a closing "you too" line that just hands back a wish the correspondent voiced in the message being answered is the same move. Cut both rather than keeping them just because they're now their own sentence.
-- **A thank-you for a small favor is a name and an exclamation — nothing else.**
-  Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." (How much warmth a close carries is set separately, by relationship — see **Register**.)
+- **A thank-you for a small favor is a name and an exclamation — nothing else, and naming what stood out already carries why it mattered.**
+  Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." The same holds when thanking someone and highlighting one specific point of theirs ("especially the point about X"): stop there, and don't tack on a further sentence spelling out why that point mattered — the highlight already implies it. (How much warmth a close carries is set separately, by relationship — see **Register**.)
 - **When specific people own the answer, don't explain the architecture — route to them, or when the recipient is that owner, let them supply the mechanism.**
   Name the owners and one concrete next step; drop the conceptual overview.
   When you're writing to the domain expert on the mechanism in play, keep the message at the proposal level and let them fill in the how - don't explain their own system back to them, and don't stack a how-does-it-work question onto the core ask (research the mechanism to inform yourself, not to lecture the expert).
