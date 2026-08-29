@@ -169,8 +169,8 @@ Messages are **short**. Default to the fewest sentences that carry the point.
 Before finalizing, delete any sentence that restates something already clear from context, offers unrequested help or a next step, or softens an already-polite message further.
 A single clear sentence ending in a question is usually the whole message — resist padding it.
 
-- **A clause split out of a run-on, or a sign-off line that echoes something the correspondent already said, still counts as restatement.**
-  Splitting a chained sentence per the "own sentence" rule can leave a clause that only restates what the sentence next to it already implies; a closing "you too" line that just hands back a wish the correspondent voiced in the message being answered is the same move. Cut both rather than keeping them just because they're now their own sentence.
+- **A clause split out of a run-on, a sign-off line that echoes something the correspondent already said, or a trailing conditional clause naming an already-obvious next step, still counts as restatement.**
+  Splitting a chained sentence per the "own sentence" rule can leave a clause that only restates what the sentence next to it already implies; a closing "you too" line that just hands back a wish the correspondent voiced in the message being answered is the same move; so is a tacked-on "once X happens" qualifier on a reaction or compliment, when X is already the obvious next step from context. Cut all three rather than keeping them just because they're grammatically their own clause.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
   Don't add a clause explaining why you're grateful — "Thanks so much, Yuki!", not "…really appreciate you taking the time." (How much warmth a close carries is set separately, by relationship — see **Register**.)
 - **When specific people own the answer, don't explain the architecture — route to them, or when the recipient is that owner, let them supply the mechanism.**
