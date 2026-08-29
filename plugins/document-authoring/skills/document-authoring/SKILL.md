@@ -60,6 +60,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
+  **When the other side's own process (a coordination team, a scheduling tool on their end) is what actually creates the invite, lead with the second path only and say so explicitly**: point to the Calendly link purely so they can preview open times, and add a plain line releasing them from booking through it themselves.
 
 ---
 
