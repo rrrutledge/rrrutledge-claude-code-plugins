@@ -255,7 +255,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Where you do respond to it, affirm in a way that removes the constraint, or hedge the callback so they're free to be where they actually are.
   **Reopening an old thread days or weeks later with a new, unrelated ask still opens on that acknowledgment** - thank them generically for the favor they came through on last time, rather than reusing the original message's greeting or well-wish verbatim, then move straight to the new ask.
 - **Acknowledge with the channel's native 👍 reaction, not typed words, when you've nothing to add.**
-  Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, where added words read as piling on.
+  Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, or tossed off a light, non-committal closing remark ("let's see!", "we'll see"), where added words read as piling on rather than genuine content.
   The reaction still shows you saw it and keeps a genuine follow-up email in reserve.
   On Gmail, use the emoji-reaction reply: a bare 👍, no body.
 - **Reassurance about a side detail the recipient only flagged in passing comes out** (the general rule is in `authoring-rules`).
