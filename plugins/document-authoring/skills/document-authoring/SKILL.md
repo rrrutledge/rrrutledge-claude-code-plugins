@@ -186,6 +186,7 @@ A single clear sentence ending in a question is usually the whole message — re
 - **Keep asks open and tentative — don't pre-commit.**
   Write as though the outcome is still open and give room to say no: hedge with "may"/"wondering", include alternatives, and avoid pinning the person to a specific action.
   When the primary ask is a harder commitment (money, sponsorship), pair it with an explicit lower-commitment fallback framed as a floor — "at the very least, X" — so declining the main ask still leaves an easy yes on the table.
+  **When they say they're still pursuing that harder ask through their own process but sound unsure it'll land, treat it as still open, not a decline.** Surface the lower-commitment floor now, introducing one if you hadn't framed it originally, rather than reacting with a bare acknowledgment and letting the ask quietly drop. It's the same ask at an easier tier, not a new one tacked on, so "accept it and stop" doesn't apply.
   "Please consider" lands softer than a direct question for an internal favor; prefer "can" over "should" in a joint ask; soften a named prestigious slot to the general role ("speaker", not "keynote"). When the ask could read as ungrateful — pressing a lapsed commitment, an underpayment — make the gratitude explicit, frame it as sharing the point to ask whether it helps *them*, and point to the concrete record rather than asserting the fact.
   When asking an existing contributor for more, name a peer already committed as the nudge and hand the choice back with an explicit release ("so it's fine either way").
   Recast a phrasing that presumes the fact in question already exists - a decision, or how and when an update happened - into one that asks whether it's true at all: "who do we have lined up" becomes "is there anyone we can line up" on a repeated ask, and "did Micaela get a chance to sign at yesterday's summit meeting?" becomes "did you hear anything from Micaela?" on a factual status check. The presumptive form reads as chasing a decision already made; the open form lets the other person supply how and whether it happened.
@@ -258,6 +259,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, where added words read as piling on.
   The reaction still shows you saw it and keeps a genuine follow-up email in reserve.
   On Gmail, use the emoji-reaction reply: a bare 👍, no body.
+  **Exception: they've voiced doubt about a still-open ask, not agreed to something.** Don't let a bare reaction be the whole reply; reach for the lower-commitment floor covered earlier, under Brevity's "Keep asks open and tentative."
 - **Reassurance about a side detail the recipient only flagged in passing comes out** (the general rule is in `authoring-rules`).
   They mentioned it in passing; answering it in kind, or not at all, matches the weight they gave it.
 - **Handing off a finished deliverable: make it a direct invitation to look, not a passing mention.**
