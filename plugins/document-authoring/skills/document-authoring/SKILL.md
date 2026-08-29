@@ -241,8 +241,9 @@ The specifics that most often separate a message that reads as Russell's from on
   Answer yes/no, then the reason; don't walk through steps they didn't request.
 - **Offer visibility, not a future action.**
   "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step he hasn't decided to take.
-- **A soft commitment already carries its own limits — don't undercut it with an explicit disclaimer.**
+- **A soft commitment or a hedged ask already carries its own limits — don't stack a disclaimer or a separate release/close on top.**
   "I'll take a look" already signals no guarantee; cut a trailing caveat like "though I can't guarantee I'll reach out" and close instead with a light 👍 if more warmth is wanted.
+  The same holds for an ask phrased as a hope rather than a request — "Hope it works out for me to connect with your counterpart" already carries both the tentativeness and the forward-looking warmth, so end the message right there (a sign-off is enough) rather than adding an explicit no-pressure line or a further "looking forward to..." close.
 - **When someone mentions something negative, match your response to its role in the message:**
   - **Personal or career bad news (the main point):** acknowledge briefly ("sorry to hear it") and follow with a genuine check-in ("How are things going for you now?"). Don't narrate the impact on others.
   - **A stated constraint or caveat** (e.g. "budget climate is tough"): release the pressure plainly ("Either way is fine") and stop; don't echo the framing back.
