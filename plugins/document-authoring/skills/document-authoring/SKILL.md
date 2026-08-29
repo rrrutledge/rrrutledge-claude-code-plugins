@@ -226,8 +226,8 @@ The specifics that most often separate a message that reads as Russell's from on
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
 - **Never reference coffee, alcohol, or drinks** — for Russell or as a suggestion to others.
   Pick a neutral alternative or omit.
-- **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
-  Answer in the fewest words that carry it and stop — "Yes - Bluevine.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched).
+- **Confirming a factual yes/no, or answering a fill-in-the-blank question, is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
+  Answer in the fewest words that carry it and stop — "Yes - Bluevine.", "The currency would be USD.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched, what your org invoices in).
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
