@@ -297,13 +297,12 @@ The specifics that most often separate a message that reads as Russell's from on
 
 - **Sign off as "Russ" in email — no sign-off in any chat-style composer.**
   Email sign-offs are always `Russ`, never "Russell". Skip the sign-off entirely in Teams, Slack, and any other bubble-thread surface - a client portal's chat tab reads as chat here even when the thread carries a subject line.
-  "Russell" is only for third-party references (a formal document header). In a warm, personal LDS-context message where the relationship itself is the point (writing to a missionary he supports, for instance), sign off as `Bro. [Lastname]`. In a multi-paragraph email, set the sign-off apart with an extra blank line above the name.
+  "Russell" is only for third-party references (a formal document header). In a warm, personal LDS-context message where the relationship itself is the point (writing to a missionary he supports, or to a departing/already-moved ward member as membership clerk, for instance), sign off as `Bro. [Lastname]`. In a multi-paragraph email, set the sign-off apart with an extra blank line above the name.
   **Exception — immediate family (parents, siblings):** sign off `Love, Russell`, not bare `Russ`.
-- **Writing to a departing ward member as membership clerk: personal, not institutional, even though the correspondence is official.**
+- **Writing to a departing (or already-moved) ward member as membership clerk: personal, not institutional, even though the correspondence is official.**
   Add a genuine one-line well-wish about their new home before any ask ("I hope that things are wonderful in your new location").
-  Frame an address request as a personal favor ("Do you have a current mailing address? I can make a note so future folks are aware"), not the institutional mechanism ("transferred to the right ward").
+  Frame both the address request going out and the confirmation coming back as a personal favor and a personal note, never the institutional mechanism: "Do you have a current mailing address? I can make a note so future folks are aware" asking, "I'll make a note of your new location" confirming - not "transferred to the right ward" or "I'll get our records updated."
   Write as "I/me", not the ward's "we/us", the opposite of the **Speak as the org** rule above, because the warmth of a one-to-one goodbye outweighs the org voice here.
-  Sign off plain `Russ`, not `Bro. [Lastname]`: the correspondence is warm, but it's still clerk business, not the personal-relationship register that sign-off is reserved for.
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence of even weight rather than chaining them into one long run-on - whether the join is a comma, an "and", or a dash or colon bolting a trailing clause onto an already-complete sentence.
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
@@ -311,6 +310,7 @@ The specifics that most often separate a message that reads as Russell's from on
   A closing compliment, most of all to someone Russell leads or a member of his community, lands as real appreciation of what they're already doing - not a generic welcome or a forward-looking invitation to do more.
   When someone is specifically asking for his own expertise or experience, react to being asked before diving into the answer - "I'm honored that you'd want to hear from me" reads warmer than a transactional "glad to help."
   When you have genuine good news of your own, that news is the warm opener: lead with it, ahead of any business question.
+  When the other person shares personal news alongside a small favor you asked of them, lead with genuine warmth for their news rather than thanking them for the favor - "That sounds wonderful. Very happy for you." carries more than "Thanks so much for the address."
   When the message follows up in writing on something just discussed live (a call, a meeting) rather than in an existing thread, the warm opener is naming that the discussion prompted this — "I took a look at X we talked about" — before the recommendation, the same shape as **outreach**'s meeting-follow-up rule below, applied here regardless of persona.
   **"Great to talk with/meet you today" is the standing exception to the "great" amplifier caution in `authoring-rules`** — as a fixed post-call/post-meeting opener idiom, not a modifier chosen fresh, "great" stays; reserve "good" for the rest of that Check's cases.
   **Before critiquing something the recipient built or owns, the warmth needs to be genuine praise for the work itself** ("This is really neat work, and I'm glad you've built it"), not just a neutral status line standing in for one — real credit for the thing, ahead of the flaws in it.
