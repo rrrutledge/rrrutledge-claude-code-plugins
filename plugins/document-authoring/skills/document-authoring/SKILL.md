@@ -229,6 +229,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
   Answer in the fewest words that carry it and stop — "Yes - Bluevine.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched).
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
+  **Confirming a proposed time or schedule works is the same move** — "Those times look great! Let's do it.", not "works well for me - no conflicts on my end during that window." The calendar check is the mechanism behind the yes, not something the recipient asked to see.
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
 - **Never open an offer with "Happy to" — state it plainly instead.**
@@ -313,6 +314,7 @@ The specifics that most often separate a message that reads as Russell's from on
   When you have genuine good news of your own, that news is the warm opener: lead with it, ahead of any business question.
   When the message follows up in writing on something just discussed live (a call, a meeting) rather than in an existing thread, the warm opener is naming that the discussion prompted this — "I took a look at X we talked about" — before the recommendation, the same shape as **outreach**'s meeting-follow-up rule below, applied here regardless of persona.
   **"Great to talk with/meet you today" is the standing exception to the "great" amplifier caution in `authoring-rules`** — as a fixed post-call/post-meeting opener idiom, not a modifier chosen fresh, "great" stays; reserve "good" for the rest of that Check's cases.
+  **When the correspondent opened their message with a greeting like "nice to meet you," echo it back plainly before answering** — "nice to meet you too", not a generic "thanks for sending this over." Reciprocating their own words is the warmth; a different opener skips past what they just said.
   **Before critiquing something the recipient built or owns, the warmth needs to be genuine praise for the work itself** ("This is really neat work, and I'm glad you've built it"), not just a neutral status line standing in for one — real credit for the thing, ahead of the flaws in it.
 - **Answer the question first.**
   Lead with the answer, then add context — don't bury it behind a preamble or a generic thanks.
