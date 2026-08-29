@@ -288,10 +288,9 @@ The specifics that most often separate a message that reads as Russell's from on
   This covers asks the recipient has had time to answer; leave out one you raised in your own immediately-preceding message on the thread, since repeating it hours later reads as nagging rather than nudging.
 - **Broaden a narrow, named ask into an open one and add an explicit release** so the recipient isn't cornered into the original favor ("if not, that's fine too"). Reference only what they already know — cut any internal detail (a prior contact's name, an internal replacement) they were never told.
   A genuine personal aside can open or close the nudge.
-- **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through rather than a status question.**
-  "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
-  Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
-  On a first touch a bare reaction is often enough; hold a worded reply in reserve for the next round, once a second touch is actually due.
+- **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through - but only on the first touch.**
+  "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line; reaching out at all is what reminds them, so a plain acknowledgment or even a wordless reaction can do the job on a first touch.
+  Once a second touch is due, don't carry the trust framing into a worded reply - shrink it into the repeat-nudge case above instead: a bare, direct question with no greeting and no trust line ("What did Mike end up thinking?").
 
 ### Core voice
 
