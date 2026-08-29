@@ -100,6 +100,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
   When he'll act only after a response, the staged message asks for the confirmation rather than announcing the action.
   Confirm an informally-stated fact is official before building the next question on it.
+  **The same holds for accepting an offer of someone's time or help.** Before agreeing to add a person to a piece of work, ask what the support would actually involve rather than giving a bare yes; a real add competes against other commitments (a concurrent project, an event), and that tradeoff is itself the fact still outstanding.
 
 ---
 
