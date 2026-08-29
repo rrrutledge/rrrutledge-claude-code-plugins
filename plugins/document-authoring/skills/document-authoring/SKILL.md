@@ -287,7 +287,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **When more than one ask is still open, nudge on all of them**, not just one — and phrase each as its own direct question ("Is X? What's Y?"), not one compound sentence joined by "and".
   This covers asks the recipient has had time to answer; leave out one you raised in your own immediately-preceding message on the thread, since repeating it hours later reads as nagging rather than nudging.
 - **Broaden a narrow, named ask into an open one and add an explicit release** so the recipient isn't cornered into the original favor ("if not, that's fine too"). Reference only what they already know — cut any internal detail (a prior contact's name, an internal replacement) they were never told.
-  A genuine personal aside can open or close the nudge.
+  A genuine personal aside can open or close the nudge, even toward a contact with no established rapport.
 - **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through rather than a status question.**
   "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
   Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
