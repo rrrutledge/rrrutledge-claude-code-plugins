@@ -416,8 +416,8 @@ A third exception is the terse thread-continuation opener in Slack or Teams (see
 - Land on a single concrete question or request (see **Asks**).
 - Use the collective **"we"** for a committee/team ask, not "I" — including a joint recommendation to peers/co-leads ("I think we should merge these", not "I'd like to merge these"), even in a 1on1-style note to a couple of named people rather than a broad group.
 - Plain framing over clever phrasing — drop quoted catchphrases, and state what a commitment costs plainly rather than selling how small or easy it is.
-- **Don't pitch why someone or their org is a good fit when asking them to participate.**
-  Trust the context; the ask stands on its own — cut the "your experience in A, B, C is exactly what we need" list.
+- **Don't pitch why someone or their org is a good fit when asking them to participate, or why a third party is worth pursuing when the ask is only to route or connect you to them.**
+  Trust the context; the ask stands on its own — cut the "your experience in A, B, C is exactly what we need" list, and cut a target's credentials or track record when the actual ask ("do you know anyone there?") doesn't depend on it.
 - **Cold outreach for a commitment: open with the soft ask, not the hard one.**
   Gauge interest and invite a conversation ("is this of interest?", "can we talk?"); name the commitment lightly and later, after they've engaged.
   Ask one thing, not a menu of next steps.
