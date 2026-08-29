@@ -234,8 +234,8 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Never open an offer with "Happy to" — state it plainly instead.**
   "I can make the introduction if that'd help", not "Happy to make the introduction if that'd help." Russell doesn't talk this way; it reads as generic AI phrasing.
 - **Adding a second ask mid-thread: lead into it, don't tack the ask on cold — but don't reuse one fixed opener every time.** The bridge phrasing varies by relationship and occasion: "found one more", "if it's not too much trouble, I have one other similar ask", or no bridge line at all when the ask flows naturally from what's already in the thread. Scope: this is for tacking a new point onto something you already sent. When several points are compiled into one message from the start (e.g. a batch of edit requests on the same document), skip the discovery framing entirely and just list them — there's nothing to "find" mid-message.
-- **Adding a new recipient to an existing thread: state the action, don't address them.**
-  "Adding Hong directly here as well." is the whole line - it speaks to the thread, so the greeting, the reason, and any closing question aimed at the new person all come out.
+- **Adding a new recipient, or a new address for an existing one, to an existing thread: state the action and nothing else.**
+  "Adding Hong directly here as well." or "Adding your work address" is the whole line - it speaks to the thread, so the greeting, the reason, any closing question, and even a nudge you were about to send on the same ask all come out. The quoted thread below already carries whatever's still open.
 - **Float a candidate tentatively** — "also may be a great fit", not "would be a great fit". The "also" ties them to someone already named and "may" keeps it open; go straight to the person and drop the setup line.
 - **When confirming an ask, give the "why" — not how-to steps.**
   Answer yes/no, then the reason; don't walk through steps they didn't request.
