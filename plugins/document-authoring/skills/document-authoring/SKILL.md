@@ -304,6 +304,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Frame an address request as a personal favor ("Do you have a current mailing address? I can make a note so future folks are aware"), not the institutional mechanism ("transferred to the right ward").
   Write as "I/me", not the ward's "we/us", the opposite of the **Speak as the org** rule above, because the warmth of a one-to-one goodbye outweighs the org voice here.
   Sign off plain `Russ`, not `Bro. [Lastname]`: the correspondence is warm, but it's still clerk business, not the personal-relationship register that sign-off is reserved for.
+  **Once they've answered, close on a specific, warm wish tied to the detail they shared, like their new home or their kids' situation.** The confirmed address or household fact belongs in Russell's own notes for the record.
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence of even weight rather than chaining them into one long run-on - whether the join is a comma, an "and", or a dash or colon bolting a trailing clause onto an already-complete sentence.
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
