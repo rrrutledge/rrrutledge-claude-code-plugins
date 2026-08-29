@@ -355,6 +355,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Don't tack on a follow-on concern, a comment on material they linked, or a forward-looking line, even when accurate; raise a new point later as its own message if it still matters once the interim state has had time to bite. Don't walk back through their individual points either, even to react positively — that reads as grading the answer rather than accepting it, so a generic "Thank you!" covers a multi-part answer the same way a bare "correct" covers a single one.
   **Exception — when their reply also volunteers something beyond what you asked** (a genuine extra contribution they weren't prompted for, not just a passing pleasantry): that part still gets its own named reaction, per **Answer the question first**.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
+  When someone asks about timing and there's no confirmed date, don't leave it out of the answer - give an honest hedged guess ("I don't know the timeline, but hoping X can wrap up next week, then Y the week after").
 - **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
 - **Two spaces after a period** — a real typing habit.
 
