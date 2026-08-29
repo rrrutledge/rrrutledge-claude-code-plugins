@@ -241,6 +241,8 @@ The specifics that most often separate a message that reads as Russell's from on
   Answer yes/no, then the reason; don't walk through steps they didn't request.
 - **Offer visibility, not a future action.**
   "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step he hasn't decided to take.
+- **When asking someone to verify something on their own end, phrase it as noticing rather than a task, and pair it with your own next step.**
+  "Let me know when you see it leave your account and then I'll check on my side" asks nothing active of them and reciprocates with what Russell will do once they do — lighter than "can you confirm/check whether X", which turns a quick glance into homework.
 - **A soft commitment already carries its own limits — don't undercut it with an explicit disclaimer.**
   "I'll take a look" already signals no guarantee; cut a trailing caveat like "though I can't guarantee I'll reach out" and close instead with a light 👍 if more warmth is wanted.
 - **When someone mentions something negative, match your response to its role in the message:**
