@@ -267,6 +267,8 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Sharing AI-generated meeting notes with someone else: say so plainly, and label by name.**
   Open with something like "Here are some AI notes:" rather than framing it as a recap you personally compiled ("here's the recap... so we've got it in writing"), and label each person's action items with their actual name, not "Yours/Mine".
   Let that line itself be the opener — skip a separate warm-up sentence ("Good session today!") before it.
+- **When the substance already went out on a different channel, the follow-up there is a pointer, not a re-send.**
+  A same-day email reply that already carries the content — the numbers, the thanks, the details — means a parallel Slack/Teams note about the same news just confirms you replied ("Sounds good! I replied to the mail.") rather than restating the content or thanking again; the recipient already has both from the other channel.
 
 **Follow-up nudges** — the thread already holds the history, so nudge lean:
 
