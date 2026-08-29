@@ -100,6 +100,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
   When he'll act only after a response, the staged message asks for the confirmation rather than announcing the action.
   Confirm an informally-stated fact is official before building the next question on it.
+- **Fold a reassuring or qualifying condition into the ask's own sentence, not a separate sentence stating it first.** When a fact you're sharing is also the reason the ask is easy to grant, combine the condition and the question into one line rather than a fact sentence, a spelled-out consequence, and then the ask.
 
 ---
 
