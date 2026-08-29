@@ -257,6 +257,8 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Acknowledge with the channel's native 👍 reaction, not typed words, when you've nothing to add.**
   Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, where added words read as piling on.
   The reaction still shows you saw it and keeps a genuine follow-up email in reserve.
+- **Once a set of options is already established upthread, refer to it collectively rather than re-listing each one.**
+  "Doesn't conflict with pursuing anything else in parallel" beats re-naming every option (Mercury/Airwallex/Belgium) a reply already assumes the reader has in view — the thread already carries the specifics, so a reply on it only needs the collective reference. This is the general case of the **Follow-up nudges** re-paste rule below; it isn't limited to nudges.
   On Gmail, use the emoji-reaction reply: a bare 👍, no body.
 - **Reassurance about a side detail the recipient only flagged in passing comes out** (the general rule is in `authoring-rules`).
   They mentioned it in passing; answering it in kind, or not at all, matches the weight they gave it.
