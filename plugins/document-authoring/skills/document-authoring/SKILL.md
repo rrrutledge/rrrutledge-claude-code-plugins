@@ -282,9 +282,11 @@ The specifics that most often separate a message that reads as Russell's from on
 - **A repeat nudge on an already-unanswered ask shrinks further than the first** — drop the warm-up context line and any separate reassurance clause, and ask one direct binary question with the release folded into the question itself rather than tacked on after.
   When the unanswered message sits visibly elsewhere in the same thread, skip restating the question in words entirely and just gesture toward it with the emoji matching its actual position — 👆 for a Slack/Teams thread, where the earlier message sits above ("let me know about this 👆"); 👇 for an email reply, where the quoted original sits below the new text.
   **The emoji shorthand is for a nudge with nothing new to say** - when the repeat also carries genuine new content (a lower-commitment alternative, fresh information), write it out instead: a brief restated ask ("wanted to ask again about this") alongside the new material, not the emoji alone.
+  **This dropping-the-words-entirely move is specific to a repeat** — a first nudge instead pairs the emoji with the words rather than dropping them (see the plain-prod bullet below).
 - **Lead with a genuine fresh reason when you have one** — the timely hook or honest trigger for writing now, not "circling back" or "just checking in". Skip recapping what you already sent and cut the offer-to-help tail. Release the timeline through the question's own open phrasing, not by tacking on a separate "no rush" reassurance clause at the end — that's a helper tail like any other.
 - **On a sent deliverable, confirm receipt, not review, and release the timeline** — "did you get it? Look at it on whatever schedule works", not "did you get a chance to look at it?"
 - **On unanswered outreach with no attachment, use a plain open prod with a "let me know" close** — "wanted to ask again about this. Let me know what you think." Don't use receipt-confirm framing here.
+  **When the unanswered ask is visible right there in the same conversation, close with the pointing emoji at its actual position instead of leaving the close bare** — 👆 in a Slack/Teams thread where the earlier message sits above ("...Let me know what you think 👆"), 👇 in an email reply where the quoted original sits below — even on this first follow-up, not only on a repeat.
 - **When a specific factual question went unanswered, restate that exact question** as a direct yes/no rather than a generic check-in; pair it with an explicit release if there's a plausible internal reason for the delay. Skip the restatement in favor of the pointing-emoji gesture instead when the unanswered question is visible elsewhere in the same thread (see the repeat-nudge bullet above).
 - **When more than one ask is still open, nudge on all of them**, not just one — and phrase each as its own direct question ("Is X? What's Y?"), not one compound sentence joined by "and".
   This covers asks the recipient has had time to answer; leave out one you raised in your own immediately-preceding message on the thread, since repeating it hours later reads as nagging rather than nudging.
@@ -370,8 +372,8 @@ His palette:
 | 🙁 / ☹️ / 😧 | Empathy or mild disappointment, right after an apology or bad news |
 | 👍 | Light acknowledgement, often after "Thanks" |
 | ✅ | Marking a logistics item handled: "Will reschedule ✅" |
-| 👇 | Pointing at a link or recording just below; or, on a repeat nudge, at an unanswered message below (e.g. a quoted email original) |
-| 👆 | On a repeat nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams thread) |
+| 👇 | Pointing at a link or recording just below; or, on a nudge, at an unanswered message below (e.g. a quoted email original) |
+| 👆 | On a nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams thread) |
 | 🎉 / 👋 / 🔔 | Occasional: celebration, greeting wave, notify nudge |
 
 Don't invent emoji outside this palette, don't stack them, and skip them entirely in more serious messages.
