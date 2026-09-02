@@ -91,6 +91,8 @@ Don't present a menu of options or stack a numbered list of questions.
   What isn't warmth, however warmly it's phrased, is reminding them of something they haven't agreed to yet — a standing invitation or open ask still sitting unanswered — since restating it puts them in the position of having to say no again, which is uncomfortable for them and, over time, habituates them to saying no to you. The same line would read as genuine warmth once they'd actually agreed to it.
   Defer to their judgment and end.
   When they checked a lead that didn't pan out, close with "No problem ✅" rather than "Good to know" — the former is gracious about their effort — and add a brief "Thanks for checking." for the legwork itself, not "Thanks for asking." (which fits a first ask, not a lead they went and checked on).
+  Reserve that "Thanks for checking" for legwork they actually did.
+  A plain "I don't know" admitted with no checking done yet is the stated-constraint case instead (below), which releases plainly and stops.
 - **When the ask rested on your own mistake, own it plainly, release the other person, and don't pivot to a replacement ask.**
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
