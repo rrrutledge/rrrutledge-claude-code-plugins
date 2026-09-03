@@ -237,6 +237,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
   Answer in the fewest words that carry it and stop — "Yes - Bluevine.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched).
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
+  **The same tail shows up when a conditional resolves itself through the commitment you're already making.** Committing to do a task yourself already answers a nested "if you're not going to be around, do X instead" without a separate sentence spelling out why (a calendar check, an availability note); drop that clause and let the commitment stand.
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
 - **Never open an offer with "Happy to" — state it plainly instead.**
