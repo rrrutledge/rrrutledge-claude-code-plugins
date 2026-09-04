@@ -377,6 +377,8 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — when their reply also volunteers something beyond what you asked** (a genuine extra contribution they weren't prompted for, not just a passing pleasantry): that part still gets its own named reaction, per **Answer the question first**.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
   Once the observation that's the actual reason for the outreach is solid enough to build the ask around (e.g. a pattern in someone's behavior prompting a meeting request), state it as a plain fact, not a hedged impression.
+- **Re-asking something you're not sure you already sent: say so plainly rather than restating it as a fresh ask.**
+  "I think I asked this already, but can't find record of it" lets the recipient answer without either of you untangling whether it's a duplicate.
 - **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
 - **Two spaces after a period** — a real typing habit.
 
