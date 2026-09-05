@@ -70,6 +70,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+// graph-client.js patches ITS OWN module.paths so it can resolve @azure/@microsoft from the
+// per-user install dir (~/.claude/ms-graph/node_modules) - that patch doesn't extend to this
+// file's own resolution, so mail.js needs the same push before requiring marked directly.
+module.paths.push(path.join(os.homedir(), '.claude', 'ms-graph', 'node_modules'));
 const { marked } = require('marked');
 const { getGraphClient } = require('./graph-client');
 
