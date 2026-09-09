@@ -41,7 +41,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
-- **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
+- **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) as a first-person offer closed with a soft question, not an imperative: "I have a calendar that shows when I'm available if there's time that works for you?" reads as him, "grab a time on my calendar" doesn't. The self-book link is enough on its own - skip naming a direct-invite fallback alongside it. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
 - **Exception - a colleague with full, established context on the specific document or event referenced** (they run it, coordinate it, or work with it directly): name the concrete detail in plain text and skip the link. They already know the page inside and out, so citing it over-formalizes what's otherwise a plain internal exchange.
 
 ---
