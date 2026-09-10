@@ -1,0 +1,9 @@
+{
+  "name": "git-workflow",
+  "version": "1.0.0",
+  "description": "Russell's git/GitHub workflow rules — branching from main, when PRs merge, closing PRs and branch cleanup, code review timing, repo deletion, gh CLI usage, PR link formatting. Use whenever creating a branch/commit/PR, merging, closing, or reviewing a PR, or doing any other git/gh operation.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
