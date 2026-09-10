@@ -1,6 +1,6 @@
 {
   "name": "drainer",
-  "version": "1.51.6",
+  "version": "1.51.7",
   "description": "Drain human-touch queues (email, Teams, Slack, Trello outreach) to zero with one shared loop: read each item, do the action it implies, draft any reply in your voice (draft-only by default, sent only on Russell's explicit per-message OK), and clear it. Per-machine sources and context come from .claude/drainer.local.md.",
   "author": {
     "name": "Russell Rutledge"
