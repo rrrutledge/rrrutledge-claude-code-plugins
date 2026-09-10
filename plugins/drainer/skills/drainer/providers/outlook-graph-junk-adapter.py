@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, slug, find_skill_script  # noqa: E402
+from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
+                           ensure_skill_node_deps)
 
 
 class Provider(ProviderBase):
@@ -29,6 +30,12 @@ class Provider(ProviderBase):
         if not path:
             raise ProviderError("Could not locate ms-graph mail.js for outlook-graph-junk.", kind="config")
         return path
+
+    def ensure_node_deps(self):
+        """Install the ms-graph skill's deps if its plugin-root node_modules is missing, so mail.js doesn't
+        fail every cycle with `Cannot find module` after a rollout. Shares ms-graph with outlook-graph;
+        ensure_skill_node_deps heals each plugin copy at most once per process."""
+        ensure_skill_node_deps(self.mailjs, "ms-graph")
 
     def enumerate(self, limit):
         res = run_node([self.mailjs, "--list-junk", "--json", f"--top={limit}"])

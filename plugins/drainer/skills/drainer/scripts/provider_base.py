@@ -7,6 +7,7 @@ poller itself. This module is the small shared surface (subprocess + slug helper
 """
 import ctypes
 import glob
+import json
 import os
 import re
 import subprocess
@@ -215,6 +216,90 @@ def find_skill_script(start_file, skill, rel_path):
     return max(matches, key=version_tuple)
 
 
+# ---------------------------------------------------------------------------- node dependency self-heal
+#
+# A skill's Node helper (gmail.js, mail.js) resolves its npm packages from a node_modules store that a
+# fresh plugin rollout can leave empty: the cache update lays down new source without running the skill's
+# install step, so the tool dies every cycle with `Cannot find module` (a config-kind ProviderError) until
+# a human reinstalls. The poller repairs that itself on startup — for each Node-tool provider, it makes
+# sure the skill's dependencies are installed before the first enumerate — so a wiped or never-installed
+# store self-heals in one cycle instead of leaving a source dark until the daily digest.
+#
+# Two install shapes exist across the plugins, told apart by whether a setup.js sits beside a package.json:
+#   - a skill WITH a setup.js (gmail) bootstraps its own deps into a per-user store (~/.claude/<skill>);
+#     that script self-checks and exits early when the deps are present, so it is simply run.
+#   - a skill WITHOUT one (ms-graph) keeps package.json at its plugin root and its scripts resolve deps by
+#     Node's upward node_modules walk, so `npm install` runs in the package.json's own directory, but only
+#     when that directory's node_modules is actually absent.
+# Idempotent and best-effort: each plugin copy is healed at most once per process, the happy path is a
+# single stat (or setup.js's own early exit), and any failure just leaves the existing config-failure
+# diagnostic to fire on the first enumerate.
+
+_ensured_plugin_dirs = set()  # plugin copies already checked this process — heal each at most once
+
+
+def _plugin_dir_of(script_path, skill):
+    """The installed plugin root holding `skill`, derived from a resolved script path: the part up to the
+    `skills/<skill>/` segment (so both the dev sibling and a versioned cache copy resolve correctly).
+    Returns None when the path doesn't contain that segment."""
+    marker = os.sep + os.path.join("skills", skill) + os.sep
+    idx = script_path.find(marker)
+    return script_path[:idx] if idx != -1 else None
+
+
+def _pkg_dirs_with_deps(plugin_dir):
+    """Every directory under `plugin_dir` holding a package.json that declares dependencies, skipping any
+    node_modules tree (a dependency's own manifest is never ours to install)."""
+    out = []
+    for dirpath, dirnames, filenames in os.walk(plugin_dir):
+        dirnames[:] = [d for d in dirnames if d != "node_modules"]  # prune, don't descend into deps
+        if "package.json" not in filenames:
+            continue
+        try:
+            with open(os.path.join(dirpath, "package.json"), encoding="utf-8") as f:
+                if json.load(f).get("dependencies"):
+                    out.append(dirpath)
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def _npm_install(cwd):
+    """`npm install` (production deps only) in `cwd`. On Windows npm is a .cmd shim, so it goes through the
+    shell to resolve; cwd (which may contain spaces) is passed to the process, never spliced into the
+    command string. Returns True on success."""
+    if os.name == "nt":
+        r = subprocess.run("npm install --omit=dev --no-audit --no-fund", cwd=cwd, shell=True,
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           creationflags=NO_WINDOW)
+    else:
+        r = subprocess.run(["npm", "install", "--omit=dev", "--no-audit", "--no-fund"], cwd=cwd,
+                           capture_output=True, text=True)
+    return r.returncode == 0
+
+
+def ensure_skill_node_deps(script_path, skill):
+    """Make sure `skill`'s npm dependencies are installed for the plugin copy `script_path` runs from, so a
+    freshly rolled-out or wiped node_modules doesn't fail every cycle with `Cannot find module`. See the
+    section comment above for the two install shapes and the idempotency/cost contract. Best-effort — the
+    caller swallows any exception so a hiccup here never aborts the cycle."""
+    plugin_dir = _plugin_dir_of(script_path, skill)
+    if not plugin_dir or plugin_dir in _ensured_plugin_dirs:
+        return
+    _ensured_plugin_dirs.add(plugin_dir)
+    for pkg_dir in _pkg_dirs_with_deps(plugin_dir):
+        if os.path.exists(os.path.join(pkg_dir, "setup.js")):
+            run_node([os.path.join(pkg_dir, "setup.js")])  # the skill's own idempotent bootstrap
+            continue
+        node_modules = os.path.join(pkg_dir, "node_modules")
+        try:
+            present = os.path.isdir(node_modules) and bool(os.listdir(node_modules))
+        except OSError:
+            present = False
+        if not present:  # only repair a genuinely missing store; a rollout reconciles version changes
+            _npm_install(pkg_dir)
+
+
 # ---------------------------------------------------------------------------- correspondent identity
 #
 # The poller holds a second item from the same correspondent out of dispatch while an earlier one of
@@ -421,6 +506,14 @@ class ProviderBase:
     def configure(self, cfg):
         """Optional hook: receive the parsed drainer config (incl. `repo`) after construction. Adapters
         that drain user-configured targets (e.g. trello boards) override this; inbox adapters ignore it."""
+        return None
+
+    def ensure_node_deps(self):
+        """Optional startup hook: make sure this provider's skill has its npm dependencies installed, so a
+        freshly rolled-out or wiped node_modules self-heals before the first enumerate instead of failing
+        every cycle with `Cannot find module`. A Node-tool adapter overrides it to call
+        `ensure_skill_node_deps` with its resolved helper script + skill name; an adapter with no Node
+        dependency inherits this no-op."""
         return None
 
     def enumerate(self, limit):

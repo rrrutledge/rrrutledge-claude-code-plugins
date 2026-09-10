@@ -1291,6 +1291,18 @@ def main():
             save_health(cfg["runtime_dir"], health)  # persist any config-load failures recorded above
         return
 
+    # Self-heal a freshly rolled-out or wiped node_modules before the first enumerate: a Node-tool
+    # provider (gmail, outlook-graph) whose skill deps are missing would otherwise fail every cycle with
+    # `Cannot find module` (a config-kind failure) until a human reinstalls. Each adapter's
+    # ensure_node_deps installs its skill's deps only when they're actually absent (see
+    # ensure_skill_node_deps); a no-op for providers with no Node dependency, and best-effort so a hiccup
+    # here never aborts the cycle.
+    for provider in providers:
+        try:
+            provider.ensure_node_deps()
+        except Exception as e:
+            print(f"({provider.name}: node-deps self-heal skipped: {e})")
+
     # One live-session scan for the whole cycle: reconcile reads it to spot dead workers, and the
     # dispatch step below reuses it to hold a second item from a correspondent whose earlier item still
     # has a live worker (open_correspondents). Runs BEFORE the enumerate, so anything reconcile re-queues

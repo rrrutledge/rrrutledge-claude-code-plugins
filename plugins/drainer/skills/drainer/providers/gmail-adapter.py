@@ -21,7 +21,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
-                           node_failure_kind, parse_email_auth)
+                           node_failure_kind, parse_email_auth, ensure_skill_node_deps)
 
 
 class Provider(ProviderBase):
@@ -37,6 +37,11 @@ class Provider(ProviderBase):
             raise ProviderError("Could not locate the gmail skill's gmail.js for the gmail provider.",
                                 kind="config")
         return path
+
+    def ensure_node_deps(self):
+        """Install the gmail skill's deps (googleapis, mailparser, …) if its per-user store is missing
+        them, so gmail.js doesn't fail every cycle with `Cannot find module` after a rollout."""
+        ensure_skill_node_deps(self.gmailjs, "gmail")
 
     @staticmethod
     def _web_link(message_id):

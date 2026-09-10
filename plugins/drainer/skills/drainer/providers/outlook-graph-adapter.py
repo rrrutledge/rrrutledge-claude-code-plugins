@@ -15,7 +15,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
-                           node_failure_kind, parse_email_auth)
+                           node_failure_kind, parse_email_auth, ensure_skill_node_deps)
 
 
 class Provider(ProviderBase):
@@ -30,6 +30,12 @@ class Provider(ProviderBase):
         if not path:
             raise ProviderError("Could not locate ms-graph mail.js for outlook-graph.", kind="config")
         return path
+
+    def ensure_node_deps(self):
+        """Install the ms-graph skill's deps (@azure/msal-node, @microsoft/microsoft-graph-client, marked)
+        if its plugin-root node_modules is missing, so mail.js doesn't fail every cycle with `Cannot find
+        module` after a rollout."""
+        ensure_skill_node_deps(self.mailjs, "ms-graph")
 
     def enumerate(self, limit):
         res = run_node([self.mailjs, "--list-inbox", "--json", f"--top={limit}"])
