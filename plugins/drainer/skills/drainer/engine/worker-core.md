@@ -149,6 +149,17 @@ one (`url` in `items/<id>.json` — a Slack permalink, Teams deep link, email `w
 there himself instead of waiting on you — exactly what he'll often prefer for something he can answer
 in a line or two. Put it right next to the paraphrase, not buried at the end.
 
+**A decision that's genuinely Russell's to make gets ONE complete brief up front, not one question per
+turn.** When the item comes down to a call only he can make (which option, whether to proceed, how to
+weigh a tradeoff), do all the legwork *before* you ask, and put it in a single message: lay out the real
+options, run the numbers **both ways** so he isn't left computing them, state every deadline, and
+pre-answer the obvious follow-ons ("if you pick A, the enrollment window closes the 15th; if B, there's a
+$40/mo difference"). Then ask **the single real question** and stop. The decision stays his — you are
+only removing the round-trips. The failure mode this replaces is dribbling the decision out as a
+sequence of one-line questions, each of which forces another of his turns to answer something you could
+have resolved or bundled. If a fact you'd need for the brief is itself only knowable from him, ask for
+that and the decision together in one message, not as two separate turns.
+
 ## 2. Situational-check first
 Has it already moved or been handled? (PR merged? request done? they replied and the user already
 answered?) That changes the right action. For an unknown mechanism internal to the user's
