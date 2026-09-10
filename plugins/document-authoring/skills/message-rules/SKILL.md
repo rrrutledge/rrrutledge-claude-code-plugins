@@ -224,6 +224,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Stay warm but understated.**
   In outreach re-engagement, lead with one open question and stop; the invitation to participate carries the ask on its own.
   Say the thing plainly rather than reaching for a punchy interjection, a colorful idiom, or a dry aside — "she had a tough first week", not "she got a rude awakening" followed by "so that was interesting."
+  When a warm contact wraps their own news in jokes or wordplay, react to the news itself with plain enthusiasm rather than volleying their wordplay back.
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
   This covers confirming a completed institutional-onboarding action too - "we made you a new email address" reads as the org processing someone into it, not Russell personally handling it; contrast the next bullet's personal "I'll", which is for work that's Russell's own to do, not the org's standing process.
