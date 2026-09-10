@@ -120,10 +120,13 @@ with one, because level leads referral. See the adapter's `_referral_band`. The 
 👤 Contact labels, like ⛔/⏳ status labels, are held out of the contact parse so none is read as a person.
 
 Build a stable id:
-`trello-<card-name-slug>-<last6 of cardId>-<startYYYYMMDD|nodue>` where the stamp is the card's Start
-date, or the fixed sentinel `nodue` when it has none. That date is part of the id on purpose: a card
-recurs every cycle (a nudge or CLEAR bumps its Start out), and seen-state keeps a drained id forever, so
-without the stamp a card would be marked seen on its first drain and never resurface. Parse each card's labels
+`trello-<card-name-slug>-<last6 of cardId>-<startYYYYMMDDHHMM|nodue>` where the stamp is the card's Start
+to minute precision, or the fixed sentinel `nodue` when it has none. That stamp is part of the id on
+purpose: a card recurs every cycle (a nudge or CLEAR bumps its Start out), and seen-state keeps a drained
+id forever, so without the stamp a card would be marked seen on its first drain and never resurface.
+Carrying the time-of-day and not just the date lets a deliberate same-day reschedule (morning to
+afternoon) mint a fresh id and dispatch again that day, while a card at its default creation time keeps
+one id per calendar day. Parse each card's labels
 with `label_vocab` into channel / features / contacts (⛔/⏳ status labels are held out) so the worker
 knows where the conversation lives, and resolve the card's `initiative` (the initiative-colored label's
 slug, else the board default).
@@ -266,7 +269,7 @@ On CLEAR, once the work for this occurrence is done, **do not** move a `Recurs:`
 Finished. Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary
 **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the
 usual dated comment. The card goes quiet until that new Start arrives, then resurfaces as a fresh
-drainable item — the id scheme already stamps the Start date into the card's id for exactly this
+drainable item - the id scheme already stamps the Start into the card's id for exactly this
 reason (see ENUMERATE), so this occurrence and the next one are never confused in seen-state.
 
 A `Recurs:` card is never `stop`ped for being "done" — completing one occurrence isn't the end of the
