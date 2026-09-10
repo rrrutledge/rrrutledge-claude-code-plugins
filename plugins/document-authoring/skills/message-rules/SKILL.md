@@ -60,6 +60,8 @@ Don't present a menu of options or stack a numbered list of questions.
     State the impasse plainly ("I don't know here at all"), lay out the live options as open questions rather than a decision you've made, and end on their judgment. This is for soliciting advice from someone closer to the situation, not for stacking multiple requests-for-action onto them.
   - **Exception - when the choice is operationally theirs** (which of several equally fine mechanisms is easiest on their end, a mailed check or an ACH): name the acceptable options rather than picking one for them, since there is no decision there to steer.
   - **Exception — a lighter fallback tucked onto the harder ask costs the reader nothing to skip.** When one option is what you actually want (restore my account access) and the other satisfies the same underlying need with less effort on their end (just send me this one document), keep both rather than picking a single ask — the fallback isn't a menu item competing for a decision, it's an escape hatch that makes the harder ask easier to say yes to.
+- **Offering to pay to clear a hurdle to an ask: propose a specific, modest figure anchored to an amount they've already named.**
+  A concrete number tied to one they put forward reads as fair and gives them a clear amount to accept.
 - **When asking to change how something works, name who benefits and what friction goes away.**
   Add a plain sentence naming the concrete beneficiary and the obstacle being removed, even when the "why" seems inferable.
   This specifies the change's real-world effect — keep it separate from pitching why your cause deserves it.
