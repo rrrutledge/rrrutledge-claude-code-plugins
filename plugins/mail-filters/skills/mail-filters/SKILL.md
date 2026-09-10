@@ -246,8 +246,8 @@ mechanism's OR-list stays intact.
 ### Gmail (filters)
 
 Manage Gmail filters through the **`gmail`** skill's `filters.js`, which wraps
-`users.settings.filters`. It uses a settings-only OAuth path (scope `gmail.settings.basic`, additive to
-the IMAP mail path) that must be signed in once — see the gmail skill's **Filter management** section.
+`users.settings.filters`. It uses the gmail skill's OAuth token (the `gmail.settings.basic` scope granted
+at sign-in) that must be signed in once — see the gmail skill's **Filter management** section.
 The token is account-specific, so the mailbox it touches is whichever account the sign-in used (for ISC,
 `russ@innersourcecommons.org`).
 

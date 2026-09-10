@@ -25,9 +25,9 @@ a to-do in an overnight band and drag it out to the real time once he actually p
 here plays the same role, just for one purpose (queued vs. started) instead of also encoding size.
 
 **Exact alignment, not just "sometime in that hour," is what makes this safe.** "Started" (see
-WORKER/CLEAR) moves a task's start to the real wall-clock now — and if Russell is up working past
-midnight, that "now" can itself fall inside 00:00-02:59. A real timestamp essentially never lands
-exactly on a grid slot (down to zero seconds), so exact-slot matching is what actually tells "still
+WORKER/CLEAR) moves a task's start to the moment its worker tab launched — and if Russell is up working
+past midnight, that launch time can itself fall inside 00:00-02:59. A real timestamp essentially never
+lands exactly on a grid slot (down to zero seconds), so exact-slot matching is what actually tells "still
 sitting untouched since it was placed" from "just started a moment ago" — a same-hour-only check would
 wrongly read a task he just began at 12:04 AM as still queued.
 
@@ -140,13 +140,18 @@ Two ordinary-flow steps plus a recurring-only backlog sweep — everything acts 
 CAPTURE, and **nothing here ever deletes or archives the task itself**:
 
 - **Started** (step 3 above, the moment he confirms he's beginning): `node calendar.js
-  --start-now=<eventId>`. Moves the event's start to right now, keeping its own duration — this is what
-  takes it off the parking grid, so it stops being queued, permanently, with no further action
-  needed. A recurring occurrence detaches from its series here (expected, same as the Outlook UI) —
-  only this one instance was started, every future occurrence is untouched.
+  --start-now=<eventId> --at=<ts from items/<id>.json>`. Pass `--at` the item's `ts` — the instant this
+  worker tab launched, which the poller stamps moments before spawning the tab. That makes the recorded
+  start the moment the task surfaced to Russell, not the moment he typed his "I'm starting" reply, so a
+  task he glances at and finishes in one sitting still records a real span (start = tab launch, end =
+  when he says done) instead of collapsing start and end onto that single reply. Moves the event's start
+  to that launch time and keeps its own duration — this is what takes it off the parking grid, so it
+  stops being queued, permanently, with no further action needed. A recurring occurrence detaches from
+  its series here (expected, same as the Outlook UI) — only this one instance was started, every future
+  occurrence is untouched.
 - **Finished** (step 4, once he confirms done): `node calendar.js --finish-now=<eventId>`. Stamps just
   the end time to now, leaving start exactly where "started" put it — so the event's real elapsed span
-  (start = when he picked it up, end = when he actually finished) sits on the calendar afterward, same
+  (start = when the tab launched, end = when he actually finished) sits on the calendar afterward, same
   as his old habit of dragging both times to match reality by hand.
 - **Recurring backlog cleanup** (only after Finished, only when `isRecurring` is true and the item's
   `date` in CAPTURE was well in the past): `node calendar.js --catch-up-series=<seriesMasterId>

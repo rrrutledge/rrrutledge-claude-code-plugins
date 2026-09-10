@@ -27,9 +27,11 @@ the guaranteed-visible channel that closes that gap. Before anything else:
   - Name the provider, when it last drained (`last_ok_ts`) and how many cycles it's been failing.
   - Quote `last_error` and read it as the action to take, keyed off `last_error_kind`:
     - **`auth`** (transient — self-heals once creds are refreshed): name the likely credential and how
-      to refresh it. gmail → `GMAIL_APP_PASSWORD`; slack → `SLACK_BOT_TOKEN` / `SLACK_COOKIE_D`;
+      to refresh it. gmail → re-run the gmail skill's one-time OAuth sign-in (`node gmail-auth.js` via
+      browser-chauffeur) to refresh its cached token; slack → `SLACK_BOT_TOKEN` / `SLACK_COOKIE_D`;
       outlook-graph → re-auth the ms-graph token cache; trello → `TRELLO_API_KEY` / `TRELLO_TOKEN`.
-      All are User-scope env vars — refresh, and the next poller cycle recovers on its own.
+      Where it's a User-scope env var, refresh it; where it's a cached OAuth token, re-run the sign-in —
+      either way the next poller cycle recovers on its own.
     - **`config`** (a helper script/util couldn't be located — won't self-heal): flag it distinctly as a
       deploy problem, not an expired credential — the adapter can't find its `*.js`/util, likely a
       missing or mis-pointed plugin install.
@@ -39,8 +41,8 @@ the guaranteed-visible channel that closes that gap. Before anything else:
       present it as a token to refresh. It's worth a closer look only if it persists across cycles the
       machine was actually awake and online for.
   - Example: *"⚠️ **gmail** hasn't drained since 2026-06-19 14:05 — 38 cycles failing: `gmail enumerate
-    failed (auth/IMAP?): …`. Likely an expired GMAIL_APP_PASSWORD (User-scope env var) — refresh it and
-    the next cycle recovers."*
+    failed (auth?): …`. Likely the gmail OAuth token lost its scopes or was revoked — re-run the gmail
+    skill's sign-in (`node gmail-auth.js` via browser-chauffeur) and the next cycle recovers."*
 - **Heartbeat** — the `_poller` entry (`{ last_run_ts, last_drained_ts }`) is the poller's own liveness,
   stamped every cycle. Flag it ONLY when it's many hours stale and the machine wasn't just asleep — that
   means DrainerKeeper stopped firing or a poller instance hung (check `schtasks /query /tn DrainerKeeper
@@ -130,16 +132,14 @@ meeting recap surfaces its owner-assigned next steps: every form to sign and ret
 deadline, RSVP, or link he's meant to open. Link the source with descriptive text per the
 `document-authoring` voice, never a bare URL. Order by what's most worth knowing first.
 
-**Resolve pointers, don't restate them.** An fyi item can be a **pointer** (a stub whose real content is
-behind a link - see `triage.md`): a school newsletter Smore link, a hosted "view in browser" bulletin, or
-a newsletter whose real content is a hosted PDF or a body-referenced attachment (a Finalsite "Attachments:
-X.pdf" line whose file is a hosted/reference attachment, not a true inline one).
-Open and read the real content per the resolve-a-pointer step in `worker-core.md` § 2b - the same mechanic
-a worker uses for needs-you, here at digest time for fyi, which also covers retrieving the hosted PDF or
-attachment when that is where the story lives, plus the browser-chauffeur fallback for a plain fetch that
-returns only a JS-rendered shell and how to extract what you find. The digest's fyi summary is that
-resolved content - for a hosted-PDF or attachment newsletter, read the file, then summarize it and pull
-its **action items for you** to-dos exactly as for a link-hosted bulletin - never the pointer stub restated.
+**Resolve pointers automatically, and never pause to ask.**
+An fyi item can be a **pointer** (a stub whose real content is behind a link - see `triage.md`): a school newsletter Smore link, a hosted "view in browser" bulletin, or a newsletter whose real content is a hosted PDF or a body-referenced attachment (a Finalsite "Attachments: X.pdf" line whose file is a hosted/reference attachment, not a true inline one).
+Open and read the real content per the resolve-a-pointer step in `worker-core.md` § 2b - the same mechanic a worker uses for needs-you, here at digest time for fyi, which also covers retrieving the hosted PDF or attachment when that is where the story lives, plus the browser-chauffeur fallback for a plain fetch that returns only a JS-rendered shell and how to extract what you find.
+Resolving a pointer only reads the content Russell would have read himself, so it is part of *gathering* this item's summary, not an action that disposes of anything: do it on your own the moment you meet a pointer, exactly as you read any captured body.
+Step 4's review gate governs CLEAR (disposal) alone, never this read - so resolving never waits for a go-ahead, and offering to resolve instead of just doing it is the one failure this section closes.
+**A plain fetch that comes back as only a JavaScript or marketing shell is itself the trigger to render it now**: a near-empty body from a client-rendered host (Smore `smore.com`, Finalsite, Mailchimp, or any hosted "view in browser" bulletin) means the story is behind the render, so fall back to browser-chauffeur immediately - drive it in a browser-chauffeur subagent so the render stays out of this session's context - load the real URL, read the rendered body, and summarize that.
+Resolve it in the same pass that gathers the digest, and present Russell the finished summary rather than an offer to go fetch it.
+The digest's fyi summary is that resolved content - for a hosted-PDF or attachment newsletter, read the file, then summarize it and pull its **action items for you** to-dos exactly as for a link-hosted bulletin - never the pointer stub restated.
 
 **Before framing any item as still needing Russell** — an open ask, an awaited reply, anything that
 implies he still owes a response — run that provider's **SITUATIONAL-CHECK** first (search Sent +

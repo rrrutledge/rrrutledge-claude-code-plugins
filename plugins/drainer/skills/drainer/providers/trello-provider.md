@@ -290,7 +290,7 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 - After 1st follow-up (no reply) → bump **1 week**
 
 **Infrequent contact** — someone outside the user's regular workflow, or where this ask isn't part of their day job:
-- After sending → bump **1 week**
+- After sending → bump **1 week + 1 day**
 - After 1st follow-up (no reply) → bump **2 weeks**
 
 When unsure, default to infrequent. When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 — regardless of how closely the user works with them.

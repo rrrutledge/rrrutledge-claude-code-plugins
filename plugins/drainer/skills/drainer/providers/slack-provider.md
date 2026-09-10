@@ -11,7 +11,7 @@ id prefix: `slack-`; body file: `<id>.slack.md`.
 > **`slack-adapter.py`** that the poller drives. This doc is the **worker-facing** prose — AUTH-GLANCE,
 > the captured item shape, CLEAR, JUNK-LEARNING, DRAFT-MODE.
 
-> This is the Web-API counterpart to the IMAP `gmail-provider.md` / Graph `outlook-graph-provider.md`.
+> This is the Web-API counterpart to the Gmail-REST `gmail-provider.md` / Graph `outlook-graph-provider.md`.
 
 ## Config (in `.claude/drainer.local.md` → `providers.slack`)
 No config — auth is by environment variables. Credentials: `SLACK_BOT_TOKEN` (the Slack API token — for a

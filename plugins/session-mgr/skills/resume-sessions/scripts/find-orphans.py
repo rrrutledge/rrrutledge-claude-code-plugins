@@ -1,7 +1,9 @@
 """find-orphans.py — the registry-confirmed half of crash-recovery detection.
 
-Locates Claude Code sessions that started (SessionStart fired) but never cleanly ended
-(no SessionEnd) and aren't currently running. Registry-only: this does NOT run the
+Locates Claude Code sessions the live-session registry still lists as open and that aren't
+currently running — either a crash or forced restart (which never fired SessionEnd) or a real
+user tab closed abruptly with the window/tab X (which the SessionEnd hook keeps in the registry
+rather than deregistering, because the user parked it and wants it resumed). Registry-only: this does NOT run the
 resume-sessions skill's fallback scan (every session transcript's tail) — that stays
 exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
@@ -99,12 +101,34 @@ def transcript_path(session_id):
     return matches[0] if matches else None
 
 
+def _executed_self_close(record):
+    """True if one transcript record is an assistant message that actually RAN a self-close: a
+    Bash tool_use whose command is a taskkill /T /F or a close-session.py / end-session.py
+    invocation, or a Skill tool_use invoking session-mgr:close. A plain-text mention of those
+    names — reading a doc that references them, discussing the drainer — is not a match, because
+    only a command that actually executed closed the tab on purpose. Keying on the mention alone
+    would wrongly prune a real tab that merely had that text in its recent context (e.g. a session
+    editing the drainer), so it would never resume after an abrupt close."""
+    message = record.get("message") or {}
+    if message.get("role") != "assistant":
+        return False
+    for block in (message.get("content") or []):
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        if SELF_CLOSE_RE.search(json.dumps(block.get("input") or {})):
+            return True
+        if block.get("name") == "Skill" and "close" in (block.get("input") or {}).get("skill", ""):
+            return True
+    return False
+
+
 def closed_itself_on_purpose(session_id):
-    """True if the session's last ~30 transcript lines show it deliberately closing its own
-    tab (a taskkill /T /F, or a close-session.py / end-session.py invocation) — such a
-    session dies before SessionEnd can fire, so its registry entry survives even though the
-    close was intentional. Missing/unreadable transcript -> False: fail toward including a
-    session as an orphan, never toward silently dropping a real one."""
+    """True if the session's last ~30 transcript records show it deliberately closing its own tab
+    (an executed taskkill /T /F, a close-session.py / end-session.py run, or a session-mgr:close
+    skill call) — such a session dies before SessionEnd can fire, so its registry entry survives
+    even though the close was intentional, and it must not be resumed. Only an actually-executed
+    self-close counts (see _executed_self_close). Missing/unreadable transcript -> False: fail
+    toward including a session as an orphan, never toward silently dropping a real one."""
     path = transcript_path(session_id)
     if not path:
         return False
@@ -113,8 +137,14 @@ def closed_itself_on_purpose(session_id):
             lines = f.readlines()
     except OSError:
         return False
-    tail = "\n".join(lines[-30:])
-    return bool(SELF_CLOSE_RE.search(tail))
+    for line in lines[-30:]:
+        try:
+            record = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if _executed_self_close(record):
+            return True
+    return False
 
 
 def find_confirmed_orphans():

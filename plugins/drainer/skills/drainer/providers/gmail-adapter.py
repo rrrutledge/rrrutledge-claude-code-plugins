@@ -1,14 +1,14 @@
-"""gmail poller adapter — Gmail/Workspace mail via the gmail skill's gmail.js (IMAP + app password).
+"""gmail poller adapter — Gmail/Workspace mail via the gmail skill's gmail.js (Gmail REST API over OAuth).
 
 All gmail mechanics live HERE, alongside the prose contract in `gmail-provider.md`: locating gmail.js,
 the `--list-inbox --json` enumerate, the Message-ID id scheme, and the captured item shape. The poller
 (`scripts/run-poller.py`) loads this adapter dynamically and drives it through the `ProviderBase`
 interface — it contains no Gmail specifics.
 
-This is the IMAP sibling of `outlook-graph-adapter.py` (Graph). Same operations, different transport:
-gmail.js talks IMAP to imap.gmail.com with GMAIL_ADDRESS / GMAIL_APP_PASSWORD from the environment.
+This is the Gmail-REST sibling of `outlook-graph-adapter.py` (Graph). Same operations, both REST: gmail.js
+authorizes through the gmail skill's cached OAuth token (GMAIL_OAUTH_CLIENT_ID / GMAIL_OAUTH_CLIENT_SECRET),
+so no per-item credential lives in this adapter's environment.
 """
-import glob
 import json
 import os
 import re
@@ -20,7 +20,8 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, slug  # noqa: E402
+from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
+                           node_failure_kind, parse_email_auth)
 
 
 class Provider(ProviderBase):
@@ -31,30 +32,11 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_gmail_js():
-        """Locate the gmail skill's gmail.js across both the dev-repo and installed-plugin-cache layouts.
-
-        Dev repo:   <plugins>/gmail/skills/gmail/scripts/gmail.js          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/gmail/<ver>/skills/gmail/scripts/gmail.js
-        Walk up to the first `plugins` dir, then try the sibling path, else glob for any gmail
-        gmail.js beneath it and take the highest-versioned (lexically greatest) path.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        if d:
-            sibling = os.path.join(d, "gmail", "skills", "gmail", "scripts", "gmail.js")
-            if os.path.exists(sibling):
-                return sibling
-            matches = glob.glob(os.path.join(d, "**", "gmail", "**", "scripts", "gmail.js"),
-                                recursive=True)
-            if matches:
-                return sorted(matches)[-1]  # highest version / latest path
-        raise ProviderError("Could not locate the gmail skill's gmail.js for the gmail provider.",
-                            kind="config")
+        path = find_skill_script(__file__, "gmail", os.path.join("scripts", "gmail.js"))
+        if not path:
+            raise ProviderError("Could not locate the gmail skill's gmail.js for the gmail provider.",
+                                kind="config")
+        return path
 
     @staticmethod
     def _web_link(message_id):
@@ -65,8 +47,8 @@ class Provider(ProviderBase):
     def enumerate(self, limit):
         res = run_node([self.gmailjs, "--list-inbox", "--json", f"--top={limit}"])
         if res.returncode != 0:
-            raise ProviderError(f"gmail enumerate failed (auth/IMAP?): {res.stderr.strip()[:300]}",
-                                kind="auth")
+            raise ProviderError(f"gmail enumerate failed: {res.stderr.strip()[:300]}",
+                                kind=node_failure_kind(res.stderr))
         msgs = json.loads(res.stdout or "[]")
         return [m for m in msgs if not self._own_outbound_reply(m)]
 
@@ -82,8 +64,8 @@ class Provider(ProviderBase):
 
     def triage_text(self, item):
         """Fetch the message body and return just the NEW content (quoted reply chain stripped), so the
-        triage step sees what the message actually says instead of only its subject line. The IMAP
-        envelope listing carries no preview, so without this triage would classify a Gmail thread purely
+        triage step sees what the message actually says instead of only its subject line. The enumerate
+        listing carries no preview, so without this triage would classify a Gmail thread purely
         on sender + subject. Falls back to the (usually empty) preview if the body can't be fetched."""
         message_id = item.get("id")
         if not message_id:
@@ -93,10 +75,29 @@ class Provider(ProviderBase):
             return item.get("preview") or ""
         return self._new_message_excerpt(show.stdout)
 
+    def screen_signal(self, item):
+        """Surface this message's envelope-authentication verdict into the security screen payload. Runs
+        `gmail.js --auth` for the message (the SPF/DKIM/DMARC headers Gmail stamped on arrival), then
+        parse_email_auth turns the raw Authentication-Results / Received-SPF values into the compact
+        summary the screen weighs. Returns None on any fetch/parse miss so a missing signal never blocks
+        screening (the screen still judges the content)."""
+        message_id = item.get("id")
+        if not message_id:
+            return None
+        res = run_node([self.gmailjs, f"--auth={message_id}"])
+        if res.returncode != 0:
+            return None
+        try:
+            data = json.loads(res.stdout or "{}")
+        except ValueError:
+            return None
+        return parse_email_auth(data.get("fromAddress") or item.get("fromAddress"),
+                                data.get("authenticationResults"), data.get("receivedSpf"))
+
     def _fetch_body(self, item):
         """The new-message text, for relay-correspondent extraction when a relay's name isn't already in
         the subject/preview. Only reached for a recognized relay sender whose cheap fields missed, so this
-        per-item IMAP fetch stays rare; reuses the same quote-stripped excerpt triage sees."""
+        per-item body fetch stays rare; reuses the same quote-stripped excerpt triage sees."""
         message_id = item.get("id")
         if not message_id:
             return ""

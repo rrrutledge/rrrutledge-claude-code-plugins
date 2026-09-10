@@ -13,7 +13,7 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 
 1. **Draft.**
    Compose against the rules for what you're writing.
-   The shared rubric for anything that ships is `authoring-rules`; an outward message also takes the register, warmth, persona, link, and ask rules in `document-authoring`.
+   The shared rubric for anything that ships is `authoring-rules`; an outward message also takes the register, warmth, persona, link, and ask rules in `message-rules`.
 
 2. **Review.**
    Dispatch `writing-review` as a fresh subagent that did not write the text, and revise against what it finds.
@@ -26,7 +26,7 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 ## Two shapes of the same flow
 
 - **An outward message** - email, Slack, Teams, a Jira or GitHub comment - ends in **Stage**: put the reviewed text where it will be sent and leave it there, and Russell sends it himself.
-  Then **Learn**: after he sends, diff his sent version against your draft and fold any voice change back into `document-authoring`.
+  Then **Learn**: after he sends, diff his sent version against your draft and fold any voice change back into `message-rules` (the process for doing so is `document-authoring`'s voice-learning loop).
   The message-shaped flow, step by step with its persona and staging detail, is `document-authoring`'s drafting loop.
 
 - **Shipped prose** - a skill, a README, a repo doc, a code comment, config prose - ends in **Ship**: commit it and open a PR.

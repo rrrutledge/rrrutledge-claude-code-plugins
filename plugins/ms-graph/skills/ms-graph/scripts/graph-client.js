@@ -13,7 +13,6 @@ const path = require('path');
 const os = require('os');
 
 const DEP_HOME = path.join(os.homedir(), '.claude', 'ms-graph');
-module.paths.push(path.join(DEP_HOME, 'node_modules'));
 
 const msal = require('@azure/msal-node');
 const { Client } = require('@microsoft/microsoft-graph-client');

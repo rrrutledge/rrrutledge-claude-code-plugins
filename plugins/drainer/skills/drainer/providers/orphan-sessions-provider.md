@@ -1,7 +1,12 @@
 # orphan-sessions provider — crash-recovered Claude Code sessions (highest priority)
 
-A provider for sessions the live-session registry confirms were interrupted by a crash or
-forced restart (never fired `SessionEnd`) and aren't currently running. Implements
+A provider for sessions the live-session registry confirms need resuming and aren't currently
+running: a session interrupted by a crash or forced restart (which never fires `SessionEnd`), or
+a real user tab closed abruptly with the window/tab X (which fires `SessionEnd` with reason
+`"other"`, and the registry hook keeps rather than deregisters, because the tab carries a
+`host_pid` marking it as a launched interactive tab the user parked and wants back). A deliberate
+end — `/exit`, `/clear`, or the `session-mgr:close` self-close — deregisters the session instead,
+so it is not resumed. Implements
 `../engine/provider.md`'s adapter contract; classify by `../engine/triage.md` — though in
 practice this source skips AI triage entirely (see below). id prefix: `orphan-`.
 

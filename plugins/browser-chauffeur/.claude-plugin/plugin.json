@@ -1,6 +1,6 @@
 {
   "name": "browser-chauffeur",
-  "version": "1.15.3",
+  "version": "1.15.4",
   "description": "Navigate and interact with ANY website - admin panels, dashboards, web apps, etc. Handles authentication, login session persistence, and autonomous error recovery. Use for checking websites, looking up information, verifying access, or creating automation scripts. Claude drives, you direct.",
   "author": {
     "name": "Russell Rutledge"

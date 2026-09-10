@@ -1,37 +1,35 @@
-# gmail provider — personal/Workspace Gmail (IMAP + app password)
+# gmail provider — personal/Workspace Gmail (Gmail REST API over OAuth)
 
-A provider for a **Gmail or Google Workspace** mailbox read and cleared entirely through **IMAP** with
-a 16-character **App Password** — no OAuth client, no Cloud project, no browser. All IMAP calls go
-through the **`gmail`** skill's `gmail.js` (don't reimplement IMAP here); it owns the connection and the
-`[Gmail]/Drafts` + `[Gmail]/All Mail` folder mechanics. Implements `../engine/provider.md`; classify by
-`../engine/triage.md`.
+A provider for a **Gmail or Google Workspace** mailbox read and cleared through the **Gmail REST API**
+over **OAuth**. All API calls go through the **`gmail`** skill's `gmail.js` (don't reimplement them here);
+it owns the OAuth client, the message/draft/label operations, and the Drafts + All Mail mechanics.
+Implements `../engine/provider.md`; classify by `../engine/triage.md`.
 id prefix: `gmail-`; body file: `<id>.email.md`.
 
 > Two-file provider: the **reading** mechanics (enumerate, stable id, capture-writing) live in the
 > sibling **`gmail-adapter.py`** that the poller drives. This doc is the **worker-facing** prose —
 > AUTH-GLANCE, the captured item shape, CLEAR, JUNK-LEARNING, DRAFT-MODE.
 
-> This is the IMAP counterpart to the Graph-based `outlook-graph-provider.md`. Use it for a Google
-> account where you can mint an app password (2-Step Verification on, IMAP enabled).
+> This is the Gmail-REST counterpart to the Graph-based `outlook-graph-provider.md`. Use it for a Google
+> account with the gmail skill's one-time OAuth sign-in completed.
 
 **Shared email rules:** See `email-base.md` for CAPTURE shape, SITUATIONAL-CHECK decision logic,
 DRAFT-MODE voice rules, and JUNK-LEARNING priority order. This file covers only the Gmail-specific
 mechanisms.
 
 ## Config (in `.claude/drainer.local.md` → `providers.gmail`)
-No config — auth is by environment variables. Credentials: `GMAIL_ADDRESS` (the full address) and
-`GMAIL_APP_PASSWORD` (the 16-character Google App Password) in the environment. The mailbox must have
-2-Step Verification on and IMAP enabled (Workspace: the admin must also allow IMAP). Optionally
-`GMAIL_SIGNATURE_HTML` (an HTML snippet) — when set, `gmail.js` appends it to every staged draft
-automatically, since IMAP has no way to read the account's actual Gmail-configured signature.
+No config — auth is the gmail skill's cached OAuth token, minted once via its sign-in. The only env vars
+are the OAuth client id/secret (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`); the token itself
+lives at `~/.claude/gmail/oauth-token.json` and auto-refreshes. Optionally `GMAIL_SIGNATURE_HTML` (an
+HTML snippet) — when set, `gmail.js` appends it to every staged draft automatically.
 
 The `gmail` `gmail.js` lives at `<gmail-skill>/scripts/gmail.js` — run it with `node`.
 
 ## AUTH-GLANCE
 Run `node gmail.js --check`. If it prints "Signed in as … Inbox has N message(s)." you're connected. If
-it errors with `AUTHENTICATIONFAILED` / "Invalid credentials", the app password is wrong/revoked or
-IMAP is disabled — re-mint the app password, re-set `GMAIL_APP_PASSWORD`, confirm IMAP is enabled, then
-retry. There is no token to refresh; never surface a raw auth error to the user.
+it errors with `insufficient permission` / `invalid_grant` / "Not signed in", the cached token lost its
+scopes or was revoked — re-run the gmail skill's one-time sign-in (`node gmail-auth.js` via
+browser-chauffeur), then retry. Never surface a raw auth error to the user.
 
 ## SITUATIONAL-CHECK mechanism
 Use `mcp__claude_ai_Gmail__search_threads` with `subject:"<subject>"` (no `in:` filter) — this covers
@@ -44,13 +42,13 @@ See `email-base.md` for the shared two-file shape. Gmail-specific: `messageId` i
 Message-ID header (with angle brackets). The `url` opens the message in Gmail by that id.
 
 ## CLEAR
-`node gmail.js --archive=<messageId>` — removes the message from the inbox and keeps it in **[Gmail]/All
-Mail** (reversible; narrate it). Archiving, not trashing, is the drainer's clear: a drained item has
+`node gmail.js --archive=<messageId>` — removes the message from the inbox and keeps it in **All Mail**
+(reversible; narrate it). Archiving, not trashing, is the drainer's clear: a drained item has
 been dealt with, not discarded. The poller also calls this (via the adapter's `clear`) to archive an
 fyi/junk message the moment it's triaged, so it leaves the inbox without waiting for the digest; the
 digest's own CLEAR on approval then re-archives it, a harmless no-op.
 
-`--reply` looks the original up in both the inbox and All Mail, so it can thread and quote whether the
+`--reply` looks the original up across All Mail, so it can thread and quote whether the
 message is still in the inbox or has already been archived — archive order relative to drafting no longer
 matters.
 
@@ -62,7 +60,7 @@ in `subject:(…)` (`--add-subject`) is the *fence* that scopes it to the subjec
 phrase that also appears in wanted mail (a generic footer line) from triggering. So scope to the subject
 when the phrase isn't distinctive, and match the body when it is. Use `from:X subject:Y` for
 company-specific noise. Once Russell has OK'd the shown rule, append it with the **`gmail`** skill's
-`filters.js` (the OAuth settings path):
+`filters.js` (same OAuth token, settings scope):
 `node filters.js --append-filter=<id> --add-subject='"<phrase>"'` for a subject phrase, or `--add-body`
 for a body phrase — `--list-filters` first to find the bucket's id. Create a new bucket with
 `--create-filter --query='…' --archive --mark-read` only for a genuinely new mechanism.
@@ -70,9 +68,9 @@ for a body phrase — `--list-filters` first to find the bucket's id. Create a n
 ## REPORT-PHISHING (not yet available - design follow-up)
 Gmail has no report-phishing command yet, so a `kind: phishing` Gmail item falls back to the ordinary
 junk stop at digest time (a filter, per JUNK-LEARNING above) and the digest notes that reporting isn't
-available for this source. The intended action is a new `gmail.js --report-spam=<messageId>` that
-IMAP-moves the message to `[Gmail]/Spam`: Gmail treats a move into Spam as a spam report and retrains its
-filter, and it's reversible from the Spam folder, the IMAP-transport equivalent of Outlook's
+available for this source. The intended action is a new `gmail.js --report-spam=<messageId>` that adds
+the `SPAM` label (`messages.modify` addLabelIds SPAM): Gmail treats a move into Spam as a spam report and
+retrains its filter, and it's reversible from the Spam folder — the REST equivalent of Outlook's
 `--report-phish`. Build it in the `gmail` skill, then wire it here the same way the outlook-graph provider
 wires `--report-phish`.
 

@@ -23,7 +23,6 @@ by age. Blocked cards are suppressed until finishing their upstream runs trello_
 (strips ⛔, sets Start=today). Credentials are TRELLO_API_KEY / TRELLO_TOKEN in the environment (read by
 trello_utils.get_trello_session).
 """
-import glob
 import json
 import os
 import re
@@ -34,7 +33,8 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank  # noqa: E402
+from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank,  # noqa: E402
+                           find_skill_script)
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
@@ -99,33 +99,9 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- locate the trello-outreach helper
     @staticmethod
     def _import_trello_utils():
-        """Locate the `trello` plugin's trello_utils.py across dev-repo and installed-cache layouts.
-
-        Dev repo:   <plugins>/trello/skills/trello/scripts/trello_utils.py          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/trello/<ver>/skills/trello/scripts/trello_utils.py
-        Walk up to the first `plugins` dir, then try the sibling path, else glob for any trello_utils.py
-        beneath it and take the highest-versioned (lexically greatest) path. Mirrors how gmail-adapter
-        finds gmail.js.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        path = None
-        if d:
-            sibling = os.path.join(d, "trello", "skills", "trello", "scripts",
-                                   "trello_utils.py")
-            if os.path.exists(sibling):
-                path = sibling
-            else:
-                matches = glob.glob(
-                    os.path.join(d, "**", "trello", "**", "scripts", "trello_utils.py"),
-                    recursive=True)
-                if matches:
-                    path = sorted(matches)[-1]
+        """Locate the `trello` plugin's trello_utils.py — same search shape as gmail-adapter's
+        `_find_gmail_js`, via the shared `find_skill_script` helper — and import it."""
+        path = find_skill_script(__file__, "trello", os.path.join("scripts", "trello_utils.py"))
         if not path:
             raise ProviderError(
                 "Could not locate trello-outreach's trello_utils.py for the trello provider.",

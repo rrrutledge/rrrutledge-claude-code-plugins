@@ -1,6 +1,6 @@
 {
   "name": "google-sheets",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Append rows to a Google Sheet via the Sheets API — no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API.",
   "author": {
     "name": "Russell Rutledge"

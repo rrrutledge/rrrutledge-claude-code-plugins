@@ -1,13 +1,14 @@
-// One-time interactive sign-in for the Gmail OAuth *settings* path (filter management). Runs the
-// OAuth2 authorization-code loopback flow: prints (and serves) a consent URL, captures the code on a
-// local callback, exchanges it for tokens, and caches them to ~/.claude/gmail/oauth-token.json. Run via
-// browser-chauffeur, which navigates to the printed URL and approves consent (pick the intended Google
-// account — for ISC that's the Workspace account russ@innersourcecommons.org).
+// One-time interactive sign-in for all Gmail access (mail + filters). Runs the OAuth2 authorization-code
+// loopback flow: prints (and serves) a consent URL, captures the code on a local callback, exchanges it
+// for tokens, and caches them to ~/.claude/gmail/oauth-token.json. Run via browser-chauffeur, which
+// navigates to the printed URL and approves consent (pick the intended Google account — for ISC that's
+// the Workspace account russ@innersourcecommons.org).
 //
 //   node gmail-auth.js   -> start the flow on http://localhost:8710/callback
 //
-// This is additive to the IMAP path in gmail.js — it does NOT replace the app password; it only adds
-// the settings.basic scope needed for filters.
+// Consents for the full scope set in gmail-oauth.js (gmail.modify + gmail.compose + gmail.settings.basic),
+// so gmail.js and filters.js both run silently afterward. Adding scopes later means re-running this to
+// re-consent — Google issues a token only for the scopes granted on the consent screen.
 
 const http = require('http');
 const { buildOAuthClient, writeTokens, SCOPES, REDIRECT_URI } = require('./gmail-oauth');

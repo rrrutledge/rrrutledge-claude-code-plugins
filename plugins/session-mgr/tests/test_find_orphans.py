@@ -75,14 +75,16 @@ def test_live_process_excluded():
 
 
 def test_self_closed_tail_excluded_and_pruned():
-    print("test: a session whose transcript tail shows a deliberate self-close is excluded and pruned")
+    print("test: a session whose transcript shows an EXECUTED self-close is excluded and pruned")
     session_id = f"test-find-orphans-{uuid.uuid4()}"
     seed_registry_entry(session_id)
     project_dir = os.path.join(PROJECTS_DIR, f"test-find-orphans-{uuid.uuid4()}")
     os.makedirs(project_dir, exist_ok=True)
     transcript = os.path.join(project_dir, f"{session_id}.jsonl")
     with open(transcript, "w", encoding="utf-8") as f:
-        f.write(json.dumps({"type": "assistant", "text": "running close-session.py now"}) + "\n")
+        f.write(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Bash",
+             "input": {"command": 'python "C:/x/close-session.py"'}}]}}) + "\n")
     orig_active = find_orphans.active_session_ids
     find_orphans.active_session_ids = lambda: set()
     try:
@@ -91,6 +93,33 @@ def test_self_closed_tail_excluded_and_pruned():
         check("excluded from results", session_id not in ids, f"got {ids}")
         registry = find_orphans.load_registry()
         check("pruned from registry", session_id not in registry)
+    finally:
+        find_orphans.active_session_ids = orig_active
+        remove_registry_entry(session_id)
+        os.remove(transcript)
+        os.rmdir(project_dir)
+
+
+def test_mention_only_not_pruned():
+    print("test: a session that only MENTIONS close-session.py (never ran it) is still an orphan")
+    session_id = f"test-find-orphans-{uuid.uuid4()}"
+    seed_registry_entry(session_id)
+    project_dir = os.path.join(PROJECTS_DIR, f"test-find-orphans-{uuid.uuid4()}")
+    os.makedirs(project_dir, exist_ok=True)
+    transcript = os.path.join(project_dir, f"{session_id}.jsonl")
+    with open(transcript, "w", encoding="utf-8") as f:
+        # A real tab editing the drainer: its recent context references close-session.py as text,
+        # but no command was executed. It must NOT be pruned, so an abrupt close still resumes it.
+        f.write(json.dumps({"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "text", "text": "The worker's last step runs close-session.py / taskkill /T /F."}]}}) + "\n")
+    orig_active = find_orphans.active_session_ids
+    find_orphans.active_session_ids = lambda: set()
+    try:
+        orphans = find_orphans.find_confirmed_orphans()
+        ids = {o["session_id"] for o in orphans}
+        check("returned as orphan (not pruned)", session_id in ids, f"got {ids}")
+        registry = find_orphans.load_registry()
+        check("still in registry", session_id in registry)
     finally:
         find_orphans.active_session_ids = orig_active
         remove_registry_entry(session_id)
@@ -159,6 +188,7 @@ if __name__ == "__main__":
     test_confirmed_orphan_returned()
     test_live_process_excluded()
     test_self_closed_tail_excluded_and_pruned()
+    test_mention_only_not_pruned()
     test_bare_launch_excluded_via_live_pid()
     test_dead_pid_still_flagged_as_orphan()
     test_pid_still_claude_false_for_missing_pid()

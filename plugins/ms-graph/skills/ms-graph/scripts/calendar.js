@@ -40,18 +40,22 @@
 //                     within the last `lookback-days` (default 30) through today, AND start time
 //                     EXACTLY on the overnight parking grid: :00 at
 //                     midnight, :00/:15/:30/:45 at 1 AM, :00/:30 at 2 AM (not just somewhere in that
-//                     hour — real wall-clock "now" essentially never lands exactly on a slot, so
-//                     exact alignment is what tells "still sitting untouched" from "moved") — with
+//                     hour — a started task's real timestamp carries seconds and essentially never
+//                     lands exactly on a slot, so exact alignment tells "still sitting untouched"
+//                     from "moved") — with
 //                     its duration in minutes; nothing here ever moves a task, so an undone one just
 //                     keeps showing up until it's moved off-grid (see --start-now). A recurring
 //                     series collapses to ONE row — id = its most recent queued occurrence,
 //                     seriesMasterId alongside it — even when several occurrences are overdue; see
 //                     --catch-up-series to clean up the rest once one's been started)
-// Start a task now:  node calendar.js --start-now=<eventId> [--tz=]
-//                    (moves start to right now, keeping the task's own duration — pulls it off the
-//                     parking grid, which is what "no longer due" means here; no delete, no second
-//                     calendar. A recurring occurrence detaches from its series, same as dragging it
-//                     in the Outlook UI)
+// Start a task now:  node calendar.js --start-now=<eventId> [--at=<ISO>] [--tz=]
+//                    (moves start to `--at` when given, else right now, keeping the task's own
+//                     duration — pulls it off the parking grid, which is what "no longer due" means
+//                     here; no delete, no second calendar. Pass --at with the moment the work
+//                     surfaced — the physical-task worker passes its terminal tab's launch time — so a
+//                     quick task's start reflects when it appeared, not when the "starting" reply was
+//                     typed. A recurring occurrence detaches from its series, same as dragging it in
+//                     the Outlook UI)
 // Finish a task now: node calendar.js --finish-now=<eventId> [--tz=]
 //                    (stamps just the end time to now, leaving start where --start-now put it, so the
 //                     event's real elapsed span sits on the calendar afterward)
@@ -506,27 +510,31 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   return out;
 }
 
-// The "started" move: pulls one event out of the queued window by setting its start to right now,
-// keeping its original duration (so end = now + that duration) — the automated version of dragging a
-// to-do out of its staging hour the moment you actually pick it up. A real "now" essentially never
-// lands exactly on a grid slot (see isQueuedSlot), so it stops matching immediately and stops being
-// due, permanently, with no delete and no second calendar. A recurring occurrence detaches from its
-// series here (same as the Outlook UI), which is correct — only this one instance was started, the
+// The "started" move: pulls one event out of the queued window by setting its start to the moment the
+// work actually surfaced — by default right now, or an explicit `at` time when the caller has a truer
+// one (the physical-task worker passes the instant its terminal tab launched, so a task glanced at and
+// done in one sitting still records the real span from when it appeared, not the zero-length span
+// between the "starting" and "done" replies typed a moment apart). Keeps the event's original duration
+// (so end = start + that duration). A started task's real timestamp carries seconds and essentially
+// never lands exactly on a grid slot (see isQueuedSlot), so it stops matching immediately and stops
+// being due, permanently, with no delete and no second calendar. A recurring occurrence detaches from
+// its series here (same as the Outlook UI), which is correct — only this one instance was started, the
 // series' future occurrences are untouched. Returns the duration (minutes) preserved, for the caller
 // to sanity-check.
-async function startTaskNow({ eventId, tz = 'America/Chicago', client } = {}) {
+async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}) {
   if (!eventId) throw new Error('startTaskNow requires { eventId }');
   client = client || await getGraphClient();
   const current = await client.api(`/me/events/${eventId}`)
     .header('Prefer', `outlook.timezone="${tz}"`).select('start,end').get();
   const durMs = new Date(current.end.dateTime.replace(' ', 'T')) - new Date(current.start.dateTime.replace(' ', 'T'));
-  const now = new Date();
+  const start = at ? new Date(at) : new Date();
+  if (isNaN(start)) throw new Error(`startTaskNow: unparseable start time ${JSON.stringify(at)}`);
   const pad = n => String(n).padStart(2, '0');
-  const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  const end = new Date(now.getTime() + durMs);
+  const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T${pad(start.getHours())}:${pad(start.getMinutes())}:${pad(start.getSeconds())}`;
+  const end = new Date(start.getTime() + durMs);
   const endStr = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:${pad(end.getSeconds())}`;
   await client.api(`/me/events/${eventId}`).patch({
-    start: { dateTime: nowStr, timeZone: tz }, end: { dateTime: endStr, timeZone: tz },
+    start: { dateTime: startStr, timeZone: tz }, end: { dateTime: endStr, timeZone: tz },
   });
   return Math.round(durMs / 60000);
 }
@@ -663,8 +671,9 @@ if (require.main === module) {
       return;
     }
     if (args['start-now']) {
-      const minutes = await startTaskNow({ eventId: args['start-now'], tz: TZ });
-      console.log(`Started "${args['start-now']}" now, keeping its ${minutes}m duration.`);
+      const at = args.at === true ? undefined : args.at;
+      const minutes = await startTaskNow({ eventId: args['start-now'], at, tz: TZ });
+      console.log(`Started "${args['start-now']}" at ${at || 'now'}, keeping its ${minutes}m duration.`);
       return;
     }
     if (args['finish-now']) {

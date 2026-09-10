@@ -241,7 +241,7 @@ through the cache glob (run the newest if several are cached) from the repo root
    It prints `{ draftId, webLink, folder:"Drafts", sent:false }`.
 5. **Voice gate + read-back.** `node ~/.claude/plugins/cache/*/ms-rest/*/skills/ms-rest/outlook-mail.js get <draftId>` and confirm
    the body reads back correctly (greeting + body + clickable links; for a reply, the quoted original
-   below the new text). Re-apply the `document-authoring` Conversational rules; if anything was
+   below the new text). Re-apply the `message-rules` Conversational rules; if anything was
    trimmed, rewrite the body file and re-run step 4 (the new draft supersedes the old — delete the
    stale one with `delete <draftId>` if needed).
 6. **Leave as draft.** Never send. Report where the draft lives (Drafts; `webLink` is the deep link).

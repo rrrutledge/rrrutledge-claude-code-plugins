@@ -12,9 +12,10 @@ This path requests `https://www.googleapis.com/auth/spreadsheets`, a scope the g
 
 ## Setup (per machine, one-time)
 
+Claude Code installs the script dependencies (`googleapis`, `google-auth-library`) automatically from the plugin-root `package.json` and lockfile whenever it installs or updates the plugin.
+
 1. **Enable the Sheets API** on the Cloud project the OAuth client belongs to: `console.cloud.google.com/apis/library/sheets.googleapis.com`, select the project, click Enable.
-2. **Install the dependencies** - `node scripts/setup.js` installs `googleapis` and `google-auth-library` into `~/.claude/google-sheets/node_modules`.
-3. **One-time sign-in** - `node scripts/google-sheets-auth.js`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8712/callback`, and on consent exchanges the code and caches the token to `~/.claude/google-sheets/oauth-token.json` (machine-local).
+2. **One-time sign-in** - `node scripts/google-sheets-auth.js`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8712/callback`, and on consent exchanges the code and caches the token to `~/.claude/google-sheets/oauth-token.json` (machine-local).
    Approve consent as the intended Google account.
    The account owner completes this consent step themselves (granting a new scope to an app is their call) - browser-chauffeur opens the URL, they click Allow.
    After this, `google-sheets.js` runs silently (the client auto-refreshes the access token).

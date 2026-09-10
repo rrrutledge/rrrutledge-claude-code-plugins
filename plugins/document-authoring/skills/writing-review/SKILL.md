@@ -106,7 +106,7 @@ The goal is convergence, and the success signal is the same shape: over time, th
 ## Scope
 
 `authoring-rules` is the rubric for anything that ships.
-When the prose is an outward message, the reviewer loads `document-authoring` for its message-specific rules as well, and `reviewer-prompt.md` tells it how.
+When the prose is an outward message, the reviewer loads `message-rules` for its message-specific rules as well, and `reviewer-prompt.md` tells it how.
 
 Rules belong in those two files, never in the prompt and never here.
 A rule stated in more than one place drifts, and the copy the reviewer reads is the one that goes stale.

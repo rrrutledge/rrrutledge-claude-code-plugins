@@ -40,9 +40,10 @@ minutes (a ~5-min cron) and holds each source at
 The loop — enumerate everything eligible → drop already-seen → dispatch against `target_open_tabs` →
 record — is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and
 more reliable than asking an AI to follow it each cycle. There is no per-cycle work cap upstream of
-that: every source is asked for everything it currently has. AI is used for exactly two things: **one
-batched triage call per cycle** (the bucket judgment for all new items) and **the per-item worker
-session** (the actual reply/work, draft-only).
+that: every source is asked for everything it currently has. AI is used for exactly three things: **one
+triage call per new item** (the bucket judgment), **one security-screen call per new item triage didn't
+already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the
+per-item worker session** (the actual reply/work, draft-only).
 
 This is the **poller / worker split**: the poller enumerates and triages but never does an item's work;
 each needs-you item gets its **own worker** that handles it to completion in a fresh context (its own
@@ -101,6 +102,16 @@ Each contract is owned by exactly one file — this doc only points to them:
 
 - **Triage** — the one rubric, *"is there something for the user to do?"* sorted into needs-you /
   auto-handle / fyi / junk → `engine/triage.md`.
+- **Security screen** — a **separate** input-guardrail pass, run on every untrusted inbound item triage
+  didn't already bucket `junk`, judging whether the content is trying to manipulate the agent (prompt
+  injection) or induce an action against the user's interests → `engine/screen.md`. It is its own
+  `claude -p` call, not a field folded into triage, so a classification call can't crowd out the guardrail.
+  On a hit it strips the item's autonomy (never auto-handled, never silently digested) and routes it to
+  the user; an item it can't screen is held (fail-closed). Junk is skipped because it never resolves a
+  pointer and never acts without the user's own review at digest time, so there's nothing there to
+  protect against, and triage's own `kind: phishing` marking already routes the deceptive ones to the
+  report-phishing digest action. `worker-core.md` re-applies the same screen to content a worker resolves
+  later (a pointer's real body) that this pass never saw.
 - **Poller contract** - enumerate / cap / dispatch / record, seen-state, the source-state reconcile ->
   `engine/poller-core.md`.
 - **Worker procedure** — read brain → situational-check → do → draft → advance → `engine/worker-core.md`.

@@ -1,14 +1,18 @@
-// Shared OAuth2 client for the Gmail *settings* API (filters). This is the OAuth path — a separate,
-// additive mechanism alongside the IMAP + app-password path in gmail.js. It exists only because filter
-// management lives in the Gmail REST API, which IMAP can't touch, and that API requires OAuth.
+// Shared OAuth2 client for all Gmail access. Both gmail.js (mail: read/label/draft/send via the Gmail
+// REST API) and filters.js (settings: list/create/delete filters) authorize through this one client and
+// one cached token, so a single sign-in covers the whole skill.
 //
-// Scope is settings-only: https://www.googleapis.com/auth/gmail.settings.basic (list/create/delete
-// filters). It grants NO mail read/send — the IMAP path still owns all message access.
+// Scopes (least-privilege union of what the two scripts need):
+//   - gmail.modify   — read messages + threads, modify labels (archive = remove the INBOX label).
+//   - gmail.compose  — create/update/delete drafts and send messages/drafts.
+//   - gmail.settings.basic — list/create/delete filters (filters.js).
+// This grants no permanent-delete: archive and draft/message removal go to All Mail / Trash, never a
+// bypassing purge.
 //
 // Secrets come from env vars (never a file): GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET (from a
 // Google Cloud OAuth "Desktop app" client). The OAuth token cache persists to
 // ~/.claude/gmail/oauth-token.json (machine-local). The client auto-refreshes the access token from the
-// cached refresh token, so filters.js runs silently after the one-time sign-in via gmail-auth.js.
+// cached refresh token, so both scripts run silently after the one-time sign-in via gmail-auth.js.
 //
 //   const { getAuthedClient } = require('./gmail-oauth');
 
@@ -25,7 +29,11 @@ const TOKEN_PATH = path.join(DEP_HOME, 'oauth-token.json');
 // A Desktop-app OAuth client allows any loopback redirect without pre-registering it. Fixed port keeps
 // the local callback deterministic; distinct from ms-graph's 8080 so the two auth flows never collide.
 const REDIRECT_URI = 'http://localhost:8710/callback';
-const SCOPES = ['https://www.googleapis.com/auth/gmail.settings.basic'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.compose',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
+];
 
 function readTokens() {
   try { return JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')); } catch { return null; }

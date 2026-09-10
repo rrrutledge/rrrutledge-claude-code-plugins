@@ -21,7 +21,6 @@ const path = require('path');
 const os = require('os');
 
 const DEP_HOME = path.join(os.homedir(), '.claude', 'google-docs');
-module.paths.push(path.join(DEP_HOME, 'node_modules'));
 
 const { OAuth2Client } = require('google-auth-library');
 

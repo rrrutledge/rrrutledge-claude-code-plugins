@@ -1,0 +1,11 @@
+{
+  "name": "ms-graph",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Microsoft Graph helper scripts (MSAL + official Graph client). Deps live here at the plugin root so Claude Code installs them automatically on every plugin install/update; the scripts under skills/ms-graph/scripts resolve them via Node's normal upward node_modules walk.",
+  "dependencies": {
+    "@azure/msal-node": "^2.16.2",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "marked": "^13.0.3"
+  }
+}

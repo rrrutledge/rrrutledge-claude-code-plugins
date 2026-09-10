@@ -9,7 +9,6 @@ This is the API sibling of `gmail-adapter.py` / `outlook-graph-adapter.py`: same
 different transport. slack.js talks the Slack Web API with a personal xoxc token + xoxd `d` cookie from
 the environment (SLACK_BOT_TOKEN / SLACK_COOKIE_D / SLACK_TEAM_ID).
 """
-import glob
 import json
 import os
 import re
@@ -20,7 +19,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, find_skill_script  # noqa: E402
 
 
 class Provider(ProviderBase):
@@ -31,30 +30,11 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_slack_js():
-        """Locate the slack skill's slack.js across both the dev-repo and installed-plugin-cache layouts.
-
-        Dev repo:   <plugins>/slack/skills/slack/scripts/slack.js          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/slack/<ver>/skills/slack/scripts/slack.js
-        Walk up to the first `plugins` dir, then try the sibling path, else glob for any slack
-        slack.js beneath it and take the highest-versioned (lexically greatest) path.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        if d:
-            sibling = os.path.join(d, "slack", "skills", "slack", "scripts", "slack.js")
-            if os.path.exists(sibling):
-                return sibling
-            matches = glob.glob(os.path.join(d, "**", "slack", "**", "scripts", "slack.js"),
-                                recursive=True)
-            if matches:
-                return sorted(matches)[-1]  # highest version / latest path
-        raise ProviderError("Could not locate the slack skill's slack.js for the slack provider.",
-                            kind="config")
+        path = find_skill_script(__file__, "slack", os.path.join("scripts", "slack.js"))
+        if not path:
+            raise ProviderError("Could not locate the slack skill's slack.js for the slack provider.",
+                                kind="config")
+        return path
 
     def enumerate(self, limit):
         res = run_node([self.slackjs, "--list-unread", "--json", f"--top={limit}"])

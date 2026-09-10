@@ -13,9 +13,10 @@ This path requests `https://www.googleapis.com/auth/documents`, a scope the gmai
 
 ## Setup (per machine, one-time)
 
+Claude Code installs the script dependencies (`googleapis`, `google-auth-library`) automatically from the plugin-root `package.json` and lockfile whenever it installs or updates the plugin.
+
 1. **Enable the Docs API** on the Cloud project the OAuth client belongs to: `console.cloud.google.com/apis/library/docs.googleapis.com`, select the project, click Enable.
-2. **Install the dependencies** - `node scripts/setup.js` installs `googleapis` and `google-auth-library` into `~/.claude/google-docs/node_modules`.
-3. **One-time sign-in** - `node scripts/google-docs-auth.js`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8711/callback`, and on consent exchanges the code and caches the token to `~/.claude/google-docs/oauth-token.json` (machine-local).
+2. **One-time sign-in** - `node scripts/google-docs-auth.js`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8711/callback`, and on consent exchanges the code and caches the token to `~/.claude/google-docs/oauth-token.json` (machine-local).
    Approve consent as the intended Google account.
    The account owner completes this consent step themselves (granting a new scope to an app is their call) - browser-chauffeur opens the URL, they click Allow.
    After this, `google-docs.js` runs silently (the client auto-refreshes the access token).

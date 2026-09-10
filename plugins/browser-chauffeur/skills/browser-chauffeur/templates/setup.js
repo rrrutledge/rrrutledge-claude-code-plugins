@@ -10,6 +10,19 @@
 // After setup, all browser-chauffeur scripts fall back to
 // ~/.claude/browser-chauffeur/node_modules/ when the package is not installed
 // in the current project — no manual npm install or npm link needed.
+//
+// Why a stable per-user location, rather than the plugin-root package.json +
+// lockfile that Claude Code auto-installs for the data plugins (ms-graph, gmail,
+// google-docs, google-sheets): those plugins' scripts live inside the plugin
+// tree, so Node's upward node_modules walk from a script reaches a plugin-root
+// install. browser-chauffeur's generated automation scripts instead run from the
+// user's OWN project directory, outside this plugin entirely — that walk never
+// reaches the plugin root, so the scripts need a fixed, version-independent path
+// to fall back to. ~/.claude/browser-chauffeur/ is that path; the version-numbered
+// plugin-cache dir Claude Code installs into is not (it moves every update). The
+// helpers shim is resolved per require for the same reason: it points at whatever
+// helpers.js the currently installed plugin version ships, so an update applies on
+// its own instead of leaving scripts loading a prior version's baked-in path.
 
 const os = require('os');
 const path = require('path');

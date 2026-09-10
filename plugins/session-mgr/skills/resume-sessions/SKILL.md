@@ -20,17 +20,23 @@ instructions: |-
      fallback never matches: Claude Code only sets `CLAUDE_CODE_SESSION_ID` for the child
      processes it spawns (hooks, the Bash tool), never on its own process.
   2. Reads the live-session registry (`~/.claude/session-mgr/live-sessions.json` — a dict of
-     `{session_id: {cwd, started_at, pid}}` for every session that has started but not cleanly
-     ended, maintained by this plugin's `SessionStart`/`SessionEnd` hooks) and returns every
+     `{session_id: {cwd, started_at, pid, host_pid}}` for every session that has started but not
+     cleanly ended, maintained by this plugin's `SessionStart`/`SessionEnd` hooks) and returns every
      entry whose session isn't in the active set from part 1 **and** whose recorded `pid`
      isn't a still-live `claude.exe` either. That `pid` — the launching `claude.exe`'s PID,
      found by walking the hook's own process ancestry at `SessionStart` — is what actually
      covers a bare launch with no `--resume`/`--session-id`: since part 1 can't discover such a
      session's id from either the command line or the (dead) env-var fallback, without the pid
      check a still-open bare-launched tab would be misdetected as an orphan and get a
-     duplicate resume tab spawned on top of it. A hard crash or forced restart never triggers
-     `SessionEnd`, so any entry surviving both checks is a **confirmed** interrupted session —
-     no content heuristics needed to decide whether to include it.
+     duplicate resume tab spawned on top of it. Two kinds of session survive both checks as a
+     **confirmed** one to resume, needing no content heuristics: a hard crash or forced restart
+     (which never fires `SessionEnd`, so the entry is never removed), and a real user tab closed
+     abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"` — the hook
+     keeps that entry in place rather than deregistering it, because the tab carries a `host_pid`
+     marking it as a launched interactive tab the user parked and wants back). A deliberate end —
+     `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive — deregisters the
+     session, and a reason-`"other"` end with no `host_pid` (a background or scheduled `claude`
+     run) deregisters too, so neither is ever resurrected.
 
   It also applies the self-close tail check before returning anything: a session that ends
   itself by force-killing its own tab dies before the harness can fire `SessionEnd`, so its
@@ -38,11 +44,13 @@ instructions: |-
   primitive (`scripts/end-session.py`, next to the launcher) fires the SessionEnd hooks first
   and can't leave this residue, but entries written before a session's tooling adopted it —
   or by any independently-authored force-kill — still can. The script scans each candidate's
-  last ~30 transcript entries for a `taskkill /PID <pid> /T /F`, or a `close-session.py` /
-  `end-session.py` invocation, among the session's final actions; a match means it closed
-  itself on purpose, so the script excludes it from the output AND deletes its entry from
-  `live-sessions.json` (so a later run doesn't re-litigate it) — you don't need to re-check
-  this by hand.
+  last ~30 transcript entries for an **executed** self-close among its final actions — a
+  `taskkill /PID <pid> /T /F`, a `close-session.py` / `end-session.py` run, or a
+  `session-mgr:close` skill call that actually ran, not merely a passing mention of those names
+  in the session's context (a session editing the drainer references them without closing
+  itself). A match means it closed itself on purpose, so the script excludes it from the output
+  AND deletes its entry from `live-sessions.json` (so a later run doesn't re-litigate it) — you
+  don't need to re-check this by hand.
 
   Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`. Everything in
   this list is confirmed — go straight to the launch list (Step 3) for these; do not apply

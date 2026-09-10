@@ -16,8 +16,8 @@ The forms are evidence, not the rule: one appearing is not automatically a viola
 Rules that constrain *how you get there* rather than what lands (draft then revisit, verify line by line, run the overlap search before adding a bullet) are writer-only and live in `document-authoring`.
 A reviewer holding only the output cannot evaluate them.
 
-Medium-specific rules - register, warmth, personas, emoji, sign-offs, asks, nudges - also live in `document-authoring`.
-They are reviewable, but only for outward messages.
+Medium-specific rules - register, warmth, asks, links, personas, emoji, sign-offs, nudges - live in `message-rules`, the companion rubric.
+They are reviewable, but only for outward messages, so a reviewer loads `message-rules` alongside this file for a message and this file alone for anything else that ships.
 
 ---
 
@@ -82,7 +82,7 @@ Write "see the [incident report](URL)", never a bare `https://…` in prose.
 **Check:** can you point at what each noun refers to without reading around it?
 
 **Say it plainly.**
-**Check:** "it's not just X, it's Y" constructions; rule-of-three flourishes; vivid metaphors and set-phrase idioms; an amplifier stacked on a noun where the plain noun would do ("great", "such an important") - reserve "great" for a standalone exclamation or genuine singular praise.
+**Check:** staged oppositions - "it's not just X, it's Y", a wrong or easy path set up only to reject it for the right one, or two balanced clauses held in tension; rule-of-three flourishes; vivid metaphors and set-phrase idioms; an amplifier stacked on a noun where the plain noun would do ("great", "such an important") - reserve "great" for a standalone exclamation or genuine singular praise.
 Sentence length and rhythm are drafting judgment rather than a decidable check, so they stay in `document-authoring`.
 
 **State facts without editorializing.**
@@ -99,6 +99,10 @@ Put an intro sentence above a list, with a blank line before the list.
 Within a paragraph or a multi-sentence bullet, start each sentence on a new line.
 Rendered output is identical, but a one-sentence edit then touches one line instead of marking the whole paragraph changed in the diff.
 **Check:** markdown source only. Never applies to a message composed in a web UI, where there is no source to diff.
+
+**Never reference coffee, alcohol, or drinks.**
+Not Russell's own, and not as a suggestion to someone else - pick a neutral alternative or omit.
+**Check:** coffee, alcohol, beer, wine, cocktails, or "grabbing a drink" named as Russell's activity or offered to another person.
 
 ---
 

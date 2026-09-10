@@ -17,6 +17,11 @@
 //                 — the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
 //                 content, that the plaintext view strips out. Prints a "*** DRAFT — NOT SENT ***"
 //                 banner up top when the message is still sitting in Drafts.)
+// Auth headers:  node mail.js --auth=<messageId>
+//                (emits a JSON object with the message's envelope-authentication headers as the
+//                 receiving system stamped them — the raw Authentication-Results value(s) and any
+//                 Received-SPF value(s), plus the From. This is the SPF/DKIM/DMARC provenance the
+//                 spoofable From: line can't give; the drainer's security screen reads it per item.)
 // Draft a reply: node mail.js --reply --message-id=<id> --body-file=reply.md [--attach=file1.pdf,file2.png]
 //                (creates a DRAFT reply-all in the thread; never sends. --body-file is Markdown —
 //                 blank-line paragraphs, lists, **bold**, and links all render as HTML; raw HTML
@@ -335,6 +340,27 @@ async function show(client) {
   console.log('\n' + strip(m.body?.content));
 }
 
+async function auth(client) {
+  // The envelope-authentication headers the receiving system stamped onto the message, as JSON for the
+  // drainer's security screen. Authentication-Results carries the SPF/DKIM/DMARC verdicts (and the
+  // domains that actually authenticated); Received-SPF carries the SPF check on its own. Both can appear
+  // more than once (each relay adds its own), so every instance is returned. internetMessageHeaders is
+  // the same header source --unsubscribe already reads. Interpretation lives in the drainer's Python
+  // adapters, so this just exposes the raw values.
+  const m = await client.api(`/me/messages/${args.auth}`)
+    .select('from,internetMessageHeaders').get();
+  const headers = m.internetMessageHeaders || [];
+  const all = (name) => headers
+    .filter(h => (h.name || '').toLowerCase() === name)
+    .map(h => h.value).filter(Boolean);
+  console.log(JSON.stringify({
+    from: addr(m.from),
+    fromAddress: m.from?.emailAddress?.address || '',
+    authenticationResults: all('authentication-results'),
+    receivedSpf: all('received-spf'),
+  }, null, 2));
+}
+
 async function listDrafts(client) {
   const data = await client.api('/me/mailFolders/drafts/messages')
     .orderby('lastModifiedDateTime desc')
@@ -541,6 +567,7 @@ if (require.main === module) {
     if (args['list-drafts']) return listDrafts(client);
     if (args.search) return search(client);
     if (args.show) return show(client);
+    if (args.auth) return auth(client);
     if (args.reply) return reply(client);
     if (args['draft-new']) return draftNew(client);
     if (args['send-self']) return sendSelf(client);
@@ -554,6 +581,6 @@ if (require.main === module) {
     if (args['create-rule']) return createRule(client);
     if (args['append-rule']) return appendRule(client);
     if (args['delete-rule']) return deleteRule(client);
-    throw new Error('Specify --list-unread, --list-inbox, --list-junk, --list-drafts, --search, --show, --reply, --draft-new, --send-self, --send-draft, --delete, --not-junk, --report-phish, --unsubscribe, --get-attachments, --list-rules, --create-rule, --append-rule, or --delete-rule');
+    throw new Error('Specify --list-unread, --list-inbox, --list-junk, --list-drafts, --search, --show, --auth, --reply, --draft-new, --send-self, --send-draft, --delete, --not-junk, --report-phish, --unsubscribe, --get-attachments, --list-rules, --create-rule, --append-rule, or --delete-rule');
   })().catch(e => { console.error('Error:', e.message); process.exit(1); });
 }

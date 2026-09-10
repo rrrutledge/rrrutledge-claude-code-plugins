@@ -9,7 +9,6 @@ the Teams internal REST services with tokens sniffed from the live Teams web ses
 needs `playwright` (resolved from the home repo's node_modules via NODE_PATH). CLEAR (mark-read) and
 DRAFT-MODE stay browser-driven in the worker — see `teams-provider.md`.
 """
-import glob
 import json
 import os
 import re
@@ -20,7 +19,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, slug  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, slug, find_skill_script  # noqa: E402
 
 # Stable per-machine home (teams-chat.js caches its sniffed tokens here, absolutely). We also run node
 # from here for a consistent cwd.
@@ -45,29 +44,11 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_teams_js():
-        """Locate the teams skill's teams-chat.js across dev-repo and installed-plugin-cache layouts.
-
-        Dev repo:   <plugins>/teams/skills/teams/scripts/teams-chat.js          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/teams/<ver>/skills/teams/scripts/teams-chat.js
-        Walk up to the first `plugins` dir, then try the sibling path, else glob and take the
-        highest-versioned (lexically greatest) path.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        if d:
-            sibling = os.path.join(d, "teams", "skills", "teams", "scripts", "teams-chat.js")
-            if os.path.exists(sibling):
-                return sibling
-            matches = glob.glob(os.path.join(d, "**", "teams", "**", "scripts", "teams-chat.js"),
-                                recursive=True)
-            if matches:
-                return sorted(matches)[-1]  # highest version / latest path
-        raise ProviderError("Could not locate the teams skill's teams-chat.js for the teams provider.", kind="config")
+        path = find_skill_script(__file__, "teams", os.path.join("scripts", "teams-chat.js"))
+        if not path:
+            raise ProviderError(
+                "Could not locate the teams skill's teams-chat.js for the teams provider.", kind="config")
+        return path
 
     def _node_kw(self):
         """run_node kwargs: NODE_PATH so the token sniff resolves `playwright` from the home repo.

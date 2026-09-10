@@ -6,7 +6,6 @@ shape — the only difference is which folder gets enumerated (Junk Email instea
 Kept as its own adapter file (not a subclass) per the provider pattern in engine/provider.md: each
 source's mechanics live in one self-contained two-file provider.
 """
-import glob
 import json
 import os
 import sys
@@ -15,7 +14,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, slug  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, slug, find_skill_script  # noqa: E402
 
 
 class Provider(ProviderBase):
@@ -26,29 +25,10 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_mail_js():
-        """Locate ms-graph's mail.js across both the dev-repo and installed-plugin-cache layouts.
-
-        Dev repo:   <plugins>/ms-graph/skills/ms-graph/scripts/mail.js          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/ms-graph/<ver>/skills/ms-graph/scripts/mail.js
-        Walk up to the first `plugins` dir, then try the sibling path, else glob for any ms-graph
-        mail.js beneath it and take the highest-versioned (lexically greatest) path.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        if d:
-            sibling = os.path.join(d, "ms-graph", "skills", "ms-graph", "scripts", "mail.js")
-            if os.path.exists(sibling):
-                return sibling
-            matches = glob.glob(os.path.join(d, "**", "ms-graph", "**", "scripts", "mail.js"),
-                                recursive=True)
-            if matches:
-                return sorted(matches)[-1]  # highest version / latest path
-        raise ProviderError("Could not locate ms-graph mail.js for outlook-graph-junk.", kind="config")
+        path = find_skill_script(__file__, "ms-graph", os.path.join("scripts", "mail.js"))
+        if not path:
+            raise ProviderError("Could not locate ms-graph mail.js for outlook-graph-junk.", kind="config")
+        return path
 
     def enumerate(self, limit):
         res = run_node([self.mailjs, "--list-junk", "--json", f"--top={limit}"])

@@ -1,6 +1,6 @@
 {
   "name": "ms-graph",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "description": "Read/write a personal Microsoft account's Outlook mail and calendar, and read OneDrive items (including their web deep links), via the Microsoft Graph API, using the official @azure/msal-node + @microsoft/microsoft-graph-client libraries. No browser needed after a one-time sign-in.",
   "author": {
     "name": "Russell Rutledge"

@@ -24,7 +24,7 @@ Subagent (general-purpose):
     and a violation using none of them is still a finding.
 
     If the text under review is an outward message (email, Teams, Slack,
-    Confluence), also read [DOCUMENT_AUTHORING_PATH] and review against its
+    Confluence), also read [MESSAGE_RULES_PATH] and review against its
     message-specific rules. Those are conditioned on register, so identify the
     register first, from its Register section. When the register is genuinely
     ambiguous, say so and report the finding as conditional rather than
@@ -80,6 +80,6 @@ Subagent (general-purpose):
 
 **Placeholders:**
 - `[RUBRIC_PATH]` - REQUIRED: absolute path to `authoring-rules/SKILL.md`
-- `[DOCUMENT_AUTHORING_PATH]` - only when reviewing an outward message
+- `[MESSAGE_RULES_PATH]` - only when reviewing an outward message: absolute path to `message-rules/SKILL.md`
 - `[TEXT_OR_DIFF_PATH]` - REQUIRED: the file or diff under review
 - `[MODEL]` - the reviewer model

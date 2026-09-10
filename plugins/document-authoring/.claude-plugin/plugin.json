@@ -1,7 +1,7 @@
 {
   "name": "document-authoring",
-  "version": "1.8.47",
-  "description": "Russell's authoring conventions: a shared medium-independent rubric for any text that ships, plus outward-message style for documents and messages with links or formatted prose",
+  "version": "1.9.19",
+  "description": "Russell's authoring conventions: two shared rubrics both the writer and the writing reviewer read - a medium-independent one for any text that ships and a message-specific one for outward messages - plus the drafting, staging, and voice-learning process over them",
   "author": {
     "name": "Russell Rutledge"
   }

@@ -99,6 +99,11 @@
       "name": "session-mgr",
       "source": "./plugins/session-mgr",
       "description": "Find and resume Claude Code sessions that ended abruptly — after a restart, crash, or unplanned shutdown. Scans all sessions across every working directory and opens each one in a new Windows Terminal tab."
+    },
+    {
+      "name": "git-workflow",
+      "source": "./plugins/git-workflow",
+      "description": "Russell's git/GitHub workflow rules — branching from main, when PRs merge, closing PRs and branch cleanup, code review timing, repo deletion, gh CLI usage, PR link formatting. Use whenever creating a branch/commit/PR, merging, closing, or reviewing a PR, or doing any other git/gh operation."
     }
   ]
 }

@@ -12,7 +12,6 @@ account is signed into Outlook web, so it suits a work mailbox with no personal 
 one-time token sniff needs `playwright`; steady-state cycles use the cached token and touch no
 browser. See `outlook-rest-provider.md` for AUTH/CLEAR/DRAFT.
 """
-import glob
 import json
 import os
 import sys
@@ -22,7 +21,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, slug  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, slug, find_skill_script  # noqa: E402
 
 # Stable per-machine home for the sniffed-token cache. ms-rest caches at <cwd>/.tmp/outlook-token.json,
 # so we run its node calls from here to keep the token stable across cycles (instead of wherever the
@@ -45,29 +44,10 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_mail_js():
-        """Locate ms-rest's outlook-mail.js across both the dev-repo and installed-plugin-cache layouts.
-
-        Dev repo:   <plugins>/ms-rest/skills/ms-rest/outlook-mail.js          (sibling of drainer)
-        Installed:  <plugins>/cache/<marketplace>/ms-rest/<ver>/skills/ms-rest/outlook-mail.js
-        Walk up to the first `plugins` dir, then try the sibling path, else glob for any ms-rest
-        outlook-mail.js beneath it and take the highest-versioned (lexically greatest) path.
-        """
-        d = os.path.dirname(os.path.abspath(__file__))
-        while d and os.path.basename(d) != "plugins":
-            parent = os.path.dirname(d)
-            if parent == d:
-                d = None
-                break
-            d = parent
-        if d:
-            sibling = os.path.join(d, "ms-rest", "skills", "ms-rest", "outlook-mail.js")
-            if os.path.exists(sibling):
-                return sibling
-            matches = glob.glob(os.path.join(d, "**", "ms-rest", "**", "outlook-mail.js"),
-                                recursive=True)
-            if matches:
-                return sorted(matches)[-1]  # highest version / latest path
-        raise ProviderError("Could not locate ms-rest outlook-mail.js for outlook-rest.", kind="config")
+        path = find_skill_script(__file__, "ms-rest", "outlook-mail.js")
+        if not path:
+            raise ProviderError("Could not locate ms-rest outlook-mail.js for outlook-rest.", kind="config")
+        return path
 
     def _node_kw(self):
         """run_node kwargs: stable cwd for the token cache + NODE_PATH so the sniff resolves `playwright`.

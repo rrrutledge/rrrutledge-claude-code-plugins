@@ -40,11 +40,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-
-// Same resolve trick google-docs-oauth.js uses — module.paths is per-module in Node, so this
-// script needs its own push to find deps installed by setup.js into ~/.claude/google-docs/node_modules.
-module.paths.push(path.join(os.homedir(), '.claude', 'google-docs', 'node_modules'));
 
 const { google } = require('googleapis');
 const { getAuthedClient } = require('./google-docs-oauth');

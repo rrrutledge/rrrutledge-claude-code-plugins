@@ -6,6 +6,8 @@ Each source the poller drives ships a `providers/<name>-adapter.py` next to its 
 poller itself. This module is the small shared surface (subprocess + slug helpers + the interface).
 """
 import ctypes
+import glob
+import os
 import re
 import subprocess
 import threading
@@ -133,10 +135,12 @@ class ProviderError(Exception):
     others; it records the failure to provider-health.json so the daily digest can surface a stuck
     provider for Russell to fix. `kind` distinguishes the two failure modes the digest reports
     differently:
-      - "auth"   — a transient credential / network failure (expired token, IMAP blip). Expected
+      - "auth"   — a transient credential / network failure (expired token, network blip). Expected
                    occasionally; self-heals once the credential is refreshed.
-      - "config" — a deploy/config error (a helper .js or utility couldn't be located). Rare and
-                   loud; it won't self-heal, so the digest flags it distinctly.
+      - "config" — a deploy/config error: a helper .js couldn't be located, or a helper ran but
+                   crashed on a missing npm dependency (its skill's shared node_modules store lacks a
+                   required package). Rare and loud; it won't self-heal until a human reinstalls, so the
+                   poller escalates it immediately and the digest flags it distinctly.
     """
 
     def __init__(self, message, kind="auth"):
@@ -149,9 +153,66 @@ def run_node(args, **kw):
                           encoding="utf-8", errors="replace", creationflags=NO_WINDOW, **kw)
 
 
+# A Node helper that dies on `Error: Cannot find module 'x'` failed because a required npm package is
+# absent from its skill's shared node_modules store — a broken deploy, not a credential problem. It will
+# fail identically every cycle until someone reinstalls the dependency, so it must be classified "config"
+# (loud, won't self-heal, escalated at once), never lumped into the transient "auth" bucket. An adapter
+# routes its enumerate's nonzero-exit stderr through here to pick the right kind for the ProviderError.
+_NODE_DEP_MISSING_RE = re.compile(r"Cannot find module|MODULE_NOT_FOUND|ERR_MODULE_NOT_FOUND")
+
+
+def node_failure_kind(stderr):
+    """Classify a node helper's nonzero-exit stderr: "config" for a missing-dependency crash (a broken
+    deploy), else the default transient "auth" bucket."""
+    return "config" if _NODE_DEP_MISSING_RE.search(stderr or "") else "auth"
+
+
 def slug(s, maxlen=18):
     s = re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
     return s[:maxlen].strip("-")
+
+
+def find_skill_script(start_file, skill, rel_path):
+    """Locate a sibling skill's script/module across the two layouts a plugin actually runs from.
+
+    Dev repo:   <plugins>/<skill>/skills/<skill>/<rel_path>                    (sibling of drainer)
+    Installed:  <plugins>/cache/<marketplace>/<skill>/<ver>/skills/<skill>/<rel_path>
+    Walks up from `start_file` to the first ancestor directory literally named `plugins`, tries the
+    dev-repo sibling path, and otherwise globs the installed-cache layout specifically, returning the
+    highest real version (parsed as a digit tuple, so `1.10.1` correctly beats `1.9.0`) among the
+    matches.
+
+    Deliberately never falls back to a bare recursive glob under `<plugins>/`: that would also match
+    `<plugins>/marketplaces/<marketplace>/plugins/<skill>/...` — a raw git checkout of the plugin
+    source kept in sync for `claude plugin update` to read, never `npm install`-ed, so a script found
+    there can't actually run (e.g. a missing `node_modules` dependency). Only the two layouts a plugin
+    is actually installed/run from are searched.
+
+    Returns None if nothing resolves; the caller raises its own ProviderError with a source-specific
+    message.
+    """
+    d = os.path.dirname(os.path.abspath(start_file))
+    while d and os.path.basename(d) != "plugins":
+        parent = os.path.dirname(d)
+        if parent == d:
+            d = None
+            break
+        d = parent
+    if not d:
+        return None
+    sibling = os.path.join(d, skill, "skills", skill, rel_path)
+    if os.path.exists(sibling):
+        return sibling
+    suffix = os.path.join("skills", skill, rel_path)
+    matches = glob.glob(os.path.join(d, "cache", "*", skill, "*", suffix))
+    if not matches:
+        return None
+
+    def version_tuple(path):
+        ver = path[:-(len(suffix) + 1)].rsplit(os.sep, 1)[-1]
+        return tuple(int(n) for n in re.findall(r"\d+", ver))
+
+    return max(matches, key=version_tuple)
 
 
 # ---------------------------------------------------------------------------- correspondent identity
@@ -244,6 +305,115 @@ def relay_correspondent(item, get_body):
     return False
 
 
+# ---------------------------------------------------------------------------- envelope authentication
+#
+# The security screen judges an email's CONTENT, but the `From:` line it judges against is spoofable.
+# The real provenance is the SPF/DKIM/DMARC verdict the RECEIVING system stamps into the message's
+# `Authentication-Results` header (and the standalone `Received-SPF`) - a header the sender cannot forge,
+# since it's written on arrival. The email adapters fetch those raw header values (mail.js / gmail.js
+# `--auth`) and hand them here; this turns them into a compact summary the screen weighs alongside the
+# content. Parsing lives in this ONE place so both email adapters interpret identically.
+
+def _auth_domain_of(value):
+    """The bare domain from an Authentication-Results value that may be an email (`bounce@x.com`), an
+    address in angle brackets, or already a bare domain. Lowercased, with any leading/trailing dots or
+    quotes stripped. Returns None for an empty value."""
+    v = (value or "").strip().strip('<>"\'').lower()
+    if "@" in v:
+        v = v.split("@", 1)[1]
+    v = v.strip().strip(".")
+    return v or None
+
+
+def _registrable_domain(domain):
+    """A crude eTLD+1 (the last two labels) for the alignment hint only - `mail.chase.com` and
+    `chase.com` share `chase.com`, so a subdomain still reads as aligned. Deliberately approximate
+    (it treats `co.uk` as the registrable domain); the screen uses `aligned` as one advisory signal,
+    never as a hard verdict, and DMARC=pass already establishes real alignment on its own."""
+    if not domain:
+        return None
+    parts = domain.split(".")
+    return ".".join(parts[-2:]) if len(parts) >= 2 else domain
+
+
+def _auth_verdict(method, blob):
+    """The verdict for one auth method (`dmarc`/`dkim`/`spf`) parsed out of the combined
+    Authentication-Results text. DKIM can appear several times (one per signature); a single valid
+    signature authenticates, so a `pass` among them wins, else the first verdict seen. Returns the
+    lowercased verdict word (`pass`, `fail`, `softfail`, `none`, ...) or None when the method is absent."""
+    vals = [m.lower() for m in re.findall(rf'\b{method}=([A-Za-z]+)', blob or "", re.I)]
+    if not vals:
+        return None
+    return "pass" if "pass" in vals else vals[0]
+
+
+def parse_email_auth(from_address, auth_results, received_spf=None):
+    """A compact envelope-authentication summary for the security screen, or None when the receiving
+    system stamped no auth headers at all (so there's nothing to weigh - absence is never treated as a
+    signal, since it can be a fetch limitation rather than a real gap). `auth_results` and `received_spf`
+    are the raw header-value lists the adapters get from mail.js / gmail.js `--auth`.
+
+    The returned dict carries the three verdicts (`dmarc`/`dkim`/`spf`, each a verdict word or None), the
+    domain the recipient SEES (`fromDomain`, from the From address) versus the domain that actually
+    authenticated (`sendingDomain`, the SPF envelope-from or the DKIM signing domain), an `aligned` hint,
+    and a one-line `summary` the screen can read directly. The screen weighs it per engine/screen.md:
+    an auth failure paired with a red-line-inducing or impersonation ask is a strong flag, while
+    authenticated mail from a known party is corroboration."""
+    ar = " ; ".join(a for a in (auth_results or []) if a)
+    spf_hdr = " ; ".join(s for s in (received_spf or []) if s)
+    if not ar and not spf_hdr:
+        return None
+
+    dmarc = _auth_verdict("dmarc", ar)
+    dkim = _auth_verdict("dkim", ar)
+    spf = _auth_verdict("spf", ar)
+    if spf is None and spf_hdr:  # a standalone Received-SPF header leads with its verdict word
+        m = re.match(r'\s*([A-Za-z]+)', spf_hdr)
+        spf = m.group(1).lower() if m else None
+
+    from_domain = _auth_domain_of(from_address)
+    mailfrom = None
+    m = re.search(r'smtp\.mailfrom=([^\s;]+)', ar, re.I)
+    if m:
+        mailfrom = _auth_domain_of(m.group(1))
+    if not mailfrom and spf_hdr:
+        m = re.search(r'envelope-from=([^\s;]+)', spf_hdr, re.I)
+        if m:
+            mailfrom = _auth_domain_of(m.group(1))
+    dkim_d = None
+    m = re.search(r'header\.d=([^\s;]+)', ar, re.I)
+    if m:
+        dkim_d = _auth_domain_of(m.group(1))
+    sending_domain = mailfrom or dkim_d
+
+    # DMARC=pass means SPF or DKIM passed AND aligned with the From domain, so it establishes alignment on
+    # its own. Otherwise fall back to the crude registrable-domain comparison, and leave it unknown when a
+    # domain is missing.
+    if dmarc == "pass":
+        aligned = True
+    elif from_domain and sending_domain:
+        aligned = _registrable_domain(from_domain) == _registrable_domain(sending_domain)
+    else:
+        aligned = None
+
+    def word(v):
+        return v if v else "absent"
+
+    parts = [f"DMARC={word(dmarc)}", f"DKIM={word(dkim)}", f"SPF={word(spf)}"]
+    summary = " ".join(parts)
+    if from_domain:
+        summary += f"; From domain {from_domain}"
+        if sending_domain and sending_domain != from_domain:
+            summary += f", authenticated sending domain {sending_domain}"
+            if aligned is False:
+                summary += " (misaligned with From)"
+    return {
+        "dmarc": dmarc, "dkim": dkim, "spf": spf,
+        "fromDomain": from_domain, "sendingDomain": sending_domain,
+        "aligned": aligned, "summary": summary,
+    }
+
+
 class ProviderBase:
     """The interface the poller drives. Subclasses live in providers/<name>-adapter.py."""
     name = None
@@ -260,10 +430,20 @@ class ProviderBase:
     def triage_text(self, item):
         """The body text the triage step shows the model for this item. Default: the light `preview`
         that `enumerate` already attached. Adapters whose `enumerate` returns no usable body (e.g. the
-        gmail adapter, where the IMAP envelope listing carries no preview) override this to fetch a
+        gmail adapter, where the envelope listing carries no preview) override this to fetch a
         quote-stripped excerpt of the new message — so triage classifies on real content, not just the
         subject line. Called only for the NEW items being triaged, so a per-item fetch here stays cheap."""
         return item.get("preview") or ""
+
+    def screen_signal(self, item):
+        """A compact per-item signal the security screen weighs ON TOP OF the content, or None when this
+        source has none. Email adapters override it to surface the envelope-authentication summary
+        (SPF/DKIM/DMARC verdict + the true sending domain vs the From display, via parse_email_auth) -
+        the provenance the spoofable `From:` line can't give. Platform sources (Slack/Teams/Trello) have
+        native auth and no envelope to spoof, so they inherit this None and the screen weighs content
+        alone. Called only for items being screened (a subset of a cycle), so a per-item fetch here is
+        cheap, mirroring triage_text."""
+        return None
 
     def _fetch_body(self, item):
         """The message body used only for relay-correspondent extraction, and only when the subject and

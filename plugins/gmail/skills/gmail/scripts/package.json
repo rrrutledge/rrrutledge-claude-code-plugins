@@ -2,10 +2,10 @@
   "name": "gmail-scripts",
   "private": true,
   "version": "1.0.0",
-  "description": "Gmail helper scripts (IMAP via imapflow + app password; MIME via nodemailer; parse via mailparser; filter management via google-auth-library OAuth)",
+  "description": "Gmail helper scripts (Gmail REST API via googleapis over OAuth; MIME built with nodemailer's MailComposer; RFC822 parse via mailparser; Markdown via marked; OAuth client via google-auth-library)",
   "dependencies": {
     "google-auth-library": "^9.15.0",
-    "imapflow": "^1.0.164",
+    "googleapis": "^144.0.0",
     "mailparser": "^3.7.1",
     "marked": "^13.0.0",
     "nodemailer": "^6.9.14"

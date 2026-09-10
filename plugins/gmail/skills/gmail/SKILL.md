@@ -1,9 +1,9 @@
 ---
 name: gmail
-description: Read/draft/clear a personal Gmail or Google Workspace mailbox via IMAP using a Google App Password — no OAuth app, no Cloud project, no browser. Use to list the inbox, show a message, archive mail, or stage reply/new drafts in the Drafts folder. Staging is draft-only; a reviewed draft is sent only on Russ's explicit per-message say-so via --send-draft. For a Google account where you can mint an app password (2-Step Verification on, IMAP enabled). Also manages Gmail filters programmatically (list/create/append/delete) through a separate, additive OAuth settings-only path — filters.js.
+description: Read/draft/clear a personal Gmail or Google Workspace mailbox via the Gmail REST API over OAuth — no app password. Use to list the inbox, show a message, archive mail, or stage reply/new drafts in the Drafts folder. Staging is draft-only; a reviewed draft is sent only on Russ's explicit per-message say-so via --send-draft. One OAuth sign-in also manages Gmail filters programmatically (list/create/append/delete) — filters.js.
 ---
 
-# Gmail — Personal/Workspace Mail via IMAP + App Password
+# Gmail — Personal/Workspace Mail via the Gmail REST API (OAuth)
 
 **A native `mcp__claude_ai_Gmail__*` connector (Claude's built-in Gmail integration) may also be
 connected to this same mailbox** — for the ISC account (`russ@innersourcecommons.org`), it is. That
@@ -14,66 +14,74 @@ signature correctly (after the body, before the quoted original) on every `--rep
 read-only lookups this skill doesn't cover (e.g. `search_threads` across accounts this skill isn't
 configured for) — never for staging a draft on an account this skill already serves.
 
-Read and write a Gmail or Google Workspace mailbox directly over **IMAP** with a **16-character
-App Password** — no OAuth client, no Google Cloud project, no browser automation. Built on:
+Read and write a Gmail or Google Workspace mailbox through the **Gmail REST API** over **OAuth**. One
+sign-in authorizes everything the skill does — reading, archiving, staging and sending drafts, and
+managing filters. Built on:
 
-- **`imapflow`** — the IMAP client (connect, list, search, fetch, move, append).
-- **`mailparser`** — parses fetched RFC822 source into headers + text/html.
-- **`nodemailer`** (MailComposer) — builds RFC822 drafts (reply and new) that are appended to Drafts.
+- **`googleapis`** — the Gmail REST client (messages list/get/modify, drafts create/send/delete, labels).
+- **`mailparser`** — parses a fetched message's RFC822 source into headers + text/html + attachments.
+- **`nodemailer`** (MailComposer) — builds the outgoing RFC822 MIME for drafts (reply and new). No SMTP
+  transport: the built MIME is handed to the API as the draft's `raw`.
+- **`marked`** — renders the Markdown `--body-file` to HTML.
 
-**Why an app password, not OAuth:** the Gmail REST API requires registering an OAuth client inside a
-Google Cloud project. IMAP needs only an app password, which everything the drainer does (list, archive,
-stage drafts) flows through. Simpler to set up and headless-safe (no token to refresh).
+**Why the REST API:** it exposes threads, labels, and drafts (create/update/delete) as first-class
+resources, returns structured JSON, and threads a reply natively. Auth is a single OAuth token, shared
+with `filters.js`, that auto-refreshes — nothing to re-enter after the one-time consent.
 
-## Setup (per machine)
+## Setup (per machine, one-time)
 
-1. **Install deps** (idempotent, one-time): `node <skill>/scripts/setup.js` — installs imapflow /
-   mailparser / nodemailer to `~/.claude/gmail/node_modules` so any copy of the script resolves them.
-2. **Enable the prerequisites on the Google account** (once):
-   - Turn on **2-Step Verification**.
-   - In Gmail → Settings → **Forwarding and POP/IMAP** → **Enable IMAP**. For Workspace, the admin
-     must also allow IMAP access.
-3. **Mint an App Password** at `https://myaccount.google.com/apppasswords` (name it e.g. "drainer").
-   Google shows the 16-character code **once** — as four space-separated groups of four lowercase
-   letters. Capture all 16 letters (no spaces).
-4. **Set secrets as env vars** (never in a file): `GMAIL_ADDRESS` (the full address) and
-   `GMAIL_APP_PASSWORD` (the 16 letters, no spaces).
-5. **Optional signature** — set `GMAIL_SIGNATURE_HTML` to an HTML snippet (e.g.
-   `Name<br>Title<br><a href="...">...</a>`) and `--draft-new`/`--reply` append it to every staged
-   draft automatically. IMAP has no way to read the account's Gmail-configured signature (that's a
-   webmail-only setting with no IMAP equivalent), so this env var is the closest available substitute —
-   set it once from whatever your Gmail signature actually says, and update it by hand if that changes.
-   **When `GMAIL_SIGNATURE_HTML` is set, the `--body-file` content must end on its last substantive
-   sentence — never add a name/sign-off line of your own (`Russ`, `Thanks, Russ`, etc.).** The
-   auto-appended block already names the sender, so a sign-off line above it duplicates the name and
+1. **Install deps** (idempotent): `node <skill>/scripts/setup.js` — installs googleapis / mailparser /
+   nodemailer / marked / google-auth-library to `~/.claude/gmail/node_modules` so any copy of the script
+   resolves them.
+2. **Google Cloud OAuth client** — in a Google Cloud project with the **Gmail API** enabled, create an
+   OAuth client of type **Desktop app** (a desktop client allows the loopback redirect this flow uses
+   without pre-registering a URI). Capture its id/secret into env vars (never a file):
+   `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`.
+3. **One-time sign-in** — `node <skill>/scripts/gmail-auth.js`, driven via **browser-chauffeur**: it
+   prints an `AUTH_URL:` line, serves `http://localhost:8710/callback`, and on consent exchanges the code
+   and caches the token to `~/.claude/gmail/oauth-token.json` (machine-local). Approve consent as the
+   intended account — for ISC that's the Workspace account `russ@innersourcecommons.org`. The consent
+   screen grants three scopes at once: `gmail.modify` (read + label), `gmail.compose` (drafts + send),
+   and `gmail.settings.basic` (filters). After this, `gmail.js` and `filters.js` both run silently (the
+   client auto-refreshes the access token).
+4. **Optional signature** — set `GMAIL_SIGNATURE_HTML` to an HTML snippet (e.g.
+   `Name<br>Title<br><a href="...">...</a>`) and `--draft-new`/`--reply` append it to every staged draft
+   automatically. Set it once from whatever your Gmail signature says, and update it by hand if that
+   changes. **When `GMAIL_SIGNATURE_HTML` is set, the `--body-file` content must end on its last
+   substantive sentence — never add a name/sign-off line of your own (`Russ`, `Thanks, Russ`, etc.).**
+   The auto-appended block already names the sender, so a sign-off line above it duplicates the name and
    is the single most common mistake when staging a draft here — check the last line of every
    `--body-file` against this before running `--reply`/`--draft-new`.
 
-**Secrets stay machine-local.** The plugin code is shared via the marketplace; `GMAIL_ADDRESS` /
-`GMAIL_APP_PASSWORD` / `GMAIL_SIGNATURE_HTML` are per-machine, so the mailbox is only reachable (and
-signed the same way) where you've set them.
+**Secrets stay machine-local.** The plugin code is shared via the marketplace; `GMAIL_OAUTH_CLIENT_ID` /
+`GMAIL_OAUTH_CLIENT_SECRET` / `GMAIL_SIGNATURE_HTML` are per-machine, and the cached token lives only on
+the machine that signed in — so the mailbox is only reachable (and signed the same way) where you've set
+them up.
 
 ## Scripts
 
 Under `scripts/` (run with `node`):
 
 - **`gmail.js`**
-  - Auth glance: `node gmail.js --check` (connects, reports inbox count; non-zero exit on auth failure)
+  - Auth glance: `node gmail.js --check` (signs in, reports inbox count; non-zero exit on auth failure)
   - List inbox: `node gmail.js --list-inbox [--top=50] [--json]` (newest-first; `--json` emits a
-    structured array for scripts — each item has the RFC822 Message-ID as `id`, plus `uid`, `subject`,
-    `from`, `fromAddress`, `received`, `isRead`)
+    structured array for scripts — each item has the RFC822 Message-ID as `id`, plus `uid` (Gmail's
+    internal message id), `subject`, `from`, `fromAddress`, `fromMe`, `toMe`, `received`, `isRead`)
   - List sent: `node gmail.js --list-sent [--top=50] [--json]` (sent mail, newest-first; same output
     format as `--list-inbox`)
-  - Search: `node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]` (IMAP TEXT
-    search — matches headers + body; `--folder` defaults to `all` (`[Gmail]/All Mail`), covering both
-    inbox and sent; results newest-first. Use this to check whether a reply was sent to a contact before
-    concluding a thread is unresponded.)
+  - Search: `node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]` (`--query` is
+    Gmail's own search syntax — matches headers + body; `--folder` defaults to `all` (All Mail, covering
+    both inbox and sent); results newest-first. Use this to check whether a reply was sent to a contact
+    before concluding a thread is unresponded.)
   - Show one: `node gmail.js --show=<message-id>` (`<message-id>` is the Message-ID header, with the
     angle brackets, e.g. `<abc@mail.gmail.com>`)
+  - Envelope-auth headers: `node gmail.js --auth=<message-id>` (JSON with the message's
+    `Authentication-Results` and `Received-SPF` values — the SPF/DKIM/DMARC provenance Gmail stamped on
+    arrival, which the `From:` line can't give; read by the drainer's security screen)
   - List drafts: `node gmail.js --list-drafts [--top=30]`
   - Draft reply (never sends): `node gmail.js --reply --message-id=<id> --body-file=reply.md`
-    (appends a threaded draft to `[Gmail]/Drafts` with In-Reply-To/References set + the quoted original).
-    `<id>` is looked up in both the **inbox and All Mail**, so pass the **most recent** message in the
+    (stages a threaded draft with In-Reply-To/References set + the quoted original).
+    `<id>` is looked up across **All Mail**, so pass the **most recent** message in the
     thread to thread off — even one the user sent. When that message is the user's own, the reply keeps its recipients (To/CC)
     instead of addressing back to the user; otherwise it's a reply-all to the sender + other recipients.
     **Skip a Gmail emoji-reaction email as the threading target** — a bare 👍/❤️ sent via Gmail's
@@ -83,7 +91,7 @@ Under `scripts/` (run with `node`):
     the nearest message before it that carries real content instead.
   - **`--body-file` is Markdown** — write the body in Markdown (`**bold**`, `[text](url)`, paragraphs,
     lists) and the script converts it to HTML via `marked`. HTML tags in the source pass through
-    unchanged. **If `GMAIL_SIGNATURE_HTML` is set (see Setup step 5), stop at the last content
+    unchanged. **If `GMAIL_SIGNATURE_HTML` is set (see Setup step 4), stop at the last content
     sentence — no sign-off line.**
   - **`--no-quote` (with `--reply`)** — suppress the auto-appended quoted original while keeping the
     thread's In-Reply-To/References headers. Use it for an **interleaved reply**: the `--body-file`
@@ -95,15 +103,15 @@ Under `scripts/` (run with `node`):
     **Default to `--inline` for illustrative screenshots** - a screenshot that illustrates or proves a point the body text is making belongs next to that point.
   - **`--to=<addr>` (with `--reply`)** — override the computed recipient, for threading a reply off a no-reply relay whose real correspondent is in `Reply-To` (e.g. a Google "shared a file" notification) so the reply reaches the person, not the no-reply box.
   - Draft new (never sends): `node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z]`
-    (`--reply` and `--draft-new` each print a `draft-id:` line — the staged draft's Message-ID. That id
-    is what `--send-draft` takes. `--reply` also replaces any prior draft on the same thread, so a thread
-    never carries more than one draft.)
-  - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-message-id>`
-    (transmits that one draft's exact bytes via SMTP, removes it from Drafts; Gmail files the copy in
-    `[Gmail]/Sent`). See **Sending** below — this runs only on Russ's explicit per-message say-so.
-  - Archive one (reversible): `node gmail.js --archive=<message-id>` (removes from the inbox, keeps it in
-    `[Gmail]/All Mail` — the way mail is cleared: handled and out of the inbox, never discarded)
-  - Delete a draft: `node gmail.js --delete-draft=<draft-message-id>` (discards a staged draft that's no
+    (`--reply` and `--draft-new` each print a `draft-id:` line — the staged draft's id. That id
+    is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
+    thread, so a thread never carries more than one draft.)
+  - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
+    (sends that one draft and removes it from Drafts; Gmail files the copy in Sent). See **Sending**
+    below — this runs only on Russ's explicit per-message say-so.
+  - Archive one (reversible): `node gmail.js --archive=<message-id>` (removes the message from the inbox,
+    keeps it in **All Mail** — the way mail is cleared: handled and out of the inbox, never discarded)
+  - Delete a draft: `node gmail.js --delete-draft=<draft-id>` (discards a staged draft that's no
     longer wanted — e.g. the outreach it belonged to was abandoned. Takes the same `draft-id` that
     `--reply`/`--draft-new` printed when it was staged. Drafts have no other home, so this isn't
     recoverable the way `--archive` is — only delete a draft once its underlying card/thread is truly
@@ -127,34 +135,14 @@ Hold the line on these — they are what keep send safe:
 - An autonomous or `auto-handle` drain never sends. `--send-draft` is human-in-the-loop only; in any
   non-interactive run, stop at the staged draft.
 
-## Filter management (OAuth settings path)
+## Filter management
 
-Managing Gmail **filters** lives in the Gmail settings REST API, which IMAP can't reach — so filters use
-a **second, additive path** alongside the app-password path above. It is **settings-only**: its single
-scope is `https://www.googleapis.com/auth/gmail.settings.basic`, which lists/creates/deletes filters and
-grants **no** mail read or send. The IMAP + app-password path still owns all message access; this path
-only adds filters. Together they make Gmail a peer of Outlook, whose rules are managed programmatically
-through `ms-graph`'s `mail.js`.
+Managing Gmail **filters** runs through the same OAuth token, using the `gmail.settings.basic` scope
+granted at sign-in. This makes Gmail a peer of Outlook, whose rules are managed programmatically through
+`ms-graph`'s `mail.js`.
 
 Use the **`mail-filters`** skill to choose *what* a filter should match (the phrase-selection craft and
 the master `-from:` fence); use these commands to *create* it.
-
-### Setup (per machine, one-time)
-
-1. **Deps** — `node <skill>/scripts/setup.js` also installs `google-auth-library` (the OAuth client)
-   into `~/.claude/gmail/node_modules`.
-2. **Google Cloud OAuth client** — in a Google Cloud project with the **Gmail API** enabled, create an
-   OAuth client of type **Desktop app** (a desktop client allows the loopback redirect this flow uses
-   without pre-registering a URI). Capture its id/secret into env vars (never a file):
-   `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`.
-3. **One-time sign-in** — `node <skill>/scripts/gmail-auth.js`, driven via **browser-chauffeur**: it
-   prints an `AUTH_URL:` line, serves `http://localhost:8710/callback`, and on consent exchanges the code
-   and caches the token to `~/.claude/gmail/oauth-token.json` (machine-local). Approve consent as the
-   intended account — for ISC that's the Workspace account `russ@innersourcecommons.org`. After this,
-   `filters.js` runs silently (the client auto-refreshes the access token).
-
-**Secrets stay machine-local**, like the app password — the mailbox's filters are reachable only where
-`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET` are set and the token is cached.
 
 ### Commands — `filters.js`
 
@@ -179,21 +167,19 @@ The command reports the new id.
 
 ## Auth-error handling
 
-`--check` is the cheap glance. An auth failure (`AUTHENTICATIONFAILED` / "Invalid credentials") means
-the app password is wrong/revoked or IMAP is disabled — re-mint the app password and re-set
-`GMAIL_APP_PASSWORD`, and confirm IMAP is enabled. There is no token to refresh.
-
-For the **OAuth filter path**, a `filters.js` "Not signed in" or an `invalid_grant` (the refresh token was
-revoked or expired) means the one-time sign-in must be re-run: `node scripts/gmail-auth.js` via
-browser-chauffeur. If Google declines to return a refresh token, revoke prior access at
+`--check` is the cheap glance. An `insufficient permission` / `invalid_grant` / "Not signed in" error
+means the cached token lacks the needed scopes (e.g. after a scope change) or the refresh token was
+revoked or expired — re-run the one-time sign-in: `node scripts/gmail-auth.js` via browser-chauffeur.
+If Google declines to return a refresh token, revoke prior access at
 `https://myaccount.google.com/permissions` first, then re-run so a fresh one is issued.
 
 ## Notes
 
-- The load-bearing identifier is the **Message-ID header** (`id` in `--json`): pass it to `--show`,
-  `--reply`, and `--archive`. `--show` and `--archive` look the header up in the **INBOX** (valid while
-  the message is in the inbox); `--reply` looks it up in the **inbox and All Mail**, so it can thread off
-  any message in the thread — inbox, archived, or sent.
-- Drafts (`--reply` / `--draft-new`) land in **[Gmail]/Drafts**. They go out only via `--send-draft` on
-  Russ's explicit say-so (see **Sending**); otherwise he reviews and sends in Gmail himself.
-- Gmail's special folders are addressed as `[Gmail]/Drafts` and `[Gmail]/All Mail`.
+- The load-bearing identifier for a **message** is the **Message-ID header** (`id` in `--json`): pass it
+  to `--show`, `--auth`, `--reply`, and `--archive`. It's resolved to Gmail's internal id via an
+  `rfc822msgid:` search across All Mail, so it works whether the message is in the inbox, archived, or
+  sent.
+- The load-bearing identifier for a **draft** is the **draft-id** that `--reply` / `--draft-new` print:
+  pass it to `--send-draft` and `--delete-draft`.
+- Drafts (`--reply` / `--draft-new`) land in **Drafts**. They go out only via `--send-draft` on Russ's
+  explicit say-so (see **Sending**); otherwise he reviews and sends in Gmail himself.

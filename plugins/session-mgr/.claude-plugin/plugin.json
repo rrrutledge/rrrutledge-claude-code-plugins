@@ -1,6 +1,6 @@
 {
   "name": "session-mgr",
-  "version": "1.5.6",
+  "version": "1.5.7",
   "description": "Session management utilities — find and resume Claude Code sessions that ended without an explicit exit command.",
   "author": {
     "name": "Russell Rutledge"
