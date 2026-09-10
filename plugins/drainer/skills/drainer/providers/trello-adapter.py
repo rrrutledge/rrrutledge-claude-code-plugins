@@ -476,14 +476,20 @@ class Provider(ProviderBase):
         return items
 
     def stable_id(self, item):
-        # The Start date is PART OF the identity, not just a field: a card recurs every cycle (a nudge
-        # bumps its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in
-        # seen.json forever (status=cleared, key persists) while dedup is pure key-presence. So a stable
-        # per-card id would be marked seen on the first drain and never resurface when the next Start
-        # arrives. Folding the Start (YYYYMMDD) in makes each go-live a distinct item that surfaces anew;
-        # an undated card stamps to the fixed sentinel `nodue`, so it stays seen until it's given a Start.
+        # The Start is PART OF the identity, not just a field: a card recurs every cycle (a nudge bumps
+        # its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in seen.json
+        # forever (status=cleared, key persists) while dedup is pure key-presence. So a stable per-card id
+        # would be marked seen on the first drain and never resurface when the next Start arrives. Folding
+        # the Start in makes each go-live a distinct item that surfaces anew; an undated card stamps to the
+        # fixed sentinel `nodue`, so it stays seen until it's given a Start.
+        #
+        # The stamp carries the time-of-day (YYYYMMDDHHMM, minute precision), so a deliberate same-day
+        # reschedule - bumping a card's Start from morning to afternoon - mints a fresh id and dispatches
+        # again that same day. Truncating at the minute drops the seconds/ms Trello writes into Start, so
+        # an unchanged card mints the identical id on every repeat drain (idempotent), and a card left at
+        # its default creation time keeps one id per calendar day.
         stamp_src = item.get("start") or ""
-        stamp = "".join(c for c in stamp_src if c.isdigit())[:8] or "nodue"
+        stamp = "".join(c for c in stamp_src if c.isdigit())[:12] or "nodue"
         return f"{self.name}-{slug(item.get('name'), 40)}-{item['cardId'][-6:]}-{stamp}".strip("-")[:72]
 
     def still_in_inbox_ids(self):
