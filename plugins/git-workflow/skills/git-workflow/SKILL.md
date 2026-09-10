@@ -11,9 +11,9 @@ Read that repo's own `CLAUDE.md`, `CONTRIBUTING.md`, and any `.github/PULL_REQUE
 Follow whatever they ask in full: run the build/preview step they name, attach whatever artifact they ask for, and match their PR template if one exists.
 
 **When the work targets a repo other than the session's working directory, root the session in that repo's own checkout.**
+This is the case whenever a session started in one repo picks up a task that turns out to need changes in another.
 Claude Code auto-loads `CLAUDE.md` only from the session's own working-directory tree, so a session editing a different repo never sees that repo's rules on its own - and `CONTRIBUTING.md` and the PR template never auto-load even when the working directory is the repo.
 Launch a fresh session (the handoff-launcher pattern) whose cwd is that repo's local checkout - its `~/Dev` clone, or one made per "Writing files to other repos" below - and write the seed so it tells the new session to read that repo's `CONTRIBUTING.md` and any `.github/PULL_REQUEST_TEMPLATE*`, so the reminder rides in with the launch rather than depending on memory.
-This is the drainer's normal case: a worker's working directory is `personal-ai-pod`, yet a captured item can require changes in a different repo, and that is exactly when the target repo's rules would otherwise be missed.
 
 ## Auto Branch/Commit/PR
 **HARD RULE: Never push directly to main. All changes go through a PR - no exceptions.**
