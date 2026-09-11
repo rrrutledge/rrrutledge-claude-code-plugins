@@ -234,6 +234,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
   Answer in the fewest words that carry it and stop — "Yes - Bluevine.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched).
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
+  In a fast, casual DM thread, when the fact being confirmed is exactly what the asker just stated themselves, drop the restated fact too and close with the palette's 👍 in its place — "Yes 👍". Reserve this for when a real yes/no is still owed — the message left a fact undetermined that only you can confirm (a direct question, or a stated condition like "if that's the plan then great"); once they've already reached their own conclusion or committed to act, with nothing left to confirm, skip the typed word too and use the bare native reaction instead (see **Acknowledge with the channel's native 👍 reaction** below).
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
 - **Never open an offer with "Happy to" — state it plainly instead.**
