@@ -307,6 +307,7 @@ The specifics that most often separate a message that reads as Russell's from on
   "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
   Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
   On a first touch a bare reaction is often enough; hold a worded reply in reserve for the next round, once a second touch is actually due.
+- **When the favor was to forward or introduce you to someone else, ask about the third party's response rather than whether they passed it along** — trusting their follow-through and moving straight to the useful information ("Did Dan say anything?" rather than "any chance you've had a moment to pass my info along to Dan?"). Thank them for the help in the same breath instead of tacking on a separate no-pressure release.
 
 ### Core voice
 
