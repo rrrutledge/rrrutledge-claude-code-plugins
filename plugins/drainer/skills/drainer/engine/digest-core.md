@@ -224,6 +224,13 @@ the poller's reconcile reads as unfinished, so it re-dispatches as a fresh worke
 
 ## Hard rules (carry forward from the engine)
 
+- **Dispatch execution work, don't run it in this tab.** The digest is a triage-and-dispatch role by
+  design: it summarizes, proposes, and clears. When the review surfaces a real task to *do* - a reply to
+  draft, a PR to ship, a workflow to build, anything Russell raises mid-review - hand it off to a fresh
+  session (worker-core.md step 3's inline/subagent/handoff heuristic) rather than executing it inline.
+  This tab already holds the whole day's triaged queue; loading an execution task's skills on top of that
+  is exactly the accumulation the heuristic prevents. Triage stays in this lean tab; each execution task
+  goes out to its own.
 - **Draft-only outbound. Never send, never post.** The digest only summarizes, proposes, and clears
   (delete/archive is reversible). Any reply that a re-surfaced item warrants is drafted, never sent.
 - **Clear nothing without Russell's review** — this is the whole point of the digest being interactive.

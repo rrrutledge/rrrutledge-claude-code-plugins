@@ -384,10 +384,41 @@ From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes
 Then finish normally: complete the remaining work, draft any reply, clear the item per §6, and close up per §6's closing rules once your part and his are both done.
 
 ## 3. Do the action (you do the work WITH the user)
-Figure out what the item needs and **DO THE WORK in this session**. You are the implementer, not a
-task manager. Opening a PR? You open it. Filing a ticket? You file it. Completing a form? You fill it
-out together with the user. Analyzing data? You run the analysis. Writing code? You write it. **The
-user guides if needed, but you drive the keyboard.**
+
+**One tab carries one deliverable - the item it was seeded on. Everything else dispatches.**
+Your whole context is re-read on every model call, so a second task that drags its skills into this tab
+(browser-chauffeur ~14K tokens, the message-rules/document-authoring stack ~21K, ship-plugin) is then
+re-read on every remaining round. The tab seeded on a recruiter email must not also ship an unrelated
+plugin PR. Route each piece of work by where it belongs - which is also where Russell can reach it:
+
+- **Inline (this tab):** the single reviewable deliverable for the seed item, plus the light steps around
+  it - the work you were launched to finish, and anything Russell will want to watch or iterate on live.
+  This is the "you drive the keyboard" work below.
+- **Subagent:** a read-heavy step whose *result* you need back and that Russell won't need to discuss -
+  research on a person or company, a cross-file investigation, a lookup. It returns one distilled answer,
+  so the reading never rides along on your remaining rounds. It is one-shot from Russell's side - he can't
+  converse with it - so anything he'll want to question or iterate on does NOT go here: keep that inline,
+  or hand it off.
+- **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent
+  deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code
+  change or a PR ship. A handoff is a full interactive session Russell can talk to, so it also fits
+  iterable work that simply doesn't belong in this tab. Emit it via the drainer's own tab-spawn (no new
+  launcher) and let this tab stay on its own item:
+  `<skill>/scripts/spawn-tab.cmd "<title>" "<repo dir>" "<.tmp/handoff-*.md>" "<model id>" "<.tmp/summary.txt>"`
+  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may
+  hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task,
+  `claude-opus-4-8[1m]` for open investigation or design), per `~/.claude/CLAUDE.md`, "Handoffs & session
+  model default". A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs,
+  never *whether* it waits for Russell.
+
+The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely "a second step": a
+two-step task whose steps genuinely share this item's context stays inline. This is Russell's own
+cost-lens (same section of `~/.claude/CLAUDE.md`) applied to a running worker.
+
+Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
+You are the implementer, not a task manager. Opening the PR this item is about? You open it. Filing its
+ticket? You file it. Completing a form? You fill it out together with the user. Writing the code it calls
+for? You write it. **The user guides if needed, but you drive the keyboard.**
 
 Complete the work BEFORE moving to step 4 (drafting a reply). The item stays in the queue as your task
 list until the underlying deliverable is done — don't advance to step 6 until the work itself is
