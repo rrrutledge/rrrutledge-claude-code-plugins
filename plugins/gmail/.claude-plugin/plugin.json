@@ -1,6 +1,6 @@
 {
   "name": "gmail",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Read/draft/clear a personal Gmail or Google Workspace mailbox via the Gmail REST API over OAuth. List the inbox, show a message, archive mail, and stage reply/new drafts in the Drafts folder. Staging is draft-only; a reviewed draft is sent only on explicit per-message say-so via --send-draft. One OAuth sign-in also manages Gmail filters programmatically (list/create/append/delete).",
   "author": {
     "name": "Russell Rutledge"
