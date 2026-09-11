@@ -484,3 +484,4 @@ Four registers reach outside the palette, and most also stack past the one-emoji
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
 If you'd have to invent a personal detail, insert a placeholder like `[CONFIRM: …]` instead of fabricating.
+When the correspondent raised a question only Russell can answer, leave a `[CONFIRM: …]` placeholder naming it right where the answer belongs in the draft, rather than silently leaving it unaddressed.
