@@ -23,6 +23,11 @@ are the OAuth client id/secret (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SE
 lives at `~/.claude/gmail/oauth-token.json` and auto-refreshes. Optionally `GMAIL_SIGNATURE_HTML` (an
 HTML snippet) — when set, `gmail.js` appends it to every staged draft automatically.
 
+**ENUMERATE runs over IMAP - everything on this page (AUTH-GLANCE, CAPTURE, CLEAR, DRAFT-MODE) stays on
+the REST API.** The adapter's recurring `enumerate()`/`still_in_inbox_ids()` full-mailbox scan (up to 500
+messages, every poller cycle) runs over IMAP via `gmail.js --list-inbox-imap` and `GMAIL_ADDRESS` /
+`GMAIL_APP_PASSWORD` - see `gmail-adapter.py`'s file-header comment for why.
+
 The `gmail` `gmail.js` lives at `<gmail-skill>/scripts/gmail.js` — run it with `node`.
 
 ## AUTH-GLANCE

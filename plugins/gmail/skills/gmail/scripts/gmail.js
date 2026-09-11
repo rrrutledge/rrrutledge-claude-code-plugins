@@ -12,6 +12,15 @@
 //
 // List inbox:    node gmail.js --list-inbox [--top=50] [--json]
 //                (inbox, newest-first; --json emits a structured array for scripts)
+// List inbox (IMAP): node gmail.js --list-inbox-imap [--top=50] [--json]
+//                (same output shape as --list-inbox, but fetched over IMAP with a Google App Password
+//                 instead of the Gmail REST API - no Gmail API quota cost. Requires GMAIL_ADDRESS and
+//                 GMAIL_APP_PASSWORD in the environment (a 16-char Google App Password; needs 2-Step
+//                 Verification on the account and IMAP enabled in Gmail settings). This exists only for
+//                 the drainer poller's own recurring enumeration - see the drainer plugin's
+//                 gmail-adapter.py file-header comment for why that needs to stay off the REST quota.
+//                 Every other operation (compose, send, draft, archive, single-message fetch) stays on
+//                 the REST/OAuth path above, since that's not what's quota-constrained.)
 // List sent:     node gmail.js --list-sent [--top=50] [--json]
 //                (sent mail, newest-first; same output format as --list-inbox)
 // Search:        node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]
@@ -78,6 +87,7 @@ const { simpleParser } = require('mailparser');
 const { marked } = require('marked');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
+const { ImapFlow } = require('imapflow');
 const { getAuthedClient } = require('./gmail-oauth');
 
 const USER_ID = 'me';
@@ -270,6 +280,51 @@ async function listFolder(labelId, name) {
   const out = await mapLimit(ids, 15, id => metaItem(id, acct)); // messages.list is already newest-first
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   printListing(out, `${out.length} message(s) in ${name} (newest first):`);
+}
+
+// IMAP counterpart to listFolder() above - same output shape (id/uid/subject/from/fromAddress/fromMe/
+// toMe/received/isRead), fetched via imapflow with a Google App Password instead of the REST API, so
+// the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this file's header
+// comment for why). Envelope + flags only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
+// the account() lookup above since there's no OAuth profile to read the address from over IMAP.
+async function listInboxImap() {
+  const top = parseInt(args.top || '50', 10);
+  const user = process.env.GMAIL_ADDRESS;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) {
+    throw new Error('--list-inbox-imap requires GMAIL_ADDRESS and GMAIL_APP_PASSWORD in the environment.');
+  }
+  const acct = user.toLowerCase();
+  const c = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass }, logger: false });
+  await c.connect();
+  const out = [];
+  try {
+    const lock = await c.getMailboxLock('INBOX');
+    try {
+      const total = c.mailbox.exists;
+      if (total) {
+        const start = Math.max(1, total - top + 1);
+        for await (const m of c.fetch(`${start}:*`, { envelope: true, flags: true, internalDate: true })) {
+          const e = m.envelope || {};
+          const d = e.date || m.internalDate || new Date();
+          out.push({
+            id: e.messageId || `seq-${m.seq}`,
+            uid: m.uid,
+            subject: e.subject || '(no subject)',
+            from: fromList(e.from),
+            fromAddress: e.from && e.from[0] ? e.from[0].address : '',
+            fromMe: !!(e.from && e.from[0]) && (e.from[0].address || '').toLowerCase() === acct,
+            toMe: (e.to || []).some(a => (a.address || '').toLowerCase() === acct),
+            received: d.toISOString ? d.toISOString() : String(d),
+            isRead: m.flags ? m.flags.has('\\Seen') : false,
+          });
+        }
+        out.reverse(); // fetch() walks the sequence range oldest-first; REST's --list-inbox is newest-first.
+      }
+    } finally { lock.release(); }
+  } finally { await c.logout(); }
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  printListing(out, `${out.length} message(s) in INBOX (newest first, via IMAP):`);
 }
 
 async function search() {
@@ -550,6 +605,7 @@ function describeError(e) {
 }
 
 (async () => {
+  if (args['list-inbox-imap']) return await listInboxImap(); // IMAP path - no REST/OAuth client needed
   gmail = google.gmail({ version: 'v1', auth: getAuthedClient() });
   if (args['list-inbox']) return await listFolder('INBOX', 'INBOX');
   if (args['list-drafts']) return await listDrafts();
@@ -564,5 +620,5 @@ function describeError(e) {
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-sent, --search, --list-drafts, --save-attachments, --show, --auth, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --auth, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });
