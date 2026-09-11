@@ -1,13 +1,21 @@
-"""gmail poller adapter — Gmail/Workspace mail via the gmail skill's gmail.js (Gmail REST API over OAuth).
+"""gmail poller adapter - Gmail/Workspace mail via the gmail skill's gmail.js.
 
 All gmail mechanics live HERE, alongside the prose contract in `gmail-provider.md`: locating gmail.js,
-the `--list-inbox --json` enumerate, the Message-ID id scheme, and the captured item shape. The poller
-(`scripts/run-poller.py`) loads this adapter dynamically and drives it through the `ProviderBase`
-interface — it contains no Gmail specifics.
+the enumerate, the Message-ID id scheme, and the captured item shape. The poller (`scripts/run-poller.py`)
+loads this adapter dynamically and drives it through the `ProviderBase` interface - it contains no Gmail
+specifics.
 
-This is the Gmail-REST sibling of `outlook-graph-adapter.py` (Graph). Same operations, both REST: gmail.js
-authorizes through the gmail skill's cached OAuth token (GMAIL_OAUTH_CLIENT_ID / GMAIL_OAUTH_CLIENT_SECRET),
-so no per-item credential lives in this adapter's environment.
+Two transports, split by call volume. `enumerate()` and `still_in_inbox_ids()` (`_list_inbox()`) run a
+full `--top=500` mailbox scan every single poller cycle regardless of whether there's new mail - doing that
+scan twice per cycle over the Gmail REST API would exhaust its per-project quota on its own, so both go
+over **IMAP** instead (`gmail.js --list-inbox-imap`, a Google App Password via
+GMAIL_ADDRESS/GMAIL_APP_PASSWORD), which carries no comparable quota. Everything else (`triage_text`,
+`screen_signal`, `clear`) only fires per candidate item - much lower volume - and stays on the Gmail
+**REST API over OAuth** (GMAIL_OAUTH_CLIENT_ID/SECRET, via the gmail skill's cached token), since that
+path isn't quota-constrained and already gives draft/send/archive the structured JSON and signature
+handling worth keeping.
+
+This is the Gmail sibling of `outlook-graph-adapter.py` (Graph, REST-only).
 """
 import json
 import os
@@ -44,12 +52,24 @@ class Provider(ProviderBase):
         mid = (message_id or "").strip("<>")
         return "https://mail.google.com/mail/u/0/#search/" + urllib.parse.quote(f"rfc822msgid:{mid}")
 
-    def enumerate(self, limit):
-        res = run_node([self.gmailjs, "--list-inbox", "--json", f"--top={limit}"])
+    _inbox_cache = None  # per-process cache: enumerate() and still_in_inbox_ids() both request the same
+    # top=500 IMAP listing every cycle (see ENUMERATE_PAGE_SIZE in run-poller.py); reconcile_unhandled()
+    # runs before collect_new() within one poller invocation, so whichever calls _list_inbox() first
+    # populates this and the second reuses it instead of hitting IMAP twice.
+
+    def _list_inbox(self, limit):
+        if self._inbox_cache is not None and self._inbox_cache[0] >= limit:
+            return self._inbox_cache[1][:limit]
+        res = run_node([self.gmailjs, "--list-inbox-imap", "--json", f"--top={limit}"])
         if res.returncode != 0:
             raise ProviderError(f"gmail enumerate failed: {res.stderr.strip()[:300]}",
                                 kind=node_failure_kind(res.stderr))
         msgs = json.loads(res.stdout or "[]")
+        self._inbox_cache = (limit, msgs)
+        return msgs
+
+    def enumerate(self, limit):
+        msgs = self._list_inbox(limit)
         return [m for m in msgs if not self._own_outbound_reply(m)]
 
     @staticmethod
@@ -119,12 +139,9 @@ class Provider(ProviderBase):
         return "\n".join(kept).strip()[:limit]
 
     def still_in_inbox_ids(self):
-        res = run_node([self.gmailjs, "--list-inbox", "--json", "--top=500"])
-        if res.returncode != 0:
-            return None
         try:
-            msgs = json.loads(res.stdout or "[]")
-        except ValueError:
+            msgs = self._list_inbox(500)
+        except ProviderError:
             return None
         return {m["id"] for m in msgs if m.get("id")}
 
