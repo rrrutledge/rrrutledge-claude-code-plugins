@@ -5,15 +5,17 @@ the enumerate, the Message-ID id scheme, and the captured item shape. The poller
 loads this adapter dynamically and drives it through the `ProviderBase` interface - it contains no Gmail
 specifics.
 
-Two transports, split by call volume. `enumerate()` and `still_in_inbox_ids()` (`_list_inbox()`) run a
-full `--top=500` mailbox scan every single poller cycle regardless of whether there's new mail - doing that
-scan twice per cycle over the Gmail REST API would exhaust its per-project quota on its own, so both go
-over **IMAP** instead (`gmail.js --list-inbox-imap`, a Google App Password via
-GMAIL_ADDRESS/GMAIL_APP_PASSWORD), which carries no comparable quota. Everything else (`triage_text`,
-`screen_signal`, `clear`) only fires per candidate item - much lower volume - and stays on the Gmail
-**REST API over OAuth** (GMAIL_OAUTH_CLIENT_ID/SECRET, via the gmail skill's cached token), since that
-path isn't quota-constrained and already gives draft/send/archive the structured JSON and signature
-handling worth keeping.
+Two transports, split by what the operation is. All the recurring poll traffic runs over **IMAP** (a
+Google App Password via GMAIL_ADDRESS/GMAIL_APP_PASSWORD, which carries no Gmail API quota): the full
+`--top=500` mailbox scan `enumerate()` and `still_in_inbox_ids()` run twice a cycle (`_list_inbox()` →
+`gmail.js --list-inbox-imap`), and every per-item read - `triage_text`, `screen_signal`, `capture`'s body
+fetch, `_fetch_body` - which fetch by the INBOX UID the scan already returned (`gmail.js --show-imap` /
+`--auth-imap`). Over the poller's ~5-minute cadence those calls would otherwise pin Gmail's per-user REST
+quota. `clear` and the draft/send path stay on the Gmail **REST API over OAuth** (GMAIL_OAUTH_CLIENT_ID/
+SECRET, via the gmail skill's cached token): draft/send is low-volume, human-triggered, and wants the
+structured JSON and signature handling REST gives; `clear` is a single archive call per fyi/junk item, and
+REST label-removal archives predictably where Gmail's IMAP archive result would depend on a per-account
+"when deleted" setting - so `clear` keeps exact archive semantics without adding meaningful REST volume.
 
 This is the Gmail sibling of `outlook-graph-adapter.py` (Graph, REST-only).
 """
@@ -86,25 +88,26 @@ class Provider(ProviderBase):
         """Fetch the message body and return just the NEW content (quoted reply chain stripped), so the
         triage step sees what the message actually says instead of only its subject line. The enumerate
         listing carries no preview, so without this triage would classify a Gmail thread purely
-        on sender + subject. Falls back to the (usually empty) preview if the body can't be fetched."""
-        message_id = item.get("id")
-        if not message_id:
+        on sender + subject. Fetched over IMAP by the item's INBOX UID (no REST quota cost); falls back to
+        the (usually empty) preview if the body can't be fetched."""
+        uid = item.get("uid")
+        if not uid:
             return item.get("preview") or ""
-        show = run_node([self.gmailjs, f"--show={message_id}"])
+        show = run_node([self.gmailjs, f"--show-imap={uid}"])
         if show.returncode != 0:
             return item.get("preview") or ""
         return self._new_message_excerpt(show.stdout)
 
     def screen_signal(self, item):
         """Surface this message's envelope-authentication verdict into the security screen payload. Runs
-        `gmail.js --auth` for the message (the SPF/DKIM/DMARC headers Gmail stamped on arrival), then
-        parse_email_auth turns the raw Authentication-Results / Received-SPF values into the compact
-        summary the screen weighs. Returns None on any fetch/parse miss so a missing signal never blocks
-        screening (the screen still judges the content)."""
-        message_id = item.get("id")
-        if not message_id:
+        `gmail.js --auth-imap` for the message over IMAP by its INBOX UID (the SPF/DKIM/DMARC headers Gmail
+        stamped on arrival, off the REST quota), then parse_email_auth turns the raw Authentication-Results
+        / Received-SPF values into the compact summary the screen weighs. Returns None on any fetch/parse
+        miss so a missing signal never blocks screening (the screen still judges the content)."""
+        uid = item.get("uid")
+        if not uid:
             return None
-        res = run_node([self.gmailjs, f"--auth={message_id}"])
+        res = run_node([self.gmailjs, f"--auth-imap={uid}"])
         if res.returncode != 0:
             return None
         try:
@@ -117,11 +120,12 @@ class Provider(ProviderBase):
     def _fetch_body(self, item):
         """The new-message text, for relay-correspondent extraction when a relay's name isn't already in
         the subject/preview. Only reached for a recognized relay sender whose cheap fields missed, so this
-        per-item body fetch stays rare; reuses the same quote-stripped excerpt triage sees."""
-        message_id = item.get("id")
-        if not message_id:
+        per-item body fetch stays rare; fetched over IMAP by INBOX UID, reusing the same quote-stripped
+        excerpt triage sees."""
+        uid = item.get("uid")
+        if not uid:
             return ""
-        show = run_node([self.gmailjs, f"--show={message_id}"])
+        show = run_node([self.gmailjs, f"--show-imap={uid}"])
         return self._new_message_excerpt(show.stdout) if show.returncode == 0 else ""
 
     @staticmethod
@@ -148,7 +152,11 @@ class Provider(ProviderBase):
     def clear(self, item):
         """Archive an fyi/junk message at triage time (the provider CLEAR: `gmail.js --archive` removes it
         from the inbox, keeping it in [Gmail]/All Mail - reversible and still searchable). Returns True on
-        success, False on failure - see ProviderBase.clear for why this is safe for the poller to call."""
+        success, False on failure - see ProviderBase.clear for why this is safe for the poller to call.
+
+        Stays on REST (by RFC822 Message-ID) while the per-item reads use IMAP: REST label-removal archives
+        predictably, whereas the Gmail-IMAP archive result depends on a per-account "when deleted" setting;
+        and it's one call per fyi/junk item, so it isn't the recurring-read volume the IMAP move targets."""
         res = run_node([self.gmailjs, f"--archive={item['id']}"])
         return res.returncode == 0
 
@@ -166,8 +174,11 @@ class Provider(ProviderBase):
         os.makedirs(items_dir, exist_ok=True)
         email_file = os.path.join(items_dir, f"{iid}.email.md")
         message_id = item["id"]
-        show = run_node([self.gmailjs, f"--show={message_id}"])
-        body = show.stdout if show.returncode == 0 else "(could not load body)"
+        # The captured body is fetched over IMAP by the INBOX UID (like triage's read), off the REST quota.
+        # Capture runs before clear() in the poller cycle, so the message is still in the INBOX here.
+        uid = item.get("uid")
+        show = run_node([self.gmailjs, f"--show-imap={uid}"]) if uid else None
+        body = show.stdout if (show and show.returncode == 0) else "(could not load body)"
         web_link = self._web_link(message_id)
         with open(email_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\nReceived: {item.get('received')}\n"

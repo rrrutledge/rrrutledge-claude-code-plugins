@@ -16,11 +16,11 @@
 //                (same output shape as --list-inbox, but fetched over IMAP with a Google App Password
 //                 instead of the Gmail REST API - no Gmail API quota cost. Requires GMAIL_ADDRESS and
 //                 GMAIL_APP_PASSWORD in the environment (a 16-char Google App Password; needs 2-Step
-//                 Verification on the account and IMAP enabled in Gmail settings). This exists only for
-//                 the drainer poller's own recurring enumeration - see the drainer plugin's
-//                 gmail-adapter.py file-header comment for why that needs to stay off the REST quota.
-//                 Every other operation (compose, send, draft, archive, single-message fetch) stays on
-//                 the REST/OAuth path above, since that's not what's quota-constrained.)
+//                 Verification on the account and IMAP enabled in Gmail settings). This and the
+//                 --show-imap / --auth-imap single-message reads below carry the drainer poller's
+//                 recurring traffic - see the drainer plugin's gmail-adapter.py file-header comment for
+//                 why that has to stay off the REST quota. The compose/send/draft/archive operations
+//                 stay on the REST/OAuth path above, since that's not what's quota-constrained.)
 // List sent:     node gmail.js --list-sent [--top=50] [--json]
 //                (sent mail, newest-first; same output format as --list-inbox)
 // Search:        node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]
@@ -35,6 +35,14 @@
 //                 stamped them — the raw Authentication-Results value(s) and any Received-SPF value(s),
 //                 plus the From. This is the SPF/DKIM/DMARC provenance the spoofable From: line can't
 //                 give; the drainer's security screen reads it per item. Looked up in All Mail like --show.)
+// Show one (IMAP):  node gmail.js --show-imap=<uid>
+//                (same text output as --show, fetched over IMAP by the message's INBOX UID - the `uid`
+//                 field --list-inbox-imap returns for each item - with a Google App Password instead of
+//                 the REST API, so no Gmail API quota cost. INBOX only (that's where the poller's
+//                 just-enumerated items live); requires GMAIL_ADDRESS + GMAIL_APP_PASSWORD. Exists for
+//                 the drainer's recurring per-item reads.)
+// Auth headers (IMAP): node gmail.js --auth-imap=<uid>
+//                (same JSON output as --auth, fetched over IMAP by INBOX UID exactly like --show-imap.)
 // List drafts:   node gmail.js --list-drafts [--top=30]
 // Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>]
 //                (downloads every attachment on a message to <dir> (default: cwd); looked up in All Mail
@@ -287,16 +295,25 @@ async function listFolder(labelId, name) {
 // the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this file's header
 // comment for why). Envelope + flags only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
 // the account() lookup above since there's no OAuth profile to read the address from over IMAP.
-async function listInboxImap() {
-  const top = parseInt(args.top || '50', 10);
+// One place that builds and connects an authenticated Gmail IMAP client from the app-password creds,
+// shared by every IMAP path the drainer poller uses (the --list-inbox-imap enumeration and the
+// --show-imap / --auth-imap per-item reads) so they run over one transport, not several. GMAIL_ADDRESS /
+// GMAIL_APP_PASSWORD stand in for the OAuth profile the REST paths read the account from.
+async function imapClient() {
   const user = process.env.GMAIL_ADDRESS;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) {
-    throw new Error('--list-inbox-imap requires GMAIL_ADDRESS and GMAIL_APP_PASSWORD in the environment.');
+    throw new Error('IMAP operations require GMAIL_ADDRESS and GMAIL_APP_PASSWORD in the environment.');
   }
-  const acct = user.toLowerCase();
   const c = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass }, logger: false });
   await c.connect();
+  return c;
+}
+
+async function listInboxImap() {
+  const top = parseInt(args.top || '50', 10);
+  const acct = (process.env.GMAIL_ADDRESS || '').toLowerCase();
+  const c = await imapClient();
   const out = [];
   try {
     const lock = await c.getMailboxLock('INBOX');
@@ -327,6 +344,23 @@ async function listInboxImap() {
   printListing(out, `${out.length} message(s) in INBOX (newest first, via IMAP):`);
 }
 
+// Fetch and parse one INBOX message by its IMAP UID (the `uid` --list-inbox-imap returns for each item) -
+// the read counterpart to getParsed's REST fetch. Returns the mailparser `parsed` object, identical in
+// shape to getParsed's because both parse the same raw RFC822, so the show/auth renderers below don't care
+// which transport fetched the bytes. Returns null when the UID isn't in the INBOX. INBOX-only by design:
+// the poller's per-item reads always run against items it just enumerated from the INBOX.
+async function fetchImap(uid) {
+  const c = await imapClient();
+  try {
+    const lock = await c.getMailboxLock('INBOX');
+    try {
+      const msg = await c.fetchOne(String(uid), { source: true }, { uid: true });
+      if (!msg || !msg.source) return null;
+      return await simpleParser(msg.source);
+    } finally { lock.release(); }
+  } finally { await c.logout(); }
+}
+
 async function search() {
   const query = String(args.search);
   const top = parseInt(args.top || '50', 10);
@@ -347,38 +381,65 @@ async function search() {
   printListing(out, `${out.length} message(s) matching "${query}" in ${where} (newest first):`);
 }
 
-async function show() {
-  const gid = await findMessageId(args.show);
-  if (!gid) { console.log('Message not found.'); return; }
-  const { parsed } = await getParsed(gid);
-  console.log(`Subject: ${parsed.subject || ''}`);
-  console.log(`From: ${parsed.from ? parsed.from.text : ''}`);
-  console.log(`To: ${parsed.to ? parsed.to.text : ''}`);
-  if (parsed.cc) console.log(`Cc: ${parsed.cc.text}`);
-  console.log(`Date: ${parsed.date ? parsed.date.toISOString() : ''}`);
-  console.log('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
+// The --show text dump (Subject/From/To/[Cc]/Date header lines, a blank line, then the body with its
+// quoted chain intact) from a parsed message. Factored out so the REST --show and the IMAP --show-imap
+// emit byte-identical output from the same parsed object.
+function renderShow(parsed) {
+  const lines = [
+    `Subject: ${parsed.subject || ''}`,
+    `From: ${parsed.from ? parsed.from.text : ''}`,
+    `To: ${parsed.to ? parsed.to.text : ''}`,
+  ];
+  if (parsed.cc) lines.push(`Cc: ${parsed.cc.text}`);
+  lines.push(`Date: ${parsed.date ? parsed.date.toISOString() : ''}`);
+  lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
+  return lines.join('\n');
 }
 
-async function auth() {
-  // The envelope-authentication headers Gmail stamped onto the message, as JSON for the drainer's
-  // security screen. Authentication-Results carries the SPF/DKIM/DMARC verdicts (and the domains that
-  // actually authenticated); Received-SPF carries the SPF check on its own. Both can appear more than
-  // once (each relay adds its own), so headerLines is read directly to keep every instance — the value
-  // is the header line with its "Name:" prefix stripped. Interpretation lives in the drainer's Python
-  // adapters, so this just exposes the raw values. Looked up in All Mail like --show.
-  const gid = await findMessageId(args.auth);
-  if (!gid) { console.log('{}'); return; }
-  const { parsed } = await getParsed(gid);
+// The --auth JSON object — the envelope-authentication headers Gmail stamped onto the message — from a
+// parsed message. Authentication-Results carries the SPF/DKIM/DMARC verdicts (and the domains that
+// actually authenticated); Received-SPF carries the SPF check on its own. Both can appear more than once
+// (each relay adds its own), so headerLines is read directly to keep every instance — the value is the
+// header line with its "Name:" prefix stripped. Interpretation lives in the drainer's Python adapters, so
+// this just exposes the raw values. Factored out so REST --auth and IMAP --auth-imap emit the same object.
+function renderAuth(parsed) {
   const headerValues = (name) => (parsed.headerLines || [])
     .filter(h => h.key === name)
     .map(h => h.line.replace(/^[^:]*:\s*/, '').trim())
     .filter(Boolean);
-  console.log(JSON.stringify({
+  return {
     from: parsed.from ? parsed.from.text : '',
     fromAddress: parsed.from && parsed.from.value && parsed.from.value[0] ? parsed.from.value[0].address : '',
     authenticationResults: headerValues('authentication-results'),
     receivedSpf: headerValues('received-spf'),
-  }, null, 2));
+  };
+}
+
+async function show() {
+  const gid = await findMessageId(args.show);
+  if (!gid) { console.log('Message not found.'); return; }
+  const { parsed } = await getParsed(gid);
+  console.log(renderShow(parsed));
+}
+
+async function showImap() {
+  const parsed = await fetchImap(args['show-imap']);
+  if (!parsed) throw new Error(`Message with UID ${args['show-imap']} not found in INBOX via IMAP.`);
+  console.log(renderShow(parsed));
+}
+
+async function auth() {
+  // Looked up in All Mail like --show; the header extraction and its rationale live in renderAuth.
+  const gid = await findMessageId(args.auth);
+  if (!gid) { console.log('{}'); return; }
+  const { parsed } = await getParsed(gid);
+  console.log(JSON.stringify(renderAuth(parsed), null, 2));
+}
+
+async function authImap() {
+  const parsed = await fetchImap(args['auth-imap']);
+  if (!parsed) throw new Error(`Message with UID ${args['auth-imap']} not found in INBOX via IMAP.`);
+  console.log(JSON.stringify(renderAuth(parsed), null, 2));
 }
 
 async function saveAttachments() {
@@ -605,7 +666,9 @@ function describeError(e) {
 }
 
 (async () => {
-  if (args['list-inbox-imap']) return await listInboxImap(); // IMAP path - no REST/OAuth client needed
+  if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
+  if (args['show-imap']) return await showImap();
+  if (args['auth-imap']) return await authImap();
   gmail = google.gmail({ version: 'v1', auth: getAuthedClient() });
   if (args['list-inbox']) return await listFolder('INBOX', 'INBOX');
   if (args['list-drafts']) return await listDrafts();
@@ -620,5 +683,5 @@ function describeError(e) {
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --auth, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --show-imap, --auth, --auth-imap, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });
