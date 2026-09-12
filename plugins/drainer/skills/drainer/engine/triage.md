@@ -155,6 +155,14 @@ someone set in motion - **needs-you** (go verify it), per the started-and-left-u
 The domain the message resolves to is the tell; reserve the phishing mark for the lookalike or throwaway
 domain dressed up as that brand.
 
+**Deception is the phishing signal, not money language.**
+A genuine payment, transfer, or receipt notice from an established financial-service sender on its own
+real domain - a bank, a payments platform, a card issuer, a business-banking service - is an ordinary
+transactional notification: a receipt for a transfer that already happened reports something done and asks
+nothing, so it lands **fyi** the same as any other completed-event notice, however prominent the amounts,
+wire-transfer, or payee wording.
+The phishing tells are the domain and link checks above.
+
 The provider capability and the digest's report-on-approval handling live in
 `providers/<source>-provider.md` → REPORT-PHISHING and `engine/digest-core.md` step 3.
 
