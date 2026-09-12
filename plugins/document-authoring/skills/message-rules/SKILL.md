@@ -36,11 +36,12 @@ Anchor by format:
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
 
-**Represent every person, event, document, or call a message references — never leave it as bare text.**
+**Represent every person, event, document, channel, or call a message references — never leave it as bare text.**
 - **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention via the platform's mention picker, never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @cristina", not "Hi Cristina") — not only when notifying them is the point.
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
+- **Another Slack/Teams channel** — reference it by a real channel mention (Slack `<#ID>`, Teams channel link), never by naming it in prose ("the board channel").
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
 - **Exception - a colleague with full, established context on the specific document or event referenced** (they run it, coordinate it, or work with it directly): name the concrete detail in plain text and skip the link. They already know the page inside and out, so citing it over-formalizes what's otherwise a plain internal exchange.
 
@@ -482,6 +483,7 @@ Four registers reach outside the palette, and most also stack past the one-emoji
 - Open with "Hey folks / everyone / guys", run into the first sentence with ` - `.
 - **When sharing news or status, open with the candid first-person account** — what happened and how you found it — not a packaged framing line ("wanted to give you a heads-up", "I'd rather you hear it from me").
 - **Tag @here or @channel when the ask needs the whole channel's eyes, not just whoever happens to be scrolling** — a favor-ask or call for volunteers is easy for busy members to miss otherwise.
+- **State a real deadline as a plain imperative, grounded in who's waiting and why** — "Please share feedback by 9/18. @Cristina is watching for it to close out the translation step," not a hedged "Would love your feedback... so we can move forward." Naming the concrete owner and the next step it unlocks makes the date read as real rather than decorative.
 - State what you did or want, then a tight bulleted list of specifics if needed, then a low-pressure call for feedback.
 - **Preliminary, not-yet-final news is shared tentatively and lean** — hedge that it isn't official yet ("still going through the paperwork to make it official, but a positive direction!") and leave out the hard specifics (a sponsorship's dollar amount) and the individual name-credits that a finalized or public announcement would carry.
 - **Close on the ask.** Name a genuine next step and add "let me know" only when there's a real one beyond the ask itself; a self-contained ask - a survey, a single request - is complete once stated with its link, so end there rather than appending a next-step-plus-"let me know" tail.
