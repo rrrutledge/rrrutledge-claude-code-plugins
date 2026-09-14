@@ -52,11 +52,12 @@ poller._triage_brain = lambda items, repo, local_dir, providers_by_name: "BRAIN"
 real_triage_one = poller._triage_one
 poller._triage_one = fake_triage_one
 
-verdicts, unavailable = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
+verdicts, unavailable, bg_auth_failed = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
 
 check("the 3 reachable items still got verdicts", sorted(verdicts.keys()), ["a", "b", "d"])
 check("the unreachable item is NOT silently defaulted into verdicts", "c" in verdicts, False)
 check("the unreachable item lands in unavailable, not verdicts", unavailable, {"c"})
+check("an ordinary TriageUnavailable is not reported as a background-account failure", bg_auth_failed, False)
 
 # --- a TriageUnavailable on the FIRST (cache-priming) item still processes the rest ---------
 print("\nfirst item unavailable")
@@ -69,9 +70,10 @@ def fake_first_fails(it, brain, repo, model, providers_by_name, bg_config_dir=No
 
 
 poller._triage_one = fake_first_fails
-verdicts2, unavailable2 = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
+verdicts2, unavailable2, bg_auth_failed2 = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
 check("first item's failure is recorded, not raised", unavailable2, {"a"})
 check("the rest still got triaged despite the first item failing", sorted(verdicts2.keys()), ["b", "c", "d"])
+check("an ordinary first-item failure is not a background-account failure", bg_auth_failed2, False)
 
 # --- everything unavailable (e.g. the network is fully down) yields no verdicts, no crash ---
 print("\nall items unavailable")
@@ -82,15 +84,33 @@ def fake_all_fail(it, brain, repo, model, providers_by_name, bg_config_dir=None)
 
 
 poller._triage_one = fake_all_fail
-verdicts3, unavailable3 = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
+verdicts3, unavailable3, bg_auth_failed3 = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
 check("no verdicts when every call is unavailable", verdicts3, {})
 check("every item id is reported unavailable", unavailable3, {"a", "b", "c", "d"})
+check("an ordinary network-drop outage is not a background-account failure", bg_auth_failed3, False)
+
+# --- a BackgroundAccountAuthError on one item marks the whole batch bg_auth_failed ------------
+print("\nbackground-account auth failure surfaces distinctly from an ordinary TriageUnavailable")
+
+
+def fake_bg_auth_fails(it, brain, repo, model, providers_by_name, bg_config_dir=None):
+    if it["_id"] == "b":
+        raise poller.BackgroundAccountAuthError(f"{it['_id']}: background account auth expired: boom")
+    return {"id": it["_id"], "bucket": "fyi", "kind": "read"}
+
+
+poller._triage_one = fake_bg_auth_fails
+verdicts4, unavailable4, bg_auth_failed4 = poller.triage(ITEMS, repo="R", local_dir="L", model="M", providers_by_name={})
+check("the other items still got verdicts", sorted(verdicts4.keys()), ["a", "c", "d"])
+check("the auth-dead item lands in unavailable like any other unjudged item", "b" in unavailable4, True)
+check("the batch is reported as a background-account auth failure", bg_auth_failed4, True)
 
 poller._triage_one = real_triage_one
 
 # --- empty batch is unaffected ---------------------------------------------------------------
 print("\nempty batch")
-check("empty items returns empty verdicts and empty unavailable set", poller.triage([], "R", "L", "M", {}), ({}, set()))
+check("empty items returns empty verdicts, empty unavailable set, and no bg-auth-failed flag",
+      poller.triage([], "R", "L", "M", {}), ({}, set(), False))
 
 
 # --- _triage_one's own response parsing: a malformed reply must raise TriageUnavailable, never

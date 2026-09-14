@@ -152,6 +152,10 @@ provider's outcome to `<runtime_dir>/provider-health.json` (`consecutive_failure
 `last_ok_ts`). Because the poller is headless, this file is how a silently-dead provider becomes
 visible: the daily digest reads it and surfaces any provider with a sustained failure streak so Russell
 knows to refresh the credential. (Dry-run doesn't write it — it's often run without the live creds.)
+The same file also carries the background triage account's own auth state under the
+`background-triage-account` key (see `triage()`/`screen_items()` and `BackgroundAccountAuthError` in
+run-poller.py) - a dead login there stalls every AI-triaged source even though enumerate itself stays
+healthy, so it needed its own row rather than riding along with a provider's.
 
 **Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended
 action, including any held at the cap) plus the count of items the reconcile would re-queue, with no

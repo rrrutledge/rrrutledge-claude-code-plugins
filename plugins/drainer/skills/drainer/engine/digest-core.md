@@ -25,6 +25,19 @@ the guaranteed-visible channel that closes that gap. Before anything else:
 - Report **at the very top of the digest** every provider with `consecutive_failures >= 2` (one stray
   failure is just a blip; a sustained streak means it's stuck). For each, give Russell a one-step fix:
   - Name the provider, when it last drained (`last_ok_ts`) and how many cycles it's been failing.
+  - The `background-triage-account` row is not a source's own enumerate.
+    It's the separate Claude login (`C:\Users\russe\.claude-background`) the poller's headless
+    triage/security-screen calls run under.
+    When it's flagged, every AI-triaged source (email, Slack, Zoom) is stalled - held and retried
+    every cycle, never captured or dispatched.
+    Trello, orphan sessions, and physical tasks keep draining regardless, since those skip AI triage
+    entirely.
+    Give it this specific fix, not the generic `auth` guidance below: in a terminal, run
+    `$env:CLAUDE_CONFIG_DIR="C:\Users\russe\.claude-background"; claude`, then `/login` as the
+    dedicated drainer background account, then `/exit`.
+    A dead refresh token can't self-heal headlessly, so this one usually already reached Russell via
+    a diagnostic tab within the hour - this digest row is the fallback if that tab was missed or the
+    cooldown hadn't fired yet.
   - Quote `last_error` and read it as the action to take, keyed off `last_error_kind`:
     - **`auth`** (transient — self-heals once creds are refreshed): name the likely credential and how
       to refresh it. gmail → re-run the gmail skill's one-time OAuth sign-in (`node gmail-auth.js` via
