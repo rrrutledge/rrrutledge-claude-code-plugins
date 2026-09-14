@@ -1,6 +1,7 @@
 # Resume-on-completion - pause a blocked session and pick it up when another tab finishes
 
-Use this when a session's remaining work is genuinely blocked on **another specific tab or session finishing** - a peer session already doing that work, or a fresh tab this session spawns to do it - rather than on Russell answering in this tab.
+Use this when a session's remaining work is genuinely blocked on **another specific tab or session finishing** - a fresh tab this session spawns to do that work now, or a peer session already doing it - rather than on Russell answering in this tab.
+The default when blocked is to launch a tab to do the blocking work right away and set up the resume.
 The blocked session captures how to resume itself, hands the resume instruction to that other tab, and closes now.
 When the other tab's work is done, it launches the resume tab and the blocked session comes back with its full history to finish the rest.
 
@@ -10,9 +11,9 @@ This frees the terminal tab immediately, and - for a drainer worker - the drain 
 
 Reach for resume-on-completion only when a **specific, identifiable tab or session** is doing the blocking work, so there is an exact session to resume against:
 
-- **An existing peer session** is already doing the blocking work (find it with `ListAgents`).
-  This is the common case - Russell redirects a worker to do something else first in a tab that already exists, then come back.
-- **A fresh tab** is the right place for the blocking work, and this session spawns it (a drainer worker spawns via `<skill>/scripts/spawn-tab.cmd`; a plain session via the handoff launcher).
+- **A fresh tab this session spawns** to do the blocking work now (a drainer worker spawns via `<skill>/scripts/spawn-tab.cmd`; a plain session via the handoff launcher).
+- **An existing peer session** already doing the blocking work is the variant (find it with `ListAgents`): Russell redirects a worker to let that pre-existing tab finish first, then it comes back.
+  It gets the same resume instruction.
 
 When the blocker is instead an **external party** replying on their own schedule, or nothing specific can be resumed against, use the existing **tracker-card** pattern (drainer `worker-core.md` §6, "Waiting on someone else → tracker card"): file a follow-up card and let a future poller cycle pick the remainder back up.
 Resume-on-completion supplements that pattern for the identifiable-session case; it does not replace it.
