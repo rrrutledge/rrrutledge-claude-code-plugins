@@ -387,6 +387,18 @@ class TriageUnavailable(Exception):
     of the cycle's dispatch down with it."""
 
 
+def _triage_payload_item(item, preview, signal):
+    """The single item dict triage sends the model: the envelope fields plus the adapter's body text, with
+    any per-item `triage_signal` (e.g. `{"selfEmail": True}` for a Russell-to-Russell note) merged on top so
+    the model sees the deterministic signal alongside the content. A None signal adds nothing."""
+    payload_item = {"id": item["_id"], "source": item["_source"], "from": item.get("from"),
+                    "subject": item.get("subject"), "received": item.get("received"),
+                    "isRead": item.get("isRead"), "preview": preview}
+    if signal:
+        payload_item.update(signal)
+    return payload_item
+
+
 def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None):
     """Classify ONE item: the shared brain (byte-identical every call this cycle) as the stable
     prefix, this item's payload as the sole variable suffix — so the model's full attention lands
@@ -397,9 +409,8 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     # body (quote-stripped) rather than just the subject. Adapters whose enumerate carries no preview
     # (gmail) override it to fetch the body for these new items; the default just returns `preview`.
     preview = p.triage_text(item) if p else (item.get("preview") or "")
-    payload = [{"id": item["_id"], "source": item["_source"], "from": item.get("from"),
-                "subject": item.get("subject"), "received": item.get("received"),
-                "isRead": item.get("isRead"), "preview": preview}]
+    signal = p.triage_signal(item) if p else None
+    payload = [_triage_payload_item(item, preview, signal)]
     prompt = f"{brain}## New item to triage (JSON)\n{json.dumps(payload, indent=2)}\n"
     # Run this headless triage call under the background account when one is configured. The directory
     # is threaded in as an argument (not published to the process environment) on purpose: triage is the
