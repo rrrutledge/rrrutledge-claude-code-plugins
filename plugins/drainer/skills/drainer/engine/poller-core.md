@@ -155,7 +155,7 @@ knows to refresh the credential. (Dry-run doesn't write it — it's often run wi
 The same file also carries the background triage account's own auth state under the
 `background-triage-account` key (see `triage()`/`screen_items()` and `BackgroundAccountAuthError` in
 run-poller.py) - a dead login there stalls every AI-triaged source even though enumerate itself stays
-healthy, so it needed its own row rather than riding along with a provider's.
+healthy, so it needs its own row rather than riding along with a provider's.
 
 **Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended
 action, including any held at the cap) plus the count of items the reconcile would re-queue, with no
