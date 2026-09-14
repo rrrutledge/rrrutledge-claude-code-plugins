@@ -30,8 +30,8 @@ the guaranteed-visible channel that closes that gap. Before anything else:
     triage/security-screen calls run under.
     When it's flagged, every AI-triaged source (email, Slack, Zoom) is stalled - held and retried
     every cycle, never captured or dispatched.
-    Trello, orphan sessions, and physical tasks keep draining regardless, since those skip AI triage
-    entirely.
+    Trello, orphan sessions, and physical tasks keep draining regardless, since every item from those
+    three sources routes through a deterministic shortcut rather than AI triage.
     Give it this specific fix, not the generic `auth` guidance below: in a terminal, run
     `$env:CLAUDE_CONFIG_DIR="C:\Users\russe\.claude-background"; claude`, then `/login` as the
     dedicated drainer background account, then `/exit`.
