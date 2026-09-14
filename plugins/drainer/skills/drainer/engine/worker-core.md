@@ -399,6 +399,8 @@ plugin PR. Route each piece of work by where it belongs - which is also where Ru
   so the reading never rides along on your remaining rounds. It is one-shot from Russell's side - he can't
   converse with it - so anything he'll want to question or iterate on does NOT go here: keep that inline,
   or hand it off.
+  The same boundary applies to a browser-chauffeur render-screenshot-verify loop - load a page, screenshot it, check the result, adjust, screenshot again - and to any other heavy tool result whose only value to you is its conclusion, not its content: a long scrape, or a heavy skill pulled in for one lookup.
+  Screenshots are the sharpest case - each one is a large image, the costliest thing that boundary keeps out of the prefix.
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent
   deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code
   change or a PR ship. A handoff is a full interactive session Russell can talk to, so it also fits
