@@ -216,6 +216,7 @@ A single clear sentence ending in a question is usually the whole message — re
   "Central" alone collides with Central European Time for a recipient likely based there, so name the country to remove the ambiguity.
 - **Proposing a concrete date to someone who's already agreed to the underlying ask: ask about their availability for it, not their desire again.**
   "Want to bring it then?" re-asks something they already answered; "are you available to bring it then?" asks the one thing still genuinely open.
+  **Exception - the agreed-to date has already come and gone and they've stayed silent since:** the commitment has gone stale, so re-open with desire again ("do you want to bring it to a future one?") instead of naming a fresh specific date - silence past the original date reopens the whole ask, not just the scheduling.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
 
