@@ -87,11 +87,23 @@ decide it here.
 - a **dated to-do** becomes startable — a Trello tracker or outreach card, any dated item, the moment
   its Start date arrives or passes. The Start date IS the queue: a started item is the action surfacing
   on the day it was scheduled for.
-- **Russell sent it to himself** — a note from his own address is a deliberate self-note, not noise.
-  Evaluate it by content exactly as you would any other item: **needs-you** when the content implies an
-  action, fyi when it's just something to re-read. Never junk for being terse or self-addressed — and not
-  for looking scam-like or arriving empty either; a self-note is a task captured for a worker, so treat it
-  as the task, never as spam to filter, however much the content resembles junk.
+- **Russell sent it to himself** - the payload flags this as `selfEmail: true` when the message is both
+  from and to his own address (his outlook.com and live.com aliases are the same person, so a note between
+  them is still self-addressed). A self-email is Russell deliberately handing the pod a task or a note,
+  never noise. It is never junk - not for being terse, self-addressed, scam-looking, or empty; a self-note
+  is captured for a worker, so treat it as the content it carries, however much that content resembles
+  spam.
+  Read what the note actually says and split on it:
+  - a **directive** - anything he's telling the pod (or a later Russell) to *do*: an imperative ("stop
+    applying to lower-level jobs", "book the flight", "research plane ticket prices"), a decision to carry
+    out, a standing preference to put into effect, any work to kick off - is **needs-you** (hint "work"),
+    so a worker launches right away and acts on it. This is the point of a self-email: he dictated an
+    instruction because he wants it done, so it surfaces now, not two days later in the digest.
+  - a **pure memo** - a fact, a link, or a reminder he only wants to keep and re-read, with nothing to
+    act on - is **fyi**.
+  When it's genuinely unclear whether the note asks for an action, lean **needs-you** (the standing "unsure
+  → act" tie-breaker below): a false needs-you costs one worker tab, a false fyi leaves a directive sitting
+  untouched until the digest.
 
 **When there is something to do, it's one of two buckets:**
 

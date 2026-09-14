@@ -245,6 +245,16 @@ RELAY_CORRESPONDENTS = (
 )
 
 
+def self_directed(item):
+    """True when an email item is one Russell sent to himself - both `fromMe` and `toMe` set. That shape
+    means the message is a deliberate self-note he captured for the pod (a task to kick off, or a memo to
+    keep), never inbound mail from someone else. It is the same from-and-to-me shape `relay_correspondent`
+    exempts from correspondent holding. A source that sets neither field (Slack/Teams/Trello) is never
+    self-directed, so this reads False for them and the triage signal built on it stays email-only without
+    any per-source branching."""
+    return bool(item.get("fromMe") and item.get("toMe"))
+
+
 def from_identity(item):
     """The default correspondent identity for a DIRECT sender: their email address, lowercased. When a
     person emails from their own address the From address IS the correspondent, so two messages from them
@@ -434,6 +444,18 @@ class ProviderBase:
         quote-stripped excerpt of the new message — so triage classifies on real content, not just the
         subject line. Called only for the NEW items being triaged, so a per-item fetch here stays cheap."""
         return item.get("preview") or ""
+
+    def triage_signal(self, item):
+        """A compact per-item signal the TRIAGE step weighs on top of the content, merged into the triage
+        payload, or None when this source contributes none. The default surfaces the self-directed flag
+        (`{"selfEmail": True}` when the item is both FROM and TO the account owner) so triage never has to
+        infer that a note is Russell-to-Russell by matching the From line against context.md - a self-note
+        is flagged deterministically off the enumerate fields. It lives in the base (not an email-only
+        override like screen_signal) because it needs no per-item fetch: `self_directed` reads fields the
+        enumerate already carried, and a source with no such fields reads False, so platform sources
+        inherit None without any branching. An adapter with an additional triage signal overrides this and
+        merges the base result in. Called only for items being triaged, so it stays cheap."""
+        return {"selfEmail": True} if self_directed(item) else None
 
     def screen_signal(self, item):
         """A compact per-item signal the security screen weighs ON TOP OF the content, or None when this
