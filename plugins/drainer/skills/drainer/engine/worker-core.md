@@ -542,20 +542,22 @@ holding the conversation:
   to lose track. Create a follow-up tracker card (the user's board, per `context.md`) before marking
   done, so it stays visible instead of relying on memory.
 
-**Blocked on another in-flight session's work → resume-on-completion, don't sit open.** Distinct from
-both "waiting on Russell in this tab" (stay open, §6's closing rules) and "waiting on a third party"
-(tracker card, above): here the block is a **specific, identifiable tab or session** doing work this item
-depends on — a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a
-fresh tab you spawn for that work. Sitting open then wastes Russell's attention as he cycles tabs and
-holds one of the drainer's limited worker slots for nothing. Instead, hand that other tab the instruction
-to resume you when its work is genuinely done, and close now — the **resume-on-completion** pattern in
-`session-mgr` (`skills/resume-sessions/resume-on-completion.md`, run `schedule-resume.py` to capture the
-resume command, deliver it via `SendMessage` or a spawned tab's handoff doc, then close via
-`close-session.py`). **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state
-keeps the card from re-dispatching a second worker while the resume is pending (per
-`providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes. Use
-the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can
-be resumed against.
+**Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
+Distinct from both "waiting on Russell in this tab" (stay open, §6's closing rules) and "waiting on a
+third party" (tracker card, above): here the block is a **specific, identifiable tab or session** doing
+work this item depends on - a peer session Russell redirected you to let finish first (find it with
+`ListAgents`), or a fresh tab you spawn for that work.
+Sitting open then wastes Russell's attention as he cycles tabs and holds one of the drainer's limited
+worker slots for nothing.
+Instead, hand that other tab the instruction to resume you when its work is genuinely done, and close now
+- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`,
+run `schedule-resume.py` to capture the resume command, deliver it via `SendMessage` or a spawned tab's
+handoff doc, then close via `close-session.py`).
+**Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from
+re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE),
+and the resumed session is what CLEARs it once it finishes.
+Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific
+can be resumed against.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
 If the next step is something only Russell can produce - content only he has the judgment or standing to

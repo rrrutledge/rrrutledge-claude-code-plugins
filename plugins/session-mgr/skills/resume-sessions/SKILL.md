@@ -231,9 +231,9 @@ instructions: |-
     once for the PowerShell host). Requires `CLAUDE_HOST_PID` to be set, which the user's
     `$PROFILE` does automatically for any tab launched with a normal `powershell` host.
   - **Resume-on-completion** (`resume-on-completion.md`, with `scripts/schedule-resume.py`) is the
-    pattern for a session whose remaining work is blocked on another specific tab/session finishing —
-    a peer already doing that work, or a fresh tab it spawns. Rather than idle, the blocked session
-    runs `schedule-resume.py` to capture the command that resumes it, hands that to the tab doing the
+    pattern for a session whose remaining work is blocked on another specific tab/session finishing -
+    a peer already doing that work, or a fresh tab it spawns. The blocked session runs
+    `schedule-resume.py` to capture the command that resumes it, hands that to the tab doing the
     blocking work (a `SendMessage` to a peer, or a line in a spawned tab's handoff doc), and closes now
     via `end-session.py`; the other tab runs the captured command when its work is done. Read that doc
     when a session needs to pause on a specific in-flight session rather than on Russell in this tab.
