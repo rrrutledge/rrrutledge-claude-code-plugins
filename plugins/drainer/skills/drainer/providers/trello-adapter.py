@@ -371,6 +371,14 @@ class Provider(ProviderBase):
             # label and sets Start = today, so they resurface on a later drain).
             if self._has_skip_label(card):
                 continue
+            # Director+ pause: while Russell is focused on his in-flight interviews, a below-director
+            # job-search card is kept on the board but never drained - it still exists for him to work by
+            # hand, it just isn't handed over as a worker. job-board-poll marks a below-director posting
+            # with an "IC-level" line in the card body (its tiers.js LEVEL_WORD), and only job-search
+            # cards ever carry that line (see _level_band's docstring), so this suppresses nothing else.
+            # Remove this block to reopen lower-level job cards to the drain queue.
+            if "IC-level" in (card.get("desc") or ""):
+                continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
             if assigned and my_id not in assigned:
