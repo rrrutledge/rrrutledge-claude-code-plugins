@@ -415,6 +415,34 @@ The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely 
 two-step task whose steps genuinely share this item's context stays inline. This is Russell's own
 cost-lens (same section of `~/.claude/CLAUDE.md`) applied to a running worker.
 
+**Reset this item's own context at a boundary, not only route other work out.**
+The dispatch rule above moves *new or unrelated* work out of this tab; this rule resets the context the
+work you keep has accumulated.
+Because the whole prefix is re-read every model call (above), a tab that has grown long makes even a
+one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against
+the largest context.
+When the item you are working reaches a natural boundary, reset rather than continue on the bloated prefix:
+
+- **a deliverable has shipped** and independent further work remains (a PR merged, and the next asks are
+  separate edits), or
+- **a long idle wait is coming** (on Russell for an image, a decision, or an external action), or
+- **the conversation has crossed phases** (planning into execution).
+
+Choose handoff versus `/compact` by the cost-lens's seed-versus-summary test (`~/.claude/CLAUDE.md`).
+Emit the handoff with the same `spawn-tab.cmd` the dispatch rule uses, seeding the new session from a
+short `.tmp/handoff-*.md`.
+Reset at a genuine boundary, not after every turn - a mid-flow reset pays a re-cache for no benefit.
+
+**A complex worker steps its model down when the open-ended phase ends.**
+A worker triaged complex runs on Opus to investigate and plan; the mechanical implementation that follows
+does not need Opus.
+The planning-into-execution boundary above is exactly where to re-handoff, so take it and step the model
+down: write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the
+model id, the residual-work choice the dispatch rule already names.
+Doing so drops the plan-phase context from the implementation session, runs the mechanical half on the
+cheaper model, and keeps correctness because the plan doc carries the distilled context that makes the
+build correct.
+
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
 You are the implementer, not a task manager. Opening the PR this item is about? You open it. Filing its
 ticket? You file it. Completing a form? You fill it out together with the user. Writing the code it calls
