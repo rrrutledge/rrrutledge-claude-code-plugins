@@ -438,11 +438,57 @@ def _triage_payload_item(item, preview, signal):
     return payload_item
 
 
+def _run_claude_p(item_id, prompt, repo, model, bg_config_dir, label):
+    """Run one `claude -p` call and return its unwrapped result text. The single place that dispatches
+    the subprocess, classifies a failure (timeout / launch failure / nonzero exit — including the
+    background account's auth dying, see BackgroundAccountAuthError), and unwraps the
+    `--output-format json` envelope; `_triage_one` and `_screen_one` both call this and only differ in
+    how they parse the returned text into their own verdict shape.
+
+    Raises TriageUnavailable (or its narrower BackgroundAccountAuthError) on any failure. `label`
+    ("triage" or "screen") only flavors the error messages."""
+    claude = shutil.which("claude") or "claude"
+    # Run this headless call under the background account when one is configured. The directory is
+    # threaded in as an argument (not published to the process environment) on purpose: triage/screen
+    # are the only Claude launches that should move accounts. Worker tabs and the digest are launched
+    # via subprocess spawns that inherit os.environ, and Russell interacts with those tabs (including
+    # from his phone), so they must stay on his main account — setting CLAUDE_CONFIG_DIR only on THIS
+    # subprocess's env, and nowhere process-wide, is what keeps that boundary. None -> inherit the
+    # ambient environment, exactly as before.
+    env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
+    try:
+        res = subprocess.run(
+            # Triage/screen are pure text-in / JSON-out (rubric + context are embedded in the prompt),
+            # so they need no tools and no elevated permissions; --setting-sources "" keeps the call
+            # lightweight.
+            [claude, "-p", "--model", model, "--output-format", "json", "--setting-sources", ""],
+            input=prompt,  # prompt goes on stdin (too long for an argv on Windows)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=repo, timeout=420,
+            env=env,
+            creationflags=NO_WINDOW,  # no console flash under pythonw
+        )
+    except subprocess.TimeoutExpired:
+        raise TriageUnavailable(f"{item_id}: {label} call timed out after 420s (likely a network drop)")
+    except OSError as e:
+        raise TriageUnavailable(f"{item_id}: couldn't launch the {label} call: {e}")
+    if res.returncode != 0:
+        # Only classify as the background account's auth dying when this call was actually routed to
+        # it (bg_config_dir set) — the same phrase match against a main-account call would misattribute
+        # an unrelated failure to a login this call never touched.
+        if bg_config_dir and _is_account_auth_failure(res.returncode, res.stdout, res.stderr):
+            detail = (res.stderr.strip() or res.stdout.strip())[:400]
+            raise BackgroundAccountAuthError(f"{item_id}: background account auth expired: {detail}")
+        raise TriageUnavailable(f"{item_id}: {label} call failed: {res.stderr.strip()[:400]}")
+    try:  # claude --output-format json wraps the text in {"result": "..."}
+        return json.loads(res.stdout).get("result", res.stdout)
+    except ValueError:
+        return res.stdout
+
+
 def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None):
     """Classify ONE item: the shared brain (byte-identical every call this cycle) as the stable
     prefix, this item's payload as the sole variable suffix — so the model's full attention lands
     on one item against the general rules, instead of splitting across a whole cycle's batch."""
-    claude = shutil.which("claude") or "claude"
     p = providers_by_name.get(item["_source"])
     # The owning adapter supplies the text triage sees: its `triage_text` returns the new message
     # body (quote-stripped) rather than just the subject. Adapters whose enumerate carries no preview
@@ -451,41 +497,7 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     signal = p.triage_signal(item) if p else None
     payload = [_triage_payload_item(item, preview, signal)]
     prompt = f"{brain}## New item to triage (JSON)\n{json.dumps(payload, indent=2)}\n"
-    # Run this headless triage call under the background account when one is configured. The directory
-    # is threaded in as an argument (not published to the process environment) on purpose: triage is the
-    # only Claude launch that should move accounts. Worker tabs and the digest are launched via
-    # subprocess spawns that inherit os.environ, and Russell interacts with those tabs (including from
-    # his phone), so they must stay on his main account — setting CLAUDE_CONFIG_DIR only on THIS
-    # subprocess's env, and nowhere process-wide, is what keeps that boundary. None -> inherit the
-    # ambient environment, exactly as before.
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
-    try:
-        res = subprocess.run(
-            # Triage is pure text-in / JSON-out (rubric + context are embedded above), so it needs no
-            # tools and no elevated permissions; --setting-sources "" keeps the call lightweight.
-            [claude, "-p", "--model", model, "--output-format", "json", "--setting-sources", ""],
-            input=prompt,  # prompt goes on stdin (too long for an argv on Windows)
-            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=repo, timeout=420,
-            env=env,
-            creationflags=NO_WINDOW,  # no console flash under pythonw
-        )
-    except subprocess.TimeoutExpired:
-        raise TriageUnavailable(f"{item['_id']}: triage call timed out after 420s (likely a network drop)")
-    except OSError as e:
-        raise TriageUnavailable(f"{item['_id']}: couldn't launch the triage call: {e}")
-    if res.returncode != 0:
-        # Only classify as the background account's auth dying when this call was actually routed to
-        # it (bg_config_dir set) — the same phrase match against a main-account call would misattribute
-        # an unrelated failure to a login this call never touched.
-        if bg_config_dir and _is_account_auth_failure(res.returncode, res.stdout, res.stderr):
-            detail = (res.stderr.strip() or res.stdout.strip())[:400]
-            raise BackgroundAccountAuthError(f"{item['_id']}: background account auth expired: {detail}")
-        raise TriageUnavailable(f"{item['_id']}: triage call failed: {res.stderr.strip()[:400]}")
-    result = res.stdout
-    try:  # claude --output-format json wraps the text in {"result": "..."}
-        result = json.loads(res.stdout).get("result", res.stdout)
-    except ValueError:
-        pass
+    result = _run_claude_p(item["_id"], prompt, repo, model, bg_config_dir, "triage")
     # The model is asked for a `[...]`-wrapped verdict (since `_triage_one` only ever sends one item,
     # that's a single-element array) but occasionally replies with a bare `{...}` object instead — a
     # normal, occasional formatting variance, not an infra failure, so both shapes are accepted here.
@@ -505,66 +517,74 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     raise TriageUnavailable(f"{item['_id']}: triage returned no JSON for this item:\n{result[:400]}")
 
 
+def _dispatch_batch(items, call_one, label, hold_verb):
+    """Run `call_one(item)` across a batch: the first item alone (so its response finishes writing the
+    shared brain into the API's prompt cache), then the rest concurrently (bounded by
+    TRIAGE_PARALLEL_CALLS) so they read that cache instead of racing to write it themselves (see the
+    claude-api skill's prompt-caching guide, "Concurrent-request timing"). `triage()` and
+    `screen_items()` both dispatch through this — it's the one place a per-item failure is caught,
+    printed, and classified, so that logic doesn't live twice.
+
+    Returns (results, unavailable_ids, bg_account_auth_failed). `results` is a list of (item, value)
+    pairs for calls that returned a value. A TriageUnavailable on one item (network drop, CLI wouldn't
+    launch, unparseable reply) is caught right here rather than aborting the whole batch: it prints one
+    clear line and that item's id lands in `unavailable_ids` instead of `results`, so every other
+    item's real result still ships this cycle. `bg_account_auth_failed` is True when any of those were
+    the narrower BackgroundAccountAuthError (the background account's login dying, not an ordinary
+    blip) — the one place that distinction is made, so both callers report it identically."""
+    if not items:
+        return [], set(), False
+    results, unavailable = [], set()
+    bg_account_auth_failed = False
+
+    def run_one(it):
+        nonlocal bg_account_auth_failed
+        try:
+            results.append((it, call_one(it)))
+        except BackgroundAccountAuthError as e:
+            print(f"{label}: {e} — {hold_verb} this item this cycle, will retry.")
+            unavailable.add(it["_id"])
+            bg_account_auth_failed = True
+        except TriageUnavailable as e:
+            print(f"{label}: {e} — {hold_verb} this item this cycle, will retry.")
+            unavailable.add(it["_id"])
+
+    first, rest = items[0], items[1:]
+    run_one(first)
+    if rest:
+        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
+            futures = [pool.submit(run_one, it) for it in rest]
+            for fut in as_completed(futures):
+                fut.result()  # re-raise anything run_one itself didn't catch (an unexpected bug)
+    return results, unavailable, bg_account_auth_failed
+
+
 def triage(items, repo, local_dir, model, providers_by_name, bg_config_dir=None):
     """One `claude -p` call PER item, not one batched call for the whole cycle — with ~30 items and
     hundreds of lines of rules in a single prompt, attention spread thin enough that a correct,
     already-present general rule got skipped. One item + the general rules, with full attention, is
-    the condition under which the model applies them reliably.
+    the condition under which the model applies them reliably. Dispatch (first-alone-then-parallel,
+    per-item failure isolation) lives in `_dispatch_batch`; this just runs `_triage_one` through it and
+    keys the resulting verdicts by the id the model echoes back.
 
-    The first item runs alone so its response finishes writing the shared brain into the API's
-    prompt cache; the rest run concurrently (bounded by TRIAGE_PARALLEL_CALLS) so they can read that
-    cache instead of racing to write it themselves (see the claude-api skill's prompt-caching guide,
-    "Concurrent-request timing").
-
-    Returns (verdicts, unavailable_ids, bg_account_auth_failed). A TriageUnavailable on one item
-    (network drop, CLI wouldn't launch) is caught right here rather than aborting the whole batch: it
-    prints one clear line and that item's id lands in `unavailable_ids` instead of `verdicts`, so
-    every other item's real verdict still ships this cycle. The caller (main) must NOT apply its
+    Returns (verdicts, unavailable_ids, bg_account_auth_failed). The caller (main) must NOT apply its
     usual "unjudged -> act" fail-safe to an id in `unavailable_ids` — that fail-safe is for the model
     quietly skipping an item inside an otherwise-working call, not for the triage subsystem being
     down; forcing a needs-you dispatch here would act on a guess during an outage instead of just
-    retrying next cycle once the network's back.
-
-    `bg_account_auth_failed` is True when any of this batch's calls hit a dead background-account
-    login (BackgroundAccountAuthError) — a distinct, non-self-healing cause the caller records to
-    provider-health and may alert on, separately from the ordinary retry-next-cycle handling above."""
+    retrying next cycle once the network's back. `bg_account_auth_failed` is True when any of this
+    batch's calls hit a dead background-account login — a distinct, non-self-healing cause the caller
+    records to provider-health and may alert on, separately from the ordinary retry-next-cycle
+    handling above."""
     if not items:
         return {}, set(), False
     brain = _triage_brain(items, repo, local_dir, providers_by_name)
-    verdicts, unavailable = {}, set()
-    bg_account_auth_failed = False
-
-    first, rest = items[0], items[1:]
-    try:
-        v = _triage_one(first, brain, repo, model, providers_by_name, bg_config_dir)
+    results, unavailable, bg_account_auth_failed = _dispatch_batch(
+        items, lambda it: _triage_one(it, brain, repo, model, providers_by_name, bg_config_dir),
+        "triage", "skipping")
+    verdicts = {}
+    for _it, v in results:
         if v.get("id"):
             verdicts[v["id"]] = v
-    except BackgroundAccountAuthError as e:
-        print(f"triage: {e} — skipping this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-        bg_account_auth_failed = True
-    except TriageUnavailable as e:
-        print(f"triage: {e} — skipping this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-
-    if rest:
-        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
-            futures = {pool.submit(_triage_one, it, brain, repo, model, providers_by_name, bg_config_dir): it for it in rest}
-            for fut in as_completed(futures):
-                it = futures[fut]
-                try:
-                    v = fut.result()
-                except BackgroundAccountAuthError as e:
-                    print(f"triage: {e} — skipping this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
-                    bg_account_auth_failed = True
-                    continue
-                except TriageUnavailable as e:
-                    print(f"triage: {e} — skipping this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
-                    continue
-                if v.get("id"):
-                    verdicts[v["id"]] = v
     return verdicts, unavailable, bg_account_auth_failed
 
 
@@ -601,7 +621,6 @@ def _screen_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     the verdict dict (which always carries a boolean `flagged`); raises TriageUnavailable when no usable
     verdict comes back (timeout, launch failure, nonzero exit, unparseable output, or a verdict missing
     `flagged`), so the caller HOLDS the item rather than acting on one it couldn't screen (fail-closed)."""
-    claude = shutil.which("claude") or "claude"
     p = providers_by_name.get(item["_source"])
     preview = p.triage_text(item) if p else (item.get("preview") or "")
     payload = {"id": item["_id"], "source": item["_source"], "from": item.get("from"),
@@ -613,29 +632,7 @@ def _screen_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     if auth:
         payload["auth"] = auth
     prompt = f"{brain}## Item to screen (JSON)\n{json.dumps(payload, indent=2)}\n"
-    # Same background-account threading as triage (env-only, never process-wide) — see _triage_one.
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
-    try:
-        res = subprocess.run(
-            [claude, "-p", "--model", model, "--output-format", "json", "--setting-sources", ""],
-            input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=repo, timeout=420, env=env, creationflags=NO_WINDOW,
-        )
-    except subprocess.TimeoutExpired:
-        raise TriageUnavailable(f"{item['_id']}: screen call timed out after 420s (likely a network drop)")
-    except OSError as e:
-        raise TriageUnavailable(f"{item['_id']}: couldn't launch the screen call: {e}")
-    if res.returncode != 0:
-        # Same account-auth classification as _triage_one, gated the same way (see its comment).
-        if bg_config_dir and _is_account_auth_failure(res.returncode, res.stdout, res.stderr):
-            detail = (res.stderr.strip() or res.stdout.strip())[:400]
-            raise BackgroundAccountAuthError(f"{item['_id']}: background account auth expired: {detail}")
-        raise TriageUnavailable(f"{item['_id']}: screen call failed: {res.stderr.strip()[:400]}")
-    result = res.stdout
-    try:  # claude --output-format json wraps the text in {"result": "..."}
-        result = json.loads(res.stdout).get("result", res.stdout)
-    except ValueError:
-        pass
+    result = _run_claude_p(item["_id"], prompt, repo, model, bg_config_dir, "screen")
     m = re.search(r"\{.*\}", result, re.DOTALL)
     if not m:
         raise TriageUnavailable(f"{item['_id']}: screen returned no JSON:\n{result[:400]}")
@@ -660,48 +657,23 @@ def _items_needing_screen(items, verdicts):
 
 
 def screen_items(items, repo, local_dir, model, providers_by_name, bg_config_dir=None):
-    """Run the dedicated security screen over the cycle's AI-triaged items — one claude -p per item, the
-    same first-alone-then-parallel cache pattern `triage()` uses (first primes the shared brain into the
-    prompt cache; the rest read it concurrently, capped at TRIAGE_PARALLEL_CALLS).
+    """Run the dedicated security screen over the cycle's AI-triaged items — one claude -p per item,
+    dispatched through the same `_dispatch_batch` first-alone-then-parallel pattern `triage()` uses.
 
     Returns (verdicts_by_id, unavailable_ids, bg_account_auth_failed), keyed by the KNOWN item id (not
     any id the model echoes), so a verdict can never be mis-attributed. An item whose screen call
     failed or returned no usable verdict lands in unavailable_ids; the caller holds it out of dispatch
     (fail-closed), so nothing is ever acted on that this pass could not screen.
 
-    `bg_account_auth_failed` is True when any call in this batch hit a dead background-account login
-    (BackgroundAccountAuthError) — see `triage()`'s docstring for how the caller uses it."""
+    `bg_account_auth_failed` is True when any call in this batch hit a dead background-account login —
+    see `triage()`'s docstring for how the caller uses it."""
     if not items:
         return {}, set(), False
     brain = _screen_brain(items, local_dir)
-    verdicts, unavailable = {}, set()
-    bg_account_auth_failed = False
-
-    first, rest = items[0], items[1:]
-    try:
-        verdicts[first["_id"]] = _screen_one(first, brain, repo, model, providers_by_name, bg_config_dir)
-    except BackgroundAccountAuthError as e:
-        print(f"screen: {e} — holding this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-        bg_account_auth_failed = True
-    except TriageUnavailable as e:
-        print(f"screen: {e} — holding this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-
-    if rest:
-        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
-            futures = {pool.submit(_screen_one, it, brain, repo, model, providers_by_name, bg_config_dir): it for it in rest}
-            for fut in as_completed(futures):
-                it = futures[fut]
-                try:
-                    verdicts[it["_id"]] = fut.result()
-                except BackgroundAccountAuthError as e:
-                    print(f"screen: {e} — holding this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
-                    bg_account_auth_failed = True
-                except TriageUnavailable as e:
-                    print(f"screen: {e} — holding this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
+    results, unavailable, bg_account_auth_failed = _dispatch_batch(
+        items, lambda it: _screen_one(it, brain, repo, model, providers_by_name, bg_config_dir),
+        "screen", "holding")
+    verdicts = {it["_id"]: v for it, v in results}
     return verdicts, unavailable, bg_account_auth_failed
 
 
