@@ -993,14 +993,8 @@ def _background_account_alert_due(health):
     """Whether enough time has passed since the last background-account diagnostic tab to spawn
     another — same hourly cooldown as the config/scan diagnostics, so a persistently dead login
     doesn't get a fresh tab every cycle."""
-    last = health.get(BACKGROUND_ACCOUNT_HEALTH_KEY, {}).get("last_alert_ts")
-    if not last:
-        return True
-    try:
-        last_dt = datetime.fromisoformat(last)
-    except ValueError:
-        return True
-    return (datetime.now(timezone.utc) - last_dt).total_seconds() >= BACKGROUND_ACCOUNT_ALERT_COOLDOWN_SECONDS
+    return _alert_due(health, BACKGROUND_ACCOUNT_HEALTH_KEY, "last_alert_ts",
+                      BACKGROUND_ACCOUNT_ALERT_COOLDOWN_SECONDS)
 
 
 def _spawn_background_account_diagnostic(repo, runtime_dir, worker_model):
@@ -1010,35 +1004,24 @@ def _spawn_background_account_diagnostic(repo, runtime_dir, worker_model):
     True headless recovery is impossible: "could not be refreshed" means the refresh token itself is
     dead, and a fresh login needs an interactive browser, which only Russell can do — so this tab's
     job is visibility and the one-step fix, never an attempted auto-repair."""
-    seeds = os.path.join(runtime_dir, "seeds")
-    os.makedirs(seeds, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    prompt_file = os.path.join(seeds, f"background-account-auth-{ts}.prompt.txt")
-    with open(prompt_file, "w", encoding="utf-8") as f:
-        f.write(
-            "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
-            "The drainer poller's background triage/security-screen account "
-            "(`C:\\Users\\russe\\.claude-background`) has an expired OAuth session that could not be "
-            "refreshed. Every headless triage and security-screen call now fails, so the AI-triaged "
-            "sources (email, Slack, Zoom) are stalled — their items are held and retried every cycle, "
-            "never captured or dispatched — even though the deterministically-triaged sources (Trello, "
-            "orphan sessions, physical tasks) keep draining normally, since they skip this account "
-            "entirely.\n\n"
-            "This can't be fixed headlessly: a dead refresh token needs an interactive re-login. Tell "
-            "Russell plainly what's wrong and the one-step fix — in a terminal, run:\n"
-            '$env:CLAUDE_CONFIG_DIR="C:\\Users\\russe\\.claude-background"; claude\n'
-            "then `/login` as the dedicated drainer background account, then `/exit`. Do not attempt "
-            "this yourself — it needs Russell's own interactive browser login.\n"
-        )
-    summary_file = os.path.join(seeds, f"background-account-auth-{ts}.summary.txt")
-    with open(summary_file, "w", encoding="utf-8") as f:
-        f.write("Fix: drainer background triage account login expired")
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab(
-        [spawn_cmd, "drainer: background account login expired - fix", repo, prompt_file, worker_model,
-         summary_file],
-        cwd=repo,
+    body = (
+        "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
+        "The drainer poller's background triage/security-screen account "
+        "(`C:\\Users\\russe\\.claude-background`) has an expired OAuth session that could not be "
+        "refreshed. Every headless triage and security-screen call now fails, so the AI-triaged "
+        "sources (email, Slack, Zoom) are stalled — their items are held and retried every cycle, "
+        "never captured or dispatched — even though the deterministically-triaged sources (Trello, "
+        "orphan sessions, physical tasks) keep draining normally, since they skip this account "
+        "entirely.\n\n"
+        "This can't be fixed headlessly: a dead refresh token needs an interactive re-login. Tell "
+        "Russell plainly what's wrong and the one-step fix — in a terminal, run:\n"
+        '$env:CLAUDE_CONFIG_DIR="C:\\Users\\russe\\.claude-background"; claude\n'
+        "then `/login` as the dedicated drainer background account, then `/exit`. Do not attempt "
+        "this yourself — it needs Russell's own interactive browser login.\n"
     )
+    _spawn_diagnostic_tab("background-account-auth", "drainer: background account login expired - fix",
+                          "Fix: drainer background triage account login expired", body,
+                          repo, runtime_dir, worker_model)
 
 
 def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo):
