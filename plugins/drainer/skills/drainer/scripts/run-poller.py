@@ -794,6 +794,48 @@ def _spawn_teams_mark_read(items, teams_provider, repo, runtime_dir, worker_mode
     spawn_silent(prompt_file, worker_model, repo)
 
 
+# --- shared diagnostic-alert machinery -------------------------------------------------------
+#
+# Every "something's broken, tell Russell now instead of waiting for the daily digest" alert (a
+# failed tab scan, a provider's broken deploy, ...) follows the same two-part shape: a per-cooldown
+# gate so a persistently-broken thing gets one tab, not a fresh one every cycle, and a diagnostic
+# worker-tab spawn (write a prompt seed + a summary seed, then spawn-tab.cmd). `_alert_due` and
+# `_spawn_diagnostic_tab` are that shared mechanism; each alert kind below just supplies its own
+# key/threshold/cooldown and its own explanation of what broke and how to fix it.
+
+def _alert_due(health, key, ts_field, cooldown_seconds):
+    """Whether enough time has passed since the last diagnostic tab recorded at health[key][ts_field]
+    to spawn another. `key` is the health-dict entry (a provider name, or POLLER_KEY for a poller-wide
+    alert like the tab scan) and `ts_field` is that entry's own timestamp field, so alert kinds sharing
+    one entry (e.g. two different poller-wide alerts under POLLER_KEY) never share a cooldown."""
+    last = health.get(key, {}).get(ts_field)
+    if not last:
+        return True
+    try:
+        last_dt = datetime.fromisoformat(last)
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - last_dt).total_seconds() >= cooldown_seconds
+
+
+def _spawn_diagnostic_tab(slug_prefix, tab_title, summary_text, body, repo, runtime_dir, worker_model):
+    """Write a diagnostic worker's prompt + summary seed files and spawn its tab — the filesystem and
+    spawn-tab.cmd mechanics shared by every diagnostic alert. `body` is the prompt's full instruction
+    text (the caller already wrote the situation-specific explanation and fix); `slug_prefix` names the
+    seed files (paired with a timestamp so concurrent alerts of different kinds never collide)."""
+    seeds = os.path.join(runtime_dir, "seeds")
+    os.makedirs(seeds, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    prompt_file = os.path.join(seeds, f"{slug_prefix}-{ts}.prompt.txt")
+    with open(prompt_file, "w", encoding="utf-8") as f:
+        f.write(body)
+    summary_file = os.path.join(seeds, f"{slug_prefix}-{ts}.summary.txt")
+    with open(summary_file, "w", encoding="utf-8") as f:
+        f.write(summary_text)
+    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
+    spawn_tab([spawn_cmd, tab_title, repo, prompt_file, worker_model, summary_file], cwd=repo)
+
+
 SCAN_FAILURE_ALERT_THRESHOLD = 3  # consecutive scan failures before the first diagnostic tab
 SCAN_FAILURE_ALERT_COOLDOWN_SECONDS = 3600  # once past threshold, don't spawn another more than hourly
 
@@ -801,14 +843,7 @@ SCAN_FAILURE_ALERT_COOLDOWN_SECONDS = 3600  # once past threshold, don't spawn a
 def _scan_failure_alert_due(health):
     """Whether enough time has passed since the last scan-failure diagnostic tab to spawn another.
     A persistently failing scan would otherwise get a fresh diagnostic tab every 5-minute cycle."""
-    last = health.get(POLLER_KEY, {}).get("last_scan_failure_alert_ts")
-    if not last:
-        return True
-    try:
-        last_dt = datetime.fromisoformat(last)
-    except ValueError:
-        return True
-    return (datetime.now(timezone.utc) - last_dt).total_seconds() >= SCAN_FAILURE_ALERT_COOLDOWN_SECONDS
+    return _alert_due(health, POLLER_KEY, "last_scan_failure_alert_ts", SCAN_FAILURE_ALERT_COOLDOWN_SECONDS)
 
 
 def _record_scan_failure(health):
@@ -833,32 +868,21 @@ def _spawn_scan_diagnostic(repo, runtime_dir, worker_model):
     the cap. This tab is Russell's (or the worker's) visible signal that it happened, and a chance to
     find and fix the real cause rather than it recurring silently every cycle.
     """
-    seeds = os.path.join(runtime_dir, "seeds")
-    os.makedirs(seeds, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    prompt_file = os.path.join(seeds, f"scan-failure-diagnostic-{ts}.prompt.txt")
-    with open(prompt_file, "w", encoding="utf-8") as f:
-        f.write(
-            "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
-            "The drainer poller's `total_claude_tabs()` (run-poller.py, drainer plugin scripts/) just "
-            "failed to run or parse its `tasklist` scan. That function throttles new worker-tab "
-            "dispatch against DRAINER_TARGET_OPEN_TABS, so a failed scan means dispatch was held back "
-            "entirely this cycle rather than risking an unbounded burst.\n\n"
-            "Diagnose why the scan failed: run the exact command yourself - `tasklist /FI \"IMAGENAME "
-            "eq claude.exe\" /NH /FO CSV` - and see what happens (hangs, errors, returns something "
-            "unparseable). Check whether the "
-            "machine was under heavy load (many open tabs, high CPU/memory) as a likely cause. If you "
-            "find a concrete, safe fix, apply it. Either way, tell Russell plainly what you found and "
-            "whether it's fixed or still needs his attention.\n"
-        )
-    summary_file = os.path.join(seeds, f"scan-failure-diagnostic-{ts}.summary.txt")
-    with open(summary_file, "w", encoding="utf-8") as f:
-        f.write("Diagnose: drainer tab-count scan failed")
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab(
-        [spawn_cmd, "drainer: tab-scan failed - diagnose", repo, prompt_file, worker_model, summary_file],
-        cwd=repo,
+    body = (
+        "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
+        "The drainer poller's `total_claude_tabs()` (run-poller.py, drainer plugin scripts/) just "
+        "failed to run or parse its `tasklist` scan. That function throttles new worker-tab "
+        "dispatch against DRAINER_TARGET_OPEN_TABS, so a failed scan means dispatch was held back "
+        "entirely this cycle rather than risking an unbounded burst.\n\n"
+        "Diagnose why the scan failed: run the exact command yourself - `tasklist /FI \"IMAGENAME "
+        "eq claude.exe\" /NH /FO CSV` - and see what happens (hangs, errors, returns something "
+        "unparseable). Check whether the "
+        "machine was under heavy load (many open tabs, high CPU/memory) as a likely cause. If you "
+        "find a concrete, safe fix, apply it. Either way, tell Russell plainly what you found and "
+        "whether it's fixed or still needs his attention.\n"
     )
+    _spawn_diagnostic_tab("scan-failure-diagnostic", "drainer: tab-scan failed - diagnose",
+                          "Diagnose: drainer tab-count scan failed", body, repo, runtime_dir, worker_model)
 
 
 # A provider whose enumerate fails with kind="config" (a broken deploy — a missing helper .js or, most
@@ -875,49 +899,31 @@ def _config_alert_due(health, name):
     """Whether enough time has passed since this provider's last config-failure diagnostic tab to spawn
     another. Keyed per provider (not the shared poller entry) so two providers breaking at once each get
     their own tab, and a persistently-broken one doesn't get a fresh tab every 5-minute cycle."""
-    last = health.get(name, {}).get("last_config_alert_ts")
-    if not last:
-        return True
-    try:
-        last_dt = datetime.fromisoformat(last)
-    except ValueError:
-        return True
-    return (datetime.now(timezone.utc) - last_dt).total_seconds() >= CONFIG_FAILURE_ALERT_COOLDOWN_SECONDS
+    return _alert_due(health, name, "last_config_alert_ts", CONFIG_FAILURE_ALERT_COOLDOWN_SECONDS)
 
 
 def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_model):
     """Spawn a single visible worker tab to fix a provider whose enumerate failed with a deploy/config
     error, so a dead source is repaired within a cycle instead of sitting dark until the daily digest."""
-    seeds = os.path.join(runtime_dir, "seeds")
-    os.makedirs(seeds, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    prompt_file = os.path.join(seeds, f"provider-config-failure-{slug(name)}-{ts}.prompt.txt")
-    with open(prompt_file, "w", encoding="utf-8") as f:
-        f.write(
-            "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
-            f"The drainer poller's `{name}` provider has failed to enumerate with a deploy/config error "
-            "(kind=config) — a broken install that will NOT self-heal and fails every cycle, so that "
-            "whole source is dark until it's fixed. The most common cause is a missing npm dependency in "
-            "the skill's shared per-user dependency store (`~/.claude/<skill>/node_modules`, seeded by "
-            "that skill's `scripts/setup.js`): a script `require()`s a package that isn't installed "
-            "there, e.g. after a version bump added a new dependency, or another copy of the skill "
-            "re-seeded that shared store to a different dependency set.\n\n"
-            f"The recorded error was:\n{(error or '').strip()[:600]}\n\n"
-            "Diagnose and fix it: identify the skill behind this provider, run its `setup.js` (or "
-            "`npm install` in `~/.claude/<skill>`) to restore the shared node_modules, then re-run the "
-            "provider's own check (e.g. `node <skill>/scripts/<helper>.js --check` or `--list-inbox "
-            "--json --top=1`) to confirm it enumerates. If the cause is something other than a missing "
-            "dependency, find and fix it. Either way, tell Russell plainly what was wrong and whether "
-            "it's fixed.\n"
-        )
-    summary_file = os.path.join(seeds, f"provider-config-failure-{slug(name)}-{ts}.summary.txt")
-    with open(summary_file, "w", encoding="utf-8") as f:
-        f.write(f"Fix: drainer {name} provider deploy error")
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab(
-        [spawn_cmd, f"drainer: {name} deploy error - fix", repo, prompt_file, worker_model, summary_file],
-        cwd=repo,
+    body = (
+        "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
+        f"The drainer poller's `{name}` provider has failed to enumerate with a deploy/config error "
+        "(kind=config) — a broken install that will NOT self-heal and fails every cycle, so that "
+        "whole source is dark until it's fixed. The most common cause is a missing npm dependency in "
+        "the skill's shared per-user dependency store (`~/.claude/<skill>/node_modules`, seeded by "
+        "that skill's `scripts/setup.js`): a script `require()`s a package that isn't installed "
+        "there, e.g. after a version bump added a new dependency, or another copy of the skill "
+        "re-seeded that shared store to a different dependency set.\n\n"
+        f"The recorded error was:\n{(error or '').strip()[:600]}\n\n"
+        "Diagnose and fix it: identify the skill behind this provider, run its `setup.js` (or "
+        "`npm install` in `~/.claude/<skill>`) to restore the shared node_modules, then re-run the "
+        "provider's own check (e.g. `node <skill>/scripts/<helper>.js --check` or `--list-inbox "
+        "--json --top=1`) to confirm it enumerates. If the cause is something other than a missing "
+        "dependency, find and fix it. Either way, tell Russell plainly what was wrong and whether "
+        "it's fixed.\n"
     )
+    _spawn_diagnostic_tab(f"provider-config-failure-{slug(name)}", f"drainer: {name} deploy error - fix",
+                          f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
 
 
 def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo):
