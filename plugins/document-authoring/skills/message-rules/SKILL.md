@@ -68,6 +68,7 @@ Don't present a menu of options or stack a numbered list of questions.
   This specifies the change's real-world effect — keep it separate from pitching why your cause deserves it.
 - **When asking an external party you're courting for something, lead with the want, not your own org's shortfall.**
   Naming an internal gap (a thin lineup, an unfilled slot) as the reason reads as recruiting a fallback rather than someone wanted.
+  **Exception - when the ask is for them to recommend or route you to a third party** (see "Frame the ask to match the recipient's role" below): they aren't the one being recruited, so naming the plain gap ("we're a bit low on X speakers - anyone you can suggest?") is normal, useful context rather than a demotion.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
 - **Relaying a third party's request for someone's personal/sensitive info (a phone number, an address): attribute it to that third party and ask about their comfort sharing it, rather than requesting the detail directly as your own ask.**
 - **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand.
