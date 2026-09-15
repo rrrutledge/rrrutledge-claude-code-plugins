@@ -41,7 +41,8 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
-- **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
+- **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar.
+  Re-include the link on every nudge that's still trying to land the same call, not just the first proposal — this is the booking-link case of the "click-through" exception under "Don't re-paste".
 - **Exception - a colleague with full, established context on the specific document or event referenced** (they run it, coordinate it, or work with it directly): name the concrete detail in plain text and skip the link. They already know the page inside and out, so citing it over-formalizes what's otherwise a plain internal exchange.
 
 ---
@@ -295,7 +296,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Don't re-paste something you already shared upthread** — a link, file, or detail the recipient already has.
   Just ask plainly.
   Exception: the first nudge that directly addresses someone previously only cc'd should restate the concrete ask, since they may not have engaged.
-  Exception: a deadline nudge whose ask is to click through and act on a specific link (a submission form, a registration page) re-includes that link directly, since a last-chance reminder should remove friction to the click.
+  Exception: a nudge whose ask is to click through and act on a specific link (a submission form, a registration page, a scheduling/booking link) re-includes that link directly, since removing friction to that click matters on every such follow-up, not only a hard-deadline one.
 - **A repeat nudge on an already-unanswered ask shrinks further than the first** — drop the warm-up context line and any separate reassurance clause, and ask one direct binary question with the release folded into the question itself rather than tacked on after.
   **When the ask is whether a deliverable exists rather than a decision to make, recast per the "Keep asks open and tentative" rule above instead of the binary-release formula** — "let me know if you have the headshot" asks whether it's in hand at all, not a release on a choice already made.
   When the unanswered message sits visibly elsewhere in the same thread, pair a brief soft verbal frame ("wanted to ask again if you can let me know about this") with the emoji gesture matching its actual position: 👆 for a Slack/Teams thread, where the earlier message sits above; 👇 for an email reply, where the quoted original sits below the new text.
