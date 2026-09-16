@@ -17,7 +17,8 @@ This mirrors Russell's pre-drainer habit almost exactly: he used to stage a to-d
 "Started" (see WORKER/CLEAR) moves a task's start to the moment its worker tab launched - and if Russell is up working past midnight, that launch time can itself fall inside 00:00-02:59.
 A real timestamp essentially never lands exactly on a grid slot (down to zero seconds), so exact-slot matching is what actually tells "still sitting untouched since it was placed" from "just started a moment ago" - a same-hour-only check would wrongly read a task he just began at 12:04 AM as still queued.
 
-Nothing here ever moves a queued task to keep it visible; an undone one simply keeps coming back every cycle until it's moved off-grid (started - see WORKER/CLEAR).
+Nothing here ever moves a queued task to keep it visible; an undone one simply keeps coming back every cycle until it's moved off-grid (started - see WORKER/CLEAR), for as long as it stays within the scan's lookback window (`lookback_days`, default a year - see Config).
+That window reaches back well past a month on purpose, so a task waiting through a long stretch keeps surfacing rather than silently aging out of view.
 **There is no delete and no separate archive calendar** - the same event just keeps living on Physical Tasks, eventually parked at the real time it was actually worked, as an ordinary calendar record.
 
 The event's own duration (end minus start, while still queued) is Russell's own estimate of how long the task takes.
@@ -44,6 +45,8 @@ That's *why* `lookahead_hours` defaults short (see Config): the gap check never 
 - `lookahead_hours` - how far ahead the gap check looks for the next real commitment (default `2`).
   Kept short on purpose (see "The model" above) - raise it only if a task genuinely needs more than about an hour plus its buffer, which shouldn't normally happen.
 - `buffer_minutes` - minutes added on top of a task's own duration before it counts as eligible (default `20`), covering the gap-detection-to-tab-opened lag described above.
+- `lookback_days` - how far back the queued scan reaches (default `365`, a year).
+  A task keeps re-surfacing only while it falls inside this window (see "The model" above); raise it toward Graph's ceiling of `1825` (five years) to reach back further.
 - `exclude` - calendar names to leave out of the gap check (e.g. a read-only subscription that shouldn't count as blocking).
   No credentials here - sign in once via `ms-graph`; the MSAL token cache is machine-local.
 
