@@ -32,10 +32,10 @@ sitting untouched since it was placed" from "just started a moment ago" — a sa
 wrongly read a task he just began at 12:04 AM as still queued.
 
 Nothing here ever moves a queued task to keep it visible; an undone one simply keeps coming back every
-cycle until it's moved off-grid (started — see WORKER/CLEAR), for as long as it stays within the scan's
-lookback window (`lookback_days`, default a year — see Config). That window reaches back well past a
+cycle until it's moved off-grid (started - see WORKER/CLEAR), for as long as it stays within the scan's
+lookback window (`lookback_days`, default a year - see Config). That window reaches back well past a
 month on purpose, so a task waiting through a long stretch keeps surfacing rather than silently aging out
-of view. **There is no delete and no separate archive calendar** — the same event just keeps living on
+of view. **There is no delete and no separate archive calendar** - the same event just keeps living on
 Physical Tasks, eventually parked at the real time it was actually worked, as an ordinary calendar
 record.
 
@@ -82,10 +82,9 @@ gap check never needs to see further ahead than the longest task plus its buffer
   about an hour plus its buffer, which shouldn't normally happen.
 - `buffer_minutes` — minutes added on top of a task's own duration before it counts as eligible
   (default `20`), covering the gap-detection-to-tab-opened lag described above.
-- `lookback_days` — how far back the queued scan reaches (default `365`). A task keeps re-surfacing only
-  while it falls inside this window; the default of a year keeps a long-unstarted task visible far past
-  the point it would otherwise drop off. Raise it toward Graph's ceiling of `1825` (five years) to widen
-  that margin further.
+- `lookback_days` - how far back the queued scan reaches (default `365`, a year). A task keeps
+  re-surfacing only while it falls inside this window (see "The model" above); raise it toward Graph's
+  ceiling of `1825` (five years) to reach back further.
 - `exclude` — calendar names to leave out of the gap check (e.g. a read-only subscription that
   shouldn't count as blocking).
 No credentials here — sign in once via `ms-graph`; the MSAL token cache is machine-local.
