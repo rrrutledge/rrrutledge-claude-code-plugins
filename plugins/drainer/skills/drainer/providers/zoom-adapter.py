@@ -186,6 +186,16 @@ class Provider(ProviderBase):
         assignee = line[:i] if i != -1 else ""
         return any(re.search(rf"\b{re.escape(n)}\b", assignee, re.I) for n in owner_tokens)
 
+    @staticmethod
+    def _summary_generated(summary):
+        """Whether AI Companion has finished generating the summary. Zoom omits the next_steps key entirely
+        while a summary is still generating (the shell it returns carries neither a recap nor next_steps) and
+        includes it — a populated list — once done; a month of this account's meetings showed next_steps only
+        ever absent (still generating) or a non-empty list, never a stray empty one. So the presence of the
+        key is the done signal. A meeting that genuinely produced no action items would carry next_steps: [],
+        which is present and so counts as done (recap only)."""
+        return summary.get("next_steps") is not None
+
     # --------------------------------------------------------------- self-throttle
     def _throttle_path(self):
         return os.path.join(self.runtime_dir, "zoom-poll-state.json") if self.runtime_dir else None
@@ -281,30 +291,30 @@ class Provider(ProviderBase):
             uuid = inst["uuid"]
             in_window.add(uuid)
             s = (cache.get(uuid) or {}).get("summary")
-            # Self-heal a stale empty shell: a cached summary with no content was cached before the content
-            # gate below existed (or by an older build) and must be re-fetched, not resurfaced as an empty
-            # recap. Treating it as a miss lets a summary that has since been generated get picked up.
-            if s is not None and not (s.get("summary_overview") or s.get("next_steps")):
+            # Self-heal a stale shell: a cached summary whose next_steps never arrived was cached before the
+            # content gate below existed (or by an older build) and must be re-fetched, not resurfaced as an
+            # empty recap. Treating it as a miss lets a summary that has since generated get picked up.
+            if s is not None and not self._summary_generated(s):
                 s = None
-            if s is None:  # not cached (or cached-empty) — fetch it
+            if s is None:  # not cached (or cached-shell) — fetch it
                 enc = self._zoom.double_encode(uuid)
                 status, fetched = self._zoom.get(f"/v2/meetings/{enc}/meeting_summary")
                 if status != 200 or not isinstance(fetched, dict):
                     continue  # 404 = no AI summary; other non-200 = transient, retry next cycle
                 # Content gate: for the first tens of minutes after a meeting ends, this endpoint returns a
                 # 200 *shell* — meeting metadata + summary_title + a summary_last_modified_time frozen at the
-                # meeting's start — minutes before AI Companion actually generates the recap and next_steps.
-                # Zoom exposes no "still generating" flag; the absence of summary_overview/next_steps IS the
-                # signal. Caching that shell would freeze an empty summary as "final", and the real one,
-                # generated later, would never be fetched (the uuid is already cached). So an un-generated
-                # summary is skipped and re-fetched next cycle, exactly like a 404 — until content lands or
-                # the meeting ages out of the lookback window.
-                if not (fetched.get("summary_overview") or fetched.get("next_steps")):
+                # meeting's start — before AI Companion has generated the recap and next_steps. Zoom exposes
+                # no "still generating" flag; the absence of the next_steps key IS the signal (see
+                # _summary_generated). Caching a shell would freeze an empty summary as "final", and the real
+                # one, generated later, would never be fetched (the uuid is already cached) — so a summary
+                # whose next_steps have not landed is skipped and re-fetched next cycle, exactly like a 404,
+                # until they arrive or the meeting ages out of the lookback window. This is what keeps a
+                # meeting's recap from being captured ahead of the action items that belong with it.
+                if not self._summary_generated(fetched):
                     continue
                 modified = fetched.get("summary_last_modified_time") or fetched.get("summary_created_time")
-                # Finality gate: the AI keeps refining a summary for tens of minutes after a meeting;
-                # capturing early would miss next_steps added later. Until it's been quiet for
-                # cooldown_minutes, don't cache it and don't emit — re-fetch next cycle until it settles.
+                # Finality gate: once next_steps have appeared, hold off caching until the summary has been
+                # quiet for cooldown_minutes, so a summary Zoom is still editing isn't frozen mid-write.
                 if modified and self._age_seconds(modified) < self.cooldown_minutes * 60:
                     continue
                 s = fetched

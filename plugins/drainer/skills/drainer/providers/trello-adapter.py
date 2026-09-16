@@ -371,6 +371,14 @@ class Provider(ProviderBase):
             # label and sets Start = today, so they resurface on a later drain).
             if self._has_skip_label(card):
                 continue
+            # Director+ pause: while Russell is focused on his in-flight interviews, a below-director
+            # job-search card is kept on the board but never drained - it still exists for him to work by
+            # hand, it just isn't handed over as a worker. job-board-poll marks a below-director posting
+            # with an "IC-level" line in the card body (its tiers.js LEVEL_WORD), and only job-search
+            # cards ever carry that line (see _level_band's docstring), so this suppresses nothing else.
+            # Remove this block to reopen lower-level job cards to the drain queue.
+            if "IC-level" in (card.get("desc") or ""):
+                continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
             if assigned and my_id not in assigned:
@@ -476,14 +484,20 @@ class Provider(ProviderBase):
         return items
 
     def stable_id(self, item):
-        # The Start date is PART OF the identity, not just a field: a card recurs every cycle (a nudge
-        # bumps its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in
-        # seen.json forever (status=cleared, key persists) while dedup is pure key-presence. So a stable
-        # per-card id would be marked seen on the first drain and never resurface when the next Start
-        # arrives. Folding the Start (YYYYMMDD) in makes each go-live a distinct item that surfaces anew;
-        # an undated card stamps to the fixed sentinel `nodue`, so it stays seen until it's given a Start.
+        # The Start is PART OF the identity, not just a field: a card recurs every cycle (a nudge bumps
+        # its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in seen.json
+        # forever (status=cleared, key persists) while dedup is pure key-presence. So a stable per-card id
+        # would be marked seen on the first drain and never resurface when the next Start arrives. Folding
+        # the Start in makes each go-live a distinct item that surfaces anew; an undated card stamps to the
+        # fixed sentinel `nodue`, so it stays seen until it's given a Start.
+        #
+        # The stamp carries the time-of-day (YYYYMMDDHHMM, minute precision), so a deliberate same-day
+        # reschedule - bumping a card's Start from morning to afternoon - mints a fresh id and dispatches
+        # again that same day. Truncating at the minute drops the seconds/ms Trello writes into Start, so
+        # an unchanged card mints the identical id on every repeat drain (idempotent), and a card left at
+        # its default creation time keeps one id per calendar day.
         stamp_src = item.get("start") or ""
-        stamp = "".join(c for c in stamp_src if c.isdigit())[:8] or "nodue"
+        stamp = "".join(c for c in stamp_src if c.isdigit())[:12] or "nodue"
         return f"{self.name}-{slug(item.get('name'), 40)}-{item['cardId'][-6:]}-{stamp}".strip("-")[:72]
 
     def still_in_inbox_ids(self):

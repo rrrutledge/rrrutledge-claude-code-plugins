@@ -86,7 +86,7 @@ Write "see the [incident report](URL)", never a bare `https://…` in prose.
 Sentence length and rhythm are drafting judgment rather than a decidable check, so they stay in `document-authoring`.
 
 **State facts without editorializing.**
-**Check:** cheerful labels ("the good news is", "you're all set"); unsolicited reassurance; hedging something already confirmed ("looks like", "turns out").
+**Check:** cheerful labels ("the good news is", "you're all set"); unsolicited reassurance, including a consoling frame invented on the writer's behalf about someone else's setback ("the effort wasn't wasted") rather than the writer's own actual reaction; hedging something already confirmed ("looks like", "turns out").
 
 **Bold lead-ins on bullets.**
 Start each bullet with a bold 4-7 word key phrase, then the detail.

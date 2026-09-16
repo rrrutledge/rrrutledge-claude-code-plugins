@@ -58,6 +58,15 @@ with `filters.js`, that auto-refreshes — nothing to re-enter after the one-tim
 the machine that signed in — so the mailbox is only reachable (and signed the same way) where you've set
 them up.
 
+**A second, narrower credential pair - `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` - backs one IMAP-only listing
+path used by the drainer's poller.** (See the drainer plugin's `gmail-adapter.py` file-header comment for
+why REST alone won't do.) `--list-inbox-imap` (below) runs that recurring scan over IMAP with a Google App
+Password instead, which carries no comparable quota - every other operation (compose, send, draft, archive,
+single-message fetch, interactive `--list-inbox`) stays on the REST/OAuth path and is unaffected. Set up a
+Google App Password (Google Account → Security → 2-Step Verification → App Passwords; requires 2SV enabled
+on the account) only if you want the drainer's polling to run over IMAP - everything else in this skill
+works with just the OAuth setup above.
+
 ## Scripts
 
 Under `scripts/` (run with `node`):
@@ -67,6 +76,9 @@ Under `scripts/` (run with `node`):
   - List inbox: `node gmail.js --list-inbox [--top=50] [--json]` (newest-first; `--json` emits a
     structured array for scripts — each item has the RFC822 Message-ID as `id`, plus `uid` (Gmail's
     internal message id), `subject`, `from`, `fromAddress`, `fromMe`, `toMe`, `received`, `isRead`)
+  - List inbox via IMAP: `node gmail.js --list-inbox-imap [--top=50] [--json]` (identical output shape to
+    `--list-inbox` above, fetched over IMAP instead of REST - see the credential-pair note above for why.
+    Reach for it yourself only if you're deliberately avoiding the REST quota for a bulk listing.)
   - List sent: `node gmail.js --list-sent [--top=50] [--json]` (sent mail, newest-first; same output
     format as `--list-inbox`)
   - Search: `node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]` (`--query` is

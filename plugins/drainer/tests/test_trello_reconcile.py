@@ -165,6 +165,23 @@ rec = json.load(open(os.path.join(rt_cap, "items", f"{iid}.json"), encoding="utf
 check("messageId equals the item id", rec.get("messageId"), iid)
 
 
+# --------------------------------------------------------------------- stable_id: time-of-day
+print("\nstable_id folds Start's time-of-day in: a same-day reschedule is a distinct item")
+MORNING = "2026-09-10T06:00:00.000Z"
+AFTERNOON = "2026-09-10T19:00:00.000Z"
+check("same card, same Start -> identical id (idempotent)",
+      sid(ID_STARTABLE, "Prep for Moms birthday", MORNING),
+      sid(ID_STARTABLE, "Prep for Moms birthday", MORNING))
+check("same card, same day, different time -> different id (re-dispatchable)",
+      sid(ID_STARTABLE, "Prep for Moms birthday", MORNING)
+      != sid(ID_STARTABLE, "Prep for Moms birthday", AFTERNOON), True)
+check("sub-minute jitter in Start is ignored -> identical id",
+      sid(ID_STARTABLE, "Prep for Moms birthday", "2026-09-10T19:00:00.000Z"),
+      sid(ID_STARTABLE, "Prep for Moms birthday", "2026-09-10T19:00:59.999Z"))
+check("an undated card stamps to the nodue sentinel",
+      sid(ID_STARTABLE, "Prep for Moms birthday", None).endswith("-nodue"), True)
+
+
 # --------------------------------------------------------------------- end-to-end reconcile
 def _iso_ago(seconds):
     return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat()

@@ -5,10 +5,10 @@
 # Which providers to run, plus any config each needs. Reference a provider by name (they live in the
 # plugin's providers/ dir). All sources are harvested every run on one schedule.
 providers:
-  orphan-sessions: {}         # crash-recovered Claude Code sessions (session-mgr) — no config; always dispatches first
-  outlook: {}                    # work Outlook on the web (browser) — no config, just sign in
+  orphan-sessions: {}         # crash-recovered Claude Code sessions (session-mgr) - no config; always dispatches first
+  outlook: {}                    # work Outlook on the web (browser) - no config, just sign in
   outlook-graph: {}           # personal Outlook.com via the Microsoft Graph API (ms-graph; no browser)
-  teams: {}                      # Microsoft Teams on the web (browser) — no config, just sign in
+  teams: {}                      # Microsoft Teams on the web (browser) - no config, just sign in
   trello:                        # outreach boards (via the trello-outreach skill)
     boards:
       - name: "<Board name>"
@@ -21,12 +21,12 @@ providers:
   # slack:                       # example of another config-bearing provider (future)
   #   workspace: your-workspace  # the <workspace>.slack.com subdomain
 
-# Credentials never go here — keep them in your OS credential store / environment
+# Credentials never go here - keep them in your OS credential store / environment
 # (e.g. TRELLO_KEY / TRELLO_TOKEN for the trello provider).
 
 # A folder holding context.md (your world + standing rules). Keep it a RELATIVE path (resolved against
 # the config root) and commit it in your project, so the poller reads it from the drainer's config root
-# — a git worktree the poller keeps pinned to origin/main — rather than whatever branch a session left
+# - a git worktree the poller keeps pinned to origin/main - rather than whatever branch a session left
 # checked out. A relative local_dir is what makes a merged context.md/provider-overlay change take
 # effect immediately. (An absolute path is still honored verbatim, for a machine-local, uncommitted
 # context folder.)
@@ -39,18 +39,18 @@ runtime_dir: .tmp/drainer
 # value here - the poller has no internal cadence knob.
 
 # The continuous-keeper (run-poller.py) has no per-cycle work cap: every cycle enumerates everything
-# eligible from every source. The target open-tab count — tuned via the DRAINER_TARGET_OPEN_TABS
-# environment variable (default 12), not here — is the only thing that throttles how much of it
+# eligible from every source. The target open-tab count - tuned via the DRAINER_TARGET_OPEN_TABS
+# environment variable (default 12), not here - is the only thing that throttles how much of it
 # actually gets dispatched at once; anything held simply retries next cycle.
 
-# Worker model per item — the poller picks by triage complexity (simple -> worker_model,
+# Worker model per item - the poller picks by triage complexity (simple -> worker_model,
 # complex -> worker_model_complex). Set an EXPLICIT model so workers don't inherit a 1M-context
 # session default the account may lack credits for. Use standard-context ids (no [1m]).
 worker_model: claude-sonnet-5            # simple items (quick replies, trivial actions)
 worker_model_complex: claude-opus-4-8    # complex items (multi-step work, code, delicate messages)
 triage_model: claude-sonnet-5            # the per-cycle batched triage call (also pinned, standard context)
 
-# EOD digest (run-digest.py) — the once-a-day interactive slow loop.
+# EOD digest (run-digest.py) - the once-a-day interactive slow loop.
 digest_model: claude-opus-4-8   # the digest session (summarize fyi, group junk); standard context
 orphan_grace_minutes: 15        # the poller re-queues any item whose source object is still unhandled with
                                 # no live worker process on it - there is no time limit on an open tab.
@@ -62,4 +62,4 @@ digest_time: "17:00"            # wall-clock time (HH:MM, 24h) the daily digest 
 # drainer.local
 
 Free-form notes about this machine's drainer setup (which sources are live, quirks, etc.).
-Credentials never go here — keep them in your OS credential store / environment.
+Credentials never go here - keep them in your OS credential store / environment.
