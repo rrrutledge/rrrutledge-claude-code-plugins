@@ -291,7 +291,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Lead a follow-up with the direct ask ("can you suggest any contacts at X or Y?"), not a status/context line that delays it to a later sentence.
 - **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener.**
   Lead with the plain fact that prompted the check, not a credit or appreciative line, since this isn't a reply to something the other person just said or did.
-  This differs from a task already confirmed stuck in the recipient's own process, which leads with trust in their follow-through instead.
+  This differs from a task already confirmed stuck in the recipient's own process, where a bare acknowledgment carries the first touch and a direct status question only comes due on the second.
 - **Don't re-paste something you already shared upthread** — a link, file, or detail the recipient already has.
   Just ask plainly.
   Exception: the first nudge that directly addresses someone previously only cc'd should restate the concrete ask, since they may not have engaged.
@@ -310,10 +310,9 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Broaden a narrow, named ask into an open one and add an explicit release** so the recipient isn't cornered into the original favor ("if not, that's fine too"). Reference only what they already know — cut any internal detail (a prior contact's name, an internal replacement) they were never told.
   A genuine personal aside can open or close the nudge.
   **On a first nudge that just re-asks the same favor rather than broadening it, keep the same tacked-on release and soften the ask itself instead** ("if you have time" ... "If not, then that's fine, too!") — even when the ask is already phrased low-effort, a nudge is the one case Core voice's low-effort skip-condition doesn't cover, since the release is what the nudge is for. A second nudge on the same favor shrinks past this back to the repeat-nudge form above (release folded into the question itself).
-- **When the thing you're nudging on is stuck in the recipient's own internal process, lead with trust in their follow-through rather than a status question.**
-  "I know you're always on top of moving this through" carries the release on its own, so drop the separate no-pressure line.
-  Reaching out at all is what reminds them — the nudge doesn't need an explicit question to land, so a plain acknowledgment or even a wordless reaction can do the job.
-  On a first touch a bare reaction is often enough; hold a worded reply in reserve for the next round, once a second touch is actually due.
+- **When the thing you're nudging on is stuck in the recipient's own internal process, a bare acknowledgment or reaction is enough on the first touch.**
+  Reaching out at all is what reminds them, so the nudge doesn't need a worded question to land yet; hold a worded reply in reserve for the next round.
+  Once a second touch is actually due, ask directly: a short, plain status question ("What did the colleague say?") is the natural worded follow-up here, not a softened restatement of the original ask or a re-explanation of the offer. This overrides the repeat-nudge bullet's binary-release formula above - the recipient isn't the one who stalled on answering you, so the question stays a plain status ask rather than a binary one with a release folded in.
 - **When nudging on a favor or task you asked someone to do, phrase the question to assume they already did their part.** Presuming it's done reads as trust rather than a check-up, so it lands with far less pressure than asking whether they did it. When the favor routes through a third party, that means asking about the third party's response ("Did Dan say anything?") instead of whether the recipient passed your info along; when it doesn't, ask about what comes next as though the task is already behind you. Thank them for the help in the same breath instead of tacking on a separate no-pressure release.
 
 ### Core voice
