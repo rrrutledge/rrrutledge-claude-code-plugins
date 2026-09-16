@@ -15,7 +15,9 @@ staging a to-do in an overnight band and dragging it out once picked up. Exact-s
 tab launched, which can itself fall inside 00:00-02:59 if Russell's up working late — a real timestamp
 essentially never lands exactly on a slot, so alignment is what actually distinguishes "still sitting
 untouched" from "just started." Nothing here ever moves a queued task on its own, so an undone one just
-keeps coming back until it's started; there is no delete and no second archive calendar. What's unique
+keeps coming back until it's started — for as long as it stays within the scan's lookback window
+(`lookback_days`, default a year), set well past a month so a task waiting through a long stretch keeps
+surfacing rather than silently aging out of view. There is no delete and no second archive calendar. What's unique
 to this source is a SECOND gate on top of "queued": a physical task also needs a live free gap —
 computed fresh every cycle — of at least its own duration (plus a buffer) before Russell's next real
 (non-solo) calendar commitment, because unlike every other source, nobody but Russell can do the
@@ -41,6 +43,7 @@ class Provider(ProviderBase):
         self.calendar = "Physical Tasks"
         self.lookahead_hours = 2
         self.buffer_minutes = 20
+        self.lookback_days = 365
         self.exclude = []
 
     @staticmethod
@@ -58,13 +61,16 @@ class Provider(ProviderBase):
         commitment; short on purpose, since no task should ever be sized past an hour — see
         CAPTURE's duration note), `buffer_minutes` (default 20 — added on top of a task's own
         duration before it counts as eligible, covering the lag between a gap being detected and
-        Russell actually opening the worker tab), `exclude` (calendar names to leave out of the gap
-        check, e.g. a read-only subscription). Called by the poller after construction; harmless
-        with no block at all."""
+        Russell actually opening the worker tab), `lookback_days` (default 365 — how far back the
+        queued scan reaches, so a task that has sat unstarted for months keeps re-surfacing rather
+        than dropping out of view; raise it toward the Graph ceiling of 1825 to widen that margin),
+        `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription).
+        Called by the poller after construction; harmless with no block at all."""
         block = self._block(cfg.get("repo"))
         self.calendar = self._str_knob(block, "calendar") or self.calendar
         self.lookahead_hours = self._int_knob(block, "lookahead_hours", self.lookahead_hours)
         self.buffer_minutes = self._int_knob(block, "buffer_minutes", self.buffer_minutes)
+        self.lookback_days = self._int_knob(block, "lookback_days", self.lookback_days)
         self.exclude = self._list_knob(block, "exclude")
 
     @staticmethod
@@ -107,8 +113,13 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- reads
     def _due_tasks(self):
         """Every due (start date today-or-earlier) task on the configured calendar, regardless of
-        current gap — the full candidate set. Raises ProviderError on an auth/API failure."""
-        res = run_node([self.calendarjs, "--list-due-tasks", f"--calendar={self.calendar}", "--json"])
+        current gap — the full candidate set. `lookback_days` bounds how far back the scan reaches
+        (calendar.js requires a finite window and Graph caps it at 1825 days), set well past a
+        month so a task that sits unstarted for a long stretch keeps re-surfacing instead of
+        silently dropping off once it ages out of the window. Raises ProviderError on an auth/API
+        failure."""
+        res = run_node([self.calendarjs, "--list-due-tasks", f"--calendar={self.calendar}",
+                        f"--lookback-days={self.lookback_days}", "--json"])
         if res.returncode != 0:
             raise ProviderError(f"physical-task enumerate failed (auth?): {res.stderr.strip()[:300]}",
                                 kind="auth")
