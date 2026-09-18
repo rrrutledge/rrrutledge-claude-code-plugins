@@ -1,10 +1,12 @@
 """trello poller adapter — outreach boards via the `trello` skill's trello_utils.py (Trello REST).
 
-All Trello mechanics live HERE, alongside the prose contract in `trello-provider.md`: locating
-trello_utils.py, reading the `providers.trello` board config out of `.claude/drainer.local.md`, the
-Start-date-as-queue enumerate, the `trello-<slug>-<last6>` id scheme, and the captured item shape. The
-poller (`scripts/run-poller.py`) loads this adapter dynamically and drives it through the
-`ProviderBase` interface — it contains no Trello specifics.
+All Trello mechanics live HERE. The prose describing this adapter's behavior — config parsing, the
+Start-date-as-queue enumerate, the ranking bands, and the `trello-<slug>-<last6>` id scheme — is the
+companion `trello-provider.md` sibling `trello-queue-model.md`; the worker-facing half (how to act on
+one card and CLEAR it) is `trello-provider.md`. This covers locating trello_utils.py, reading the
+`providers.trello` board config out of `.claude/drainer.local.md`, the Start-date-as-queue enumerate,
+the id scheme, and the captured item shape. The poller (`scripts/run-poller.py`) loads this adapter
+dynamically and drives it through the `ProviderBase` interface — it contains no Trello specifics.
 
 Unlike the gmail/slack/outlook adapters (which enumerate a single inbox), Trello drains several boards,
 so this adapter takes a `configure(cfg)` pass from the poller to learn the repo. The board list is the

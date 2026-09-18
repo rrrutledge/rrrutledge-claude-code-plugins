@@ -1097,15 +1097,33 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     prompt_file = os.path.join(seeds, f"{iid}.prompt.txt")
     worker_core = os.path.join(SKILL_DIR, "engine", "worker-core.md")
     local_providers = os.path.join(local_dir, "providers")
+    # worker-core is the lean spine every worker follows; the situational procedures live in sibling
+    # engine/ files a worker pulls in by trigger. The auto-handle branch is the one trigger already
+    # known here (the item's triage), so name its file directly instead of leaving the worker to route
+    # to it from prose — mechanical loading the worker can't miss.
+    try:
+        with open(json_file, encoding="utf-8") as jf:
+            triage = (json.load(jf) or {}).get("triage")
+    except Exception:
+        triage = None
+    auto_handle = os.path.join(SKILL_DIR, "engine", "auto-handle.md")
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are a drainer worker handling ONE item. Read `~/.claude/CLAUDE.md`, then read "
-            f"`{worker_core}` in full and follow it exactly — top to bottom, including the "
-            "auto-handle branch at the top and the close-up steps at the end — for the single "
-            f"captured item at `{json_file}`.\n"
+            f"`{worker_core}` in full and follow it exactly — top to bottom, including the close-up "
+            f"steps at the end — for the single captured item at `{json_file}`.\n"
             "The item's `source` field names the provider — read its `<source>-provider.md` (in "
             f"`{PROVIDERS_DIR}`, or `{local_providers}` for a machine-local provider) for its "
             "CLEAR and DRAFT-MODE and use them. Draft-only: never send or post.\n"
+        )
+        if triage == "auto-handle":
+            f.write(
+                "This item's `triage` is `auto-handle` — a standing rule Russell decided in advance. "
+                f"Read `{auto_handle}` and follow it (act → CLEAR → stamp disposition → queue the "
+                "digest entry → close up), instead of the needs-you flow, unless it tells you to fall "
+                "back to needs-you.\n"
+            )
+        f.write(
             # Repo-tracked config the item's handling depends on — above all `initiatives/<slug>.md`
             # for a Trello card's program context (per the provider doc's INITIATIVE-LOOKUP) — is read
             # from the merged-main config repo, not the working directory, so a merged config change is

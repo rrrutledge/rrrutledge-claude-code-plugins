@@ -9,32 +9,8 @@ All Trello reads and mutations go through the **`trello`** skill's `trello_utils
 The credentials sit in the environment, so a raw `curl` to `api.trello.com` is tempting; it skips the shared auth, timeout, and read-after-write verification, and a raw write is blocked by the safe-compounds hook, which points back to `trello_utils`.
 Implements `../engine/provider.md`; classify by `../engine/triage.md`. id prefix: `trello-`.
 
-## Config
-- **Boards** - the single source of truth is `<repo>/trello-boards.yaml` (a `boards:` list of `{name, id}`), the same registry the `trello-outreach` skill reads.
-  The drainer drains **every** board in it, so adding a board is a one-file edit.
-  (Legacy fallback: a `providers.trello.boards` list in `.claude/drainer.local.md` if no registry file exists.)
-  - **Format the adapter parses:** the poller runs on bare stdlib Python (no PyYAML), so the adapter extracts boards by a fixed indent convention rather than full YAML - each board is `  - name:` at **two-space** indent with its `    id:` at **four-space** indent.
-    Keep that shape.
-    Any deeper per-board fields (`purpose`, `template_cards`, …) are free-form and ignored by the drainer.
-- **Initiatives** - shared outreach programs many cards belong to.
-  The **registry is the `initiatives/` folder** in the repo: one `initiatives/<slug>.md` per program (a file existing ⇒ the initiative exists - no central list to maintain).
-  The file either holds the content inline or, via a `source:` frontmatter pointer, redirects to where the content lives (a Confluence/other URL).
-  See `initiative-doc-template.md` (in this skill) for the two shapes - source-stub vs inline-content.
-  A card is tagged with an initiative two ways (a per-card tag wins over the board default):
-  - **Per-card** - a Trello **yellow label** (yellow is the initiative color).
-    The adapter resolves it: label name → slug → `initiatives/<slug>.md`.
-    The yellow label is held out of contact classification, so it's never mistaken for a contact name.
-  - **Board default** - an `initiative: <slug>` field on a board entry in `trello-boards.yaml` (every card on that board inherits it - best when the whole board is one program).
-    The four-space `initiative:` field is parsed by the adapter alongside `id`.
-    The adapter writes the resolved slug as `initiative` on the item.
-    See INITIATIVE-LOOKUP for loading the content and STAGE-PLAYBOOK for the generic per-stage activity.
-- Drainer knobs in `.claude/drainer.local.md` → `providers.trello`:
-  - `skip_lists` - terminal/parking lists to ignore (e.g. Abandoned, Finished, Adopted, Templates).
-  - `skip_labels` - labels whose cards are suppressed (default `[Blocked]` → hides ⛔ Blocked cards).
-    Matched as a case-insensitive substring, so `blocked` catches `⛔ Blocked`.
-  - `status_labels` - dependency-state labels held out of contact classification (default `[Blocked, Waiting]`), so a ⛔/⏳ label is never read as a person's name.
-  - `label_vocab` - `{channels: [...], features: [...]}`; any label not in those is a contact name.
-    Credentials: `TRELLO_API_KEY` / `TRELLO_TOKEN` in the environment (used by the `trello` skill).
+How the adapter reads config (boards registry, initiative tagging, drainer knobs) and how it selects and ranks startable cards lives in the companion **`trello-queue-model.md`** - poller/adapter-facing detail a worker acting on one card never needs, since the card arrives already selected, parsed (`contacts`, `channelLabel`, `initiative`), and ranked in its item JSON.
+The rest of this file is worker-facing: how to act on one card and CLEAR it.
 
 ## AUTH-GLANCE
 Confirm `TRELLO_API_KEY`/`TRELLO_TOKEN` are set.
@@ -65,37 +41,12 @@ The push only fires when *a worker* finishes the upstream card through this flow
 The poller adapter's `_enumerate` therefore also runs `trello_utils.sweep_unblock(board_ids, session)` **once per cycle across every board in the registry** (not per board) as a pull backstop: one combined scan (2 read calls per board, not one per blocker) that frees any card whose *every* named blocker is already done, wherever it lives.
 It's a no-op when nothing needs freeing, so a blocked card is guaranteed to resurface once its blockers finish - no one has to remember to call cascade_unblock, and cross-board blocking just works.
 
-## ENUMERATE
-Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), and are **startable** - Start now-or-earlier, or no Start at all.
-A future Start is the only thing that holds a card back.
-Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
-
-Rank is `(priority band, level band, referral band, date)`, all descending - level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
-The order of those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
-A Job Search Outreach card's band reflects its card type.
-A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
-An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
-Every other board carries neither label and orders purely by date.
-The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
-
-A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores.
-Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; only a card whose desc contains `IC-level` drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
-
-The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
-See the adapter's `_referral_band`.
-The priority, referral, and 👤 Contact labels, like ⛔/⏳ status labels, are held out of the contact parse so none is read as a person.
-
-Build a stable id: `trello-<card-name-slug>-<last6 of cardId>-<startYYYYMMDDHHMM|nodue>` where the stamp is the card's Start to minute precision, or the fixed sentinel `nodue` when it has none.
-That stamp is part of the id on purpose: a card recurs every cycle (a nudge or CLEAR bumps its Start out), and seen-state keeps a drained id forever, so without the stamp a card would be marked seen on its first drain and never resurface.
-Carrying the time-of-day and not just the date lets a deliberate same-day reschedule (morning to afternoon) mint a fresh id and dispatch again that day, while a card at its default creation time keeps one id per calendar day.
-Parse each card's labels with `label_vocab` into channel / features / contacts (⛔/⏳ status labels are held out) so the worker knows where the conversation lives, and resolve the card's `initiative` (the initiative-colored label's slug, else the board default).
-
 ## CAPTURE (needs-you)
 The card itself is the item, and **we own it** - unlike inbound mail/Teams, the same card recurs every follow-up, so the card is a durable cache for everything needed to act.
 
 **The card is already protected against a duplicate worker - start research directly, nothing needs claiming first.**
 The poller records this card's id in seen-state the moment it dispatches this session, and every later cycle drops the card as already-seen for as long as its go-live date holds.
-Only a CLEAR mints a fresh id - the go-live date is part of the id (see ENUMERATE), and CLEAR is what bumps it out - so the card resurfaces on its new date, never while this work is in flight.
+Only a CLEAR mints a fresh id - the go-live date is part of the id (see the id scheme in `trello-queue-model.md`), and CLEAR is what bumps it out - so the card resurfaces on its new date, never while this work is in flight.
 
 **Leave the Start date untouched until CLEAR.**
 Bumping it to "claim" the card forges the very id CLEAR is meant to mint later - one seen-state never recorded - so the next cycle reads a brand-new item and spawns a second worker on top of this one.
@@ -195,7 +146,7 @@ This applies to any board, not just outreach: a personal to-do that repeats ("ca
 
 On CLEAR, once the work for this occurrence is done, **do not** move a `Recurs:` card to Abandoned or Finished.
 Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the usual dated comment.
-The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see ENUMERATE), so this occurrence and the next one are never confused in seen-state.
+The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
 
 A `Recurs:` card is never `stop`ped for being "done" - completing one occurrence isn't the end of the task, only this cycle of it.
 `stop` still applies if Russell explicitly says to abandon the recurring task altogether (clear the `Recurs:` line too, so it can't come back by mistake).
