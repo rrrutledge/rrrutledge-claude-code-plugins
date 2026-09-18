@@ -66,6 +66,11 @@
       "description": "Append rows to a Google Sheet, or read a range's values, via the Sheets API — no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API."
     },
     {
+      "name": "google-forms",
+      "source": "./plugins/google-forms",
+      "description": "Create a Google Form via the Forms API - no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it."
+    },
+    {
       "name": "mail-filters",
       "source": "./plugins/mail-filters",
       "description": "Russell's calibrated strategy for mail filters/rules that auto-archive never-process mail at the server before it reaches the drainer. Teaches the phrase-selection craft (broad enough to recur across senders, strict enough to never bury wanted mail) and the create/delete mechanics for Gmail filters and Outlook rules."

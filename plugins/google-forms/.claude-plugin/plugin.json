@@ -1,0 +1,9 @@
+{
+  "name": "google-forms",
+  "version": "1.0.0",
+  "description": "Create a Google Form via the Forms API - no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
