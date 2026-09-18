@@ -91,6 +91,7 @@ Sentence length and rhythm are drafting judgment rather than a decidable check, 
 **Bold lead-ins on bullets.**
 Start each bullet with a bold 4-7 word key phrase, then the detail.
 Put an intro sentence above a list, with a blank line before the list.
+A list of named people or entities (a per-contact status roster) bolds just the name; let the sentence that follows carry the status.
 
 **Plain words over corporate and AI filler.**
 **Check:** "leverage" as a verb, "streamline", "as per", "kindly", "delve", "furthermore", "moreover", "I wanted to reach out", "I hope this message finds you well", "please don't hesitate to", "I'm excited to share", "honestly" as a hedge opener.
