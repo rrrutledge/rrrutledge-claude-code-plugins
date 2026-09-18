@@ -323,6 +323,14 @@ class Provider(ProviderBase):
         return False
 
     @staticmethod
+    def _is_contact_card(card):
+        """True if the card is a 👤 Contact person-follow-up card. A person card lives in the
+        Identified intake list throughout its life and advances by its Start-date nudge cadence, not by
+        moving list — so telling it apart from a fresh application card sitting in the same list needs
+        this label check, not the card's list."""
+        return any(_CONTACT_RE.match(l.get("name") or "") for l in card.get("labels", []))
+
+    @staticmethod
     def _parse_dt(value):
         """Parse a Trello date field (an ISO-8601 string) to an aware datetime, or None if absent/bad."""
         if not value:
@@ -378,6 +386,17 @@ class Provider(ProviderBase):
             # cards ever carry that line (see _level_band's docstring), so this suppresses nothing else.
             # Remove this block to reopen lower-level job cards to the drain queue.
             if "IC-level" in (card.get("desc") or ""):
+                continue
+            # New-application pause: while Russell preps for his in-flight interviews, don't hand over a
+            # brand-new job he hasn't touched - anything still sitting in the Identified intake list that
+            # isn't a person follow-up. That covers the auto-sourced application cards (🎯 P1/P2/P3) and
+            # the weekly job-board sweep card; they stay on the board for him to work by hand, they just
+            # aren't dispatched to a worker. A 👤 Contact follow-up keeps its own nudge cadence even while
+            # it sits in Identified, and every application already advanced past Identified (Applied /
+            # Reached Out onward) keeps draining normally. Only the Job Search Outreach board has an
+            # Identified list, so this suppresses nothing on any other board. Remove this block to resume
+            # starting fresh applications.
+            if "identified" in list_name.lower() and not self._is_contact_card(card):
                 continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
