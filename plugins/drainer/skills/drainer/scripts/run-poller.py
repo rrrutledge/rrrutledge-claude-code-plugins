@@ -6,7 +6,9 @@ for exactly three things, each a `claude -p` call sharing a cached general-rules
 call per new item (the needs-you / fyi / junk judgment, per engine/triage.md), one **security screen**
 call per new item triage didn't already bucket as junk (a separate input-guardrail pass, per
 engine/screen.md, so a classification call can't crowd out the guardrail), and the per-item **worker**
-session (the actual reply/work, draft-only).
+session (the actual reply/work, draft-only). An item's triage and screen verdicts are cached, so an item
+the dispatch step holds across cycles is judged once; and when the background account is out of usage a
+circuit breaker skips the AI step until the account can serve calls again.
 
 The orchestration below is **provider-agnostic**: it reads which providers are enabled from
 `.claude/drainer.local.md` and drives each through a small adapter (enumerate / stable_id / capture).
@@ -24,6 +26,7 @@ Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
 """
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -33,7 +36,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
@@ -42,10 +45,16 @@ sys.path.insert(0, SCRIPT_DIR)
 from provider_base import run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent, band_rank, slug  # noqa: E402  (subprocess helper + typed provider failure)
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
+import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 HEALTH_FILE = "provider-health.json"
 HANDLED_FILE = "reconciled.json"
+VERDICTS_FILE = "judged-verdicts.json"
+BACKOFF_FILE = "background-backoff.json"
+# How long a cached triage / screen verdict stays good. A held item is re-judged at most this often, so a
+# rubric or context.md change reaches items that have sat held for days without paying a call per cycle.
+VERDICT_TTL = timedelta(hours=24)
 # A page-size ceiling for each provider's own API list call — not a per-cycle work throttle. There is
 # no such throttle: every cycle enumerates everything currently eligible from every source, and
 # target_open_tabs is the only thing that gates how much of it actually gets dispatched (held items
@@ -135,6 +144,119 @@ def record_heartbeat(health):
     h["last_run_ts"] = now
     h["last_drained_ts"] = now
     health[POLLER_KEY] = h
+
+
+# ---------------------------------------------------------------------------- judged-verdict cache
+#
+# A needs-you item the dispatch step can't place (target_open_tabs reached, or an earlier item from the
+# same correspondent still open) is left unrecorded so it re-enumerates next cycle - and would be triaged
+# and screened all over again, for as long as it stays held. Each real model verdict is persisted here
+# instead, keyed by item id, so a held item is judged once and later cycles read the answer back. An entry
+# is good only while the text the model saw is unchanged (a chat whose unread span grew is a new question)
+# and only for VERDICT_TTL. Only verdicts a model actually returned are stored: the fail-safe default for a
+# skipped item and anything that landed in an `unavailable` set are not verdicts, so they are retried.
+
+def content_hash(text, subject, sender):
+    """Fingerprint of everything the triage and screen calls read about an item."""
+    return hashlib.sha256(json.dumps([text or "", subject or "", sender or ""]).encode("utf-8")).hexdigest()
+
+
+class VerdictCache:
+    def __init__(self, runtime_dir, persist=True):
+        self.path = os.path.join(runtime_dir, VERDICTS_FILE)
+        self.persist = persist  # a dry run reads the cache but never writes it
+        self.dirty = False
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                data = json.load(f)
+            self.entries = data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            self.entries = {}
+
+    @staticmethod
+    def _fresh(record, now):
+        try:
+            if now - datetime.fromisoformat(record["ts"]) < VERDICT_TTL:
+                return record["verdict"]
+        except (KeyError, TypeError, ValueError):
+            pass
+        return None
+
+    def lookup(self, item_id, item_hash, now):
+        """(triage_verdict, screen_verdict) still good for this item's current content; None for each that
+        is missing, expired, or was judged against different content."""
+        entry = self.entries.get(item_id)
+        if not isinstance(entry, dict) or entry.get("hash") != item_hash:
+            return None, None
+        return self._fresh(entry.get("triage"), now), self._fresh(entry.get("screen"), now)
+
+    def record(self, item, item_hash, now, triage=None, screen=None):
+        entry = self.entries.get(item["_id"])
+        if not isinstance(entry, dict) or entry.get("hash") != item_hash:
+            entry = {"source": item["_source"], "hash": item_hash}  # new content: earlier verdicts are void
+        stamp = now.isoformat()
+        if triage is not None:
+            entry["triage"] = {"verdict": triage, "ts": stamp}
+        if screen is not None:
+            entry["screen"] = {"verdict": screen, "ts": stamp}
+        self.entries[item["_id"]] = entry
+        self.dirty = True
+
+    def prune(self, seen_by_source, now):
+        """Drop entries whose item is now recorded seen (dispatched, so never judged again) and entries with
+        nothing left in date, keeping the file to the items currently held."""
+        for item_id, entry in list(self.entries.items()):
+            live = isinstance(entry, dict) and item_id not in seen_by_source.get(entry.get("source"), {}) \
+                and (self._fresh(entry.get("triage"), now) or self._fresh(entry.get("screen"), now))
+            if not live:
+                del self.entries[item_id]
+                self.dirty = True
+
+    def save(self):
+        if self.persist and self.dirty:
+            write_json_atomic(self.path, self.entries)
+            self.dirty = False
+
+
+# ---------------------------------------------------------------------------- background-account circuit breaker
+#
+# When the background account is out of usage (or its login lapsed) every triage and screen call comes
+# back refused, and retrying each held item every cycle only burns the calls that would have succeeded
+# once the account is back. The first refusal in a cycle trips this breaker: the cycle's remaining calls
+# are skipped, and the time the account can next serve a call is persisted so later cycles skip the AI
+# step outright until then (the first call after that time probes whether it is back).
+
+class UsageBreaker:
+    def __init__(self, runtime_dir=None, persist=True):
+        self.path = os.path.join(runtime_dir, BACKOFF_FILE) if runtime_dir else None
+        self.persist = persist and self.path is not None
+        self.tripped = False  # True once the AI step must be skipped this cycle
+        self.until = None
+        self.kind = None
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                state = json.load(f)
+            self.until, self.kind = datetime.fromisoformat(state["until"]), state.get("kind")
+        except (OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
+
+    def check(self, now):
+        """The time a persisted backoff still runs until (and trips the breaker), or None once it has passed."""
+        if self.until and now < self.until:
+            self.tripped = True
+            return self.until
+        return None
+
+    def trip(self, kind, until, message):
+        self.tripped, self.until, self.kind = True, until, kind
+        if self.persist:
+            write_json_atomic(self.path, {"until": until.isoformat(), "kind": kind, "message": message,
+                                          "set_ts": datetime.now(timezone.utc).isoformat()})
+
+
+def _local_time_str(when):
+    """A moment as Central-style local time with the zone named (times shown to the user are never raw UTC)."""
+    return when.astimezone().strftime("%b %d %I:%M %p %Z").replace(" 0", " ")
 
 
 # read_config / parse_provider_names live in drainer_config.py — shared with the digest launcher so
@@ -387,6 +509,72 @@ class TriageUnavailable(Exception):
     of the cycle's dispatch down with it."""
 
 
+class UsageLimitReached(TriageUnavailable):
+    """The background account refused the call outright: it is out of usage, or its login lapsed. Unlike
+    any other TriageUnavailable this is not about one item - every further call would be refused too - so
+    the batch runner stops launching calls, and `retry_at` says when the account can next serve one."""
+
+    def __init__(self, message, kind, retry_at):
+        super().__init__(message)
+        self.kind, self.retry_at = kind, retry_at
+
+
+class _BreakerSkip(TriageUnavailable):
+    """An item whose call was never launched because the breaker tripped earlier in the cycle."""
+
+
+def _raise_if_account_refused(res, item_id, what):
+    """Turn a refusal from the background account (see usage_limit.detect) into UsageLimitReached. Checked
+    ahead of the exit-code and parsing branches because the refusal arrives either way: as an is_error
+    envelope on a zero exit, or on stderr with a nonzero one."""
+    found = usage_limit.detect(res.stdout, res.stderr)
+    if found:
+        kind, message = found
+        retry_at = usage_limit.retry_at(kind, message, datetime.now().astimezone())
+        raise UsageLimitReached(f"{item_id}: {what} call refused ({kind}): {message}", kind, retry_at)
+
+
+def _run_per_item(items, call, breaker, label, on_unavailable):
+    """Run `call(item)` for every item: the first alone (so it finishes writing the shared prompt brain
+    into the API cache), the rest concurrently, bounded by TRIAGE_PARALLEL_CALLS. Returns
+    (results_by_item_id, unavailable_ids).
+
+    A TriageUnavailable on one item is that item's alone: it is reported and lands in unavailable_ids.
+    A UsageLimitReached trips `breaker` instead, and every call not yet launched is skipped straight into
+    unavailable_ids without spending a launch - so a cycle that finds the account out of usage wastes at
+    most the calls already in flight."""
+    results, unavailable = {}, set()
+
+    def guarded(it):
+        if breaker.tripped:
+            raise _BreakerSkip(f"{it['_id']}: background account backed off")
+        return call(it)
+
+    def settle(it, get):
+        try:
+            results[it["_id"]] = get()
+        except _BreakerSkip:
+            unavailable.add(it["_id"])
+        except UsageLimitReached as e:
+            if not breaker.tripped:
+                breaker.trip(e.kind, e.retry_at, str(e))
+                print(f"{label}: {e} — background account backed off until "
+                      f"{_local_time_str(e.retry_at)}; skipping this cycle's remaining calls.")
+            unavailable.add(it["_id"])
+        except TriageUnavailable as e:
+            print(f"{label}: {e} — {on_unavailable}")
+            unavailable.add(it["_id"])
+
+    first, rest = items[0], items[1:]
+    settle(first, lambda: guarded(first))
+    if rest:
+        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
+            futures = {pool.submit(guarded, it): it for it in rest}
+            for fut in as_completed(futures):
+                settle(futures[fut], fut.result)
+    return results, unavailable
+
+
 def _triage_payload_item(item, preview, signal):
     """The single item dict triage sends the model: the envelope fields plus the adapter's body text, with
     any per-item `triage_signal` (e.g. `{"selfEmail": True}` for a Russell-to-Russell note) merged on top so
@@ -434,6 +622,7 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
         raise TriageUnavailable(f"{item['_id']}: triage call timed out after 420s (likely a network drop)")
     except OSError as e:
         raise TriageUnavailable(f"{item['_id']}: couldn't launch the triage call: {e}")
+    _raise_if_account_refused(res, item["_id"], "triage")
     if res.returncode != 0:
         raise TriageUnavailable(f"{item['_id']}: triage call failed: {res.stderr.strip()[:400]}")
     result = res.stdout
@@ -460,7 +649,7 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     raise TriageUnavailable(f"{item['_id']}: triage returned no JSON for this item:\n{result[:400]}")
 
 
-def triage(items, repo, local_dir, model, providers_by_name, bg_config_dir=None):
+def triage(items, repo, local_dir, model, providers_by_name, bg_config_dir=None, breaker=None):
     """One `claude -p` call PER item, not one batched call for the whole cycle — with ~30 items and
     hundreds of lines of rules in a single prompt, attention spread thin enough that a correct,
     already-present general rule got skipped. One item + the general rules, with full attention, is
@@ -478,35 +667,21 @@ def triage(items, repo, local_dir, model, providers_by_name, bg_config_dir=None)
     fail-safe to an id in `unavailable_ids` — that fail-safe is for the model quietly skipping an
     item inside an otherwise-working call, not for the triage subsystem being down; forcing a
     needs-you dispatch here would act on a guess during an outage instead of just retrying next
-    cycle once the network's back."""
+    cycle once the network's back.
+
+    `breaker` (a UsageBreaker, shared with screen_items) stops the cycle's calls once the background
+    account refuses one for lack of usage: every item not yet judged lands in `unavailable_ids`, held and
+    retried once the account is back. Omitted, the breaker only lives for this call."""
     if not items:
         return {}, set()
+    breaker = breaker or UsageBreaker()
+    if breaker.tripped:
+        return {}, {it["_id"] for it in items}
     brain = _triage_brain(items, repo, local_dir, providers_by_name)
-    verdicts, unavailable = {}, set()
-
-    first, rest = items[0], items[1:]
-    try:
-        v = _triage_one(first, brain, repo, model, providers_by_name, bg_config_dir)
-        if v.get("id"):
-            verdicts[v["id"]] = v
-    except TriageUnavailable as e:
-        print(f"triage: {e} — skipping this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-
-    if rest:
-        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
-            futures = {pool.submit(_triage_one, it, brain, repo, model, providers_by_name, bg_config_dir): it for it in rest}
-            for fut in as_completed(futures):
-                it = futures[fut]
-                try:
-                    v = fut.result()
-                except TriageUnavailable as e:
-                    print(f"triage: {e} — skipping this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
-                    continue
-                if v.get("id"):
-                    verdicts[v["id"]] = v
-    return verdicts, unavailable
+    results, unavailable = _run_per_item(
+        items, lambda it: _triage_one(it, brain, repo, model, providers_by_name, bg_config_dir),
+        breaker, "triage", "skipping this item this cycle, will retry.")
+    return {v["id"]: v for v in results.values() if v.get("id")}, unavailable
 
 
 # ---------------------------------------------------------------------------- security screen (the AI step)
@@ -566,6 +741,7 @@ def _screen_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
         raise TriageUnavailable(f"{item['_id']}: screen call timed out after 420s (likely a network drop)")
     except OSError as e:
         raise TriageUnavailable(f"{item['_id']}: couldn't launch the screen call: {e}")
+    _raise_if_account_refused(res, item["_id"], "screen")
     if res.returncode != 0:
         raise TriageUnavailable(f"{item['_id']}: screen call failed: {res.stderr.strip()[:400]}")
     result = res.stdout
@@ -596,7 +772,7 @@ def _items_needing_screen(items, verdicts):
     return [it for it in items if verdicts.get(it["_id"], {}).get("bucket") != "junk"]
 
 
-def screen_items(items, repo, local_dir, model, providers_by_name, bg_config_dir=None):
+def screen_items(items, repo, local_dir, model, providers_by_name, bg_config_dir=None, breaker=None):
     """Run the dedicated security screen over the cycle's AI-triaged items — one claude -p per item, the
     same first-alone-then-parallel cache pattern `triage()` uses (first primes the shared brain into the
     prompt cache; the rest read it concurrently, capped at TRIAGE_PARALLEL_CALLS).
@@ -604,30 +780,19 @@ def screen_items(items, repo, local_dir, model, providers_by_name, bg_config_dir
     Returns (verdicts_by_id, unavailable_ids), keyed by the KNOWN item id (not any id the model echoes),
     so a verdict can never be mis-attributed. An item whose screen call failed or returned no usable
     verdict lands in unavailable_ids; the caller holds it out of dispatch (fail-closed), so nothing is ever
-    acted on that this pass could not screen."""
+    acted on that this pass could not screen.
+
+    `breaker` is the same UsageBreaker triage() got: once the background account is out of usage, no
+    further screen call is launched and every remaining item is held (unavailable)."""
     if not items:
         return {}, set()
+    breaker = breaker or UsageBreaker()
+    if breaker.tripped:
+        return {}, {it["_id"] for it in items}
     brain = _screen_brain(items, local_dir)
-    verdicts, unavailable = {}, set()
-
-    first, rest = items[0], items[1:]
-    try:
-        verdicts[first["_id"]] = _screen_one(first, brain, repo, model, providers_by_name, bg_config_dir)
-    except TriageUnavailable as e:
-        print(f"screen: {e} — holding this item this cycle, will retry.")
-        unavailable.add(first["_id"])
-
-    if rest:
-        with ThreadPoolExecutor(max_workers=min(TRIAGE_PARALLEL_CALLS, len(rest))) as pool:
-            futures = {pool.submit(_screen_one, it, brain, repo, model, providers_by_name, bg_config_dir): it for it in rest}
-            for fut in as_completed(futures):
-                it = futures[fut]
-                try:
-                    verdicts[it["_id"]] = fut.result()
-                except TriageUnavailable as e:
-                    print(f"screen: {e} — holding this item this cycle, will retry.")
-                    unavailable.add(it["_id"])
-    return verdicts, unavailable
+    return _run_per_item(
+        items, lambda it: _screen_one(it, brain, repo, model, providers_by_name, bg_config_dir),
+        breaker, "screen", "holding this item this cycle, will retry.")
 
 
 def _apply_screen(it, screen_verdict):
@@ -1271,6 +1436,56 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     return requeued
 
 
+def judge_items(items, repo, cfg, providers_by_name, cache, breaker):
+    """The AI step for the cycle's AI-triaged items: triage, then the security screen, spending a call only
+    on what the verdict cache and the breaker don't already answer.
+
+    Each item's cached triage and screen verdicts are used as-is when its content is unchanged and they
+    are inside VERDICT_TTL; only the rest go to triage() / screen_items(). Real verdicts from those calls
+    are cached for later cycles. While the background account is backed off, an item with no usable cached
+    verdict is held (reported unavailable, exactly as a failed call is), and the cached ones still dispatch.
+
+    Returns (verdicts, triage_unavailable_ids, screen_verdicts, screen_unavailable_ids), the shapes triage()
+    and screen_items() return, so a cached verdict is indistinguishable from a fresh one downstream."""
+    now = datetime.now(timezone.utc)
+    bg_config_dir = cfg["background_config_dir"] or None
+    hashes, verdicts, screen_verdicts = {}, {}, {}
+    for it in items:
+        p = providers_by_name.get(it["_source"])
+        text = p.triage_text(it) if p else (it.get("preview") or "")
+        hashes[it["_id"]] = content_hash(text, it.get("subject"), it.get("from"))
+        cached_triage, cached_screen = cache.lookup(it["_id"], hashes[it["_id"]], now)
+        if cached_triage:
+            verdicts[it["_id"]] = cached_triage
+        if cached_screen:
+            screen_verdicts[it["_id"]] = cached_screen
+
+    to_triage = [it for it in items if it["_id"] not in verdicts]
+    if breaker.tripped and to_triage:
+        print(f"background account backed off until {_local_time_str(breaker.until)} ({breaker.kind}); "
+              f"skipping AI triage, holding {len(to_triage)} item(s) with no cached verdict.")
+    fresh_verdicts, triage_unavailable_ids = triage(to_triage, repo, cfg["local_dir"], cfg["triage_model"],
+                                                    providers_by_name, bg_config_dir, breaker)
+    verdicts.update(fresh_verdicts)
+    for it in to_triage:
+        v = fresh_verdicts.get(it["_id"])
+        if v and v.get("bucket") and it["_id"] not in triage_unavailable_ids:
+            cache.record(it, hashes[it["_id"]], now, triage=v)
+
+    # The security screen is a SEPARATE pass (engine/screen.md), not a field folded into triage, so a
+    # classification call can never crowd out the guardrail. It gates dispatch fail-closed: an item it
+    # couldn't screen this cycle is held, never acted on. Skipped for items triage already bucketed junk
+    # (see _items_needing_screen).
+    to_screen = [it for it in _items_needing_screen(items, verdicts) if it["_id"] not in screen_verdicts]
+    fresh_screens, screen_unavailable_ids = screen_items(to_screen, repo, cfg["local_dir"], cfg["triage_model"],
+                                                         providers_by_name, bg_config_dir, breaker)
+    screen_verdicts.update(fresh_screens)
+    for it in to_screen:
+        if it["_id"] in fresh_screens:
+            cache.record(it, hashes[it["_id"]], now, screen=fresh_screens[it["_id"]])
+    return verdicts, triage_unavailable_ids, screen_verdicts, screen_unavailable_ids
+
+
 def collect_new(provider, cfg):
     """Enumerate a provider, stamp ids/source, drop already-seen; return (new_items, total, seen)."""
     raw = provider.enumerate(ENUMERATE_PAGE_SIZE)
@@ -1395,17 +1610,15 @@ def main():
     # --- one combined triage call over all sources (remaining items) ---
     prov = {p.name: p for p in providers}  # name -> adapter (also used below for cross-source dispatch)
     if ai_triage:
-        verdicts, triage_unavailable_ids = triage(ai_triage, repo, cfg["local_dir"], cfg["triage_model"], prov,
-                                                  cfg["background_config_dir"] or None)
-        # The security screen is a SEPARATE pass (engine/screen.md), not a field folded into triage, so a
-        # classification call can never crowd out the guardrail. It gates dispatch fail-closed below: an
-        # item it couldn't screen this cycle is held, never acted on.
-        #
-        # Skip it for items triage already bucketed junk (see _items_needing_screen).
-        to_screen = _items_needing_screen(ai_triage, verdicts)
-        screen_verdicts, screen_unavailable_ids = screen_items(to_screen, repo, cfg["local_dir"],
-                                                               cfg["triage_model"], prov,
-                                                               cfg["background_config_dir"] or None)
+        # Dry-run reads the verdict cache and the backoff but never writes either, like every other state file.
+        cache = VerdictCache(cfg["runtime_dir"], persist=not args.dry_run)
+        breaker = UsageBreaker(cfg["runtime_dir"], persist=not args.dry_run)
+        now = datetime.now(timezone.utc)
+        cache.prune(seen_by_source, now)
+        breaker.check(now)
+        verdicts, triage_unavailable_ids, screen_verdicts, screen_unavailable_ids = judge_items(
+            ai_triage, repo, cfg, prov, cache, breaker)
+        cache.save()
     else:
         verdicts, triage_unavailable_ids = {}, set()
         screen_verdicts, screen_unavailable_ids = {}, set()
@@ -1563,13 +1776,14 @@ def main():
         corr = provider.correspondent(it)
         if held_for_correspondent(corr, active_correspondents):
             # An earlier item from this correspondent is still open (a live worker, or one dispatched
-            # earlier this cycle). Leave this UNRECORDED so it re-enumerates next cycle; once that worker
-            # clears, the hold is gone and one tab has already read the full context.
+            # earlier this cycle). Leave this UNRECORDED so it re-enumerates next cycle (its verdicts are
+            # read back from the cache, not re-judged); once that worker clears, the hold is gone and one
+            # tab has already read the full context.
             held += 1
             held_corr += 1
             continue
         if live_tabs is None or live_tabs >= cfg["target_open_tabs"]:
-            held += 1  # leave UNRECORDED -> retried next cycle (fail-closed: a failed scan holds too)
+            held += 1  # leave UNRECORDED -> re-enumerated next cycle, its verdicts read back from the cache (fail-closed: a failed scan holds too)
             continue
         it["_correspondent"] = corr
         json_file = provider.capture(it, iid, cfg["runtime_dir"])

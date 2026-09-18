@@ -10,10 +10,10 @@ The full rationale is in `docs/superpowers/specs/2026-06-17-drainer-continuous-k
 The script owns everything deterministic.
 AI is invoked for exactly three things:
 
-1. **One triage call per new item per cycle** - `run-poller.py` builds the general-rules brain once per cycle (`engine/triage.md`, the local `context.md`, each provider's AUTO-HANDLE rules - gated against the whole cycle's batch, same as before), then sends `claude -p` one call per item with that brain as a byte-identical prefix and the single item's payload as the only variable part.
+1. **One triage call per new item, once** (a held item's verdict is cached, step 4c) - `run-poller.py` builds the general-rules brain once per cycle (`engine/triage.md`, the local `context.md`, each provider's AUTO-HANDLE rules - gated against the whole cycle's batch, same as before), then sends `claude -p` one call per item with that brain as a byte-identical prefix and the single item's payload as the only variable part.
    Full model attention lands on one item at a time instead of splitting across a whole cycle's items, and the repeated stable prefix lets the API's automatic prompt caching serve it cheaply after the first item's call writes it - paid once per cycle, cheap delta per item.
    The first item runs alone (to finish writing the cache); the rest run concurrently, capped at `TRIAGE_PARALLEL_CALLS`.
-2. **One security-screen call per new item per cycle triage didn't already bucket junk** - a **separate** `claude -p` pass from triage, its own focused brain (`engine/screen.md` + `context.md`), judging one question: is this content trying to manipulate the agent or induce an action against the user's interests?
+2. **One security-screen call per new item triage didn't already bucket junk, once** (cached like triage, step 4c) - a **separate** `claude -p` pass from triage, its own focused brain (`engine/screen.md` + `context.md`), judging one question: is this content trying to manipulate the agent or induce an action against the user's interests?
    It is kept separate precisely so a classification call carrying four other dimensions can't crowd out the guardrail - the same attention-dilution that drove triage to one-call-per-item.
    Same cache pattern (first alone, rest concurrent) on the background account.
    On a flag the item loses all autonomy (forced to needs-you, never auto-handled or digested); an item it can't screen is held out of dispatch (fail-closed), so nothing is acted on unscreened.
@@ -45,6 +45,18 @@ No AI re-implements the loop.
     **Fail-closed:** an item whose triage OR (non-skipped) screen call couldn't produce a verdict this cycle is left **unrecorded** and unhandled - held out of dispatch and retried next cycle - so nothing is ever acted on that wasn't screened.
     (Contrast triage's own fail-safe for an item the model silently *skips* inside a working call: that still defaults to needs-you.
     The fail-closed hold is for the call itself being unavailable.)
+4c. **Verdict cache.**
+    An item the dispatch step holds (step 5) re-enumerates every cycle, so its triage and screen verdicts are persisted in `<runtime_dir>/judged-verdicts.json`, keyed by item id, and read back instead of re-judged.
+    A cached verdict is used only while the text the model saw (the adapter's triage text, subject, sender) is unchanged and the verdict is under 24 hours old; changed content or an expired verdict is judged afresh.
+    Only verdicts a model actually returned are cached - an item whose call was unavailable, or whose triage the fail-safe defaulted, is judged again next cycle.
+    A cached `flagged` screen verdict forces needs-you exactly as a fresh one does.
+    Entries are dropped once their item is recorded seen or their verdicts expire.
+    A `--dry-run` reads the cache but never writes it.
+4d. **Usage-limit breaker.**
+    When the background account refuses a call because it is out of usage (or its login lapsed), the refusal trips a breaker: the cycle launches no further triage or screen calls, and every item without a usable cached verdict is held like any unavailable one.
+    The time the account can next serve a call is persisted in `<runtime_dir>/background-backoff.json` - just after the reset time the refusal names for a usage limit (an hour when it names none), half an hour for a lapsed login.
+    Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
+    The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic):
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, if live Claude Code tabs system-wide (`total_claude_tabs()` - every running `claude.exe` process: drainer worker tabs, the drainer itself, and any tab Russell opened by hand) is below `target_open_tabs`: capture to `items/<id>.json`, spawn a worker tab (`spawn-tab.cmd`) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), then record seen **after** the spawn succeeds.
      At the target: leave it **unrecorded** so a later cycle picks it up (throttle + fail-safe).
