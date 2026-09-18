@@ -2,7 +2,7 @@
 // authorization-code loopback flow: prints (and serves) a consent URL, captures the code on a local
 // callback, exchanges it for tokens, and caches them to ~/.claude/google-forms/oauth-token.json.
 //
-// Run via browser-chauffeur, which navigates to the printed URL — the account owner completes the
+// Run via browser-chauffeur, which navigates to the printed URL -the account owner completes the
 // consent themselves (pick the intended account), since granting a new scope to an app is their call
 // to make, not something driven on their behalf.
 //
@@ -39,5 +39,5 @@ const { buildOAuthClient, writeTokens, SCOPES, REDIRECT_URI } = require('./googl
     throw new Error('No refresh_token returned. Revoke prior access at https://myaccount.google.com/permissions and re-run so Google re-issues one.');
   }
   writeTokens(tokens);
-  console.log('Signed in — Forms API token cached. google-forms.js will run silently now.');
+  console.log('Signed in -Forms API token cached. google-forms.js will run silently now.');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

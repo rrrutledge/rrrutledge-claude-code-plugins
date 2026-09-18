@@ -1,6 +1,6 @@
-// Create and edit a Google Form via the official `googleapis` Forms v1 client (OAuth path — see
+// Create and edit a Google Form via the official `googleapis` Forms v1 client (OAuth path -see
 // google-forms-oauth.js). Creates the form, lays out instruction sections, and adds short-answer
-// questions — the reusable pieces the current toolset otherwise can't produce (it can create
+// questions -the reusable pieces the current toolset otherwise can't produce (it can create
 // Docs/Sheets/Slides, but not Forms).
 //
 // Create form:   node google-forms.js --create-form --title="..." [--document-title="..."]
@@ -9,7 +9,7 @@
 //
 // Add text:      node google-forms.js --add-text --form-id=<id> --title="Section heading"
 //                --description-file=<path to md/txt> [--index=N]
-//                (a TextItem — a heading + body block for instructions; the file's contents become
+//                (a TextItem -a heading + body block for instructions; the file's contents become
 //                 the body. Appends to the end of the form unless --index (0-based) is given. Repeat
 //                 to build several instruction sections.)
 //
@@ -19,16 +19,16 @@
 //                 unless --index is given.)
 //
 // Add file upload: node google-forms.js --add-file-upload --form-id=<id>
-//                (the Forms API cannot create a file-upload question — a documented, long-standing
+//                (the Forms API cannot create a file-upload question -a documented, long-standing
 //                 gap: https://issuetracker.google.com/issues/229136447. This command does not fail
 //                 silently; it prints the exact one-click steps to add the question by hand in the
 //                 Forms editor, and the form's edit URL, so the manual step is unmistakable.)
 //
 // Show form:     node google-forms.js --show-form --form-id=<id>
-//                (dumps the form's title and every item — index, type, title — for verification.)
+//                (dumps the form's title and every item -index, type, title -for verification.)
 //
 // Every read/write below goes through the official `googleapis` Forms v1 resource's typed
-// forms.create/forms.get/forms.batchUpdate methods — never a hand-built REST URL. A form is created
+// forms.create/forms.get/forms.batchUpdate methods -never a hand-built REST URL. A form is created
 // with only info.title/documentTitle (all forms.create accepts); every item is then added with a
 // follow-up batchUpdate, which is how the Forms API itself is shaped.
 
@@ -124,12 +124,12 @@ function showForm(form) {
 // broken request, guide the one manual step that adds it in the Forms editor.
 function fileUploadGuidance(formId) {
   console.log('The Forms API cannot create a file-upload question (issuetracker.google.com/issues/229136447).');
-  console.log('Add it by hand in the Forms editor — one question, ~30 seconds:');
+  console.log('Add it by hand in the Forms editor -one question, ~30 seconds:');
   console.log(`  1. Open ${editUrl(formId)}`);
   console.log('  2. Click "＋" (Add question), then the question-type dropdown → "File upload".');
   console.log('  3. Accept the "This form now needs Drive access" prompt (Forms auto-creates the destination folder in the owner\'s Drive).');
   console.log('  4. Set the file type (e.g. Video), max number of files, and max file size as needed.');
-  console.log('Every other part of the form — title, instruction sections, short-answer questions — is already scripted here.');
+  console.log('Every other part of the form -title, instruction sections, short-answer questions -is already scripted here.');
   console.log('Note: a file-upload question requires respondents to be signed in to a Google account.');
 }
 
@@ -162,6 +162,6 @@ function fileUploadGuidance(formId) {
     if (!args['form-id']) throw new Error('--form-id required');
     showForm(await getForm(formsClient, args['form-id']));
   } else {
-    throw new Error('Nothing to do — pass --create-form, --add-text, --add-short-answer, --add-file-upload, or --show-form');
+    throw new Error('Nothing to do -pass --create-form, --add-text, --add-short-answer, --add-file-upload, or --show-form');
   }
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

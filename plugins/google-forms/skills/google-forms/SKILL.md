@@ -1,9 +1,9 @@
 ---
 name: google-forms
-description: Create a Google Form via the Forms API — no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it. Use when building a Google Form for intake or a survey instead of clicking through the Forms UI.
+description: Create a Google Form via the Forms API - no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it. Use when building a Google Form for intake or a survey instead of clicking through the Forms UI.
 ---
 
-# Google Forms — Programmatic Form Creation via the Forms API
+# Google Forms - Programmatic Form Creation via the Forms API
 
 Create and lay out a Google Form through the Forms API's `forms.create` and `forms.batchUpdate` endpoints, using Google's own official Node client library (`googleapis`) rather than hand-built REST calls: `scripts/google-forms.js`.
 Builds the form, its instruction sections, and its short-answer questions in code, so an intake form or survey comes together without clicking through the Forms editor.

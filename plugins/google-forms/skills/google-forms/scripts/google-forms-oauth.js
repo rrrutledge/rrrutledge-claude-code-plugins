@@ -1,5 +1,5 @@
 // Shared OAuth2 client for the Google Forms API. Reuses the same Google Cloud OAuth "Desktop app"
-// client the `gmail` plugin's filter path already registered (GMAIL_OAUTH_CLIENT_ID/SECRET) — one
+// client the `gmail` plugin's filter path already registered (GMAIL_OAUTH_CLIENT_ID/SECRET) -one
 // OAuth client, many scopes; each token cache only holds the scopes it was consented for. This path
 // requests https://www.googleapis.com/auth/forms.body (create/edit form structure), which the other
 // Google clients' cached tokens were never asked for, so it keeps its own one-time sign-in and its
@@ -7,7 +7,7 @@
 // and google-sheets caches.
 //
 // Prerequisite: the Google Forms API must be enabled on the same Cloud project the client belongs to
-// (console.cloud.google.com/apis/library/forms.googleapis.com) — a one-time, per-project toggle,
+// (console.cloud.google.com/apis/library/forms.googleapis.com) -a one-time, per-project toggle,
 // unrelated to any single OAuth token.
 //
 // Secrets come from env vars (never a file): GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET (same
@@ -30,7 +30,7 @@ const TOKEN_PATH = path.join(DEP_HOME, 'oauth-token.json');
 // if run back to back.
 const REDIRECT_URI = 'http://localhost:8712/callback';
 // forms.body grants create + batchUpdate (structural edits) and forms.get (reading a form back). No
-// Drive scope is requested: the API cannot create the one item type — a file-upload question — that
+// Drive scope is requested: the API cannot create the one item type -a file-upload question -that
 // would produce a Drive upload folder, so there is nothing here for a Drive scope to reach.
 const SCOPES = ['https://www.googleapis.com/auth/forms.body'];
 
@@ -50,7 +50,7 @@ function buildOAuthClient() {
   if (!clientSecret) throw new Error('GMAIL_OAUTH_CLIENT_SECRET env var not set');
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri: REDIRECT_URI });
   // On a silent refresh the client emits 'tokens' with a fresh access_token (and usually no
-  // refresh_token — that only arrives on first consent). Merge so the refresh_token is never lost.
+  // refresh_token -that only arrives on first consent). Merge so the refresh_token is never lost.
   client.on('tokens', (tokens) => {
     writeTokens({ ...(readTokens() || {}), ...tokens });
   });
