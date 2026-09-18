@@ -44,7 +44,7 @@ Without this, config was read from whatever branch a human session left checked 
 
 Two things stay anchored to the **real** repo, on purpose:
 
-- **Runtime state** (`seen.json`, `provider-health.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
+- **Runtime state** (`seen.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
 - **Worker/digest cwd** - worker tabs run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
   A worker that must commit branches into its own worktree (per the `git-workflow` skill), so it never disturbs the config worktree.
   Repo-tracked config a worker needs (above all `initiatives/<slug>.md`) is read from the config repo, whose path the worker seed carries.
