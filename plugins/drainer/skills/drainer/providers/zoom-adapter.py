@@ -347,6 +347,18 @@ class Provider(ProviderBase):
         item.update({"from": topic, "subject": subject, "received": c.get("meetingStart"), "preview": preview})
         return item
 
+    def correspondent(self, item):
+        """No zoom item ever holds another out of dispatch: every candidate returns None.
+
+        The correspondent hold exists so a second message from one PERSON waits while an earlier one of
+        theirs is being worked, letting a single tab read both with full context. A meeting fans out into
+        one independent item per owner-assigned next step, each worked in whatever channel that step
+        implies (a different email, a different draft, a different board) - so there is no shared context
+        for one tab to gather across them, and each should dispatch on its own as tab slots allow rather
+        than one per cycle. The default identity keys on the item's `from`, which every candidate from a
+        meeting sets to the same meeting topic; returning None instead keeps the fan-out fanned out."""
+        return None
+
     def stable_id(self, item):
         topic = slug(item.get("topic"), 20)
         mh = _hash(item.get("meetingId"))
