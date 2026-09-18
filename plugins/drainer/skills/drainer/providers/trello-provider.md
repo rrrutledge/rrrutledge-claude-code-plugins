@@ -7,7 +7,8 @@ Start is the one date the queue reads (see STARTABLE-TASK MODEL): the "work-on-i
 It rides the single schedule with no special cadence.
 All Trello reads and mutations go through the **`trello`** skill's `trello_utils.py` - never the Trello REST API directly.
 The credentials sit in the environment, so a raw `curl` to `api.trello.com` is tempting; it skips the shared auth, timeout, and read-after-write verification, and a raw write is blocked by the safe-compounds hook, which points back to `trello_utils`.
-Implements `../engine/provider.md`; classify by `../engine/triage.md`. id prefix: `trello-`.
+Implements `../engine/provider.md`; classify by `../engine/triage.md`.
+id prefix: `trello-`.
 
 How the adapter reads config (boards registry, initiative tagging, drainer knobs) and how it selects and ranks startable cards lives in the companion **`trello-queue-model.md`** - poller/adapter-facing detail a worker acting on one card never needs, since the card arrives already selected, parsed (`contacts`, `channelLabel`, `initiative`), and ranked in its item JSON.
 The rest of this file is worker-facing: how to act on one card and CLEAR it.
@@ -37,7 +38,7 @@ When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-re
 When an upstream card is finished (moved to a terminal/skip list or archived), call `trello_utils.cascade_unblock(board_id, finished_card_id, session)`: it scans the board once, finds cards whose `Blocked-by:` names the finished card, and for each whose **last** blocker just cleared, strips its ⛔ label and sets **Start = today** so it surfaces on the next drain.
 (Phase 2 will add a second trigger - an inbound reply resolving a ⏳ card - to this same cascade.)
 
-The push only fires when *a worker* finishes the upstream card through this flow, and only looks within that one board - it's blind to a blocker finished any other way (Russell moving it by hand in Trello, a session that forgot the call) or living on a *different* board than the card it blocks (e.g. a resume-prep task on Personal Follow-Up blocking an application card on Job Search Outreach - a real case that surfaced in practice).
+The push only fires when *a worker* finishes the upstream card through this flow, and only looks within that one board - it's blind to a blocker finished any other way (Russell moving it by hand in Trello, a session that forgot the call) or living on a *different* board than the card it blocks (a task on one board blocking a card on another).
 The poller adapter's `_enumerate` therefore also runs `trello_utils.sweep_unblock(board_ids, session)` **once per cycle across every board in the registry** (not per board) as a pull backstop: one combined scan (2 read calls per board, not one per blocker) that frees any card whose *every* named blocker is already done, wherever it lives.
 It's a no-op when nothing needs freeing, so a blocked card is guaranteed to resurface once its blockers finish - no one has to remember to call cascade_unblock, and cross-board blocking just works.
 
@@ -58,7 +59,7 @@ Write `items/<id>.json`:
 `"start","url","contacts":[...],"channelLabel":"<Email|Teams|Slack|...>","initiative":"<slug|null>","ts":"<ISO now>" }`
 Then find the relevant **thread** (email / Teams / Slack) for the contact + channel and read it to decide the move - a card's `url`/description links to one specific message, not the whole conversation, so pull full context per **that source's own SITUATIONAL-CHECK guidance** before deciding the move (the counterparty may have replied since capture, or the user's own follow-up may still be unanswered - a clarifying question left hanging turns a "ready to act" card into one blocked on the other party; don't miss that).
 For **email** threads, additionally search the whole mailbox in both directions (incoming from the contact AND your sent replies) - recent messages may have been swept out of the inbox by a prior drain cycle:
-- **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive** (older items cleared before this behavior changed may still sit in Deleted Items).
+- **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive**, and some older cleared items sit in Deleted Items, so search there too.
 - **gmail**: search All Mail with no `in:` filter - CLEAR archives (not trashes), so everything is in All Mail.
 
 A card's last comment can also point to a different channel entirely than the one it's sitting in (a "DM me your X," a "connect A with B" that's really an email intro) - see `../engine/worker-core.md` §2, "An ask can hop channels," which every worker (Trello included) already follows.
@@ -138,10 +139,10 @@ A follow-up Russell actually sends is a needs-you item he already saw, never an 
 So a `nudged` card in the digest is always "checked, activity in flight, too early to act," never an unanswered card pushed without a follow-up going out.
 
 A ⏳ Waiting card nudges the same way - bump its **Start** (ping-back date) out.
-Whenever a card is **finished** (moved to a terminal/skip list), fire `trello_utils.cascade_unblock(board_id, finished_card_id, session)` so any ⛔ Blocked cards waiting on it are freed (⛔ stripped, Start set to today) on the spot.
+Whenever a card is **finished** (moved to a terminal/skip list), fire `trello_utils.cascade_unblock(board_id, finished_card_id, session)` so any ⛔ Blocked cards waiting on it are freed on the spot, as the STARTABLE-TASK MODEL's unblock section describes.
 
 ### Recurring tasks - one card, bumped forward, never archived
-A card whose description carries a **`Recurs: <cadence>`** line (e.g. `Recurs: weekly`, `Recurs: monthly`, `Recurs: every Thursday`) is a standing task, not a one-off - `weekly-job-board-sweep` on the Job Search Outreach board is a live example, resurfacing every week under a fresh Start date rather than ever reaching a terminal list.
+A card whose description carries a **`Recurs: <cadence>`** line (e.g. `Recurs: weekly`, `Recurs: monthly`, `Recurs: every Thursday`) is a standing task, not a one-off - it resurfaces under a fresh Start date each cadence rather than ever reaching a terminal list.
 This applies to any board, not just outreach: a personal to-do that repeats ("call the bank every Thursday," "back up photos monthly") gets exactly the same treatment.
 
 On CLEAR, once the work for this occurrence is done, **do not** move a `Recurs:` card to Abandoned or Finished.

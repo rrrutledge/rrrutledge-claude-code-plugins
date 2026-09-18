@@ -7,7 +7,7 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
 ## Config
 - **Boards** - the single source of truth is `<repo>/trello-boards.yaml` (a `boards:` list of `{name, id}`), the same registry the `trello-outreach` skill reads.
   The drainer drains **every** board in it, so adding a board is a one-file edit.
-  (Legacy fallback: a `providers.trello.boards` list in `.claude/drainer.local.md` if no registry file exists.)
+  (Fallback: a `providers.trello.boards` list in `.claude/drainer.local.md` if no registry file exists.)
   - **Format the adapter parses:** the poller runs on bare stdlib Python (no PyYAML), so the adapter extracts boards by a fixed indent convention rather than full YAML - each board is `  - name:` at **two-space** indent with its `    id:` at **four-space** indent.
     Keep that shape.
     Any deeper per-board fields (`purpose`, `template_cards`, …) are free-form and ignored by the drainer.
@@ -29,7 +29,7 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
     Matched as a case-insensitive substring, so `blocked` catches `⛔ Blocked`.
   - `status_labels` - dependency-state labels held out of contact classification (default `[Blocked, Waiting]`), so a ⛔/⏳ label is never read as a person's name.
   - `label_vocab` - `{channels: [...], features: [...]}`; any label not in those is a contact name.
-    Credentials: `TRELLO_API_KEY` / `TRELLO_TOKEN` in the environment (used by the `trello` skill).
+- Credentials: `TRELLO_API_KEY` / `TRELLO_TOKEN` in the environment (used by the `trello` skill).
 
 ## ENUMERATE
 Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), and are **startable** - Start now-or-earlier, or no Start at all.

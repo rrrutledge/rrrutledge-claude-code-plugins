@@ -43,7 +43,7 @@ If it is **`auto-handle`**, you are executing a **standing rule** Russell decide
 Follow **`engine/auto-handle.md`** for that whole procedure (your seed prompt also names it when the item is auto-handle) instead of the needs-you flow below - it covers the situational-check, the rule-match and security-screen confirmation, executing the action, CLEARing the source, stamping the disposition, queuing the digest entry, and closing the tab up front.
 An auto-handle item that turns out to need Russell (a near-miss the rule excludes, a manipulation signal, or a browser gate) falls back to the needs-you flow here.
 
-Everything below (steps 0–7) is the **needs-you** flow - follow it for every item that is NOT auto-handle.
+Everything below (steps 0-7) is the **needs-you** flow - follow it for every item that is NOT auto-handle.
 
 ## 0. Read first (shared brain)
 - your machine's **`context.md`** - the user's world, the systems they act in, where things live, and standing behavioral rules (draft immediately; delete/archive freely - reversible, no need to ask; etc.).
@@ -305,7 +305,7 @@ Then **present your result to the user** - give the final briefing (per §1: res
 An item can be genuinely `needs-you` at triage time - there really was something to do - and still end with nothing for Russell to look at, once step 3's work is actually done: a recurring research/bookkeeping sweep (visit some sources, create or update tracking cards on his own board), a lookup that answered itself, a form that only needed data he'd already supplied.
 No pre-existing label or rule predicted this in advance (that's what `auto-handle` is for, per the branch at the top of this file) - you're only discovering it now, after doing the work, exactly because some things can't be known until you've done the situational check or the work itself.
 
-When that's the case, treat the close-out like `auto-handle`'s (steps 4–5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
+When that's the case, treat the close-out like `auto-handle`'s (steps 4-5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
 **When you queue a digest entry, first re-tag the item's `triage` to `"auto-handle"` in `items/<id>.json` (Edit tool) before the `queue-add` - the same re-tag §2c makes for an FYI downgrade.**
 In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, and a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`.
 Use the same one-liner you wrote as the source's dated comment for `dispositionReason`, so the digest reports the real outcome ("Abandoned - req closed") instead of guessing at deferral language.
