@@ -33,8 +33,13 @@ Use `node mail.js --search="<subject>"` - verify it covers Archive and Deleted I
 The shared open-the-pointer mechanic lives in `../engine/worker-core.md` § 2b - a worker uses it for a needs-you pointer, the digest for an fyi one (`../engine/digest-core.md` step 2).
 This is the Graph-specific way to get the content.
 
-A Finalsite/NEISD-style newsletter (e.g. the weekly "Lopez Loop") delivers its real content as a hosted link in the HTML body, not a real attachment: `mail.js --get-attachments` reports "No attachments," and the plaintext `mail.js --show` strips the body's tags and links.
-Emit the raw HTML body with `node mail.js --show=<messageId> --html`.
+**Decide which kind of "attachment" the newsletter has first, because the two resolve differently.**
+A **true inline/MIME attachment** is a real file on the message - `node mail.js --get-attachments=<messageId>` downloads it, and that is the right tool for it.
+A **hosted/reference "attachment"** is a link, not a file: a Finalsite "Attachments: X.pdf" line, or a Safe-Links link in the body pointing at a `.pdf`, whose bytes live on a CDN rather than on the message.
+`--get-attachments` reports "No attachments" for the hosted kind, so route it straight to the HTML-body-and-fetch path below rather than reading that empty result as "nothing to read."
+
+A Finalsite-style school newsletter is the hosted kind: it delivers its real content as a hosted link in the HTML body, which the plaintext `mail.js --show` strips.
+Emit the raw HTML body with `node mail.js --show=<messageId> --html`, fetching by the captured message id, which stays valid after archiving (see the CLEAR section).
 These bodies are tiny (a sentence or two plus a footer), so scan the whole HTML: find the hosted-PDF `<a href>`, decode its Safe Links wrapper (`safelinks.protection.outlook.com/?url=<encoded real URL>`) back to the underlying URL, and fetch it with a plain fetch - these files are usually public (Google Cloud Storage / myschoolcdn) and return the PDF directly.
 When the newsletter's story is inline or on a "view in browser" page rather than a PDF, read that content straight from the HTML instead.
 Fall back to browser-chauffeur (open the message's `webLink` and download the file) only when the plain fetch returns a login wall or non-PDF bytes.
@@ -49,9 +54,10 @@ Graph-specific: `messageId` is the opaque Graph message id.
 Never a permanent purge.
 The poller also calls this (via the adapter's `clear`) to archive an fyi/junk message the moment it's triaged, so it leaves the inbox without waiting for the digest; the digest's own CLEAR on approval then re-archives it, a harmless no-op.
 
-**The Graph move reissues the message id - CLEAR before drafting invalidates the captured `messageId`.**
-Moving a message to another folder (Archive, Junk) gives it a new Graph id; the `messageId` captured at triage time (or in `items/<id>.json`) stops resolving the moment CLEAR runs against it, and `--reply` against the stale id fails with "The specified object was not found in the store."
-Since email items CLEAR before step 3's work per `worker-core.md` §2d, this is the normal order, not an edge case: after CLEAR, re-resolve the message with a fresh `node mail.js --search="<subject>"` (which covers Archive, per SITUATIONAL-CHECK above) and use the id from that result for `--reply`, rather than the id captured earlier in the session.
+**The captured `messageId` stays valid after CLEAR moves the message.**
+ms-graph requests immutable message ids, so the `messageId` captured at triage time (or in `items/<id>.json`) keeps resolving after the message is archived or moved - `--show`, `--get-attachments`, and `--reply` all work against that same captured id.
+Since email items CLEAR before step 3's work per `worker-core.md` §2d, this matters on the normal path: draft the reply with `node mail.js --reply --message-id=<captured messageId>` directly, no re-lookup.
+`node mail.js --search="<subject>"` (which covers Archive, per SITUATIONAL-CHECK above) is the fallback for a message you can't resolve by its captured id.
 
 ## JUNK-LEARNING (the first-reach rule - Outlook.com-specific)
 The first-reach stop (per `email-base.md`'s rule-first order, including its show-literal-rule gate): an **Outlook.com inbox rule** - append the type phrase to the right consolidated bucket, keeping the sender-domain exclusion whitelist that fences every broad bucket; pin the phrase to a single sender only when it isn't distinctive enough to stand on its own.
