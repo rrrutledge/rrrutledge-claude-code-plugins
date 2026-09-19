@@ -160,6 +160,14 @@ if ($sessName) {
   if ($sessName) { $claudeArgs += @('--name', $sessName) }
 }
 if ($seed) { $claudeArgs += $seed }
+# Every session this script launches (drainer worker, handoff, resume) runs without Artifact, Workflow,
+# SendFeedback, and PowerShell. None of them is used (the PowerShell tool is already refused by hook in
+# favor of Bash), but the model call carries all four tool definitions (~16K tokens) on every call.
+# Denying them drops the definitions from the prompt, so the model cannot attempt them. ScheduleWakeup
+# stays: workers use it to wait on subagents.
+# --disallowedTools is variadic, so it swallows every positional after it as another tool name; it
+# must come AFTER the seed positional above, or the seed is eaten and the session starts with no prompt.
+$claudeArgs += @('--disallowedTools', 'Artifact,Workflow,SendFeedback,PowerShell')
 # Own any browser-chauffeur tabs this session opens. The browser-chauffeur sweep
 # keeps a tab alive while its owner process is running and reclaims it when the
 # owner is gone, so tying ownership to THIS host process (which lives exactly as
