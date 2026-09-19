@@ -15,6 +15,11 @@ This is the case whenever a session started in one repo picks up a task that tur
 Claude Code auto-loads `CLAUDE.md` only from the session's own working-directory tree, so a session editing a different repo never sees that repo's rules on its own - and `CONTRIBUTING.md` and the PR template never auto-load even when the working directory is the repo.
 Launch a fresh session (the handoff-launcher pattern) whose cwd is that repo's local checkout - its `~/Dev` clone, or one made per "Writing files to other repos" below - and write the seed so it tells the new session to read that repo's `CONTRIBUTING.md` and any `.github/PULL_REQUEST_TEMPLATE*`, so the reminder rides in with the launch rather than depending on memory.
 
+## Shipped prose in the diff takes the writing flow before the PR opens
+Before opening any PR, check whether the diff changes prose that ships in Russell's voice; `writing-flow` defines what counts.
+When it does, run that flow's review step first - a cold, independent `writing-review` pass - then open the PR.
+The PR-opening command is that flow's gate.
+
 ## Auto Branch/Commit/PR
 **HARD RULE: Never push directly to main. All changes go through a PR - no exceptions.**
 
