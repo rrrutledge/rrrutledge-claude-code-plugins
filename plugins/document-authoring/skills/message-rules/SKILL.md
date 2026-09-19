@@ -236,6 +236,11 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
   This covers confirming a completed institutional-onboarding action too - "we made you a new email address" reads as the org processing someone into it, not Russell personally handling it; contrast the next bullet's personal "I'll", which is for work that's Russell's own to do, not the org's standing process.
+  **When granting use of the org's name, brand, or logo for something the recipient runs or publishes, attach the terms.**
+  State what the permission covers and the footing it is given on.
+  Say the org is trusting them to represent it well and accurately, and name what the event or material should convey about the org.
+  Close by asking them to share how it goes, in place of the **Energizing close** note, since the org has a stake in the outcome.
+  These terms are the substance of the reply, so **Brevity** leaves them in.
 - **Disclosing a gap in the org's own records that predates Russell's tenure: attribute it to the time before he led it, not a flat statement of the gap.**
   Frame it as inherited context from before he took the role, even while speaking for the org's current position in the same breath.
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
@@ -271,6 +276,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Where you do respond to it, affirm in a way that removes the constraint, or hedge the callback so they're free to be where they actually are.
   **The same overreach rules out a closing "let me know"/"no rush" tail too** - once they've stated they'll circle back, appending a reminder to do so implies the same doubt as restating their specifics; close on plain appreciation instead ("Really appreciate your help here.").
   **Exception - their stated next step is shared scheduling or coordination (a call, reaching out, connecting):** a brief "we'll"-phrased close, per the coordinating-follow-up rule above, still works here, since it doesn't hand the task back to them the way restating their specific promise would - it leaves who initiates open rather than pinning the obligation on them.
+  **Exception - the recipient plans to use the org's name, brand, or logo and Russell is granting it:** the grant rule under **Speak as the org** applies in full, since its terms are what the grant consists of.
   **Reopening an old thread days or weeks later with a new, unrelated ask still opens on that acknowledgment** - thank them generically for the favor they came through on last time, rather than reusing the original message's greeting or well-wish verbatim, then move straight to the new ask.
   This holds the same way for a standing offer they made but haven't yet acted on (e.g. "let me know if I can connect you with anyone") - open with a brief generic thanks for the offer, not a callback that quotes their own words back to them, then move straight to the new ask.
 - **Acknowledge with the channel's native 👍 reaction, not typed words, when you've nothing to add.**
