@@ -126,6 +126,7 @@ Group junk by sender/source.
 For each group, propose **how to stop it arriving again**, following that item's provider **JUNK-LEARNING** section - read `<providers_dir>/<source>-provider.md` → JUNK-LEARNING and apply the priority order it defines.
 Propose, never apply without Russell's OK.
 Make each proposal concrete (the actual link, setting, or rule the provider's JUNK-LEARNING points to) so Russell can act in one step.
+When the proposal is an unsubscribe, include enough of the item's **actual content** - what the sender is pitching, whether it's locally or personally relevant - that Russell can decide whether to unsubscribe; sender and subject alone are not enough for that call.
 
 **When the stop is a mail rule, load the `mail-filters` skill first** (call the Skill tool) and derive the proposal from it - don't hand-write a rule from memory.
 A company-specific `from:<sender>` filter is the tell that the skill was skipped.

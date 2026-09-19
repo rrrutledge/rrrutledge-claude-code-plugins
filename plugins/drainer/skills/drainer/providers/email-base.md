@@ -84,3 +84,9 @@ So the order is rule → source-app → unsubscribe:
    Only when the mail is genuinely idiosyncratic to one sender and no type-level pattern - subject *or* body - fits.
    Unsubscribe is one-company-only, so it's the last reach, not the first.
    If unsubscribe is unavailable too (dead link, no `List-Unsubscribe` header) and the sender emails rarely, just archive the message and wait to see if it recurs.
+
+**Noise at a shared mailbox, or a list the user doesn't own, never gets an unsubscribe.**
+When the recurring noise arrives at an address other people also read (a shared `info@`/team alias) or on a mailing list the user isn't the owner of, unsubscribing would cut off mail others may want, and it isn't the user's list to leave.
+The right stop is a **his-side skip-the-inbox rule** (a filter that skips the inbox or applies a label) so the mail still flows to the mailbox but the user never sees it - the type-level rule of step 1, applied for reach-me-only rather than to stop delivery.
+Reserve an actual unsubscribe for mail that is genuinely only to the user and that no one else needs.
+Which of the user's addresses are shared is a fact about them - their `context.md` names those.
