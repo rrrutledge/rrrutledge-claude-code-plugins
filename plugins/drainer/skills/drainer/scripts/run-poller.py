@@ -1774,8 +1774,8 @@ def main():
 
     dispatched, auto_dispatched, held, held_corr, queued, poll_cleared = 0, 0, 0, 0, 0, 0
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
-    # throttled by target_open_tabs, recorded with its own triage so capture stamps the json and the worker
-    # takes worker-core's auto-handle branch (act -> CLEAR -> queue digest -> close up). Its correspondent
+    # throttled by target_open_tabs, recorded with its own triage so capture stamps the json and the seed
+    # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
     # is stamped and registered so a same-cycle needs-you duplicate from the same person waits behind it.
     for it in auto:
         provider = prov[it["_source"]]

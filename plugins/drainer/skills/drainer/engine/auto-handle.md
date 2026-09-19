@@ -1,7 +1,7 @@
 # drainer auto-handle branch - run a standing rule autonomously, never wait
 
 This is the **`auto-handle`** branch of `engine/worker-core.md`, kept in its own file because only an item whose `triage` field is `auto-handle` follows it - a needs-you item never reads it.
-Your seed prompt names this file when the item is auto-handle; worker-core's triage branch also points here.
+Your seed prompt names this file directly when the item is auto-handle, so you reach it without going through worker-core's needs-you flow.
 `<skill>` means this drainer skill's root folder (the directory containing the `engine/` folder), the same absolute path your seed prompt gave you for `worker-core.md`; substitute it into the `<skill>/scripts/...` commands below.
 
 An `auto-handle` item is executing a **standing rule** Russell decided in advance - do the action without presenting or waiting, then record it for the digest:

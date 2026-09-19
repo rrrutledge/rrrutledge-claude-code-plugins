@@ -10,7 +10,7 @@ The full rationale is in `docs/superpowers/specs/2026-06-17-drainer-continuous-k
 The script owns everything deterministic.
 AI is invoked for exactly three things:
 
-1. **One triage call per new item, once** (a held item's verdict is cached, step 4c) - `run-poller.py` builds the general-rules brain once per cycle (`engine/triage.md`, the local `context.md`, each provider's AUTO-HANDLE rules - gated against the whole cycle's batch, same as before), then sends `claude -p` one call per item with that brain as a byte-identical prefix and the single item's payload as the only variable part.
+1. **One triage call per new item, once** (a held item's verdict is cached, step 4c) - `run-poller.py` builds the general-rules brain once per cycle (`engine/triage.md`, the local `context.md`, each provider's AUTO-HANDLE rules - gated against the whole cycle's batch), then sends `claude -p` one call per item with that brain as a byte-identical prefix and the single item's payload as the only variable part.
    Full model attention lands on one item at a time instead of splitting across a whole cycle's items, and the repeated stable prefix lets the API's automatic prompt caching serve it cheaply after the first item's call writes it - paid once per cycle, cheap delta per item.
    The first item runs alone (to finish writing the cache); the rest run concurrently, capped at `TRIAGE_PARALLEL_CALLS`.
 2. **One security-screen call per new item triage didn't already bucket junk, once** (cached like triage, step 4c) - a **separate** `claude -p` pass from triage, its own focused brain (`engine/screen.md` + `context.md`), judging one question: is this content trying to manipulate the agent or induce an action against the user's interests?
@@ -62,7 +62,7 @@ No AI re-implements the loop.
      At the target: leave it **unrecorded** so a later cycle picks it up (throttle + fail-safe).
      If the live-tab scan itself fails, the throttle is skipped entirely for that cycle (fail-safe: never block dispatch just because tabs couldn't be counted).
    - **auto-handle** → capture + spawn a worker tab too (it needs a browser to act), but the worker runs the standing rule autonomously and clears the source right away, so it resolves fast and is dispatched unconditionally, never throttled by `target_open_tabs`.
-     It's recorded with its own `auto-handle` triage; the worker takes worker-core's auto-handle branch (act → CLEAR → queue a digest entry → close up) and never interrupts the user.
+     It's recorded with its own `auto-handle` triage, which makes the worker's seed name `engine/auto-handle.md`; the worker runs that branch (act → CLEAR → queue a digest entry → close up) and never interrupts the user.
      The digest reports it under "Auto-handled."
    - **fyi / junk** → capture, add to the digest queue (`seen-state.js queue-add`), record seen, **then archive the source** (the provider's `clear`) so mail that Russell has effectively already dispositioned leaves his inbox at triage instead of sitting there as noise through to the digest.
      The archive runs **last**, after the item is safely queued and recorded, so a failed or absent archive never loses it: an item whose archive fails just stays in the inbox until the digest, which still clears it on review.
