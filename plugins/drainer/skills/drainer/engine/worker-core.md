@@ -41,7 +41,8 @@ This file is the **needs-you** flow (steps 0-7).
 An `auto-handle` item runs autonomously instead and follows `engine/auto-handle.md`, which its seed prompt names directly - it never reaches the steps below.
 
 ## 0. Read first (shared brain)
-- your machine's **`context.md`** - the user's world, the systems they act in, where things live, and standing behavioral rules (draft immediately; delete/archive freely - reversible, no need to ask; etc.).
+- your machine's **`context.md`** - the user's world: who they're tied to, the organizations they run, the systems they act in, where things live, and their standing personal dispositions (which senders and lists they value, how a specific account's mail is handled).
+  It holds the personal facts a decision needs; the generic handling rules - how to classify and carry out any queue - are the engine's (`engine/triage.md`, this file, the provider docs), not restated there.
   This is machine config, not part of the engine (see `templates/context.example.md`).
   Your seed prompt names a **pre-gated copy** of it: the engine has already dropped the sections whose `**Trigger:**` this item doesn't match, so read the file the seed points you at rather than the full `context.md` - it carries every always-loaded rule plus the sections this item fires, and nothing you'd have to skip. (If your seed names no such file, read the full `context.md` from the merged-main config repo it names instead.)
   Read every other repo-tracked drainer config (`trello-boards.yaml`, `initiatives/<slug>.md`) from that same merged-main config repo, not the working directory - the config repo is a worktree the poller keeps pinned to origin/main, so you always act on merged config even when the working tree is on a feature branch.
@@ -230,6 +231,10 @@ Teams and Slack staging runs inside message-draft's own browser subagent (its **
 If that subagent returns `HELP_NEEDED` instead of `DONE`, follow §2e.
 
 If no message is needed (automated reminder, pure action item), skip to step 6.
+
+**One active ask per person at a time.**
+Before staging any outreach message to a contact, check whether you already have an *unanswered* ask out to them - on any thread or any tracker card, not just this one.
+If you do and they haven't replied yet, hold the second ask until the first is answered or its normal nudge window has passed; treat every thread and card for the same contact as sharing one cadence rather than piling on.
 
 **Deeply personal messages: don't draft - surface them for the user to write.**
 When the message is genuinely personal - a friend venting about their job or boss, a hard life update, grief, family or relationship matters, anything where the right words depend on shared history you don't have - a staged draft just gets in the way, because there's no way to know exactly what to say.
