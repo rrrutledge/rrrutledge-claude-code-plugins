@@ -1091,12 +1091,35 @@ def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_mod
                           f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
 
 
-def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo):
+def write_worker_context(item, local_dir, json_file):
+    """Pre-gate `context.md` to this one item and write the slice the worker reads at step 0.
+
+    `context.md` is embedded in every triage call AND read whole by every worker at step 0, where it then
+    sits in that worker's context on all of its model calls. `_context_for_batch` already drops any `## `
+    section whose `**Trigger:**` nothing in a batch matches; gating it to the single item being dispatched
+    lets a worker load only the sections its own source/shape fires - a Trello or Zoom item sheds every
+    mail, Slack, GitHub and Fireflies section, keeping just the always-loaded rules. `item` is the raw
+    enumerate item (carrying `_source`/`from`/`subject`, the fields a trigger matches), and `local_dir` is
+    the merged-main config root (drainer_config resolves a relative one against the main-worktree), so the
+    worker still acts on merged context. Returns the slice's path, written beside the item's captured
+    json, or None when there is no `context.md` to gate."""
+    ctx = _context_for_batch(local_dir, [item])
+    if not ctx:
+        return None
+    base = json_file[:-5] if json_file.endswith(".json") else os.path.splitext(json_file)[0]
+    path = base + ".context.md"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(ctx)
+    return path
+
+
+def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item):
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, f"{iid}.prompt.txt")
     worker_core = os.path.join(SKILL_DIR, "engine", "worker-core.md")
     local_providers = os.path.join(local_dir, "providers")
+    ctx_file = write_worker_context(item, local_dir, json_file)
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are a drainer worker handling ONE item. Read `~/.claude/CLAUDE.md`, then read "
@@ -1106,12 +1129,19 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             "The item's `source` field names the provider — read its `<source>-provider.md` (in "
             f"`{PROVIDERS_DIR}`, or `{local_providers}` for a machine-local provider) for its "
             "CLEAR and DRAFT-MODE and use them. Draft-only: never send or post.\n"
+            # The shared brain (context.md) is pre-gated to THIS item and written beside its json, so the
+            # worker loads only the sections this item's source/shape fires instead of the whole file on
+            # every model call; worker-core §0 reads it in place of context.md. None when there is no
+            # context.md to gate - then the seed says nothing and §0 falls back to the full file.
+            + (f"Your step-0 shared brain (context.md) is pre-gated to this item at `{ctx_file}` - read "
+               "that file, not the full context.md; it holds every always-loaded rule plus the sections "
+               "this item triggers.\n" if ctx_file else "")
             # Repo-tracked config the item's handling depends on — above all `initiatives/<slug>.md`
             # for a Trello card's program context (per the provider doc's INITIATIVE-LOOKUP) — is read
             # from the merged-main config repo, not the working directory, so a merged config change is
             # never missed when the real repo is on a feature branch.
-            f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
-            f"config repo `{config_repo}`.\n"
+            + (f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
+               f"config repo `{config_repo}`.\n")
         )
     # A one-line summary leads the seed so the worker's Claude session self-titles the tab descriptively
     # while keeping its attention star (the launcher prepends this; see launch-session.ps1 -SummaryFile).
@@ -1765,7 +1795,7 @@ def main():
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo)
+        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -1793,7 +1823,7 @@ def main():
             spawn_resume_tab(it["session_id"], it["cwd"], repo)
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo)
+            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         if corr:
             active_correspondents.add(corr)
