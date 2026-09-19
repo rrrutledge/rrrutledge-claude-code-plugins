@@ -93,13 +93,11 @@ function Show-LaunchFailureHelp {
 
 $seed = $null
 $summaryName = ''   # drainer's one-line item summary, reused as this session's name when set
-$isWorker = $false  # true in the -PromptFile (drainer worker) branch; gates the tool denial below
 if ($PromptFile) {
   if (-not (Test-Path -LiteralPath $PromptFile)) {
     Show-LaunchFailureHelp -Detail "launch-session: prompt file not found: $PromptFile"
     return
   }
-  $isWorker = $true
   # Run with a fixed session id so the orchestrator can find this tab's full JSONL transcript later.
   $SessionId = Register-SessionReceipt -AnchorFile $PromptFile -SessionId $SessionId
   # Lead with a one-line item summary (if supplied) so Claude names the tab off it — a descriptive
@@ -162,14 +160,14 @@ if ($sessName) {
   if ($sessName) { $claudeArgs += @('--name', $sessName) }
 }
 if ($seed) { $claudeArgs += $seed }
-# A drainer worker never uses Artifact, Workflow, SendFeedback, or PowerShell (the PowerShell tool is
-# already refused by hook in favor of Bash), but the model call carries all four tool definitions
-# (~16K tokens) on every one of a worker's ~70 calls. Denying them drops the definitions from the
-# prompt, so the model cannot attempt them. ScheduleWakeup stays: workers use it to wait on subagents.
-# Handoff sessions (-SeedFile) keep the full tool set.
+# Every session this script launches (drainer worker, handoff, resume) runs without Artifact, Workflow,
+# SendFeedback, and PowerShell. None of them is used (the PowerShell tool is already refused by hook in
+# favor of Bash), but the model call carries all four tool definitions (~16K tokens) on every call.
+# Denying them drops the definitions from the prompt, so the model cannot attempt them. ScheduleWakeup
+# stays: workers use it to wait on subagents.
 # --disallowedTools is variadic, so it swallows every positional after it as another tool name; it
 # must come AFTER the seed positional above, or the seed is eaten and the session starts with no prompt.
-if ($isWorker) { $claudeArgs += @('--disallowedTools', 'Artifact,Workflow,SendFeedback,PowerShell') }
+$claudeArgs += @('--disallowedTools', 'Artifact,Workflow,SendFeedback,PowerShell')
 # Own any browser-chauffeur tabs this session opens. The browser-chauffeur sweep
 # keeps a tab alive while its owner process is running and reclaims it when the
 # owner is gone, so tying ownership to THIS host process (which lives exactly as
