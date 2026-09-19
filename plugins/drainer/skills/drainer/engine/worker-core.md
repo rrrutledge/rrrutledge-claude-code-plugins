@@ -43,7 +43,8 @@ An `auto-handle` item runs autonomously instead and follows `engine/auto-handle.
 ## 0. Read first (shared brain)
 - your machine's **`context.md`** - the user's world, the systems they act in, where things live, and standing behavioral rules (draft immediately; delete/archive freely - reversible, no need to ask; etc.).
   This is machine config, not part of the engine (see `templates/context.example.md`).
-  Read it (and every repo-tracked drainer config: `trello-boards.yaml`, `initiatives/<slug>.md`) from the merged-main config repo named in your seed prompt, not the working directory - the config repo is a worktree the poller keeps pinned to origin/main, so you always act on merged config even when the working tree is on a feature branch.
+  Your seed prompt names a **pre-gated copy** of it: the engine has already dropped the sections whose `**Trigger:**` this item doesn't match, so read the file the seed points you at rather than the full `context.md` - it carries every always-loaded rule plus the sections this item fires, and nothing you'd have to skip. (If your seed names no such file, read the full `context.md` from the merged-main config repo it names instead.)
+  Read every other repo-tracked drainer config (`trello-boards.yaml`, `initiatives/<slug>.md`) from that same merged-main config repo, not the working directory - the config repo is a worktree the poller keeps pinned to origin/main, so you always act on merged config even when the working tree is on a feature branch.
 - the **Voice learning loop** lives in the **document-authoring skill** - append lessons there after each send (step 5).
 - your item's data (source-specific - the captured email/message, or the card data + comments).
 

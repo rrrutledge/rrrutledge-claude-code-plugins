@@ -277,5 +277,30 @@ check(
     "",
 )
 
+# --- write_worker_context: the per-item slice a worker reads at step 0 -----
+print("write_worker_context")
+wc_dir = tempfile.mkdtemp(prefix="wc-")
+with open(os.path.join(wc_dir, "context.md"), "w", encoding="utf-8") as f:
+    f.write(SRC_CONTEXT)  # one always preamble + a `source=^slack$`-gated section
+items_dir = tempfile.mkdtemp(prefix="wc-items-")
+json_file = os.path.join(items_dir, "abc123.json")
+
+slack_ctx = poller.write_worker_context(item(_source="slack"), wc_dir, json_file)
+check("slice is written beside the item json", slack_ctx, os.path.join(items_dir, "abc123.context.md"))
+slack_text = open(slack_ctx, encoding="utf-8").read()
+check("a slack item's slice keeps the slack section", "Only when a Slack item" in slack_text, True)
+
+trello_ctx = poller.write_worker_context(item(_source="trello"), wc_dir, json_file)
+trello_text = open(trello_ctx, encoding="utf-8").read()
+check("a non-slack item's slice drops the slack section", "Only when a Slack item" in trello_text, False)
+check("but keeps the always-loaded preamble", trello_text.startswith("# brain"), True)
+check("the slice is smaller than the full file", len(trello_text) < len(slack_text), True)
+
+check(
+    "no context.md means no slice file (seed falls back to the full file)",
+    poller.write_worker_context(item(_source="slack"), os.path.join(wc_dir, "nope"), json_file),
+    None,
+)
+
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)
