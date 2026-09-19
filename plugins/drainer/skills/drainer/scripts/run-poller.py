@@ -63,6 +63,13 @@ VERDICT_TTL = timedelta(hours=24)
 # it, that source's overflow just carries to the next cycle same as a held dispatch would.
 ENUMERATE_PAGE_SIZE = 500
 POLLER_KEY = "_poller"  # the poller's own heartbeat entry in the health file — not a provider; the digest skips it
+# Flags shared by the headless triage and screen calls. Both are pure text-in / JSON-out, so they run
+# with no settings sources and without the Artifact, Workflow, SendFeedback, and PowerShell tools,
+# whose definitions would otherwise ride in every call's prompt (~5.6K tokens). The prompt arrives on
+# stdin, so no positional follows the variadic --disallowedTools; keep it last regardless, since a
+# positional added after it would be swallowed as another tool name.
+HEADLESS_CLAUDE_FLAGS = ["--output-format", "json", "--setting-sources", "",
+                         "--disallowedTools", "Artifact,Workflow,SendFeedback,PowerShell"]
 
 
 # ---------------------------------------------------------------------------- generic helpers
@@ -611,8 +618,8 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     try:
         res = subprocess.run(
             # Triage is pure text-in / JSON-out (rubric + context are embedded above), so it needs no
-            # tools and no elevated permissions; --setting-sources "" keeps the call lightweight.
-            [claude, "-p", "--model", model, "--output-format", "json", "--setting-sources", ""],
+            # tools and no elevated permissions; HEADLESS_CLAUDE_FLAGS keeps the call lightweight.
+            [claude, "-p", "--model", model, *HEADLESS_CLAUDE_FLAGS],
             input=prompt,  # prompt goes on stdin (too long for an argv on Windows)
             capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=repo, timeout=420,
             env=env,
@@ -733,7 +740,7 @@ def _screen_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
     try:
         res = subprocess.run(
-            [claude, "-p", "--model", model, "--output-format", "json", "--setting-sources", ""],
+            [claude, "-p", "--model", model, *HEADLESS_CLAUDE_FLAGS],
             input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=repo, timeout=420, env=env, creationflags=NO_WINDOW,
         )
