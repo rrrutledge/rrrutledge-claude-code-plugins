@@ -5,7 +5,7 @@ The digest is the **slow loop**: once a day it empties that queue **with Russell
 It is the opposite of the poller in one way that governs everything below: **it is interactive and disposes of nothing without Russell's review.**
 
 You do not act on unfinished needs-you items here - the poller's own reconcile catches them every cycle, by re-queuing any item whose source object is still unhandled with no live worker on it, so a crashed or closed worker's item is back in the drain within minutes rather than waiting for you.
-You do still count them: step 1b reports, per source, how many are waiting to be started - a number to surface rather than a queue to work.
+You do still surface a count: step 1b reports, per source, how much is waiting to be started at all - a number to show rather than a queue to work.
 
 You are a single digest session in your own tab.
 Your launcher gave you the runtime facts (runtime_dir, repo, the seen-state helper path, the providers dir, and the provider-health file).
@@ -58,9 +58,9 @@ A stuck provider alone is still worth reporting - surface it even when the queue
 
 ## 1b. Backlog depth - the read-only "how much is left" barometer
 
-Your launcher measured the backlog for this run and handed it to you in the runtime facts as a **backlog-depth** block: for each source, how many items are waiting and not yet started (its live listing minus whatever is already parked in the digest queue or has a live worker open on it), a grand total across sources, and the oldest still-waiting item.
-"Not yet started" is the point - an item Russell already has a worker open on is work he knows about, so it drops out; the count is what remains to begin.
-The oldest still-waiting item, across every source, is the how-far-back barometer: how deep the queue runs.
+Your launcher measured the backlog for this run and handed it to you in the runtime facts as a **backlog-depth** block: for each source, how many items are waiting and not yet started, a grand total across sources, and the oldest still-waiting item.
+"Not yet started" means the source's live listing minus whatever the poller has already recorded as seen - the items it dispatched a worker for or queued for this digest, and so already knows about.
+The oldest still-waiting item, across every source, shows how far back the backlog reaches.
 
 Present the block verbatim from the runtime facts, at the spot step 4 places it in the digest.
 Surface the numbers only; the pending items behind them are the poller's, per the note at the top of this file.

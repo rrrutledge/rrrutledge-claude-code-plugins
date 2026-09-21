@@ -8,6 +8,7 @@ poller itself. This module is the small shared surface (subprocess + slug helper
 import ctypes
 import glob
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -426,56 +427,22 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
     }
 
 
-def live_session_ids():
-    """The set of session guids that currently have a running `claude --session-id <guid>` process.
-    Worker tabs launch claude with --session-id on the command line (launch-session.ps1), so a tab that
-    was closed (or whose claude exited) drops out of this set. That distinguishes 'tab closed' (process
-    gone — never going to finish) from 'parked, waiting for Russell' (process alive, just idle), which a
-    transcript-activity check cannot. One CIM query per call.
+def load_seen(runtime_dir, source):
+    """The `{id: {triage}}` map of every item the poller has already recorded for `source` in
+    `<runtime_dir>/seen.json`; a missing or corrupt file reads as `{}` (fail-safe).
 
-    Returns None if the scan can't be run/parsed — the caller then treats liveness as unknown this cycle
-    (the poller keeps its time-based backstop; the digest backlog simply subtracts nothing), so an inability
-    to see processes never reaps a live tab nor hides real backlog."""
-    ps = (r"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'session-id' } | "
-          r"ForEach-Object { $_.CommandLine }")
+    An id is recorded here the moment the poller acts on the item - dispatches a worker for a needs-you or
+    auto-handle item, or queues an fyi/junk item for the digest. An item the poller held (a correspondent
+    still being worked, or the open-tab budget was full) is left UNrecorded so it re-enumerates next cycle,
+    so exactly the not-yet-started items are the ones absent from this map. `collect_new` in the poller
+    reads it to drop already-seen items from a cycle; the digest reads it to count the not-yet-started
+    backlog the same way, off persisted state rather than any live-process scan. Stdlib-only, so both the
+    headless poller and the digest launcher share it without a Node round-trip."""
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                             capture_output=True, text=True, timeout=30,
-                             creationflags=NO_WINDOW).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
-
-
-def live_worker_item_ids(runtime_dir, live):
-    """The set of item ids (each a provider stable_id) that currently have a LIVE worker session on them.
-
-    Read from the worker seed files: `seeds/<id>.prompt.txt.session` holds that worker's claude session
-    guid, and the poller records every dispatched item under `iid == its stable_id`. An id whose seed guid
-    is in `live` (the running `claude --session-id` guids from `live_session_ids`) has an open worker; a
-    closed or crashed worker's guid drops out of `live`, so its item stops counting as in-progress. A
-    None/empty `live` yields the empty set - nothing is treated as in-progress - so a failed process scan
-    overcounts the backlog rather than hiding it."""
-    if not live:
-        return set()
-    seeds_dir = os.path.join(runtime_dir, "seeds")
-    suffix = ".prompt.txt.session"
-    try:
-        names = os.listdir(seeds_dir)
-    except OSError:
-        return set()
-    out = set()
-    for fn in names:
-        if not fn.endswith(suffix):
-            continue
-        try:
-            with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
-                guid = f.read().strip()
-        except OSError:
-            continue
-        if guid in live:
-            out.add(fn[:-len(suffix)])
-    return out
+        with open(os.path.join(runtime_dir, "seen.json"), encoding="utf-8") as f:
+            return (json.load(f) or {}).get(source, {})
+    except (OSError, ValueError):
+        return {}
 
 
 def load_providers(provider_names, search_dirs, cfg=None, on_error=None):

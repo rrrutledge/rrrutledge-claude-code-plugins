@@ -1,5 +1,5 @@
-"""Tests for the digest's backlog-depth barometer: provider_base.pending_summary (count + oldest,
-minus the digest-queue ids), received_dt parsing, the shared load_providers loader, and run-digest's
+"""Tests for the digest's backlog-depth barometer: provider_base.pending_summary (count + oldest, minus
+the already-seen ids), received_dt parsing, the shared load_providers loader, and run-digest's
 compute_backlog aggregation + format_backlog rendering. Pure functions of in-memory listings - no
 network or credentials needed.
 
@@ -118,26 +118,10 @@ with tempfile.TemporaryDirectory() as d:
     check("a construction error reports kind 'config'", ("boom", "config") in errs, True)
 
 
-# --- live_worker_item_ids: map live session guids back to the item ids they're working -------------
-print("\nlive_worker_item_ids")
-with tempfile.TemporaryDirectory() as rt:
-    seeds = os.path.join(rt, "seeds")
-    os.makedirs(seeds)
-    for iid, guid in [("mail-1", "aaaa"), ("mail-2", "bbbb"), ("trello-9", "cccc")]:
-        with open(os.path.join(seeds, f"{iid}.prompt.txt.session"), "w", encoding="utf-8") as f:
-            f.write(guid + "\n")
-    live = {"aaaa", "cccc"}  # bbbb's worker has closed
-    got = provider_base.live_worker_item_ids(rt, live)
-    check("ids with a live worker are returned", got, {"mail-1", "trello-9"})
-    check("a closed worker's id drops out", "mail-2" in got, False)
-    check("no live guids -> empty set", provider_base.live_worker_item_ids(rt, set()), set())
-    check("None live (scan failed) -> empty set", provider_base.live_worker_item_ids(rt, None), set())
-
-
-# --- compute_backlog: aggregate across providers, isolate a dark source, drop in-progress ----------
+# --- compute_backlog: aggregate across providers, isolate a dark source, drop already-seen -----------
 print("\ncompute_backlog")
-# Monkeypatch load_providers + the live-worker scan in the digest module so compute_backlog drives our
-# fakes without file I/O or a PowerShell process query.
+# Monkeypatch load_providers + load_seen in the digest module so compute_backlog drives our fakes without
+# file I/O. load_seen returns the ids the poller has already started/queued, which drop out of the count.
 mail = FakeProvider("mail", items)
 board = FakeProvider("trello", [{"id": "x", "received": "(no date)"}, {"id": "y", "received": "(no date)"}])
 
@@ -151,19 +135,18 @@ dark = DarkProvider("slack", [])
 junk = FakeProvider("outlook-graph-junk", [{"id": f"j{i}", "received": "2026-01-01T00:00:00Z"}
                                            for i in range(500)])
 junk.count_in_backlog = False  # a standing-noise scanner: skipped entirely by the barometer
-orig_load, orig_live, orig_workers = digest.load_providers, digest.live_session_ids, digest.live_worker_item_ids
+# mail ids "a" (queued for the digest) and "c" (a worker dispatched on it) are recorded seen -> both drop
+seen_map = {"mail": {"a": {"triage": "fyi"}, "c": {"triage": "needs-you"}}}
+orig_load, orig_seen = digest.load_providers, digest.load_seen
 digest.load_providers = lambda names, dirs, cfg=None, on_error=None: [mail, board, dark, junk]
-digest.live_session_ids = lambda: {"guid1"}
-digest.live_worker_item_ids = lambda rt, live: {"c"}  # a live worker is open on mail item "c"
+digest.load_seen = lambda rt, name: seen_map.get(name, {})
 try:
-    # queue parks one mail id (fyi awaiting the digest); item "c" has a live worker - both drop out
-    queue = [{"id": "a", "source": "mail", "item": {"triage": "fyi"}}]
-    backlog = digest.compute_backlog("rt", {"providers": [], "local_dir": ""}, queue)
+    backlog = digest.compute_backlog("rt", {"providers": [], "local_dir": ""})
 finally:
-    digest.load_providers, digest.live_session_ids, digest.live_worker_item_ids = orig_load, orig_live, orig_workers
+    digest.load_providers, digest.load_seen = orig_load, orig_seen
 
 by_name = {s["name"]: s for s in backlog["sources"]}
-check("mail count drops the parked id AND the in-progress id", by_name["mail"]["count"], 1)
+check("mail count drops the seen (started/queued) ids", by_name["mail"]["count"], 1)
 check("mail oldest recomputes past the dropped items", by_name["mail"]["oldest_received"][:10], "2026-08-03")
 check("trello counts its startable cards", by_name["trello"]["count"], 2)
 check("a dark source is unavailable, not zero", by_name["slack"]["count"], None)

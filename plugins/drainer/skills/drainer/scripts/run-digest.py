@@ -24,7 +24,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 from provider_base import (run_node, spawn_tab, load_providers, ProviderError,  # noqa: E402
-                           live_session_ids, live_worker_item_ids)  # shared subprocess + tab-spawn + adapter loader + live-worker scan
+                           load_seen)  # shared subprocess + tab-spawn + adapter loader + seen-state reader
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -90,24 +90,21 @@ def _age_days(iso):
     return (datetime.datetime.now(datetime.timezone.utc) - dt.astimezone(datetime.timezone.utc)).days
 
 
-def compute_backlog(runtime_dir, cfg, queue):
-    """The read-only backlog-depth barometer: for each enabled provider, how many items are still waiting
-    and NOT yet started, and the oldest such item's arrival time, plus a grand total across sources.
-    "Not yet started" is the source listing minus two id sets: the items already parked in the digest
-    queue, and the items that currently have a live worker session open on them (Russell already knows
-    about an open worker, so an in-progress item is not part of the "still to begin" backlog). Zero AI and
-    no body capture - each provider's `pending_summary` reads its envelope-only listing. A provider that
-    can't list this run is reported as unavailable rather than aborting the whole report.
+def compute_backlog(runtime_dir, cfg):
+    """The read-only backlog-depth barometer: for each enabled provider, how many items are waiting and
+    NOT yet started, the oldest such item's arrival time, and a grand total across sources.
+
+    "Not yet started" is the source's live listing minus the ids the poller has already recorded in
+    seen.json - the items it dispatched a worker for (needs-you / auto-handle) or queued for the digest
+    (fyi / junk). The poller leaves an item it merely held (a correspondent still being worked, or the
+    open-tab budget full) UNrecorded, so exactly the items with no worker yet launched are what remains.
+    This is the poller's own `collect_new` measure read from persisted state, so it needs no live-process
+    scan: an item Russell already has a worker on is recorded and drops out. Zero AI and no body capture -
+    each provider's `pending_summary` reads its envelope-only listing. A provider that can't list this run
+    is reported as unavailable rather than aborting the whole report.
 
     Returns `{"sources": [{name, count, capped, oldest_received, error}], "total": int, "capped": bool}`
     (a source's own listing is skipped entirely when it opts out via count_in_backlog)."""
-    parked = {}
-    for e in queue:  # the ids already awaiting the digest, per source, so they don't inflate the count
-        parked.setdefault(e.get("source"), set()).add(e.get("id"))
-    # Ids with a live worker open right now, subtracted so the count is "not yet started" rather than
-    # "still outstanding". stable_ids are globally unique and source-prefixed, so one shared set can be
-    # unioned into every provider's exclude set with no cross-source collision.
-    in_progress = live_worker_item_ids(runtime_dir, live_session_ids())
     load_errors = {}
     providers = load_providers(
         cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
@@ -116,9 +113,9 @@ def compute_backlog(runtime_dir, cfg, queue):
     for prov in providers:
         if not getattr(prov, "count_in_backlog", True):
             continue  # a standing-noise scanner (e.g. the Junk-folder net), not a work queue to drain
+        seen_ids = set(load_seen(runtime_dir, prov.name))  # the ids the poller has already started/queued
         try:
-            s = prov.pending_summary(exclude_ids=parked.get(prov.name, set()) | in_progress,
-                                     limit=ENUMERATE_PAGE_SIZE)
+            s = prov.pending_summary(exclude_ids=seen_ids, limit=ENUMERATE_PAGE_SIZE)
             sources.append({"name": prov.name, "count": s["count"], "capped": s.get("capped", False),
                             "oldest_received": s.get("oldest_received"), "error": None})
             total += s["count"]
@@ -138,7 +135,7 @@ def compute_backlog(runtime_dir, cfg, queue):
 def format_backlog(backlog):
     """Render the backlog barometer as a terse block: one line per source, a grand-total line, and the
     how-far-back barometer (the oldest still-waiting item across every source - the queue-depth proxy)."""
-    lines = ["Backlog depth (needs-you items not yet started, read-only barometer):"]
+    lines = ["Backlog depth (items not yet started, read-only barometer):"]
     for s in backlog["sources"]:
         if s["error"]:
             lines.append(f"    {s['name']}: unavailable this run ({s['error'][:80]})")
@@ -207,7 +204,7 @@ def print_brief(runtime_dir, cfg):
         it = e.get("item") or {}
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
-    print(format_backlog(compute_backlog(runtime_dir, cfg, q)))
+    print(format_backlog(compute_backlog(runtime_dir, cfg)))
     print("Nothing cleared (dry-run).")
 
 
@@ -230,7 +227,7 @@ def main():
         return
 
     try:
-        backlog_block = format_backlog(compute_backlog(runtime_dir, cfg, _load_queue(runtime_dir)))
+        backlog_block = format_backlog(compute_backlog(runtime_dir, cfg))
     except Exception as e:  # a backlog failure must never keep the digest tab from opening
         backlog_block = f"Backlog depth: unavailable this run ({e})."
     prompt_file = write_seed(runtime_dir, repo, cfg, backlog_block)
