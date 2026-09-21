@@ -22,15 +22,20 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
-from drainer_config import read_config, ensure_main_worktree  # noqa: E402  (shared reader + main-pinned config worktree)
-from provider_base import run_node, spawn_tab  # noqa: E402  (shared subprocess + tab-spawn helpers)
+from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
+from provider_base import run_node, spawn_tab, load_providers, ProviderError  # noqa: E402  (shared subprocess + tab-spawn + adapter loader)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
+# Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
+# the same generous bound the poller enumerates with, so the count reflects the whole current listing.
+ENUMERATE_PAGE_SIZE = 500
 
 
-def write_seed(runtime_dir, repo, cfg):
+def write_seed(runtime_dir, repo, cfg, backlog_block):
     """Write the digest session's prompt file: a pointer to digest-core.md plus the few runtime
-    facts it can't infer (where the queue/state live, the providers dir)."""
+    facts it can't infer (where the queue/state live, the providers dir), and the pre-computed
+    backlog-depth barometer the launcher measured for this run (so the session presents real numbers
+    rather than recomputing them)."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, "digest.prompt.txt")
@@ -47,7 +52,9 @@ def write_seed(runtime_dir, repo, cfg):
             "(machine-local providers) — each item's `source` names its `<source>-provider.md` in one of "
             "these (read it for CLEAR and JUNK-LEARNING).\n"
             f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` — read it FIRST "
-            "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n\n"
+            "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
+            "- Backlog depth measured by the launcher for this run (digest-core step 1b - present it "
+            f"verbatim as the read-only barometer, do not recompute):\n{backlog_block}\n\n"
             "Present the digest to Russell and clear NOTHING until he approves. Draft-only: never send "
             "or post. When the queue is emptied (or Russell defers) and you are done, stop.\n"
         )
@@ -64,6 +71,98 @@ def _fmt_local(ts):
         return ts
 
 
+def _load_queue(runtime_dir):
+    """The digest queue as a list of `{id, source, item}` entries (empty on any read/parse failure)."""
+    out = run_node([SEEN_STATE, "queue-list", runtime_dir]).stdout
+    try:
+        return json.loads(out or "[]")
+    except ValueError:
+        return []
+
+
+def _age_days(iso):
+    """Whole days from an ISO-8601 timestamp until now, or None when it can't be parsed."""
+    try:
+        dt = datetime.datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return None
+    return (datetime.datetime.now(datetime.timezone.utc) - dt.astimezone(datetime.timezone.utc)).days
+
+
+def compute_backlog(runtime_dir, cfg, queue):
+    """The read-only backlog-depth barometer: for each enabled provider, how many items are still
+    pending (its live source listing minus the ids already parked in the digest queue) and the oldest
+    pending item's arrival time, plus a grand total across sources. Zero AI and no body capture - each
+    provider's `pending_summary` reads its envelope-only listing. A provider that can't list this run is
+    reported as unavailable rather than aborting the whole report.
+
+    Returns `{"sources": [{name, count, capped, oldest_received, is_email, error}], "total": int,
+    "capped": bool}` (a source's own listing is skipped entirely when it opts out via count_in_backlog)."""
+    parked = {}
+    for e in queue:  # the ids already awaiting the digest, per source, so they don't inflate the count
+        parked.setdefault(e.get("source"), set()).add(e.get("id"))
+    load_errors = {}
+    providers = load_providers(
+        cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
+        on_error=lambda name, msg, kind: load_errors.__setitem__(name, (msg, kind)))
+    sources, total, capped_total = [], 0, False
+    for prov in providers:
+        if not getattr(prov, "count_in_backlog", True):
+            continue  # a standing-noise scanner (e.g. the Junk-folder net), not a work queue to drain
+        is_email = getattr(prov, "email_backlog", False)
+        try:
+            s = prov.pending_summary(exclude_ids=parked.get(prov.name, frozenset()),
+                                     limit=ENUMERATE_PAGE_SIZE)
+            sources.append({"name": prov.name, "count": s["count"], "capped": s.get("capped", False),
+                            "oldest_received": s.get("oldest_received"), "is_email": is_email,
+                            "error": None})
+            total += s["count"]
+            capped_total = capped_total or s.get("capped", False)
+        except Exception as e:  # ProviderError or anything a listing raises - isolate this one source
+            sources.append({"name": prov.name, "count": None, "capped": False, "oldest_received": None,
+                            "is_email": is_email, "error": str(e)})
+    # A provider that failed to even load (a broken deploy or an expired credential at construction) still
+    # belongs in the barometer as unavailable; a plain missing adapter is just not enabled here, so skip it.
+    for name, (msg, kind) in load_errors.items():
+        if kind != "missing":
+            sources.append({"name": name, "count": None, "capped": False, "oldest_received": None,
+                            "is_email": False, "error": msg})
+    return {"sources": sources, "total": total, "capped": capped_total}
+
+
+def format_backlog(backlog):
+    """Render the backlog barometer as a terse block: one line per source, a grand-total line, and the
+    email barometer (how far back the oldest unhandled email goes - the queue-size proxy)."""
+    lines = ["Backlog depth (pending needs-you items, read-only barometer):"]
+    for s in backlog["sources"]:
+        if s["error"]:
+            lines.append(f"    {s['name']}: unavailable this run ({s['error'][:80]})")
+            continue
+        oldest = ""
+        if s["oldest_received"]:
+            oldest = f", oldest {_fmt_local(s['oldest_received'])}"
+            age = _age_days(s["oldest_received"])
+            if age is not None:
+                oldest += f" ({age} days back)"
+        count = f"{s['count']}+" if s.get("capped") else str(s["count"])
+        lines.append(f"    {s['name']}: {count} pending{oldest}")
+    counted = [s for s in backlog["sources"] if s["count"] is not None]
+    total = f"{backlog['total']}+" if backlog.get("capped") else str(backlog["total"])
+    lines.append(f"    Grand total: {total} pending across {len(counted)} source(s).")
+    emails = [s for s in counted if s.get("is_email")]
+    if emails:
+        email_count = sum(s["count"] for s in emails)
+        email_oldest = sorted(s["oldest_received"] for s in emails if s["oldest_received"])
+        if email_oldest:
+            age = _age_days(email_oldest[0])
+            back = f", {age} days back" if age is not None else ""
+            lines.append(f"    Email barometer: {email_count} pending, oldest "
+                         f"{_fmt_local(email_oldest[0])}{back}.")
+        else:
+            lines.append(f"    Email barometer: {email_count} pending (none carries a date).")
+    return "\n".join(lines)
+
+
 def _print_heartbeat(hb):
     """Show the poller's own liveness (`_poller` heartbeat) so a run of empty cycles is legible: the
     poller stamps this every live cycle, so a stale `last_drained_ts` reads as 'not running' instead of
@@ -75,12 +174,9 @@ def _print_heartbeat(hb):
 
 
 def print_brief(runtime_dir, cfg):
-    """Deterministic preview (no AI, no tab): provider health + queue counts. For the dry-run ramp."""
-    queue = run_node([SEEN_STATE, "queue-list", runtime_dir]).stdout
-    try:
-        q = json.loads(queue or "[]")
-    except ValueError:
-        q = []
+    """Deterministic preview (no AI, no tab): provider health + queue counts + backlog depth. For the
+    dry-run ramp."""
+    q = _load_queue(runtime_dir)
     counts = {"fyi": 0, "junk": 0, "other": 0}
     for e in q:
         t = (e.get("item") or {}).get("triage")
@@ -107,6 +203,7 @@ def print_brief(runtime_dir, cfg):
         it = e.get("item") or {}
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
+    print(format_backlog(compute_backlog(runtime_dir, cfg, q)))
     print("Nothing cleared (dry-run).")
 
 
@@ -128,7 +225,11 @@ def main():
         print_brief(runtime_dir, cfg)
         return
 
-    prompt_file = write_seed(runtime_dir, repo, cfg)
+    try:
+        backlog_block = format_backlog(compute_backlog(runtime_dir, cfg, _load_queue(runtime_dir)))
+    except Exception as e:  # a backlog failure must never keep the digest tab from opening
+        backlog_block = f"Backlog depth: unavailable this run ({e})."
+    prompt_file = write_seed(runtime_dir, repo, cfg, backlog_block)
     # Name this session "Drainer EOD digest" so it reads recognizably in the tab title, the /resume
     # picker, and the Remote Control session list on the phone - the same one-line-summary path the
     # workers use: spawn-tab.cmd's 5th arg -> launch-session.ps1 -SummaryFile -> --name. Remote Control

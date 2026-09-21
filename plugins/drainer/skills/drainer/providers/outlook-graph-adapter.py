@@ -20,6 +20,7 @@ from provider_base import (ProviderBase, ProviderError, run_node, slug, find_ski
 
 class Provider(ProviderBase):
     name = "outlook-graph"
+    email_backlog = True  # `received` is a true arrival time, so this feeds the digest email barometer
 
     def __init__(self):
         self.mailjs = self._find_mail_js()
