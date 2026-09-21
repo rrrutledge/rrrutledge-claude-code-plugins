@@ -66,6 +66,8 @@ Don't present a menu of options or stack a numbered list of questions.
 - **When asking to change how something works, name who benefits and what friction goes away.**
   Add a plain sentence naming the concrete beneficiary and the obstacle being removed, even when the "why" seems inferable.
   This specifies the change's real-world effect — keep it separate from pitching why your cause deserves it.
+- **When relaying a third party's reason for thinking the recipient is a fit, close on one specific yes/no question about the recipient's own situation, not an open invitation to react.**
+  It is the third party's reason, not your own fit pitch, so outreach's ban on pitching fit doesn't apply and its close on asking what they think yields to this one.
 - **When asking an external party you're courting for something, lead with the want, not your own org's shortfall.**
   Naming an internal gap (a thin lineup, an unfilled slot) as the reason reads as recruiting a fallback rather than someone wanted.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
@@ -359,6 +361,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — critique delivered as the reason for a decline** (interview feedback, a rejection's stated concerns): acknowledge it generally, as useful input to grow from, rather than itemizing each named weakness back to the sender point by point, which reads as re-litigating the feedback instead of accepting it.
   **Leave out the internal mechanics behind the answer** — a tracking-board card move, a due-date change, a bounced email or a lookup that came up empty, any process step taken to get there — unless the recipient asked about the mechanism itself. Give them the answer, not the record of how it was produced; that record stays in the internal tracker. This holds equally when the conclusion sets up an ask of your own rather than answers their question - state the plain fact the ask rests on ("I don't have a way to reach her"), not the trail of checks behind it.
   **When the recipient did ask for that record itself, retell it in flowing prose rather than a literal quoted transcript of the old messages.** Name who said what and the figure or fact it settled on; a paraphrased retelling reads faster than block-quoted excerpts and still carries the proof.
+- **When the person who told you is part of what you're relaying (their suggestion or view), say so plainly in the first person and name them** - one clause of provenance, not a process trail, since the internal-mechanics rule above still governs when the recipient only needs the answer.
 - **Document a sequence as short bullets, and open with the current status** — not a defensive framing line.
   Let the record carry the point; skip the "I've been responsive" editorializing.
 - **Open groups with "Hey guys / folks / everyone"** — but skip the group greeting when replying to a specific quoted message or directly continuing an active conversation thread; the existing context replaces it.
