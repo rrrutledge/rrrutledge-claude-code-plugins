@@ -199,6 +199,7 @@ class Provider(ProviderBase):
             "subject": item["subject"], "date": item["date"], "minutes": item["minutes"],
             "isRecurring": item["isRecurring"], "calendar": self.calendar,
             "eventId": item["id"], "seriesMasterId": item.get("seriesMasterId"),
+            "repeatAfter": item.get("repeatAfter"),
             "url": item.get("webLink"), "correspondent": item.get("_correspondent"),
             "ts": datetime.now(timezone.utc).isoformat(),
         }

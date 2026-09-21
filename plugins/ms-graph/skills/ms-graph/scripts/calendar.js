@@ -56,9 +56,15 @@
 //                     quick task's start reflects when it appeared, not when the "starting" reply was
 //                     typed. A recurring occurrence detaches from its series, same as dragging it in
 //                     the Outlook UI)
-// Finish a task now: node calendar.js --finish-now=<eventId> [--tz=]
+// Finish a task now: node calendar.js --finish-now=<eventId> [--calendar="Physical Tasks"] [--tz=]
 //                    (stamps just the end time to now, leaving start where --start-now put it, so the
-//                     event's real elapsed span sits on the calendar afterward)
+//                     event's real elapsed span sits on the calendar afterward. If the finished
+//                     event's body carries a `Repeat: <N> day|week|month(s) after completion` marker,
+//                     also queues a fresh one-off that interval after today — same subject and
+//                     estimated duration, parked at the midnight grid slot so it's immediately due;
+//                     --calendar names where to place it and is REQUIRED when a marker is present.
+//                     From-completion recurrence is the one thing Outlook's calendar-fixed recurrence
+//                     can't do — put the marker on a ONE-OFF, never a recurring series)
 // Catch up a series: node calendar.js --catch-up-series=<seriesMasterId> [--except-id=<eventId>] [--tz=]
 //                    (deletes every OTHER overdue occurrence of that series through today — the
 //                     backlog is just recurrence-expansion noise once one occurrence has actually
@@ -86,6 +92,7 @@
 //   const events = await getEvents({ calendar: 'InnerSource Commons', start: '2026-05-01', end: '2026-05-31' });
 
 const { getGraphClient } = require('./graph-client');
+const { parseRepeatMarker, addRepeatInterval, repeatMarkerLine } = require('./calendar-repeat');
 
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
@@ -448,8 +455,10 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 // with `seriesMasterId` alongside it so the older, uninteresting backlog occurrences can be swept
 // separately (see catchUpSeries) without touching the one actually being worked.
 //
-// Returns [{ id, seriesMasterId (recurring only), subject, date, minutes, isRecurring, webLink }],
-// oldest-due first.
+// Returns [{ id, seriesMasterId (recurring only), subject, date, minutes, isRecurring, webLink,
+// repeatAfter }], oldest-due first. `repeatAfter` is the human interval ("7 days", "1 month") parsed
+// from a one-off's `Repeat: ... after completion` body marker, else null — surfaced so the worker can
+// tell Russell when a finished task will come back (see finishTaskNow, which acts on the marker).
 // The old staging grid, kept verbatim: :00 only at midnight, quarter-hours at 1 AM, half-hours at
 // 2 AM. Nothing here still ties a slot to a task's SIZE (duration is just the event's own length
 // now) — the grid is purely a "still sitting untouched" position check.
@@ -474,9 +483,9 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   const bySeries = new Map(); // seriesMasterId -> { id (latest occurrence), subject, date (latest), minutes, webLink }
   let page = await client.api(`/me/calendars/${calId}/calendarView`)
     .query({ startDateTime: `${rangeStartStr}T00:00:00`, endDateTime: `${todayStr}T23:59:59` })
-    .header('Prefer', `outlook.timezone="${tz}"`)
+    .header('Prefer', `outlook.timezone="${tz}", outlook.body-content-type="text"`)
     .top(200).orderby('start/dateTime')
-    .select('subject,start,end,isAllDay,type,seriesMasterId,webLink,id')
+    .select('subject,start,end,isAllDay,type,seriesMasterId,webLink,id,body')
     .get();
   while (page) {
     for (const e of page.value || []) {
@@ -492,9 +501,11 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
           });
         }
       } else {
+        const rm = parseRepeatMarker(e.body?.content);
         oneOffs.push({
           id: e.id, subject: e.subject || '(no title)', date, minutes,
           isRecurring: false, webLink: e.webLink,
+          repeatAfter: rm ? `${rm.n} ${rm.unit}${rm.n === 1 ? '' : 's'}` : null,
         });
       }
     }
@@ -503,7 +514,7 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   }
   const recurring = [...bySeries.entries()].map(([seriesMasterId, v]) => ({
     id: v.id, seriesMasterId, subject: v.subject, date: v.date, minutes: v.minutes,
-    isRecurring: true, webLink: v.webLink,
+    isRecurring: true, webLink: v.webLink, repeatAfter: null, // markers are one-offs only
   }));
   const out = [...oneOffs, ...recurring];
   out.sort((a, b) => a.date.localeCompare(b.date));
@@ -542,13 +553,46 @@ async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}
 // The "finished" stamp: patches ONLY the end time to right now, leaving start exactly where
 // startTaskNow put it — so the event's real elapsed span (start = when picked up, end = when
 // actually finished) sits on the calendar afterward, the same record Russell used to leave by hand.
-async function finishTaskNow({ eventId, tz = 'America/Chicago', client } = {}) {
+//
+// When the finished event carries a Repeat marker (see above), this also queues the next one-off:
+// same subject, same estimated duration, `repeatCalendar` days/weeks/months after today, parked at
+// the midnight grid slot so it's immediately QUEUED (see isQueuedSlot). The estimated duration is
+// recovered from the event's own (end − start) span read BEFORE the end is stamped: while a task is
+// queued that span is Russell's estimate, and startTaskNow preserves it (end = start + estimate), so
+// it's still the estimate at finish time — not the real elapsed span the stamp is about to write.
+// `repeatCalendar` (the calendar to place the successor on, normally the same "Physical Tasks") is
+// required whenever a marker is present, since an event's own payload doesn't name its parent
+// calendar. Returns null when there's no marker, else { successorId, subject, date, minutes }.
+async function finishTaskNow({ eventId, repeatCalendar, tz = 'America/Chicago', client } = {}) {
   if (!eventId) throw new Error('finishTaskNow requires { eventId }');
   client = client || await getGraphClient();
-  const now = new Date();
   const pad = n => String(n).padStart(2, '0');
+  const current = await client.api(`/me/events/${eventId}`)
+    .header('Prefer', `outlook.timezone="${tz}"`).select('subject,start,end,body').get();
+  const now = new Date();
   const nowStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   await client.api(`/me/events/${eventId}`).patch({ end: { dateTime: nowStr, timeZone: tz } });
+
+  const marker = parseRepeatMarker(current.body?.content);
+  if (!marker) return null;
+  if (!repeatCalendar) {
+    throw new Error('finishTaskNow: event has a Repeat marker but no repeatCalendar was given to place the successor on');
+  }
+  const durMs = new Date(current.end.dateTime.replace(' ', 'T')) - new Date(current.start.dateTime.replace(' ', 'T'));
+  const finishDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const nextDate = addRepeatInterval(finishDate, marker.n, marker.unit);
+  const startStr = `${nextDate}T00:00:00`;
+  const endDt = new Date(new Date(startStr).getTime() + durMs);
+  const endStr = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:${pad(endDt.getSeconds())}`;
+  const calId = await resolveCalendarId(client, repeatCalendar);
+  const created = await client.api(`/me/calendars/${calId}/events`).post({
+    subject: current.subject,
+    start: { dateTime: startStr, timeZone: tz },
+    end: { dateTime: endStr, timeZone: tz },
+    isReminderOn: false,
+    body: { contentType: 'text', content: `${repeatMarkerLine(marker)}\nLast done ${finishDate}.` },
+  });
+  return { successorId: created.id, subject: current.subject, date: nextDate, minutes: Math.round(durMs / 60000) };
 }
 
 // Deletes every QUEUED occurrence of a recurring series that is due-or-earlier (date <= today)
@@ -625,6 +669,7 @@ async function getGapUntilNextCommitment({ tz = 'America/Chicago', lookaheadHour
 module.exports = {
   getCalendars, resolveCalendarId, getEvents, listDueTasks, getGapUntilNextCommitment,
   startTaskNow, finishTaskNow, catchUpSeries,
+  parseRepeatMarker, addRepeatInterval, repeatMarkerLine,
 };
 
 // --- CLI (only when run directly, so `require` of this file is side-effect-free) ---
@@ -677,8 +722,9 @@ if (require.main === module) {
       return;
     }
     if (args['finish-now']) {
-      await finishTaskNow({ eventId: args['finish-now'], tz: TZ });
+      const repeat = await finishTaskNow({ eventId: args['finish-now'], repeatCalendar: args.calendar, tz: TZ });
       console.log(`Finished "${args['finish-now']}" — end stamped to now.`);
+      if (repeat) console.log(`Repeat: queued "${repeat.subject}" again on ${repeat.date} (${repeat.minutes}m, from completion today).`);
       return;
     }
     if (args['create-recurring']) return createRecurringEvent(client);

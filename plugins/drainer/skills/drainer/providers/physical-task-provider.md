@@ -58,7 +58,7 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 ## CAPTURE
 `items/<id>.json`:
 `{ "id","source":"physical-task","triage":"needs-you","kind":"work","subject","date","minutes",`
-`"isRecurring","calendar","eventId","seriesMasterId","url","ts":"<ISO now>" }`
+`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","url","ts":"<ISO now>" }`
 - `subject` - the task itself, in Russell's own words (however he named the calendar event).
 - `date` - the day it became queued (YYYY-MM-DD); may be well in the past for something that's sat unstarted.
 - `minutes` - the duration Russell estimated (the event's own length while queued) - also the size of the free gap that made this item eligible to dispatch right now.
@@ -66,6 +66,8 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
   When true, `date` is the most recent queued occurrence, not necessarily today - a series left unstarted can accumulate several missed occurrences (see CLEAR's catch-up behavior).
 - `eventId` - the raw Graph id `startTaskNow`/`finishTaskNow` act on directly: the event's own id for a one-off, or the **most recent queued occurrence's own instance id** for a recurring one (never the series master - starting one occurrence must never touch the others).
 - `seriesMasterId` - present only when `isRecurring` is true; the series master's id, needed only for the backlog cleanup (`--catch-up-series`) after `eventId` has been started.
+- `repeatAfter` - the human interval (`"7 days"`, `"1 month"`) when this one-off carries a `Repeat: ... after completion` body marker, else null.
+  It's a heads-up for the worker to tell Russell when the task will come back; the actual re-queue is done by CLEAR's Finished step (see REPEAT-AFTER-COMPLETION below), which reads the marker off the event itself, not this field.
 - `url` - the event's Outlook `webLink`, so Russell can open the actual calendar item if he wants to.
 
 ## Why this item bypassed the usual triage judgment
@@ -85,6 +87,7 @@ Here it doesn't - the task is physical, so **Russell** does it, and your job is 
 4. **Wait for him to actually do it, then ask.**
    Stay with him rather than firing a reminder and moving on - this is interactive.
    When he confirms done (or it's already handled), CLEAR the "finished" step.
+   If the item has a `repeatAfter`, say so as you close out ("this'll come back in about a week") - the Finished step queues that next one automatically (see REPEAT-AFTER-COMPLETION).
    If he says now isn't actually a good moment after all before step 3 ever ran (interrupted, the gap turned out to be needed for something else), don't CLEAR anything - leave the event exactly as it is, still queued, so it naturally comes back the next time a real gap opens.
    If step 3 already ran and then something interrupted him, still finish it (CLEAR "finished" now) rather than leaving a started-but-never-finished record sitting on the calendar.
 5. **Close out per the standard rules** (`../engine/worker-core.md` §6's close conditions) - this tab stays open exactly as long as any other needs-you tab would: until his part is genuinely done.
@@ -97,14 +100,31 @@ Two ordinary-flow steps plus a recurring-only backlog sweep - everything acts on
   That makes the recorded start the moment the task surfaced to Russell, not the moment he typed his "I'm starting" reply, so a task he glances at and finishes in one sitting still records a real span (start = tab launch, end = when he says done) instead of collapsing start and end onto that single reply.
   Moves the event's start to that launch time and keeps its own duration - this is what takes it off the parking grid, so it stops being queued, permanently, with no further action needed.
   A recurring occurrence detaches from its series here (expected, same as the Outlook UI) - only this one instance was started, every future occurrence is untouched.
-- **Finished** (step 4, once he confirms done): `node calendar.js --finish-now=<eventId>`.
+- **Finished** (step 4, once he confirms done): `node calendar.js --finish-now=<eventId> --calendar=<calendar from the item>`.
   Stamps just the end time to now, leaving start exactly where "started" put it - so the event's real elapsed span (start = when the tab launched, end = when he actually finished) sits on the calendar afterward, same as his old habit of dragging both times to match reality by hand.
+  Always pass `--calendar` (the item's `calendar`): it costs nothing on an ordinary task and is what lets a repeat-after-completion task (see below) place its successor - `--finish-now` on its own no-ops the repeat when the event has no marker.
 - **Recurring backlog cleanup** (only after Finished, only when `isRecurring` is true and the item's `date` in CAPTURE was well in the past): `node calendar.js --catch-up-series=<seriesMasterId> --except-id=<eventId>`.
   A series left unstarted for a while can rack up several individually-queued occurrences (Graph expands every date the pattern ever produced, not just the next one) - those older ones are just recurrence-expansion noise, not independently meaningful records, so this deletes all of them through today EXCEPT the one `eventId` just turned into a real started/finished record.
   Never touches the series master, so every future occurrence keeps arriving on its own schedule.
 
 **Never run Started before Russell has actually said he's beginning, and never run Finished before he's confirmed done** - unlike a source whose scope is knowable up front (see `../engine/worker-core.md` §2d), a physical task's progress can only be observed by asking him.
 If he defers before Started ever ran, do nothing at all: the event is untouched and simply stays queued.
+
+## REPEAT-AFTER-COMPLETION
+Some physical tasks should recur a fixed interval **after Russell last did them**, not on a fixed calendar schedule - get the mail about a week after the last time, check the water-softener salt about a month after the last check.
+Outlook's own recurrence can't express that: its recurrence runs from a fixed start date, so a missed or early occurrence never shifts the ones after it.
+
+A task opts in with **one line in its calendar-event body**:
+`Repeat: 7 days after completion` (also `1 week`, `1 month` - unit is day/week/month, singular or plural).
+When the Finished step runs `--finish-now` with `--calendar`, `calendar.js` reads that marker off the just-finished event and **queues a fresh one-off that interval after today** - same subject, same estimated duration, parked at the midnight grid slot so it's immediately queued and simply waits for the next real gap.
+The finished event stays put as the real record; the successor carries the same marker forward plus a `Last done <date>.` line, so the cycle repeats on its own every time.
+
+This is all deterministic date math in `calendar.js` (`calendar-repeat.js` holds the marker parse and interval arithmetic, unit-tested in `calendar.repeat.test.js`) - the worker does nothing but run the ordinary Finished command with `--calendar` and, if it wants, mention the `repeatAfter` heads-up as it closes out.
+
+Constraints that keep it safe:
+- **One-offs only.** A recurring series already spawns its own occurrences, so a marker on one would double up (the from-completion successor *and* the series' next occurrence). Convert such a task to a one-off carrying a marker instead.
+- **The marker survives Started.** `--start-now` only moves the event's times, never its body, so the marker is still there for Finished to read - and the estimated duration is recovered from the event's own span (which Started preserves), not the real elapsed time the finish stamp writes.
+- **Don't double-finish.** Running Finished twice on the same event would queue two successors; the standing rule (never run Finished before he's confirmed done) already prevents this.
 
 ## JUNK-LEARNING
 N/A - every item here is a task Russell put on his own calendar, never inbound noise.
