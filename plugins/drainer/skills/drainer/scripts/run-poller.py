@@ -1165,8 +1165,8 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             # for a Trello card's program context (per the provider doc's INITIATIVE-LOOKUP) — is read
             # from the merged-main config repo, not the working directory, so a merged config change is
             # never missed when the real repo is on a feature branch.
-            + (f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
-               f"config repo `{config_repo}`.\n")
+            f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
+            f"config repo `{config_repo}`.\n"
         )
     # A one-line summary leads the seed so the worker's Claude session self-titles the tab descriptively
     # while keeping its attention star (the launcher prepends this; see launch-session.ps1 -SummaryFile).
