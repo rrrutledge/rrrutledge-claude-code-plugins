@@ -42,7 +42,7 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent,  # noqa: E402
-                           band_rank, slug, load_providers as base_load_providers)  # subprocess helper + typed provider failure + shared adapter loader
+                           band_rank, slug, load_providers as base_load_providers, live_session_ids)  # subprocess helper + typed provider failure + shared adapter loader + live-session scan
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -1183,26 +1183,6 @@ def spawn_resume_tab(session_id, cwd, repo):
 
 
 # ---------------------------------------------------------------------------- the cycle
-
-def live_session_ids():
-    """The set of session guids that currently have a running `claude --session-id <guid>` process.
-    Worker tabs launch claude with --session-id on the command line (launch-session.ps1), so a tab that
-    was closed (or whose claude exited) drops out of this set. That distinguishes 'tab closed' (process
-    gone — never going to finish) from 'parked, waiting for Russell' (process alive, just idle), which a
-    transcript-activity check cannot. One CIM query per cycle.
-
-    Returns None if the scan can't be run/parsed — the caller then SKIPS the liveness fast-path this cycle
-    (the time-based backstop still applies), so an inability to see processes never reaps a live tab."""
-    ps = (r"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'session-id' } | "
-          r"ForEach-Object { $_.CommandLine }")
-    try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                             capture_output=True, text=True, timeout=30,
-                             creationflags=NO_WINDOW).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
-
 
 def open_correspondents(runtime_dir, live):
     """The correspondent identities that currently have a LIVE worker session on a captured item.

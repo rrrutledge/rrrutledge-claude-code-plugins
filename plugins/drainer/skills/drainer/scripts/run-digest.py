@@ -23,7 +23,8 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
-from provider_base import run_node, spawn_tab, load_providers, ProviderError  # noqa: E402  (shared subprocess + tab-spawn + adapter loader)
+from provider_base import (run_node, spawn_tab, load_providers, ProviderError,  # noqa: E402
+                           live_session_ids, live_worker_item_ids)  # shared subprocess + tab-spawn + adapter loader + live-worker scan
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -90,17 +91,23 @@ def _age_days(iso):
 
 
 def compute_backlog(runtime_dir, cfg, queue):
-    """The read-only backlog-depth barometer: for each enabled provider, how many items are still
-    pending (its live source listing minus the ids already parked in the digest queue) and the oldest
-    pending item's arrival time, plus a grand total across sources. Zero AI and no body capture - each
-    provider's `pending_summary` reads its envelope-only listing. A provider that can't list this run is
-    reported as unavailable rather than aborting the whole report.
+    """The read-only backlog-depth barometer: for each enabled provider, how many items are still waiting
+    and NOT yet started, and the oldest such item's arrival time, plus a grand total across sources.
+    "Not yet started" is the source listing minus two id sets: the items already parked in the digest
+    queue, and the items that currently have a live worker session open on them (Russell already knows
+    about an open worker, so an in-progress item is not part of the "still to begin" backlog). Zero AI and
+    no body capture - each provider's `pending_summary` reads its envelope-only listing. A provider that
+    can't list this run is reported as unavailable rather than aborting the whole report.
 
-    Returns `{"sources": [{name, count, capped, oldest_received, is_email, error}], "total": int,
-    "capped": bool}` (a source's own listing is skipped entirely when it opts out via count_in_backlog)."""
+    Returns `{"sources": [{name, count, capped, oldest_received, error}], "total": int, "capped": bool}`
+    (a source's own listing is skipped entirely when it opts out via count_in_backlog)."""
     parked = {}
     for e in queue:  # the ids already awaiting the digest, per source, so they don't inflate the count
         parked.setdefault(e.get("source"), set()).add(e.get("id"))
+    # Ids with a live worker open right now, subtracted so the count is "not yet started" rather than
+    # "still outstanding". stable_ids are globally unique and source-prefixed, so one shared set can be
+    # unioned into every provider's exclude set with no cross-source collision.
+    in_progress = live_worker_item_ids(runtime_dir, live_session_ids())
     load_errors = {}
     providers = load_providers(
         cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
@@ -109,31 +116,29 @@ def compute_backlog(runtime_dir, cfg, queue):
     for prov in providers:
         if not getattr(prov, "count_in_backlog", True):
             continue  # a standing-noise scanner (e.g. the Junk-folder net), not a work queue to drain
-        is_email = getattr(prov, "email_backlog", False)
         try:
-            s = prov.pending_summary(exclude_ids=parked.get(prov.name, frozenset()),
+            s = prov.pending_summary(exclude_ids=parked.get(prov.name, set()) | in_progress,
                                      limit=ENUMERATE_PAGE_SIZE)
             sources.append({"name": prov.name, "count": s["count"], "capped": s.get("capped", False),
-                            "oldest_received": s.get("oldest_received"), "is_email": is_email,
-                            "error": None})
+                            "oldest_received": s.get("oldest_received"), "error": None})
             total += s["count"]
             capped_total = capped_total or s.get("capped", False)
         except Exception as e:  # ProviderError or anything a listing raises - isolate this one source
             sources.append({"name": prov.name, "count": None, "capped": False, "oldest_received": None,
-                            "is_email": is_email, "error": str(e)})
+                            "error": str(e)})
     # A provider that failed to even load (a broken deploy or an expired credential at construction) still
     # belongs in the barometer as unavailable; a plain missing adapter is just not enabled here, so skip it.
     for name, (msg, kind) in load_errors.items():
         if kind != "missing":
             sources.append({"name": name, "count": None, "capped": False, "oldest_received": None,
-                            "is_email": False, "error": msg})
+                            "error": msg})
     return {"sources": sources, "total": total, "capped": capped_total}
 
 
 def format_backlog(backlog):
     """Render the backlog barometer as a terse block: one line per source, a grand-total line, and the
-    email barometer (how far back the oldest unhandled email goes - the queue-size proxy)."""
-    lines = ["Backlog depth (pending needs-you items, read-only barometer):"]
+    how-far-back barometer (the oldest still-waiting item across every source - the queue-depth proxy)."""
+    lines = ["Backlog depth (needs-you items not yet started, read-only barometer):"]
     for s in backlog["sources"]:
         if s["error"]:
             lines.append(f"    {s['name']}: unavailable this run ({s['error'][:80]})")
@@ -149,17 +154,16 @@ def format_backlog(backlog):
     counted = [s for s in backlog["sources"] if s["count"] is not None]
     total = f"{backlog['total']}+" if backlog.get("capped") else str(backlog["total"])
     lines.append(f"    Grand total: {total} pending across {len(counted)} source(s).")
-    emails = [s for s in counted if s.get("is_email")]
-    if emails:
-        email_count = sum(s["count"] for s in emails)
-        email_oldest = sorted(s["oldest_received"] for s in emails if s["oldest_received"])
-        if email_oldest:
-            age = _age_days(email_oldest[0])
-            back = f", {age} days back" if age is not None else ""
-            lines.append(f"    Email barometer: {email_count} pending, oldest "
-                         f"{_fmt_local(email_oldest[0])}{back}.")
-        else:
-            lines.append(f"    Email barometer: {email_count} pending (none carries a date).")
+    # The how-far-back barometer: the single oldest still-waiting item across every source, the proxy for
+    # how deep the whole queue runs. Sources with no dated pending item (an undated Trello card, an empty
+    # source) simply don't contribute a candidate.
+    dated = [s for s in counted if s["oldest_received"]]
+    if dated:
+        oldest_src = min(dated, key=lambda s: s["oldest_received"])
+        age = _age_days(oldest_src["oldest_received"])
+        back = f", {age} days back" if age is not None else ""
+        lines.append(f"    Oldest still waiting: {_fmt_local(oldest_src['oldest_received'])}{back} "
+                     f"(on {oldest_src['name']}) - how far back the backlog reaches.")
     return "\n".join(lines)
 
 

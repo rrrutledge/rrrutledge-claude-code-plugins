@@ -426,6 +426,58 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
     }
 
 
+def live_session_ids():
+    """The set of session guids that currently have a running `claude --session-id <guid>` process.
+    Worker tabs launch claude with --session-id on the command line (launch-session.ps1), so a tab that
+    was closed (or whose claude exited) drops out of this set. That distinguishes 'tab closed' (process
+    gone — never going to finish) from 'parked, waiting for Russell' (process alive, just idle), which a
+    transcript-activity check cannot. One CIM query per call.
+
+    Returns None if the scan can't be run/parsed — the caller then treats liveness as unknown this cycle
+    (the poller keeps its time-based backstop; the digest backlog simply subtracts nothing), so an inability
+    to see processes never reaps a live tab nor hides real backlog."""
+    ps = (r"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'session-id' } | "
+          r"ForEach-Object { $_.CommandLine }")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=30,
+                             creationflags=NO_WINDOW).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
+
+
+def live_worker_item_ids(runtime_dir, live):
+    """The set of item ids (each a provider stable_id) that currently have a LIVE worker session on them.
+
+    Read from the worker seed files: `seeds/<id>.prompt.txt.session` holds that worker's claude session
+    guid, and the poller records every dispatched item under `iid == its stable_id`. An id whose seed guid
+    is in `live` (the running `claude --session-id` guids from `live_session_ids`) has an open worker; a
+    closed or crashed worker's guid drops out of `live`, so its item stops counting as in-progress. A
+    None/empty `live` yields the empty set - nothing is treated as in-progress - so a failed process scan
+    overcounts the backlog rather than hiding it."""
+    if not live:
+        return set()
+    seeds_dir = os.path.join(runtime_dir, "seeds")
+    suffix = ".prompt.txt.session"
+    try:
+        names = os.listdir(seeds_dir)
+    except OSError:
+        return set()
+    out = set()
+    for fn in names:
+        if not fn.endswith(suffix):
+            continue
+        try:
+            with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
+                guid = f.read().strip()
+        except OSError:
+            continue
+        if guid in live:
+            out.add(fn[:-len(suffix)])
+    return out
+
+
 def load_providers(provider_names, search_dirs, cfg=None, on_error=None):
     """Load each enabled provider's `Provider(ProviderBase)` from `<dir>/<name>-adapter.py`, trying
     `search_dirs` in order (the plugin's own `providers/` first, then a machine-local `providers/`).
@@ -488,12 +540,6 @@ class ProviderBase:
     # is left to drain" signal; such a provider is skipped entirely by the barometer (its own listing is
     # never even fetched for the count).
     count_in_backlog = True
-
-    # Whether this provider's `received` timestamps are true message arrival times, so its pending
-    # backlog feeds the digest's email-style "how far back does my queue go" barometer. Email adapters
-    # set this True; a source whose `received` is a resurface/Start date (trello) or which has no arrival
-    # notion leaves it False and still contributes its count to the per-source lines and grand total.
-    email_backlog = False
 
     def configure(self, cfg):
         """Optional hook: receive the parsed drainer config (incl. `repo`) after construction. Adapters
