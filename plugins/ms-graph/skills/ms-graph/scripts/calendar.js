@@ -607,7 +607,7 @@ async function getGapUntilNextCommitment({ tz = 'America/Chicago', lookaheadHour
       .get();
     while (page) {
       for (const e of page.value || []) {
-        if (isSoloTask(e)) continue;
+        if (e.isAllDay || isSoloTask(e)) continue;
         const start = new Date(e.start.dateTime);
         const finish = new Date(e.end.dateTime);
         if (finish <= now) continue; // already over
