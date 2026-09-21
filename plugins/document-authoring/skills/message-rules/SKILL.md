@@ -304,7 +304,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Exception: a nudge switching to a channel with no visible prior thread to anchor it (e.g. LinkedIn to email) restates the concrete identifying detail of the ask (a role title, a specific request), since the new channel has no other way to carry which ask this is.
 - **A repeat nudge on an already-unanswered ask shrinks further than the first** — drop the warm-up context line and any separate reassurance clause, and ask one direct binary question with the release folded into the question itself rather than tacked on after.
   **When the ask is whether a deliverable exists rather than a decision to make, recast per the "Keep asks open and tentative" rule above instead of the binary-release formula** — "let me know if you have the headshot" asks whether it's in hand at all, not a release on a choice already made.
-  When the unanswered message sits visibly elsewhere in the same thread, pair a brief soft verbal frame ("wanted to ask again if you can let me know about this") with the emoji gesture matching its actual position: 👆 for a Slack/Teams thread, where the earlier message sits above; 👇 for an email reply, where the quoted original sits below the new text.
+  When the unanswered message sits visibly elsewhere in the same thread, pair a brief soft verbal frame ("wanted to ask again if you can let me know about this") with the emoji gesture matching its actual position: 👆 for a Slack/Teams or text-message (SMS/iMessage) thread, where the earlier message sits above; 👇 for an email reply, where the quoted original sits below the new text.
   **When the repeat also carries genuine new content** (a lower-commitment alternative, fresh information), lengthen that same frame to name the new material alongside the gesture.
 - **Lead with a genuine fresh reason when you have one** — the timely hook or honest trigger for writing now, not "circling back" or "just checking in". Skip recapping what you already sent and cut the offer-to-help tail. Release the timeline through the question's own open phrasing, not by tacking on a separate "no rush" reassurance clause at the end — that's a helper tail like any other, except on a first nudge re-asking a low-stakes favor (see the broaden-and-release bullet below).
   When the fresh reason is someone else's related progress, let it double as the trigger for reminding the recipient of their own still-open piece, and land that reminder as a same-day timeframe question rather than a status check.
@@ -411,7 +411,7 @@ His palette:
 | 👍 | Light acknowledgement, often after "Thanks" |
 | ✅ | Marking a logistics item handled: "Will reschedule ✅" |
 | 👇 | Pointing at a link or recording just below; or, on a repeat nudge, at an unanswered message below (e.g. a quoted email original) |
-| 👆 | On a repeat nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams thread) |
+| 👆 | On a repeat nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams or text-message thread) |
 | 🎉 / 👋 / 🔔 | Occasional: celebration, greeting wave, notify nudge |
 
 Don't invent emoji outside this palette, don't stack them, and skip them entirely in more serious messages.
