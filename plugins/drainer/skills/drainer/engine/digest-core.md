@@ -61,10 +61,11 @@ A stuck provider alone is still worth reporting - surface it even when the queue
 Your launcher measured the backlog for this run and handed it to you in the runtime facts as a **backlog-depth** block: for each source, how many items are still pending (its live listing minus whatever is already parked in the digest queue), a grand total across sources, and an email barometer.
 Email is the readable proxy for the whole backlog, since so much work arrives there, so the age of the oldest unhandled email approximates how deep the queue runs overall.
 
-Present the block verbatim from the runtime facts, right after the step 0 health alerts and above the fyi/junk sections.
-Lead with the grand total and the email barometer, with the per-source lines beneath.
-This is a count, not a task list: you surface the numbers and leave the pending items behind them to the poller, per the note at the top of this file.
+Present the block verbatim from the runtime facts, at the spot step 4 places it in the digest.
+Surface the numbers only; the pending items behind them are the poller's, per the note at the top of this file.
 When a source reads "unavailable this run", say so plainly and move on - a listing that failed to load is a gap in the barometer, not a zero.
+
+## 2a. Needs your sign-in - a browser gate only Russell can clear
 
 A worker that hits a browser gate only Russell can clear reports it here instead of stalling silently - see `worker-core.md` §2e for what counts as a gate and what it records.
 These items carry `triage: "help-needed"` in `items/<id>.json`.
