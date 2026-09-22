@@ -70,6 +70,9 @@ Once it is: mark read as soon as every ask in the span is handled, staged, or tr
   For a channel @-mention this clears the mention badge but leaves any newer messages unread (the channel may re-surface as "Unread in #channel" on the next cycle - that is expected, not an error).
 - **Thread item** - `node slack.js --mark --channel=<channel> --ts=<ts> --thread-ts=<threadTs>` (`subscriptions.thread.mark`) - advances the thread's own read cursor.
 
+**Poll-time clear (fyi/junk).**
+Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `--mark` cursor advance above, done in-process over the Web API with no browser batch worker needed, unlike Teams.
+
 ## REACT
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.

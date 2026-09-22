@@ -43,6 +43,21 @@ class Provider(ProviderBase):
                 f"slack enumerate failed (auth/token+cookie?): {res.stderr.strip()[:300]}", kind="auth")
         return json.loads(res.stdout or "[]")
 
+    def clear(self, item):
+        """Mark an fyi/junk Slack conversation read at triage time (the provider CLEAR: advance the read
+        cursor via `slack.js --mark`). Reversible and non-destructive - a newer message re-surfaces it.
+        Returns True on success, False on failure - see ProviderBase.clear for why the poller can call
+        this safely. Only ever runs on fyi/junk items (the poller's queue path), never needs-you (those
+        clear via their worker after every ask in the span is handled), so advancing the read cursor over
+        the unread span here buries no unhandled ask - the same reason email's fyi/junk archive at triage
+        is safe. Slack marks read in-process over the Web API, so unlike Teams it needs no batch worker."""
+        cmd = [self.slackjs, "--mark", f"--channel={item['channel']}", f"--ts={item['ts']}"]
+        thread_ts = item.get("threadTs")
+        if thread_ts:
+            cmd.append(f"--thread-ts={thread_ts}")
+        res = run_node(cmd)
+        return res.returncode == 0
+
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
         # to a filesystem-safe id and keep it stable across cycles so seen-state dedups on it.
