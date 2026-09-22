@@ -32,6 +32,12 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 - **Shipped prose** - a skill, a README, a repo doc, a code comment, config prose - ends in **Ship**: commit it and open a PR.
   There is no send and no Learn diff here, so a review finding you accept or reject is the only correction signal the text ever gets; `writing-review` covers how to weigh one.
 
+## A plan or spec for Russell to review is a different artifact
+
+This flow is for writing *in Russell's name* - text he sends or ships.
+A plan, design, or spec you present *to* Russell so he can steer it before you act is different: it is your thinking laid out for his review.
+That artifact has its own default form - an editable HTML page opened locally - so it routes to `plan-review`, not through the draft/review/ship steps above.
+
 ## What enforces the Review step
 
 A stage gate blocks the moment the writing would reach Russell until the review has run against that exact content (see `writing-review`'s **The stage gate**).
