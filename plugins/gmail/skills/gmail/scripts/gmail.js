@@ -579,14 +579,14 @@ async function reply() {
   //   nudge goes to the people we wrote to (To/CC) rather than back to ourselves.
   const fromSelf = orig.from && orig.from.value.some(
     a => a.address && a.address.toLowerCase() === acct);
-  // --to overrides the computed recipient: needed when replying into a thread whose From is a no-reply
-  // relay (e.g. a Google "shared a file" notification) whose real correspondent is in Reply-To — pass
-  // that address so the threaded reply reaches the person, not the no-reply box.
+  // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
+  // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
+  // prefer it automatically. --to still overrides both, for the cases a Reply-To doesn't catch.
   const to = args.to
     ? args.to
     : (fromSelf
         ? (orig.to ? fromList(orig.to.value) : '')
-        : (orig.from ? orig.from.text : ''));
+        : ((orig.replyTo && orig.replyTo.text) ? orig.replyTo.text : (orig.from ? orig.from.text : '')));
   const ccSource = fromSelf
     ? (orig.cc ? orig.cc.value : [])
     : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
