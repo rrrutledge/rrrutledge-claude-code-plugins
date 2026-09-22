@@ -20,8 +20,10 @@ keeps coming back until it's started — for as long as it stays within the scan
 surfacing rather than silently aging out of view. There is no delete and no second archive calendar. What's unique
 to this source is a SECOND gate on top of "queued": a physical task also needs a live free gap —
 computed fresh every cycle — of at least its own duration (plus a buffer) before Russell's next real
-(non-solo) calendar commitment, because unlike every other source, nobody but Russell can do the
-actual work. A THIRD, opt-in gate sits alongside it: a task with a `Window: HH:MM-HH:MM` body marker
+calendar commitment (any non-all-day event, solo or not, on any of his editable calendars, except the
+Physical Tasks calendar itself — always excluded from the gap check, since it's the queue, not a
+commitment), because unlike every other source, nobody but Russell can do the actual work. A THIRD,
+opt-in gate sits alongside it: a task with a `Window: HH:MM-HH:MM` body marker
 (or any task, when `default_window` is configured) only enumerates while local now falls inside that
 time-of-day window, because some tasks only fit certain hours of the day, however much free time the
 calendar shows. A FOURTH, opt-in gate sits alongside it: a task with a `Days: SA,SU` body marker
@@ -145,9 +147,15 @@ class Provider(ProviderBase):
         return json.loads(res.stdout or "[]")
 
     def _gap_minutes(self):
+        # Always exclude the Physical Tasks calendar itself, on top of whatever the user
+        # configured in `self.exclude` — otherwise the drainer's own queue (parked task start
+        # times, plus any task mid-work) would gate dispatch of the *next* physical task now that
+        # solo events count as real commitments. A single-flight hold via `correspondent()`
+        # already keeps two physical tasks from running at once (see `correspondent` below), so
+        # this exclusion doesn't lose any real protection.
         args = [self.calendarjs, "--gap-minutes", "--json", f"--lookahead-hours={self.lookahead_hours}"]
-        if self.exclude:
-            args.append(f"--exclude={','.join(self.exclude)}")
+        exclude = list(self.exclude) + [self.calendar]
+        args.append(f"--exclude={','.join(exclude)}")
         res = run_node(args)
         if res.returncode != 0:
             raise ProviderError(f"physical-task gap check failed: {res.stderr.strip()[:300]}", kind="auth")
