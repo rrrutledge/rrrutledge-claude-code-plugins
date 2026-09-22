@@ -1,5 +1,5 @@
-"""Tests for archive-fyi/junk-at-triage: ProviderBase.clear's default and the two inbox adapters'
-clear() calling their reversible-archive CLEAR.
+"""Tests for archive-fyi/junk-at-triage: ProviderBase.clear's default and the two inbox adapters plus
+the slack adapter's clear() calling their reversible archive/mark-read CLEAR.
 
 Run directly:
     python plugins/drainer/tests/test_poll_clear.py
@@ -26,6 +26,7 @@ def _load(name, path):
 import provider_base  # noqa: E402  (on sys.path via SCRIPTS)
 outlook = _load("outlook_graph_adapter", os.path.join(PROVIDERS, "outlook-graph-adapter.py"))
 gmail = _load("gmail_adapter", os.path.join(PROVIDERS, "gmail-adapter.py"))
+slack = _load("slack_adapter", os.path.join(PROVIDERS, "slack-adapter.py"))
 
 failures = []
 
@@ -69,6 +70,23 @@ check("clear -> True on rc 0", gm.clear({"id": "GID1"}), True)
 check("called gmail.js --archive=<id>", gcalls and gcalls[0], ["GMAILJS", "--archive=GID1"])
 gmail.run_node = lambda args, **kw: _Res(2)
 check("clear -> False on nonzero rc", gm.clear({"id": "GID1"}), False)
+
+
+print("\nslack adapter clear() marks read via slack.js --mark and reports success/failure")
+sl = slack.Provider.__new__(slack.Provider)  # skip __init__ (which locates slack.js)
+sl.slackjs = "SLACKJS"
+scalls = []
+slack.run_node = lambda args, **kw: (scalls.append(args) or _Res(0))
+check("clear -> True on rc 0", sl.clear({"channel": "C1", "ts": "111.1"}), True)
+check("called slack.js --mark --channel --ts",
+      scalls and scalls[0], ["SLACKJS", "--mark", "--channel=C1", "--ts=111.1"])
+scalls.clear()
+check("thread item clear -> True on rc 0",
+      sl.clear({"channel": "C1", "ts": "111.1", "threadTs": "100.0"}), True)
+check("thread clear appends --thread-ts",
+      scalls and scalls[0], ["SLACKJS", "--mark", "--channel=C1", "--ts=111.1", "--thread-ts=100.0"])
+slack.run_node = lambda args, **kw: _Res(1)
+check("clear -> False on rc 1", sl.clear({"channel": "C1", "ts": "111.1"}), False)
 
 
 print()
