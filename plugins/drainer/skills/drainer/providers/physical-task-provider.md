@@ -111,20 +111,13 @@ Two ordinary-flow steps plus a recurring-only backlog sweep - everything acts on
 If he defers before Started ever ran, do nothing at all: the event is untouched and simply stays queued.
 
 ## REPEAT-AFTER-COMPLETION
-Some physical tasks should recur a fixed interval **after Russell last did them**, not on a fixed calendar schedule - get the mail about a week after the last time, check the water-softener salt about a month after the last check.
-Outlook's own recurrence can't express that: its recurrence runs from a fixed start date, so a missed or early occurrence never shifts the ones after it.
+A one-off can recur a fixed interval **after Russell last did it**, rather than on a fixed calendar schedule - the one timing Outlook's own recurrence can't express.
+It opts in with one line in its event body: `Repeat: 7 days after completion` (also `1 week`, `1 month`).
+The Finished step handles the rest automatically because it passes `--calendar` (see CLEAR): on finish, `calendar.js` reads the marker and queues the next one-off that interval out, carrying the marker forward.
+`repeatAfter` in CAPTURE is the parsed heads-up to mention as you close out.
 
-A task opts in with **one line in its calendar-event body**:
-`Repeat: 7 days after completion` (also `1 week`, `1 month` - unit is day/week/month, singular or plural).
-When the Finished step runs `--finish-now` with `--calendar`, `calendar.js` reads that marker off the just-finished event and **queues a fresh one-off that interval after today** - same subject, same estimated duration, parked at the midnight grid slot so it's immediately queued and simply waits for the next real gap.
-The finished event stays put as the real record; the successor carries the same marker forward plus a `Last done <date>.` line, so the cycle repeats on its own every time.
-
-This is all deterministic date math in `calendar.js` (`calendar-repeat.js` holds the marker parse and interval arithmetic, unit-tested in `calendar.repeat.test.js`) - the worker does nothing but run the ordinary Finished command with `--calendar` and, if it wants, mention the `repeatAfter` heads-up as it closes out.
-
-Constraints that keep it safe:
-- **One-offs only.** A recurring series already spawns its own occurrences, so a marker on one would double up (the from-completion successor *and* the series' next occurrence). Convert such a task to a one-off carrying a marker instead.
-- **The marker survives Started.** `--start-now` only moves the event's times, never its body, so the marker is still there for Finished to read - and the estimated duration is recovered from the event's own span (which Started preserves), not the real elapsed time the finish stamp writes.
-- **Don't double-finish.** Running Finished twice on the same event would queue two successors; the standing rule (never run Finished before he's confirmed done) already prevents this.
+Put a marker on a **one-off only** - a recurring series already spawns its own occurrences, so a marker on one would double up.
+The mechanism and its edge cases live in `calendar-repeat.js` and `finishTaskNow` (calendar.js), not here.
 
 ## JUNK-LEARNING
 N/A - every item here is a task Russell put on his own calendar, never inbound noise.
