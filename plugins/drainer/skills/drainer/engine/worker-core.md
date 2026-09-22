@@ -351,6 +351,18 @@ Once the human step is done (Russell told you he sent/submitted/confirmed it, or
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
 But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
 
+## 6b. Headless close-up - a background worker with no tab to close
+When your seed opens by naming you a **HEADLESS background worker**, you run as a `claude --bg` background session with no terminal tab, so every `close-session.py` self-close this file names is a no-op for you - there is no tab to kill.
+Everything else in steps 0-6a applies unchanged: same needs-you flow, same draft-only rule, same CLEAR-as-completion-signal, same "stay live until your part and Russell's part are both done" bar.
+Only the final act differs.
+
+Wherever this file tells you to self-close - the silent-resolution cases (§2c re-triage to FYI, §6a completed-work-with-nothing-for-Russell, a situational no-op close) and the truly-finished close at the end of §6 - do the same CLEAR / digest queue-add / browser-tab cleanup those steps call for, then in place of `close-session.py` create the empty marker file your seed named (`<your task-instructions file>.session.done`, via Bash `touch`) as your very last act.
+That marker is your "done" signal: the poller's reconcile pass reaps the settled background session on its next cycle.
+Until you drop it you stay listed as a live worker - which is exactly right while a draft you staged is still awaiting Russell's send or any part of the work is unfinished, the same "stay open" bar §6 sets for a tab.
+
+Russell reaches a live headless worker from the Claude app or `claude attach <id>`, not a terminal tab, so when you yield to him (a staged draft, a decision, a browser gate per §2e) simply end your turn and leave the session parked - do not drop the marker yet.
+Drop it only once you would otherwise have closed your own tab.
+
 ## 7. Improve the source (don't just hoard facts)
 If the user had to tell you something you could have known, don't just note it - figure out *where it should have come from* and improve THAT source so it's findable next time: a system, a skill, or the internal knowledge source.
 Only when the shared brain is genuinely the right long-term home does it go in the local `context.md`; voice feedback goes to the document-authoring skill.

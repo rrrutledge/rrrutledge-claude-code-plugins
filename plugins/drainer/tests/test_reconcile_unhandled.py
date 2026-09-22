@@ -92,7 +92,7 @@ def run(rt, providers, live=(), dry_run=False):
     """Drive the reconcile with a pinned live-session set, and report what it re-queued."""
     requeued = []
     real_live, real_seen_state = poller.live_session_ids, poller.seen_state
-    poller.live_session_ids = lambda: set(live) if live is not None else None
+    poller.live_session_ids = lambda headless=False: set(live) if live is not None else None
     poller.seen_state = _recording_seen_state(rt, requeued, real_seen_state)
     try:
         n = poller.reconcile_unhandled(rt, CFG, providers, dry_run=dry_run)

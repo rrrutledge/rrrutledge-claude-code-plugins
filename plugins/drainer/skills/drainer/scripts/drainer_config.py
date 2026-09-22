@@ -127,6 +127,13 @@ def read_config(repo, runtime_root=None):
         # it drops back below. Read from the DRAINER_TARGET_OPEN_TABS env var (default 12) — a fresh
         # process each poller cycle, so a changed value takes effect on the very next cycle.
         "target_open_tabs": int(os.environ.get("DRAINER_TARGET_OPEN_TABS", "12")),
+        # Spawn fresh workers as headless `claude --bg` background sessions instead of Windows Terminal
+        # tabs, so a spawn never steals desktop focus. OFF by default: while it's off, workers spawn into
+        # WT tabs exactly as before, and the tab path stays the fallback. Read from the
+        # DRAINER_HEADLESS_WORKERS env var (a fresh process each cycle, so flipping it takes effect on the
+        # next cycle); any of 1/true/yes/on (case-insensitive) turns it on.
+        "headless_workers": os.environ.get("DRAINER_HEADLESS_WORKERS", "").strip().lower()
+        in ("1", "true", "yes", "on"),
         # Worker tabs need an explicit model — otherwise they inherit the session default, which may be
         # a 1M-context model the account can't use. The poller picks per item by triage complexity:
         # simple -> worker_model, complex -> worker_model_complex (both standard context).

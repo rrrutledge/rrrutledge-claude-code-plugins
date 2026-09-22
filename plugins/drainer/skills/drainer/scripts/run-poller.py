@@ -41,8 +41,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
-from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent,  # noqa: E402
-                           band_rank, slug, self_directed, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + self-addressed predicate + shared adapter loader + seen-state reader
+from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_bg, spawn_silent,  # noqa: E402
+                           band_rank, slug, self_directed, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -1147,7 +1147,8 @@ def write_worker_context(item, local_dir, json_file):
     return path
 
 
-def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item):
+def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item,
+                 headless=False):
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, f"{iid}.prompt.txt")
@@ -1195,14 +1196,46 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
             f"config repo `{config_repo}`.\n"
         )
+        if headless:
+            # A headless worker has no terminal tab to self-close, so worker-core's close-up steps
+            # (`close-session.py`) are a no-op for it. Point it at worker-core's Headless close-up and
+            # give it the exact marker path to drop when it is done, which the poller's reconcile reaps.
+            f.write(
+                "You are a HEADLESS background worker - there is no terminal tab. Follow worker-core's "
+                "**Headless close-up** section: skip every `close-session.py` self-close, and when the "
+                "item is truly finished create the empty marker file "
+                f"`{prompt_file}.session.done` (Bash `touch`) as your final act, which signals the "
+                "poller to reap this settled background session.\n"
+            )
     # A one-line summary leads the seed so the worker's Claude session self-titles the tab descriptively
     # while keeping its attention star (the launcher prepends this; see launch-session.ps1 -SummaryFile).
     summary_file = os.path.join(seeds, f"{iid}.summary.txt")
+    summary_text = _worker_summary(json_file)
     with open(summary_file, "w", encoding="utf-8") as f:
-        f.write(_worker_summary(json_file))
+        f.write(summary_text)
+    title = _worker_title(iid, json_file)
+    if headless:
+        # Headless: no WT tab, so no focus steal. Build the SAME one-line seed the tab launcher builds
+        # (launch-session.ps1 -SummaryFile) - a descriptive lead so the session self-names, then the
+        # pointer at the on-disk instructions - and write the bg session's short id into the SAME receipt
+        # file the tab path writes (<prompt_file>.session), so open_correspondents, reconcile, and peek
+        # keep reading one receipt regardless of which path spawned the worker. A launch that fails to
+        # return an id leaves no receipt, so reconcile re-queues the item after the launch grace, exactly
+        # as it recovers a tab that never came up.
+        lead = re.sub(r"\s+", " ", summary_text).strip()
+        seed = ((lead + " ") if lead else "") + (
+            f"Your task instructions are in '{prompt_file}' - open it and begin immediately "
+            "without waiting for further input.")
+        bg_id = spawn_bg(seed, worker_model, repo, title)
+        if bg_id:
+            with open(prompt_file + ".session", "w", encoding="utf-8") as f:
+                f.write(bg_id)
+        else:
+            print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
+                  "left unrecorded to retry next cycle.")
+        return
     spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab([spawn_cmd, _worker_title(iid, json_file), repo, prompt_file, worker_model, summary_file],
-              cwd=repo)
+    spawn_tab([spawn_cmd, title, repo, prompt_file, worker_model, summary_file], cwd=repo)
 
 
 def spawn_resume_tab(session_id, cwd, repo):
@@ -1217,15 +1250,50 @@ def spawn_resume_tab(session_id, cwd, repo):
 
 # ---------------------------------------------------------------------------- the cycle
 
-def live_session_ids():
-    """The set of session guids that currently have a running `claude --session-id <guid>` process.
-    Worker tabs launch claude with --session-id on the command line (launch-session.ps1), so a tab that
-    was closed (or whose claude exited) drops out of this set. That distinguishes 'tab closed' (process
-    gone — never going to finish) from 'parked, waiting for Russell' (process alive, just idle), which a
-    transcript-activity check cannot. One CIM query per cycle.
+def _claude_agents():
+    """The parsed `claude agents --json` list - every live interactive and background Claude session on
+    this machine (each carries `id`, `pid`, `kind`, `status`, and, for background sessions, a
+    `state` of working/blocked/idle) - or None if the call can't be run or parsed.
 
-    Returns None if the scan can't be run/parsed — the caller then SKIPS the liveness fast-path this cycle
-    (the time-based backstop still applies), so an inability to see processes never reaps a live tab."""
+    The headless-worker path reads worker liveness and the attention-budget count from this in place of
+    the Windows process scan: a background worker's short `id` here is the same id spawn_bg writes to the
+    per-item receipt, and a finished worker stays listed (parked, like an open tab) until it is reaped.
+    None flows through to the callers' fail-safe (skip the liveness fast-path / treat the cycle as at the
+    tab cap), exactly as a failed process scan does."""
+    claude = shutil.which("claude") or "claude"
+    try:
+        res = subprocess.run([claude, "agents", "--json"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode != 0:
+        return None
+    try:
+        data = json.loads(res.stdout or "[]")
+    except ValueError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+def live_session_ids(headless=False):
+    """The set of ids of the worker sessions currently alive, so a second item from a correspondent
+    whose earlier one still has a live worker is held, and reconcile can tell 'worker gone, never going
+    to finish' from 'parked, waiting for Russell'. One scan per cycle. Returns None if the scan can't be
+    run/parsed - the caller then SKIPS the liveness fast-path this cycle (the time-based backstop still
+    applies), so an inability to see sessions never reaps a live worker.
+
+    Two id spaces, matched to how the worker was spawned (the receipt content is kept in the same space):
+      - tab path: the session guids that have a running `claude --session-id <guid>` process. Worker tabs
+        launch claude with --session-id on the command line (launch-session.ps1), so a tab that was
+        closed (or whose claude exited) drops out of this set.
+      - headless path: the short ids of the live background sessions from `claude agents --json`. A
+        parked, finished worker stays listed until it is reaped, which is the faithful analog of a tab
+        left open and parked for Russell."""
+    if headless:
+        agents = _claude_agents()
+        if agents is None:
+            return None
+        return {a["id"] for a in agents if a.get("kind") == "background" and a.get("id")}
     ps = (r"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'session-id' } | "
           r"ForEach-Object { $_.CommandLine }")
     try:
@@ -1235,6 +1303,54 @@ def live_session_ids():
     except (OSError, subprocess.SubprocessError):
         return None
     return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
+
+
+def _reap_done_bg_workers(runtime_dir, dry_run=False):
+    """Remove the background worker sessions their worker has marked done - the headless analog of a tab
+    worker self-closing its tab, folded into the reconcile pass (no separate reaper daemon).
+
+    A headless worker has no tab to close, so when it is finished with an item for good it drops a
+    `<id>.prompt.txt.session.done` marker beside its receipt (worker-core's headless close-up). This
+    reaps exactly those: for each receipt carrying a `.done` sibling, `claude stop` then `claude rm` the
+    background session the receipt names, and delete both files. A worker still parked for Russell leaves
+    no marker, so it is never reaped; a background session Russell started himself has no drainer receipt
+    at all, so it is never touched. Best-effort: a failed stop/rm just retries next cycle, and a session
+    already gone makes the rm a harmless no-op. Returns the count reaped."""
+    seeds_dir = os.path.join(runtime_dir, "seeds")
+    suffix = ".prompt.txt.session"
+    try:
+        names = os.listdir(seeds_dir)
+    except OSError:
+        return 0
+    claude = shutil.which("claude") or "claude"
+    reaped = 0
+    for fn in names:
+        if not fn.endswith(suffix) or not os.path.exists(os.path.join(seeds_dir, fn + ".done")):
+            continue
+        receipt = os.path.join(seeds_dir, fn)
+        try:
+            with open(receipt, encoding="utf-8") as f:
+                sid = f.read().strip()
+        except OSError:
+            sid = ""
+        verb = "would reap" if dry_run else "reaped"
+        print(f"reconcile: settled headless worker {sid or fn} -> {verb} (claude rm).")
+        reaped += 1
+        if dry_run:
+            continue
+        if sid:
+            for sub in ("stop", "rm"):
+                try:
+                    subprocess.run([claude, sub, sid], capture_output=True, text=True,
+                                   timeout=30, creationflags=NO_WINDOW)
+                except (OSError, subprocess.SubprocessError):
+                    pass
+        for path in (os.path.join(seeds_dir, fn + ".done"), receipt):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return reaped
 
 
 def open_correspondents(runtime_dir, live):
@@ -1338,11 +1454,16 @@ def _process_snapshot():
         return None
 
 
-def total_claude_tabs():
-    """Count of the real Claude Code tabs open right now — drainer worker tabs and any tab Russell
-    opened by hand. The real constraint on dispatch speed is total open Claude Code tabs competing
-    for his attention, not how many the drainer itself has dispatched, so target_open_tabs is checked
-    against this instead of the drainer's own seen-state bookkeeping.
+def total_claude_tabs(headless=False):
+    """Count of the live Claude Code sessions competing for Russell's attention right now - drainer
+    workers and any session Russell opened himself - checked against target_open_tabs to gate dispatch.
+
+    Headless: `claude agents --json` lists every live interactive and background session on the machine,
+    so the count is their total (both kinds) - preserving today's 'back off when Russell is busy' intent,
+    since his own live interactive sessions count too, not just drainer background workers. Returns None
+    (fail CLOSED, as below) if the call can't be run/parsed.
+
+    Tab path (below): the count is drainer worker tabs plus any tab Russell opened by hand.
 
     An attention-competing tab is one open in Windows Terminal. A spawned worker (spawn-tab.cmd hands
     the tab to Windows Terminal via `wt`) and a tab Russell opens himself both run as
@@ -1360,6 +1481,11 @@ def total_claude_tabs():
     backlog, and skipping the throttle there is how a cycle dispatches everything eligible at once
     instead of nothing. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD
     consecutive failures spawns one visible diagnostic tab."""
+    if headless:
+        agents = _claude_agents()
+        if agents is None:
+            return None
+        return len(agents)  # every live session - interactive AND background - per the attention budget
     procs = _process_snapshot()
     if not procs:
         return None
@@ -1463,8 +1589,14 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     `live` (the running `claude --session-id` guids) is normally scanned here, but the caller may pass
     the set it already scanned this cycle so the correspondent-hold below reuses it — keeping the whole
     cycle to one process scan."""
+    headless = cfg.get("headless_workers", False)
     if live is _LIVE_UNSET:
-        live = live_session_ids()
+        live = live_session_ids(headless)
+    # Fold headless settled-session cleanup into the reconcile pass (no separate reaper daemon): remove
+    # the background workers their worker marked done. Independent of the live-session scan below, so it
+    # still runs when that scan is unavailable.
+    if headless:
+        _reap_done_bg_workers(runtime_dir, dry_run=dry_run)
     if live is None:
         print("reconcile: could not scan for live worker sessions; skipped this cycle.")
         return 0
@@ -1607,7 +1739,7 @@ def main():
     # dispatch step below reuses it to hold a second item from a correspondent whose earlier item still
     # has a live worker (open_correspondents). Runs BEFORE the enumerate, so anything reconcile re-queues
     # is picked up in this same cycle.
-    live = live_session_ids()
+    live = live_session_ids(cfg["headless_workers"])
     unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
     if args.dry_run:
         print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s).")
@@ -1726,7 +1858,7 @@ def main():
     needs_and_others = [it for it in all_new if not (it["_source"] == "outlook-graph-junk" and it["_bucket"] == "junk")]
 
     # --- live tab count, checked against target_open_tabs (None -> scan failed, fail closed below) ---
-    live_tabs = total_claude_tabs()
+    live_tabs = total_claude_tabs(cfg["headless_workers"])
     if live_tabs is None:
         fails = _record_scan_failure(health)
         if (fails >= SCAN_FAILURE_ALERT_THRESHOLD and not args.dry_run
@@ -1845,7 +1977,8 @@ def main():
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                     headless=cfg["headless_workers"])
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -1878,7 +2011,8 @@ def main():
             spawn_resume_tab(it["session_id"], it["cwd"], repo)
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                         headless=cfg["headless_workers"])
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         if corr:
             active_correspondents.add(corr)

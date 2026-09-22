@@ -85,6 +85,58 @@ def spawn_silent(prompt_file, model, cwd):
     )
 
 
+# The four tools a drainer worker never uses - their definitions would otherwise ride in every model
+# call's prompt for no purpose. Same list the headless triage/screen calls disallow (run-poller's
+# HEADLESS_CLAUDE_FLAGS); PowerShell is denied so the worker uses the Bash tool, per ~/.claude/CLAUDE.md.
+_BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
+# `claude --bg` prints:  Starting background service…\n backgrounded · <shortId> · <name>
+# Capture the short id (the sessionId prefix) - the handle `claude attach/logs/stop/rm` and
+# `claude agents` all take. `[^0-9a-f]*` skips the middot/spaces after "backgrounded" up to the id.
+_BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
+
+
+def spawn_bg(seed, model, cwd, name):
+    """Launch a headless background Claude worker with `claude --bg` - no window, no terminal tab, so no
+    focus steal (the whole point). Returns the short session id claude prints (which the caller writes
+    into the per-item receipt so liveness, reconcile, and peek keep reading one receipt regardless of
+    which path spawned the worker), or None when the launch fails or the id can't be parsed.
+
+    Three details are load-bearing:
+      - `--permission-mode manual` is the safety anchor: every action the safe-compounds hook does not
+        auto-approve pauses for Russell, so reaching a "send" becomes the blocked state rather than an
+        autonomous send. The hook still auto-approves safe commands, so day-to-day the worker feels like
+        a tab worker; only the final irreversible steps wait.
+      - `--` precedes the seed because `--disallowedTools` is variadic and would otherwise swallow the
+        seed as another tool name, leaving the session idle with no prompt (the same greedy-variadic
+        gotcha the headless triage/screen calls avoid by putting their prompt on stdin; a --bg seed is a
+        positional, so it needs the explicit separator).
+      - The launch env clears the inherited session-identity vars (so the worker establishes its own
+        top-level session rather than registering as a child of whatever session launched the poller)
+        and clears the inherited BROWSER_CHAUFFEUR_OWNER_PID/START. Clearing the owner is the safety
+        fix: left inherited, a browser tab the worker opens would be owned by the poller's long-lived
+        ancestor, whose liveness never ends, so the tab would never be released. Cleared, ownership
+        falls back to browser-chauffeur's per-script default and tabs age out via its idle/count sweep.
+        (Tying a headless worker's tabs to its OWN claude process - the CLAUDE_PID that Claude Code
+        injects into the worker's tool subprocesses, which lives exactly as long as the worker - is the
+        browser-chauffeur companion change noted as a follow-up in the PR.) No focus logic: a background
+        session never surfaces a window to steal focus from.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
+                        "BROWSER_CHAUFFEUR_OWNER_PID", "BROWSER_CHAUFFEUR_OWNER_START")}
+    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model,
+            "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
+    try:
+        res = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode != 0:
+        return None
+    m = _BG_ID_RE.search(res.stdout or "")
+    return m.group(1) if m else None
+
+
 def spawn_tab(args, cwd):
     """Open a Windows Terminal worker tab (via spawn-tab.cmd) with focus-aware placement.
 

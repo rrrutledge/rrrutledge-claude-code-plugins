@@ -225,7 +225,7 @@ def run(rt, providers, live=()):
             return r
         return real_seen_state(*args)
 
-    poller.live_session_ids = lambda: set(live) if live is not None else None
+    poller.live_session_ids = lambda headless=False: set(live) if live is not None else None
     poller.seen_state = fake_seen_state
     try:
         n = poller.reconcile_unhandled(rt, CFG, providers)
