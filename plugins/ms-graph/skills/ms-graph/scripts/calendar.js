@@ -108,7 +108,11 @@ const { parseDaysMarker, isInDays, localDOW, daysMarkerLine } = require('./calen
 
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
-    const m = a.match(/^--([^=]+)(?:=(.*))?$/);
+    // `s` flag: a `--body="..."` value can carry embedded newlines (--set-body-id's whole point
+    // is writing a multi-line body), and `.` doesn't match `\n` without it - a plain `.*` here
+    // truncated the value at the first newline and silently misparsed the rest of the arg as a
+    // bare flag.
+    const m = a.match(/^--([^=]+)(?:=(.*))?$/s);
     return m ? [m[1], m[2] ?? true] : [a, true];
   })
 );
