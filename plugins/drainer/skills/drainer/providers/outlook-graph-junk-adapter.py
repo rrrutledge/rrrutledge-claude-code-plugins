@@ -19,6 +19,7 @@ from provider_base import ProviderBase, ProviderError, run_node, slug, find_skil
 
 class Provider(ProviderBase):
     name = "outlook-graph-junk"
+    count_in_backlog = False  # a standing Junk-folder scan, not a work queue Russell drains to zero
 
     def __init__(self):
         self.mailjs = self._find_mail_js()

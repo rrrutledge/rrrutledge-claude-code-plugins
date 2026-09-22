@@ -7,11 +7,14 @@ poller itself. This module is the small shared surface (subprocess + slug helper
 """
 import ctypes
 import glob
+import importlib.util
+import json
 import os
 import re
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
 
 # Suppress the brief console window each child process would otherwise flash when the poller runs
 # under pythonw (no parent console). 0 on non-Windows. The visible worker tabs are spawned via wt.exe
@@ -424,9 +427,86 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
     }
 
 
+def load_seen(runtime_dir, source):
+    """The `{id: {triage}}` map of every item the poller has already recorded for `source` in
+    `<runtime_dir>/seen.json`; a missing or corrupt file reads as `{}` (fail-safe).
+
+    An id is recorded here the moment the poller acts on the item - dispatches a worker for a needs-you or
+    auto-handle item, or queues an fyi/junk item for the digest. An item the poller held (a correspondent
+    still being worked, or the open-tab budget was full) is left UNrecorded so it re-enumerates next cycle,
+    so exactly the not-yet-started items are the ones absent from this map. `collect_new` in the poller
+    reads it to drop already-seen items from a cycle; the digest reads it to count the not-yet-started
+    backlog the same way, off persisted state rather than any live-process scan. Stdlib-only, so both the
+    headless poller and the digest launcher share it without a Node round-trip."""
+    try:
+        with open(os.path.join(runtime_dir, "seen.json"), encoding="utf-8") as f:
+            return (json.load(f) or {}).get(source, {})
+    except (OSError, ValueError):
+        return {}
+
+
+def load_providers(provider_names, search_dirs, cfg=None, on_error=None):
+    """Load each enabled provider's `Provider(ProviderBase)` from `<dir>/<name>-adapter.py`, trying
+    `search_dirs` in order (the plugin's own `providers/` first, then a machine-local `providers/`).
+
+    Shared by the two entry points that drive providers - the fast-loop poller and the daily digest -
+    so they resolve, construct, and configure adapters identically. When `cfg` is given each instance's
+    `configure(cfg)` runs. Each provider is isolated: a missing adapter, a typed `ProviderError`, or any
+    import/construction error is handed to `on_error(name, message, kind)` (when supplied) and that one
+    provider is skipped, so a single broken adapter never blocks the rest. `kind` is `"missing"` when no
+    adapter file exists, the `ProviderError.kind` (`auth`/`config`) for a typed failure, else `"config"`.
+    Returns the list of loaded instances."""
+    providers = []
+    for name in provider_names:
+        path = next((os.path.join(d, f"{name}-adapter.py") for d in search_dirs
+                     if os.path.exists(os.path.join(d, f"{name}-adapter.py"))), None)
+        if not path:
+            if on_error:
+                on_error(name, f"no adapter at {name}-adapter.py in any of {search_dirs}", "missing")
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"{name.replace('-', '_')}_adapter", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            prov = mod.Provider()
+            if cfg is not None:
+                prov.configure(cfg)
+            providers.append(prov)
+        except ProviderError as e:
+            if on_error:
+                on_error(name, str(e), e.kind)
+        except Exception as e:  # a broken adapter import shouldn't take the whole load down
+            if on_error:
+                on_error(name, f"adapter load error: {e}", "config")
+    return providers
+
+
+def received_dt(item):
+    """The `received` field of an enumerated item as a timezone-aware datetime, or None when it is
+    absent or not a real timestamp. A naive value is read as UTC; a trailing `Z` is accepted. Trello's
+    `received` sentinel (`(no date)`) and any other non-timestamp string return None, so the backlog
+    barometer's oldest-pending computation simply skips items that carry no real arrival time."""
+    ts = item.get("received")
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 class ProviderBase:
     """The interface the poller drives. Subclasses live in providers/<name>-adapter.py."""
     name = None
+
+    # Whether this provider's pending items are a human-touch work queue that belongs in the digest's
+    # backlog-depth barometer. True for the queues Russell actually drains (inbox mail, Slack, Trello,
+    # Teams). A scanner over a standing folder that is never worked to zero - the Junk-folder
+    # false-positive net - sets this False so its hundreds of resident messages don't swamp the "how much
+    # is left to drain" signal; such a provider is skipped entirely by the barometer (its own listing is
+    # never even fetched for the count).
+    count_in_backlog = True
 
     def configure(self, cfg):
         """Optional hook: receive the parsed drainer config (incl. `repo`) after construction. Adapters
@@ -436,6 +516,29 @@ class ProviderBase:
     def enumerate(self, limit):
         """Return a list of candidate item dicts (newest-first, up to `limit`)."""
         raise NotImplementedError
+
+    def pending_summary(self, exclude_ids=frozenset(), limit=500):
+        """A cheap read-only measure of what this provider currently has waiting, for the daily digest's
+        backlog-depth barometer (never the poller). Returns `{"count": int, "oldest_received": <iso str
+        or None>, "capped": bool}`.
+
+        The default reads it straight off `enumerate(limit)` - the same envelope-only candidate listing
+        the poller starts a cycle from, which captures no bodies, so this adds no body-fetch cost. Each
+        listed item whose `stable_id` is NOT in `exclude_ids` counts as pending; `exclude_ids` is the set
+        of this provider's ids already parked in the digest queue (fyi/junk/auto-handle/help-needed items
+        intentionally awaiting the digest), so those never inflate the needs-you barometer. `oldest_received`
+        is the earliest real arrival time among the pending items (via `received_dt`, which skips items with
+        no timestamp), rendered ISO-8601 UTC; it is None when no pending item carries one. `capped` is True
+        when the listing filled the whole `limit` page, so the real count is at least this many (the report
+        renders it as "N+").
+
+        A provider that can't enumerate this run raises `ProviderError`, which the caller isolates per
+        source, so one dark source degrades to "unavailable" rather than aborting the whole report."""
+        listing = self.enumerate(limit)
+        pending = [it for it in listing if self.stable_id(it) not in exclude_ids]
+        received = sorted(dt for dt in (received_dt(it) for it in pending) if dt)
+        oldest = received[0].astimezone(timezone.utc).isoformat() if received else None
+        return {"count": len(pending), "oldest_received": oldest, "capped": len(listing) >= limit}
 
     def triage_text(self, item):
         """The body text the triage step shows the model for this item. Default: the light `preview`

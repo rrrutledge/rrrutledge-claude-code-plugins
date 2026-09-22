@@ -4,7 +4,8 @@ The fast loop (`engine/poller-core.md`) archives each fyi/junk item at triage an
 The digest is the **slow loop**: once a day it empties that queue **with Russell in the loop**.
 It is the opposite of the poller in one way that governs everything below: **it is interactive and disposes of nothing without Russell's review.**
 
-Unfinished needs-you items are not your concern - the poller's own reconcile catches them every cycle, by re-queuing any item whose source object is still unhandled with no live worker on it, so a crashed or closed worker's item is back in the drain within minutes rather than waiting for you.
+You do not act on unfinished needs-you items here - the poller's own reconcile catches them every cycle, by re-queuing any item whose source object is still unhandled with no live worker on it, so a crashed or closed worker's item is back in the drain within minutes rather than waiting for you.
+You do still surface a count: step 1b reports, per source, how much is waiting to be started at all - a number to show rather than a queue to work.
 
 You are a single digest session in your own tab.
 Your launcher gave you the runtime facts (runtime_dir, repo, the seen-state helper path, the providers dir, and the provider-health file).
@@ -54,6 +55,16 @@ A digest ends when the snapshot it opened with is handled, not when the live que
 
 If the queue is empty AND no provider is stuck (step 0), tell Russell there's nothing to digest and stop.
 A stuck provider alone is still worth reporting - surface it even when the queue is otherwise empty.
+
+## 1b. Backlog depth - the read-only "how much is left" barometer
+
+Your launcher measured the backlog for this run and handed it to you in the runtime facts as a **backlog-depth** block: for each source, how many items are waiting and not yet started, a grand total across sources, and the oldest still-waiting item.
+"Not yet started" means the source's live listing minus whatever the poller has already recorded as seen - the items it dispatched a worker for or queued for this digest, and so already knows about.
+The oldest still-waiting item, across every source, shows how far back the backlog reaches.
+
+Present the block verbatim from the runtime facts, at the spot step 4 places it in the digest.
+Surface the numbers only; the pending items behind them are the poller's, per the note at the top of this file.
+When a source reads "unavailable this run", say so plainly and move on - a listing that failed to load is a gap in the barometer, not a zero.
 
 ## 2a. Needs your sign-in - a browser gate only Russell can clear
 
@@ -142,7 +153,7 @@ When the chosen stop is a mail rule, creating or appending it always routes thro
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in the terminal - any stuck-provider health alerts (step 0) at the very top, then **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in the terminal - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b), **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 

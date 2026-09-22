@@ -27,7 +27,6 @@ Usage:
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -42,9 +41,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
-from provider_base import run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent, band_rank, slug  # noqa: E402  (subprocess helper + typed provider failure)
+from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent,  # noqa: E402
+                           band_rank, slug, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + shared adapter loader + seen-state reader
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
-from drainer_config import read_config, find_provider_file, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
+from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
@@ -76,15 +76,6 @@ HEADLESS_CLAUDE_FLAGS = ["--output-format", "json", "--setting-sources", "",
 
 def seen_state(*cli_args):
     return run_node([SEEN_STATE, *cli_args])
-
-
-def load_seen(runtime_dir, source):
-    """Return the {id: {triage}} map for a source; missing/corrupt -> {} (fail-safe)."""
-    try:
-        with open(os.path.join(runtime_dir, "seen.json"), encoding="utf-8") as f:
-            return (json.load(f) or {}).get(source, {})
-    except (OSError, ValueError):
-        return {}
 
 
 def write_json_atomic(path, data):
@@ -279,30 +270,22 @@ def load_providers(cfg, health):
     implements provider_base.ProviderBase. A provider enabled in config without an adapter is skipped.
 
     Adapter construction (`__init__` locates its helper .js/util) can raise ProviderError(kind=config)
-    when a deploy is broken. That failure is isolated here — recorded to health and skipped — so one
-    mislocated helper never aborts the cycle for the other providers.
+    when a deploy is broken. That failure is isolated (recorded to health and skipped) so one mislocated
+    helper never aborts the cycle for the other providers. The load/construct/configure mechanics are the
+    shared `provider_base.load_providers`; this wrapper adds the poller's health accounting: a
+    ProviderError or import failure records a health failure so the digest can surface a stuck provider,
+    while a plain missing adapter (never enabled a matching adapter file) is only logged, not recorded.
     """
-    providers = []
-    for name in cfg["providers"]:
-        path = find_provider_file(PROVIDERS_DIR, cfg["local_dir"], name, "-adapter.py")
-        if not path:
+    def on_error(name, message, kind):
+        if kind == "missing":
             print(f"(skipping provider '{name}': no poller adapter at providers/{name}-adapter.py "
                   f"or {cfg['local_dir']}/providers/{name}-adapter.py)")
-            continue
-        try:
-            spec = importlib.util.spec_from_file_location(f"{name.replace('-', '_')}_adapter", path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            prov = mod.Provider()
-            prov.configure(cfg)  # hand the adapter the parsed config (repo + knobs); no-op for inbox adapters
-            providers.append(prov)
-        except ProviderError as e:
-            record_health_failure(health, name, str(e), e.kind)
-            print(f"(provider '{name}' failed to load [{e.kind}]: {e})")
-        except Exception as e:  # a broken adapter import shouldn't take the whole cycle down
-            record_health_failure(health, name, f"adapter load error: {e}", "config")
-            print(f"(provider '{name}' failed to load: {e})")
-    return providers
+        else:
+            record_health_failure(health, name, message, kind)
+            print(f"(provider '{name}' failed to load [{kind}]: {message})")
+
+    return base_load_providers(
+        cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg, on_error=on_error)
 
 
 # ---------------------------------------------------------------------------- triage (the AI step)
