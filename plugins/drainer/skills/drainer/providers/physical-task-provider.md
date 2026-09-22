@@ -33,6 +33,9 @@ That gap is recomputed fresh every poll cycle, so a task becomes eligible the mo
 **An opt-in third gate: the time of day.**
 A task restricted to a time-of-day window only enumerates while local now falls inside it, however big the gap - see TIME-OF-DAY-WINDOW below.
 
+**An opt-in fourth gate: the day of the week.**
+A task restricted to particular weekdays only enumerates on one of them, however big the gap and whatever the time of day - see DAY-OF-WEEK-GATE below.
+
 **Prefer the longest task that fits.**
 When several tasks are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns eligible tasks sorted longest-duration-first, so the cross-source dispatch order (which otherwise ties on priority band and falls back to arrival order) picks the task that best uses the room available.
 
@@ -51,6 +54,7 @@ That's *why* `lookahead_hours` defaults short (see Config): the gap check never 
 - `lookback_days` - how far back the queued scan reaches (default `365`, a year).
   A task keeps re-surfacing only while it falls inside this window (see "The model" above); raise it toward Graph's ceiling of `1825` (five years) to reach back further.
 - `default_window` - an `HH:MM-HH:MM` local time-of-day window applied to every task without a `Window:` marker of its own (unset by default, which leaves such tasks unrestricted - see TIME-OF-DAY-WINDOW).
+- `default_days` - a comma list of weekday codes (`SA`, or `SA,SU`) applied to every task without a `Days:` marker of its own (unset by default, which leaves such tasks unrestricted - see DAY-OF-WEEK-GATE).
 - `exclude` - calendar names to leave out of the gap check (e.g. a read-only subscription that shouldn't count as blocking).
   No credentials here - sign in once via `ms-graph`; the MSAL token cache is machine-local.
 
@@ -62,7 +66,7 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 ## CAPTURE
 `items/<id>.json`:
 `{ "id","source":"physical-task","triage":"needs-you","kind":"work","subject","date","minutes",`
-`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","window","url","ts":"<ISO now>" }`
+`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","window","days","url","ts":"<ISO now>" }`
 - `subject` - the task itself, in Russell's own words (however he named the calendar event).
 - `date` - the day it became queued (YYYY-MM-DD); may be well in the past for something that's sat unstarted.
 - `minutes` - the duration Russell estimated (the event's own length while queued) - also the size of the free gap that made this item eligible to dispatch right now.
@@ -74,6 +78,8 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
   It's a heads-up for the worker to tell Russell when the task will come back; the actual re-queue is done by CLEAR's Finished step (see REPEAT-AFTER-COMPLETION below), which reads the marker off the event itself, not this field.
 - `window` - the `HH:MM-HH:MM` time-of-day window this task was gated by (its own `Window:` marker, else `default_window`), or null when unrestricted.
   Informational only: enumerate already confirmed now falls inside it (see TIME-OF-DAY-WINDOW).
+- `days` - the weekday codes this task was gated by (its own `Days:` marker, else `default_days`), or null when unrestricted.
+  Informational only: enumerate already confirmed today is one of them (see DAY-OF-WEEK-GATE).
 - `url` - the event's Outlook `webLink`, so Russell can open the actual calendar item if he wants to.
 
 ## Why this item bypassed the usual triage judgment
@@ -137,6 +143,18 @@ The window gates dispatch only - an open worker tab runs to completion whatever 
 A window works on a recurring series as well as a one-off, since it only filters when a task surfaces.
 On a repeat-after-completion one-off, Finished carries the `Window:` line forward onto the successor alongside the `Repeat:` line.
 The parsing and clock math live in `calendar-window.js`; `listDueTasks` (calendar.js) reports each task's `window` and whether now is inside it.
+
+## DAY-OF-WEEK-GATE
+Some tasks only make sense on particular days, whatever the calendar gap and time of day say.
+A task opts into a day gate with one line in its event body: `Days: SA` (comma list for more than one: `Days: SA,SU`), using the same two-letter weekday codes as `--create-recurring`'s `--days` (`MO,TU,WE,TH,FR,SA,SU`).
+`default_days` in Config applies the same restriction to every task that has no marker of its own; a task's own marker always wins.
+
+While today falls outside a task's days, enumerate skips it, exactly like a task still waiting on a gap: it stays queued, keeps its place in reconcile, and re-checks next poll cycle.
+The gate blocks dispatch only - an open worker tab runs to completion whatever day it finishes on.
+
+A day gate works on a recurring series as well as a one-off, since it only filters when a task surfaces.
+On a repeat-after-completion one-off, Finished carries the `Days:` line forward onto the successor alongside the `Repeat:` line - this is the point of encoding the rule on the calendar item at all: a fixed-cadence follow-up that must only ever land on a specific day (e.g. a weekly check-in that should always be Saturday, never Sunday) keeps that constraint through every repeat instead of drifting onto whatever day it happened to fall due.
+The parsing lives in `calendar-days.js`; `listDueTasks` (calendar.js) reports each task's `days` and whether today is one of them.
 
 ## JUNK-LEARNING
 N/A - every item here is a task Russell put on his own calendar, never inbound noise.
