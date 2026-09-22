@@ -366,12 +366,20 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
     signal, since it can be a fetch limitation rather than a real gap). `auth_results` and `received_spf`
     are the raw header-value lists the adapters get from mail.js / gmail.js `--auth`.
 
-    The returned dict carries the three verdicts (`dmarc`/`dkim`/`spf`, each a verdict word or None), the
-    domain the recipient SEES (`fromDomain`, from the From address) versus the domain that actually
-    authenticated (`sendingDomain`, the SPF envelope-from or the DKIM signing domain), an `aligned` hint,
-    and a one-line `summary` the screen can read directly. The screen weighs it per engine/screen.md:
-    an auth failure paired with a red-line-inducing or impersonation ask is a strong flag, while
-    authenticated mail from a known party is corroboration."""
+    The returned dict carries the verdicts (`dmarc`/`dkim`/`spf`, plus Microsoft's composite
+    `compauth` when present - each a verdict word or None), the domain the recipient SEES (`fromDomain`,
+    from the From address) versus the domain that actually authenticated (`sendingDomain`, the SPF
+    envelope-from or the DKIM signing domain), an `aligned` hint, and a one-line `summary` the screen can
+    read directly. The screen weighs it per engine/screen.md: an auth failure paired with a
+    red-line-inducing or impersonation ask is a strong flag, while authenticated mail from a known party
+    is corroboration.
+
+    `compauth` (composite authentication) is Microsoft's own verdict on same-domain provenance: it is
+    what a shared-domain provider like outlook.com needs to tell one mailbox's mail from another user
+    spoofing that mailbox's From, since DKIM/DMARC there only prove the message came from *some*
+    outlook.com sender (the signing domain is shared). A self-addressed message that passes both DMARC
+    and compauth is genuinely from the owner's own mailbox - the basis the poller uses to mark an
+    authenticated self-email (see run-poller's `_self_authenticated`)."""
     ar = " ; ".join(a for a in (auth_results or []) if a)
     spf_hdr = " ; ".join(s for s in (received_spf or []) if s)
     if not ar and not spf_hdr:
@@ -380,6 +388,7 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
     dmarc = _auth_verdict("dmarc", ar)
     dkim = _auth_verdict("dkim", ar)
     spf = _auth_verdict("spf", ar)
+    compauth = _auth_verdict("compauth", ar)
     if spf is None and spf_hdr:  # a standalone Received-SPF header leads with its verdict word
         m = re.match(r'\s*([A-Za-z]+)', spf_hdr)
         spf = m.group(1).lower() if m else None
@@ -413,6 +422,8 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
         return v if v else "absent"
 
     parts = [f"DMARC={word(dmarc)}", f"DKIM={word(dkim)}", f"SPF={word(spf)}"]
+    if compauth:
+        parts.append(f"compAuth={compauth}")
     summary = " ".join(parts)
     if from_domain:
         summary += f"; From domain {from_domain}"
@@ -421,7 +432,7 @@ def parse_email_auth(from_address, auth_results, received_spf=None):
             if aligned is False:
                 summary += " (misaligned with From)"
     return {
-        "dmarc": dmarc, "dkim": dkim, "spf": spf,
+        "dmarc": dmarc, "dkim": dkim, "spf": spf, "compauth": compauth,
         "fromDomain": from_domain, "sendingDomain": sending_domain,
         "aligned": aligned, "summary": summary,
     }
