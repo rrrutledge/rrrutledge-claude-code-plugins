@@ -1192,8 +1192,8 @@ def live_session_ids():
           r"ForEach-Object { $_.CommandLine }")
     try:
         out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                             capture_output=True, text=True, timeout=30,
-                             creationflags=NO_WINDOW).stdout
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=30, creationflags=NO_WINDOW).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
