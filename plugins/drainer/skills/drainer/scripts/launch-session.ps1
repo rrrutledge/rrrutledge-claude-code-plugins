@@ -10,9 +10,9 @@ param(
 # Thin resolver/forwarder — NOT the launcher itself.
 #
 # WHY: spawn-tab.cmd runs THIS file via %~dp0, so the drainer always launches from
-# its own version-pinned plugin copy, never from a floating working-clone path (the
-# bug that let a stale branch launch workers without BROWSER_CHAUFFEUR_OWNER_PID
-# set). The real launcher lives in the session-mgr plugin; this resolver finds the
+# its own version-pinned plugin copy, never from a floating working-clone path (a
+# stale branch's launcher once set up workers with the wrong session environment).
+# The real launcher lives in the session-mgr plugin; this resolver finds the
 # NEWEST INSTALLED copy of it and forwards all args, so there is exactly one
 # launcher and updates to it always take effect. On a machine where the plugin
 # isn't installed yet, it falls back to the working-clone copy.

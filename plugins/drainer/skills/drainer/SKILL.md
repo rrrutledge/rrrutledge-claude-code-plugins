@@ -8,7 +8,7 @@ instructions: |-
   For each: read the underlying conversation → decide the ACTION (reply / do work / nudge / stop / nothing) → DO the doable part now (safe, reversible work proceeds; irreversible/outbound-to-others waits for the user's OK) → draft any reply in the user's voice **draft-only, never sent** → clear the item.
   Outlook / Teams / outreach are the **same loop over different sources**.
 
-  It runs as a **continuous keeper**: a poller (`scripts/run-poller.py`) runs a short cycle every few minutes and holds each source at **zero un-started actionable items** - needs-you items immediately open a worker tab, dispatched as fast as possible until live Claude Code tabs system-wide reach `target_open_tabs`, fyi/junk queue for a once-a-day digest, and the poller itself never clears.
+  It runs as a **continuous keeper**: a poller (`scripts/run-poller.py`) runs a short cycle every few minutes and holds each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker (no terminal tab, no focus steal), dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
   The loop is code; AI is used only to **triage** each cycle's new items and to run each **worker**.
 
   ### 1. Load per-machine settings FIRST

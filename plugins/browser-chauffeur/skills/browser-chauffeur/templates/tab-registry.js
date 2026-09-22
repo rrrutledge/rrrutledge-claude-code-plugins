@@ -154,28 +154,23 @@ function bumpMtime(file) {
 }
 
 // The owner of a tab is the Claude session that opened it — recorded so the
-// launcher's sweep keeps the tab alive exactly as long as that session's window
-// is open, and reclaims it when the window closes. The session launcher
-// (launch-session.ps1) exports BROWSER_CHAUFFEUR_OWNER_PID: the long-lived host
-// process whose liveness the sweep checks. For a session you start yourself, set
-// OWNER_PID in your shell profile (see SKILL.md "Tying tab ownership to a
-// session"). If it's unset, ownership falls back to this short-lived node
-// process — the tab is then reclaimed soon after this script finishes, not at
-// session end.
-// BROWSER_CHAUFFEUR_OWNER_START is that session's process creation time, which
-// is what tells its tabs apart from those of a later process that inherited the
-// same PID — Windows recycles PIDs, so the number alone can outlive the session
-// and keep dead tabs looking owned. The launcher exports it alongside the PID;
-// when it's absent the record simply carries no start time and ownership falls
-// back to matching the PID, exactly as before.
+// sweep keeps the tab alive exactly as long as that session runs and reclaims it
+// when the session ends. The owner is CLAUDE_PID: the session's own claude
+// process, which Claude Code injects into every tool subprocess. Its key property
+// is that it is the SAME pid across all of a session's tool calls — each tool call
+// runs in its own short-lived process, so this script's `process.pid` would differ
+// call to call and make tabs look reclaimable the instant the opening script
+// exits; CLAUDE_PID is the one pid stable for the whole session, and it lives
+// exactly as long as the session, so a tab is reclaimed precisely when the session
+// ends. This owns tabs uniformly for every kind of session — a launched tab, a
+// headless `--bg` drainer worker, or a `claude` you started in a terminal yourself
+// — with no environment to set up. Only when CLAUDE_PID is absent (not running
+// under a Claude session at all) does ownership fall back to this short-lived node
+// process, so the tab is then reclaimed soon after this script finishes.
 function ownerInfo() {
-  const envPid = Number(process.env.BROWSER_CHAUFFEUR_OWNER_PID);
-  const envStart = Number(process.env.BROWSER_CHAUFFEUR_OWNER_START);
-  const usingEnvPid = Number.isInteger(envPid) && envPid > 0;
-  const info = { ownerPid: usingEnvPid ? envPid : process.pid };
-  // Only meaningful for the PID it was captured for.
-  if (usingEnvPid && Number.isFinite(envStart) && envStart > 0) info.ownerStart = envStart;
-  return info;
+  const claudePid = Number(process.env.CLAUDE_PID);
+  if (Number.isInteger(claudePid) && claudePid > 0) return { ownerPid: claudePid };
+  return { ownerPid: process.pid };
 }
 
 // Every tab this session owns, as targetId -> { file, mtimeMs }. Built from

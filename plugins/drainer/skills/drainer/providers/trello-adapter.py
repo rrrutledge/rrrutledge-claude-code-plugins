@@ -495,8 +495,8 @@ class Provider(ProviderBase):
         # couldn't be derived.
         items.sort(key=lambda it: (*band_rank(it), it["_sort_dt"] or now), reverse=True)
         # Return every eligible card, untruncated: get_board_cards() already fetched all of them
-        # regardless, and the poller's cross-source band_rank sort against
-        # target_open_tabs (run-poller.py's `needs` list) is what decides how much actually gets
+        # regardless, and the poller's cross-source band_rank sort against the worker buffer
+        # (run-poller.py's `needs` list) is what decides how much actually gets
         # dispatched. Truncating
         # here instead would share one board-local budget across only Trello's own boards: once the OTHER
         # boards' neutral-band cards alone outnumbered it, every job-search card (always ranked below
