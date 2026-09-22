@@ -483,9 +483,18 @@ function inlineList() {
   // --inline=<path[,path]> — images embedded in the body via cid: references (see inlineImagesHtml),
   // so they render in-line where the reader is looking rather than as a file list at the bottom. Each
   // gets a stable index-based cid so attachments() and inlineImagesHtml() agree on the same reference.
+  //
+  // The cid uses Gmail's own `ii_<token>` convention rather than an arbitrary `name@domain`. This matters
+  // for the review-then-send-in-the-web-UI path: when someone opens an API-created draft in Gmail's
+  // compose editor and clicks Send, Gmail re-serializes the whole message. With an arbitrary cid (and no
+  // matching X-Attachment-Id, added in attachments()), that re-serialization blanks the image's
+  // Content-ID, demotes it from inline to a plain attachment, and orphans the <img> reference — so the
+  // image renders in the draft but is broken in the Sent copy and for the recipient. Matching Gmail's
+  // native ii_ + X-Attachment-Id shape makes the editor recognize the part as a real inline image and
+  // preserve the cid link through send. Verified empirically against live Sent copies.
   if (!args.inline) return [];
   const paths = String(args.inline).split(',').map(s => s.trim()).filter(Boolean);
-  return paths.map((p, i) => ({ path: p, filename: path.basename(p), cid: `inline${i}@gmail-skill` }));
+  return paths.map((p, i) => ({ path: p, filename: path.basename(p), cid: `ii_gmailskill${i}` }));
 }
 
 function inlineImagesHtml() {
@@ -504,7 +513,9 @@ function attachments() {
   const regular = args.attach
     ? String(args.attach).split(',').map(s => s.trim()).filter(Boolean).map(p => ({ filename: path.basename(p), path: p }))
     : [];
-  const inline = inlineList().map(a => ({ ...a, contentDisposition: 'inline' }));
+  // X-Attachment-Id must equal the Content-ID (the cid) so Gmail's compose editor keeps the image inline
+  // when it re-serializes the message on send — see inlineList() for the full rationale.
+  const inline = inlineList().map(a => ({ ...a, contentDisposition: 'inline', headers: { 'X-Attachment-Id': a.cid } }));
   const all = [...regular, ...inline];
   return all.length ? all : undefined;
 }
