@@ -23,12 +23,17 @@ REM the version-pinned plugin cache, so %~dp0launch-session.ps1 is the pinned re
 REM it forwards to the newest installed real launcher (in the session-mgr plugin). A
 REM worker is never launched from whatever branch the dev clone sits on.
 set "LAUNCHER=%~dp0launch-session.ps1"
-REM -w drainer: always collect worker tabs in a single, consistently-named "drainer" window, rather
-REM than -w 0 (most-recently-used), which is unpredictable when the scheduled task creates the window.
-REM No --no-focus here: it governs only NEW-window creation, not a tab added to an existing window, so
-REM it can't stop WT from activating the drainer window on each spawn (verified on WT 1.24). Worse, when
-REM it precedes -w it makes WT 1.24 reject the whole command and swallow the tab. Focus is handled after
-REM the spawn instead, by provider_base.spawn_tab restoring the prior foreground window.
+REM -w drainer-bg: collect worker tabs in a single, consistently-named "drainer-bg" window Russell
+REM never works in (he reads finished tabs on the Claude app/website, not by hunting terminal tabs),
+REM rather than -w 0 (most-recently-used), which is unpredictable when the scheduled task creates the
+REM window. Targeting a window that is never his foreground is what stops the spawn from stealing focus:
+REM WT switches the active tab only of the window it activates, and adding a tab to a non-foreground
+REM window doesn't activate it, so his cursor stays on whatever he's doing (browser, slides, voice).
+REM No --no-focus: it can't help here and breaks the launch. Placed before new-tab (either before or
+REM after -w) WT 1.24 rejects it and swallows the tab; placed after new-tab it launches but has no focus
+REM effect (verified live). The non-foreground target is what does the work, so --no-focus is omitted.
+REM (The very first spawn must CREATE drainer-bg; from the headless poller, which has no recent user
+REM input, Windows denies it foreground rights, so even that creation doesn't grab focus.)
 REM No --suppressApplicationTitle: the worker's Claude session sets the tab title itself, which is what
 REM shows its "needs attention" star when it yields to Russell. We steer that self-chosen title to be
 REM descriptive by leading the seed with the item summary (launch-session.ps1 -SummaryFile).
@@ -43,7 +48,7 @@ REM $env:CLAUDE_HOST_PID (self-close) and $env:BROWSER_CHAUFFEUR_OWNER_PID (brow
 REM automatically, with no per-launcher wiring. Safe for this unattended path — it's an ordinary
 REM PowerShell host startup, no different from an interactively-opened tab.
 if "%SFILE%"=="" (
-  "%WT%" -w drainer new-tab --title "%TITLE%" --startingDirectory "%REPO%" powershell -NoExit -File "%LAUNCHER%" -PromptFile "%PFILE%" -Model "%MODEL%"
+  "%WT%" -w drainer-bg new-tab --title "%TITLE%" --startingDirectory "%REPO%" powershell -NoExit -File "%LAUNCHER%" -PromptFile "%PFILE%" -Model "%MODEL%"
 ) else (
-  "%WT%" -w drainer new-tab --title "%TITLE%" --startingDirectory "%REPO%" powershell -NoExit -File "%LAUNCHER%" -PromptFile "%PFILE%" -Model "%MODEL%" -SummaryFile "%SFILE%"
+  "%WT%" -w drainer-bg new-tab --title "%TITLE%" --startingDirectory "%REPO%" powershell -NoExit -File "%LAUNCHER%" -PromptFile "%PFILE%" -Model "%MODEL%" -SummaryFile "%SFILE%"
 )

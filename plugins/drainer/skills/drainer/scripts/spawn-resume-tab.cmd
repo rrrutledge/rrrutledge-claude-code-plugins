@@ -14,11 +14,11 @@ set "WT=%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe"
 REM Resolver shipped NEXT TO this file in the installed plugin (%~dp0) — same pattern as
 REM spawn-tab.cmd: never launched from whatever branch a dev clone happens to sit on.
 set "LAUNCHER=%~dp0launch-session.ps1"
-REM Same "-w drainer" window as every other drainer-spawned tab, deliberately — this is
+REM Same "-w drainer-bg" window as every other drainer-spawned tab, deliberately — this is
 REM unattended automation like any other drainer dispatch (not Russell invoking the manual
-REM resume-sessions skill, which uses -w 0), and provider_base.spawn_tab's foreground-
-REM preservation logic only works correctly when new tabs land in this known window.
+REM resume-sessions skill, which uses -w 0). drainer-bg is a window Russell never works in, so
+REM landing a tab there never steals focus from what he's doing (see spawn-tab.cmd for the full why).
 REM No -Model: `claude --resume` restores the session's own prior model as part of resuming
 REM state, so passing nothing is correct (matches the manual resume-sessions skill's own
 REM invocation, which also passes no -Model).
-"%WT%" -w drainer new-tab --title "%TITLE%" --startingDirectory "%CWD%" powershell -NoExit -File "%LAUNCHER%" -Resume "%SESSIONID%"
+"%WT%" -w drainer-bg new-tab --title "%TITLE%" --startingDirectory "%CWD%" powershell -NoExit -File "%LAUNCHER%" -Resume "%SESSIONID%"

@@ -5,27 +5,18 @@ Each source the poller drives ships a `providers/<name>-adapter.py` next to its 
 `stable_id` + `capture`. `run-poller.py` loads these dynamically — no provider mechanics live in the
 poller itself. This module is the small shared surface (subprocess + slug helpers + the interface).
 """
-import ctypes
 import glob
 import importlib.util
 import json
 import os
 import re
 import subprocess
-import threading
-import time
 from datetime import datetime, timezone
 
 # Suppress the brief console window each child process would otherwise flash when the poller runs
 # under pythonw (no parent console). 0 on non-Windows. The visible worker tabs are spawned via wt.exe
 # separately and are unaffected.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-# Windows Terminal's top-level window class. Used to tell "Russell is working in a terminal" (let the
-# new worker tab surface and take focus, so he sees it and starts on it) from "Russell is in something
-# else — a browser, slides" (keep the drainer window minimized so it never covers what he's doing).
-WT_WINDOW_CLASS = "CASCADIA_HOSTING_WINDOW_CLASS"
-SW_MINIMIZE = 6
 
 # The neutral priority band — the rank of any drained item carrying no priority label (all email/Slack,
 # and every Trello card the job-board poller didn't tag). The trello adapter assigns it to unlabeled
@@ -48,16 +39,6 @@ def band_rank(it):
     return (it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
             it.get("_level_band", 0),
             it.get("_referral_band", 0))
-
-
-def _window_class(hwnd):
-    """Win32 class name of a window handle, or '' if it can't be read."""
-    try:
-        buf = ctypes.create_unicode_buffer(256)
-        ctypes.windll.user32.GetClassNameW(hwnd, buf, 256)
-        return buf.value
-    except Exception:
-        return ""
 
 
 def spawn_silent(prompt_file, model, cwd):
@@ -86,49 +67,23 @@ def spawn_silent(prompt_file, model, cwd):
 
 
 def spawn_tab(args, cwd):
-    """Open a Windows Terminal worker tab (via spawn-tab.cmd) with focus-aware placement.
+    """Open a Windows Terminal worker tab (via spawn-tab.cmd).
 
-    Adding a tab to the existing 'drainer' window always activates that window — wt.exe's --no-focus
-    governs only NEW-window creation, not a tab added to a window that already exists (verified on
-    WT 1.24). So we read the foreground window BEFORE the Popen and branch on it:
+    The tab lands in the dedicated `drainer-bg` window (spawn-tab.cmd's `-w drainer-bg`) — a window
+    Russell never works in. He finds finished tabs on the Claude app/website, ordered like his phone,
+    not by hunting terminal tabs, so where the tab physically lives no longer matters. Because that
+    window is never his foreground, adding a tab to it never pulls his cursor off whatever he's doing
+    (browser, slides, voice-typing): Windows switches the active tab only of the window it activates,
+    and adding a tab to a non-foreground window doesn't activate it. The lone exception is the very
+    first spawn, which has to CREATE `drainer-bg`; launched from the headless poller (no recent user
+    input, so Windows denies it foreground rights) even that creation doesn't grab focus.
 
-      - foreground IS a terminal  -> Russell is working in the terminal; let the new tab surface and
-        take focus normally so he sees it and starts on it. Do nothing.
-      - foreground is anything else (browser, PowerPoint, ...) -> don't interrupt him: once WT grabs
-        focus, minimize the drainer window. Minimizing the grabber returns activation to whatever he
-        was using, and (unlike SetForegroundWindow from a headless process) is not blocked by the
-        Windows foreground lock.
+    So this is a plain spawn with no focus workaround. The old approach targeted Russell's focused
+    `drainer` window and, after WT yanked focus, minimized that whole window to hand focus back — which
+    also hid every running tab at once (his "I lost a Claude tab" pain) and still flickered. Both the
+    minimize hack and that flicker are gone now that the target is never his foreground window.
     """
-    try:
-        prev = ctypes.windll.user32.GetForegroundWindow()
-        prev_is_terminal = _window_class(prev) == WT_WINDOW_CLASS if prev else False
-    except AttributeError:
-        prev, prev_is_terminal = None, False
     subprocess.Popen(["cmd", "/c", *args], cwd=cwd, creationflags=NO_WINDOW)
-    if prev and not prev_is_terminal:
-        threading.Thread(target=_minimize_terminal_on_grab, args=(prev,), daemon=True).start()
-
-
-def _minimize_terminal_on_grab(prev):
-    """Minimize the drainer window once it steals focus from `prev`. Runs in a daemon thread.
-
-    WT claims focus in stages, so we wait briefly, then watch the foreground: if it never leaves
-    `prev`, there is nothing to do; if a terminal window grabs it, minimize that window — which slides
-    it off-screen and hands activation back to `prev` without fighting the foreground lock.
-    """
-    user32 = ctypes.windll.user32
-    time.sleep(0.4)  # let WT finish its (staged) activation
-    for _ in range(15):
-        fg = user32.GetForegroundWindow()
-        if fg == prev:
-            return  # focus never left Russell's window
-        if _window_class(fg) == WT_WINDOW_CLASS:
-            try:
-                user32.ShowWindow(fg, SW_MINIMIZE)
-            except Exception:
-                pass
-            return
-        time.sleep(0.05)
 
 
 class ProviderError(Exception):
