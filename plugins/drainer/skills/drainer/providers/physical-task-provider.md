@@ -30,6 +30,9 @@ Outlook's recurrence engine expands every date the pattern ever produced between
 The buffer covers the lag between the gap being detected and Russell actually opening the tab - waiting on tab budget, or just being deep in a different one when this one pops - so a task's own duration alone isn't the bar; duration + buffer is.
 That gap is recomputed fresh every poll cycle, so a task becomes eligible the moment enough room opens up and simply waits, unenumerated, until then.
 
+**An opt-in third gate: the time of day.**
+A task restricted to a time-of-day window only enumerates while local now falls inside it, however big the gap - see TIME-OF-DAY-WINDOW below.
+
 **Prefer the longest task that fits.**
 When several tasks are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns eligible tasks sorted longest-duration-first, so the cross-source dispatch order (which otherwise ties on priority band and falls back to arrival order) picks the task that best uses the room available.
 
@@ -47,6 +50,7 @@ That's *why* `lookahead_hours` defaults short (see Config): the gap check never 
 - `buffer_minutes` - minutes added on top of a task's own duration before it counts as eligible (default `20`), covering the gap-detection-to-tab-opened lag described above.
 - `lookback_days` - how far back the queued scan reaches (default `365`, a year).
   A task keeps re-surfacing only while it falls inside this window (see "The model" above); raise it toward Graph's ceiling of `1825` (five years) to reach back further.
+- `default_window` - an `HH:MM-HH:MM` local time-of-day window applied to every task without a `Window:` marker of its own (unset by default, which leaves such tasks unrestricted - see TIME-OF-DAY-WINDOW).
 - `exclude` - calendar names to leave out of the gap check (e.g. a read-only subscription that shouldn't count as blocking).
   No credentials here - sign in once via `ms-graph`; the MSAL token cache is machine-local.
 
@@ -58,7 +62,7 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 ## CAPTURE
 `items/<id>.json`:
 `{ "id","source":"physical-task","triage":"needs-you","kind":"work","subject","date","minutes",`
-`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","url","ts":"<ISO now>" }`
+`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","window","url","ts":"<ISO now>" }`
 - `subject` - the task itself, in Russell's own words (however he named the calendar event).
 - `date` - the day it became queued (YYYY-MM-DD); may be well in the past for something that's sat unstarted.
 - `minutes` - the duration Russell estimated (the event's own length while queued) - also the size of the free gap that made this item eligible to dispatch right now.
@@ -68,6 +72,8 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 - `seriesMasterId` - present only when `isRecurring` is true; the series master's id, needed only for the backlog cleanup (`--catch-up-series`) after `eventId` has been started.
 - `repeatAfter` - the human interval (`"7 days"`, `"1 month"`) when this one-off carries a `Repeat: ... after completion` body marker, else null.
   It's a heads-up for the worker to tell Russell when the task will come back; the actual re-queue is done by CLEAR's Finished step (see REPEAT-AFTER-COMPLETION below), which reads the marker off the event itself, not this field.
+- `window` - the `HH:MM-HH:MM` time-of-day window this task was gated by (its own `Window:` marker, else `default_window`), or null when unrestricted.
+  Informational only: enumerate already confirmed now falls inside it (see TIME-OF-DAY-WINDOW).
 - `url` - the event's Outlook `webLink`, so Russell can open the actual calendar item if he wants to.
 
 ## Why this item bypassed the usual triage judgment
@@ -118,6 +124,19 @@ The Finished step handles the rest automatically because it passes `--calendar` 
 
 Put a marker on a **one-off only** - a recurring series already spawns its own occurrences, so a marker on one would double up.
 The mechanism and its edge cases live in `calendar-repeat.js` and `finishTaskNow` (calendar.js), not here.
+
+## TIME-OF-DAY-WINDOW
+Some tasks only make sense at certain hours, whatever the calendar gap says.
+A task opts into a window with one line in its event body: `Window: 09:00-20:00`.
+Times are 24-hour local wall-clock (the same timezone the parking grid reads), the start is inclusive and the end exclusive, and a start later than the end wraps past midnight (`Window: 20:00-02:00`).
+`default_window` in Config applies the same restriction to every task that has no marker of its own; a task's own marker always wins.
+
+While now falls outside a task's window, enumerate skips it, exactly like a task still waiting on a gap: it stays queued, keeps its place in reconcile, and re-checks next poll cycle.
+The window gates dispatch only - an open worker tab runs to completion whatever the clock says.
+
+A window works on a recurring series as well as a one-off, since it only filters when a task surfaces.
+On a repeat-after-completion one-off, Finished carries the `Window:` line forward onto the successor alongside the `Repeat:` line.
+The parsing and clock math live in `calendar-window.js`; `listDueTasks` (calendar.js) reports each task's `window` and whether now is inside it.
 
 ## JUNK-LEARNING
 N/A - every item here is a task Russell put on his own calendar, never inbound noise.
