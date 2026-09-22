@@ -25,8 +25,8 @@ actual work. A THIRD, opt-in gate sits alongside it: a task with a `Window: HH:M
 (or any task, when `default_window` is configured) only enumerates while local now falls inside that
 time-of-day window, because some tasks only fit certain hours of the day, however much free time the
 calendar shows. A FOURTH, opt-in gate sits alongside it: a task with a `Days: SA,SU` body marker
-(or any task, when `default_days` is configured) only enumerates on those weekdays, because some
-tasks only make sense on particular days regardless of how free the calendar otherwise is.
+only enumerates on those weekdays, because some tasks only make sense on particular days regardless
+of how free the calendar otherwise is.
 """
 import json
 import os
@@ -51,7 +51,6 @@ class Provider(ProviderBase):
         self.lookback_days = 365
         self.exclude = []
         self.default_window = None
-        self.default_days = []
 
     @staticmethod
     def _find_calendar_js():
@@ -74,9 +73,7 @@ class Provider(ProviderBase):
         `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription),
         `default_window` (unset by default; an `HH:MM-HH:MM` local time-of-day window applied to
         every task that has no `Window:` body marker of its own; unset leaves such a task
-        unrestricted), `default_days` (unset by default; a comma list of weekday codes, e.g.
-        `[SA, SU]`, applied to every task that has no `Days:` body marker of its own; unset leaves
-        such a task unrestricted).
+        unrestricted).
         Called by the poller after construction; harmless with no block at all."""
         block = self._block(cfg.get("repo"))
         self.calendar = self._str_knob(block, "calendar") or self.calendar
@@ -85,7 +82,6 @@ class Provider(ProviderBase):
         self.lookback_days = self._int_knob(block, "lookback_days", self.lookback_days)
         self.exclude = self._list_knob(block, "exclude")
         self.default_window = self._str_knob(block, "default_window") or None
-        self.default_days = self._list_knob(block, "default_days")
 
     @staticmethod
     def _block(repo):
@@ -131,7 +127,7 @@ class Provider(ProviderBase):
         (calendar.js requires a finite window and Graph caps it at 1825 days), set well past a
         month so a task that sits unstarted for a long stretch keeps re-surfacing instead of
         silently dropping off once it ages out of the window. Raises ProviderError on an auth/API
-        failure, or a config failure when `default_window` or `default_days` is malformed.
+        failure, or a config failure when `default_window` is malformed.
         Each task carries `window`/`inWindow` and `days`/`inDays` (see calendar.js's
         listDueTasks), computed there so "what time/day is it now" comes from the same timezone
         the parking grid reads."""
@@ -139,15 +135,10 @@ class Provider(ProviderBase):
                 f"--lookback-days={self.lookback_days}", "--json"]
         if self.default_window:
             args.append(f"--default-window={self.default_window}")
-        if self.default_days:
-            args.append(f"--default-days={','.join(self.default_days)}")
         res = run_node(args)
         if res.returncode != 0:
             if "--default-window" in res.stderr:
                 raise ProviderError(f"physical-task default_window is malformed: {res.stderr.strip()[:300]}",
-                                    kind="config")
-            if "--default-days" in res.stderr:
-                raise ProviderError(f"physical-task default_days is malformed: {res.stderr.strip()[:300]}",
                                     kind="config")
             raise ProviderError(f"physical-task enumerate failed (auth?): {res.stderr.strip()[:300]}",
                                 kind="auth")
@@ -164,9 +155,9 @@ class Provider(ProviderBase):
 
     def enumerate(self, limit):
         # A task outside its time-of-day window (a `Window:` marker, or `default_window`) or its
-        # day-of-week gate (a `Days:` marker, or `default_days`) sits this cycle out, exactly like
-        # one still waiting on a gap: no state, it just re-checks next poll. `inWindow`/`inDays`
-        # default to True so a row without the field stays unrestricted.
+        # day-of-week gate (a `Days:` marker) sits this cycle out, exactly like one still waiting
+        # on a gap: no state, it just re-checks next poll. `inWindow`/`inDays` default to True so
+        # a row without the field stays unrestricted.
         due = [t for t in self._due_tasks() if t.get("inWindow", True) and t.get("inDays", True)]
         if not due:
             return []

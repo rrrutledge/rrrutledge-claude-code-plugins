@@ -1,9 +1,8 @@
 """Test for providers/physical-task-adapter.py's day-of-week gate.
 
 calendar.js decides `inDays` per task (its own offline tests cover the weekday math): this covers
-the adapter side: enumerate drops off-day tasks alongside the gap and window filters, a row with no
-days stays unrestricted, and a configured `default_days` reaches calendar.js. No Graph calls - the
-calendar.js runner is stubbed. Run directly:
+the adapter side: enumerate drops off-day tasks alongside the gap and window filters, and a row
+with no days stays unrestricted. No Graph calls - the calendar.js runner is stubbed. Run directly:
     python plugins/drainer/tests/test_physical_task_days.py
 """
 import importlib.util
@@ -97,55 +96,6 @@ def test_days_and_window_and_gap_all_apply():
     print("test: a task off-day and in-window still doesn't enumerate")
     p = make_provider([task("long", minutes=90, days=["SA"], inDays=False, window="09:00-20:00", inWindow=True)], gap=200)
     check("not enumerated", p.enumerate(10) == [])
-
-
-def write_config(repo, body):
-    os.makedirs(os.path.join(repo, ".claude"))
-    with open(os.path.join(repo, ".claude", "drainer.local.md"), "w", encoding="utf-8") as f:
-        f.write(body)
-
-
-def test_default_days_unset_by_default():
-    print("test: with no default_days configured, calendar.js gets no --default-days")
-    calls = []
-    with tempfile.TemporaryDirectory() as repo:
-        write_config(repo, "providers:\n  physical-task:\n    buffer_minutes: 10\n")
-        p = make_provider([task("plain")], calls=calls)
-        p.configure({"repo": repo})
-    check("default_days is []", p.default_days == [], p.default_days)
-    p.enumerate(10)
-    list_call = next(c for c in calls if "--list-due-tasks" in c)
-    check("no flag passed", not any(a.startswith("--default-days") for a in list_call), list_call)
-
-
-def test_default_days_configured_reaches_calendar_js():
-    print("test: a configured default_days is passed to calendar.js")
-    calls = []
-    with tempfile.TemporaryDirectory() as repo:
-        write_config(repo, "providers:\n  physical-task:\n    default_days: [SA, SU]\n")
-        p = make_provider([task("plain")], calls=calls)
-        p.configure({"repo": repo})
-    check("default_days parsed", p.default_days == ["SA", "SU"], p.default_days)
-    p.enumerate(10)
-    list_call = next(c for c in calls if "--list-due-tasks" in c)
-    check("flag passed", "--default-days=SA,SU" in list_call, list_call)
-
-
-def test_malformed_default_days_is_config_error():
-    print("test: calendar.js rejecting default_days surfaces as a config error, not auth")
-
-    def fake_run_node(args):
-        return SimpleNamespace(returncode=1, stdout="",
-                               stderr='Error: --default-days must be a comma list from MO,TU,WE,TH,FR,SA,SU, got "weekends"')
-
-    p = make_provider([])
-    p.default_days = ["weekends"]
-    adapter_mod.run_node = fake_run_node
-    try:
-        p.enumerate(10)
-        check("raised", False)
-    except adapter_mod.ProviderError as e:
-        check("kind is config", e.kind == "config", e.kind)
 
 
 def test_capture_records_days():

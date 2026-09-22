@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { parseDaysMarker, parseDays, isInDays, localDOW, daysMarkerLine } = require('./calendar-days');
+const { parseDaysMarker, isInDays, localDOW, daysMarkerLine } = require('./calendar-days');
 
 test('parses a single-day marker', () => {
   assert.deepStrictEqual(parseDaysMarker('Days: SA'), ['SA']);
@@ -31,14 +31,6 @@ test('returns null when there is no marker or every code is invalid', () => {
   assert.strictEqual(parseDaysMarker(''), null);
   assert.strictEqual(parseDaysMarker(undefined), null);
   assert.strictEqual(parseDaysMarker('Days: XX'), null);
-});
-
-test('parseDays reads a bare config value and rejects junk', () => {
-  assert.deepStrictEqual(parseDays('SA,SU'), ['SA', 'SU']);
-  assert.deepStrictEqual(parseDays(' sa , su '), ['SA', 'SU']);
-  assert.strictEqual(parseDays('weekends'), null);
-  assert.strictEqual(parseDays(''), null);
-  assert.strictEqual(parseDays(undefined), null);
 });
 
 test('a null/empty days list is unrestricted', () => {

@@ -27,13 +27,6 @@ function parseDaysMarker(body) {
   return m ? toDays(m[1]) : null;
 }
 
-// Parses a bare comma list (the adapter's `default_days` config knob) to canonical form, or null
-// when it's empty or malformed.
-function parseDays(value) {
-  if (!value) return null;
-  return toDays(String(value));
-}
-
 // Whether today's day code is allowed by `days`. A null/empty `days` is unrestricted.
 function isInDays(days, code) {
   if (!days || !days.length) return true;
@@ -51,4 +44,4 @@ function daysMarkerLine(days) {
   return `Days: ${days.join(',')}`;
 }
 
-module.exports = { parseDaysMarker, parseDays, isInDays, localDOW, daysMarkerLine };
+module.exports = { parseDaysMarker, isInDays, localDOW, daysMarkerLine };

@@ -35,7 +35,7 @@
 // Create calendar: node calendar.js --create-calendar="Physical Tasks"
 //                    (idempotent — reports the existing id if a calendar with that name is already there)
 // List due tasks:  node calendar.js --list-due-tasks --calendar="Physical Tasks" [--json] [--tz=]
-//                    [--lookback-days=30] [--default-window=HH:MM-HH:MM] [--default-days=SA,SU]
+//                    [--lookback-days=30] [--default-window=HH:MM-HH:MM]
 //                    (every non-all-day event on that calendar that's still QUEUED — start date
 //                     within the last `lookback-days` (default 30) through today, AND start time
 //                     EXACTLY on the overnight parking grid: :00 at
@@ -51,8 +51,8 @@
 //                     also carries `window` (the event body's `Window: HH:MM-HH:MM` marker, else
 //                     --default-window, else null) and `inWindow`, whether local now falls inside
 //                     it; a null window is always in; and `days` (the event body's `Days: SA,SU`
-//                     marker, else --default-days, else null) and `inDays`, whether today's local
-//                     weekday is in it; a null days list is always in)
+//                     marker, else null) and `inDays`, whether today's local weekday is in it; a
+//                     null days list is always in)
 // Start a task now:  node calendar.js --start-now=<eventId> [--at=<ISO>] [--tz=]
 //                    (moves start to `--at` when given, else right now, keeping the task's own
 //                     duration — pulls it off the parking grid, which is what "no longer due" means
@@ -104,7 +104,7 @@
 const { getGraphClient } = require('./graph-client');
 const { parseRepeatMarker, addRepeatInterval, repeatMarkerLine } = require('./calendar-repeat');
 const { parseWindowMarker, parseWindow, isInWindow, localHHMM, windowMarkerLine } = require('./calendar-window');
-const { parseDaysMarker, parseDays, isInDays, localDOW, daysMarkerLine } = require('./calendar-days');
+const { parseDaysMarker, isInDays, localDOW, daysMarkerLine } = require('./calendar-days');
 
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
@@ -490,8 +490,8 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 // falls inside it: always true when `window` is null, so a task with no marker and no default is
 // unrestricted. A queued task outside its window is still listed: it's still queued, just not
 // dispatchable this minute. Likewise `days` is the task's `Days: SA,SU` body marker (see
-// calendar-days.js), falling back to `defaultDays`, else null; `inDays` says whether today's local
-// weekday (in `tz`) is in it, always true when `days` is null.
+// calendar-days.js), else null; `inDays` says whether today's local weekday (in `tz`) is in it,
+// always true when `days` is null.
 // The old staging grid, kept verbatim: :00 only at midnight, quarter-hours at 1 AM, half-hours at
 // 2 AM. Nothing here still ties a slot to a task's SIZE (duration is just the event's own length
 // now) — the grid is purely a "still sitting untouched" position check.
@@ -504,7 +504,7 @@ function isQueuedSlot(dateTimeStr) {
   const slots = QUEUED_SLOTS[h];
   return !!slots && slots.includes(m) && sec === 0;
 }
-async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 30, today, defaultWindow, defaultDays, now, client } = {}) {
+async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 30, today, defaultWindow, now, client } = {}) {
   if (!calendar) throw new Error('listDueTasks requires { calendar }');
   client = client || await getGraphClient();
   const calId = await resolveCalendarId(client, calendar);
@@ -512,13 +512,12 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   const nowHHMM = localHHMM(tz, now);
   const nowDOW = localDOW(tz, now);
   const fallbackWindow = parseWindow(defaultWindow);
-  const fallbackDays = parseDays(defaultDays);
   const windowFields = body => {
     const window = parseWindowMarker(body) || fallbackWindow;
     return { window, inWindow: isInWindow(window, nowHHMM) };
   };
   const daysFields = body => {
-    const days = parseDaysMarker(body) || fallbackDays;
+    const days = parseDaysMarker(body);
     return { days, inDays: isInDays(days, nowDOW) };
   };
   const rangeStart = new Date(new Date(`${todayStr}T00:00:00`).getTime() - lookbackDays * 86400000);
@@ -728,7 +727,7 @@ module.exports = {
   startTaskNow, finishTaskNow, catchUpSeries,
   parseRepeatMarker, addRepeatInterval, repeatMarkerLine,
   parseWindowMarker, parseWindow, isInWindow,
-  parseDaysMarker, parseDays, isInDays,
+  parseDaysMarker, isInDays,
 };
 
 // --- CLI (only when run directly, so `require` of this file is side-effect-free) ---
@@ -752,11 +751,7 @@ if (require.main === module) {
       if (defaultWindow && !parseWindow(defaultWindow)) {
         throw new Error(`--default-window must be HH:MM-HH:MM, got ${JSON.stringify(defaultWindow)}`);
       }
-      const defaultDays = typeof args['default-days'] === 'string' ? args['default-days'] : undefined;
-      if (defaultDays && !parseDays(defaultDays)) {
-        throw new Error(`--default-days must be a comma list from ${['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].join(',')}, got ${JSON.stringify(defaultDays)}`);
-      }
-      const tasks = await listDueTasks({ calendar: args.calendar, tz: TZ, lookbackDays, defaultWindow, defaultDays });
+      const tasks = await listDueTasks({ calendar: args.calendar, tz: TZ, lookbackDays, defaultWindow });
       if (args.json) { console.log(JSON.stringify(tasks, null, 2)); return; }
       if (!tasks.length) { console.log(`No due tasks on "${args.calendar}".`); return; }
       console.log(`${tasks.length} due task(s) on "${args.calendar}":`);
