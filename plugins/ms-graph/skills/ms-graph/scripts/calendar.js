@@ -50,7 +50,9 @@
 //                     --catch-up-series to clean up the rest once one's been started. Each row
 //                     also carries `window` (the event body's `Window: HH:MM-HH:MM` marker, else
 //                     --default-window, else null) and `inWindow`, whether local now falls inside
-//                     it; a null window is always in)
+//                     it; a null window is always in; and `days` (the event body's `Days: SA,SU`
+//                     marker, else null) and `inDays`, whether today's local weekday is in it; a
+//                     null days list is always in)
 // Start a task now:  node calendar.js --start-now=<eventId> [--at=<ISO>] [--tz=]
 //                    (moves start to `--at` when given, else right now, keeping the task's own
 //                     duration — pulls it off the parking grid, which is what "no longer due" means
@@ -68,7 +70,8 @@
 //                     --calendar names where to place it and is REQUIRED when a marker is present.
 //                     From-completion recurrence is the one thing Outlook's calendar-fixed recurrence
 //                     can't do - put the marker on a ONE-OFF, never a recurring series. A `Window:`
-//                     marker on the finished event carries forward onto the successor)
+//                     marker on the finished event carries forward onto the successor, and so does a
+//                     `Days:` marker)
 // Catch up a series: node calendar.js --catch-up-series=<seriesMasterId> [--except-id=<eventId>] [--tz=]
 //                    (deletes every OTHER overdue occurrence of that series through today — the
 //                     backlog is just recurrence-expansion noise once one occurrence has actually
@@ -86,6 +89,9 @@
 // Move event by id to a different day, same time-of-day and duration (works for a one-off OR a single
 // recurring occurrence's instance id — the occurrence detaches from its series, same as the Outlook UI):
 //                   node calendar.js --move-event-id=<id> --date=YYYY-MM-DD
+// Set an event's body by id (works for a one-off OR a single recurring occurrence's instance id;
+// replaces the body wholesale, so include every line — e.g. an existing `Repeat:` marker — you want kept):
+//                   node calendar.js --set-body-id=<id> --body="..."
 //
 // Times are interpreted in --tz (default America/Chicago). Events have NO reminder by
 // default; --reminder=N turns on a pop-up N minutes before start (0 = at start), --reminder=off
@@ -98,6 +104,7 @@
 const { getGraphClient } = require('./graph-client');
 const { parseRepeatMarker, addRepeatInterval, repeatMarkerLine } = require('./calendar-repeat');
 const { parseWindowMarker, parseWindow, isInWindow, localHHMM, windowMarkerLine } = require('./calendar-window');
+const { parseDaysMarker, isInDays, localDOW, daysMarkerLine } = require('./calendar-days');
 
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
@@ -384,6 +391,20 @@ async function moveEventById(client) {
   console.log(`Moved event ${id} -> ${args.date} ${timePart.slice(0, 5)}`);
 }
 
+// Sets one event's body wholesale by its raw Graph id — a one-off event's own id, or a single
+// recurring occurrence's instance id. Replaces the body outright (no merge), so include every
+// line — e.g. an existing `Repeat:` marker — the caller wants kept. Generic, reusable primitive:
+// nothing else in this file can set a body on an arbitrary one-off by id (--update-occurrence only
+// resolves a *recurring series* by subject+date).
+async function setBodyById(client) {
+  if (!args['set-body-id'] || args.body === undefined) {
+    throw new Error('--set-body-id requires an event id and --body="..."');
+  }
+  const id = args['set-body-id'];
+  await client.api(`/me/events/${id}`).patch({ body: { contentType: 'text', content: args.body } });
+  console.log(`Set body on event ${id}`);
+}
+
 // --- Reusable library functions (param-driven; each builds its own client) ---
 
 // All calendars on the account, as [{ id, name }].
@@ -468,7 +489,9 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 // `defaultWindow` for a task without one, else null; `inWindow` says whether local now (in `tz`)
 // falls inside it: always true when `window` is null, so a task with no marker and no default is
 // unrestricted. A queued task outside its window is still listed: it's still queued, just not
-// dispatchable this minute.
+// dispatchable this minute. Likewise `days` is the task's `Days: SA,SU` body marker (see
+// calendar-days.js), else null; `inDays` says whether today's local weekday (in `tz`) is in it,
+// always true when `days` is null.
 // The old staging grid, kept verbatim: :00 only at midnight, quarter-hours at 1 AM, half-hours at
 // 2 AM. Nothing here still ties a slot to a task's SIZE (duration is just the event's own length
 // now) — the grid is purely a "still sitting untouched" position check.
@@ -487,10 +510,15 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   const calId = await resolveCalendarId(client, calendar);
   const todayStr = today || new Date().toLocaleDateString('en-CA', { timeZone: tz });
   const nowHHMM = localHHMM(tz, now);
+  const nowDOW = localDOW(tz, now);
   const fallbackWindow = parseWindow(defaultWindow);
   const windowFields = body => {
     const window = parseWindowMarker(body) || fallbackWindow;
     return { window, inWindow: isInWindow(window, nowHHMM) };
+  };
+  const daysFields = body => {
+    const days = parseDaysMarker(body);
+    return { days, inDays: isInDays(days, nowDOW) };
   };
   const rangeStart = new Date(new Date(`${todayStr}T00:00:00`).getTime() - lookbackDays * 86400000);
   const pad = n => String(n).padStart(2, '0');
@@ -514,7 +542,7 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
         if (!existing || date > existing.date) {
           bySeries.set(e.seriesMasterId, {
             id: e.id, subject: e.subject || '(no title)', date, minutes, webLink: e.webLink,
-            ...windowFields(e.body?.content),
+            ...windowFields(e.body?.content), ...daysFields(e.body?.content),
           });
         }
       } else {
@@ -523,7 +551,7 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
           id: e.id, subject: e.subject || '(no title)', date, minutes,
           isRecurring: false, webLink: e.webLink,
           repeatAfter: rm ? `${rm.n} ${rm.unit}${rm.n === 1 ? '' : 's'}` : null,
-          ...windowFields(e.body?.content),
+          ...windowFields(e.body?.content), ...daysFields(e.body?.content),
         });
       }
     }
@@ -533,7 +561,7 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
   const recurring = [...bySeries.entries()].map(([seriesMasterId, v]) => ({
     id: v.id, seriesMasterId, subject: v.subject, date: v.date, minutes: v.minutes,
     isRecurring: true, webLink: v.webLink, repeatAfter: null, // Repeat markers are one-offs only
-    window: v.window, inWindow: v.inWindow,
+    window: v.window, inWindow: v.inWindow, days: v.days, inDays: v.inDays,
   }));
   const out = [...oneOffs, ...recurring];
   out.sort((a, b) => a.date.localeCompare(b.date));
@@ -580,7 +608,8 @@ async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}
 // queued that span is Russell's estimate, and startTaskNow preserves it (end = start + estimate), so
 // it's still the estimate at finish time — not the real elapsed span the stamp is about to write.
 // A `Window:` marker on the finished event (see calendar-window.js) carries forward onto the
-// successor too, so a time-of-day restriction survives every repeat.
+// successor too, so a time-of-day restriction survives every repeat - and so does a `Days:` marker
+// (see calendar-days.js), so a day-of-week restriction does too.
 // `repeatCalendar` (the calendar to place the successor on, normally the same "Physical Tasks") is
 // required whenever a marker is present, since an event's own payload doesn't name its parent
 // calendar. Returns null when there's no marker, else { successorId, subject, date, minutes }.
@@ -606,8 +635,11 @@ async function finishTaskNow({ eventId, repeatCalendar, tz = 'America/Chicago', 
   const endDt = new Date(new Date(startStr).getTime() + durMs);
   const endStr = `${endDt.getFullYear()}-${pad(endDt.getMonth() + 1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:${pad(endDt.getSeconds())}`;
   const window = parseWindowMarker(current.body?.content);
-  const successorBody = [repeatMarkerLine(marker), window && windowMarkerLine(window), `Last done ${finishDate}.`]
-    .filter(Boolean).join('\n');
+  const days = parseDaysMarker(current.body?.content);
+  const successorBody = [
+    repeatMarkerLine(marker), window && windowMarkerLine(window), days && daysMarkerLine(days),
+    `Last done ${finishDate}.`,
+  ].filter(Boolean).join('\n');
   const calId = await resolveCalendarId(client, repeatCalendar);
   const created = await client.api(`/me/calendars/${calId}/events`).post({
     subject: current.subject,
@@ -695,6 +727,7 @@ module.exports = {
   startTaskNow, finishTaskNow, catchUpSeries,
   parseRepeatMarker, addRepeatInterval, repeatMarkerLine,
   parseWindowMarker, parseWindow, isInWindow,
+  parseDaysMarker, isInDays,
 };
 
 // --- CLI (only when run directly, so `require` of this file is side-effect-free) ---
@@ -737,6 +770,7 @@ if (require.main === module) {
     if (args['create-calendar']) return createCalendar(client);
     if (args['delete-event-id']) return deleteEventById(client);
     if (args['move-event-id']) return moveEventById(client);
+    if (args['set-body-id']) return setBodyById(client);
     if (args['catch-up-series']) {
       const deleted = await catchUpSeries({
         seriesMasterId: args['catch-up-series'], exceptId: args['except-id'], tz: TZ,

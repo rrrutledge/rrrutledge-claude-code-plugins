@@ -24,7 +24,9 @@ computed fresh every cycle — of at least its own duration (plus a buffer) befo
 actual work. A THIRD, opt-in gate sits alongside it: a task with a `Window: HH:MM-HH:MM` body marker
 (or any task, when `default_window` is configured) only enumerates while local now falls inside that
 time-of-day window, because some tasks only fit certain hours of the day, however much free time the
-calendar shows.
+calendar shows. A FOURTH, opt-in gate sits alongside it: a task with a `Days: SA,SU` body marker
+only enumerates on those weekdays, because some tasks only make sense on particular days regardless
+of how free the calendar otherwise is.
 """
 import json
 import os
@@ -126,8 +128,9 @@ class Provider(ProviderBase):
         month so a task that sits unstarted for a long stretch keeps re-surfacing instead of
         silently dropping off once it ages out of the window. Raises ProviderError on an auth/API
         failure, or a config failure when `default_window` is malformed.
-        Each task carries `window`/`inWindow` (see calendar.js's listDueTasks), computed there so
-        "what time is it now" comes from the same timezone the parking grid reads."""
+        Each task carries `window`/`inWindow` and `days`/`inDays` (see calendar.js's
+        listDueTasks), computed there so "what time/day is it now" comes from the same timezone
+        the parking grid reads."""
         args = [self.calendarjs, "--list-due-tasks", f"--calendar={self.calendar}",
                 f"--lookback-days={self.lookback_days}", "--json"]
         if self.default_window:
@@ -151,10 +154,11 @@ class Provider(ProviderBase):
         return json.loads(res.stdout or "{}").get("minutes", 0)
 
     def enumerate(self, limit):
-        # A task outside its time-of-day window (a `Window:` marker, or `default_window`) sits this
-        # cycle out, exactly like one still waiting on a gap: no state, it just re-checks next poll.
-        # `inWindow` defaults to True so a row without the field stays unrestricted.
-        due = [t for t in self._due_tasks() if t.get("inWindow", True)]
+        # A task outside its time-of-day window (a `Window:` marker, or `default_window`) or its
+        # day-of-week gate (a `Days:` marker) sits this cycle out, exactly like one still waiting
+        # on a gap: no state, it just re-checks next poll. `inWindow`/`inDays` default to True so
+        # a row without the field stays unrestricted.
+        due = [t for t in self._due_tasks() if t.get("inWindow", True) and t.get("inDays", True)]
         if not due:
             return []
         gap = self._gap_minutes()
@@ -219,6 +223,7 @@ class Provider(ProviderBase):
             "isRecurring": item["isRecurring"], "calendar": self.calendar,
             "eventId": item["id"], "seriesMasterId": item.get("seriesMasterId"),
             "repeatAfter": item.get("repeatAfter"), "window": item.get("window"),
+            "days": item.get("days"),
             "url": item.get("webLink"), "correspondent": item.get("_correspondent"),
             "ts": datetime.now(timezone.utc).isoformat(),
         }
