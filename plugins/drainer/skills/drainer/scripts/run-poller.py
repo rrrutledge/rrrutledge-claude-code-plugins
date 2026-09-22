@@ -837,6 +837,16 @@ def _item_bits(json_file):
     return label, subject, who
 
 
+def _tab_title(text, fallback):
+    """Make item text safe to pass as a tab title through spawn-tab.cmd to `wt.exe --title`.
+    The characters `& < > | % " ^` break cmd, and a semicolon is Windows Terminal's command
+    separator, so each becomes a space. Whitespace is collapsed and the result is cut to 50
+    characters; `fallback` stands in when nothing is left."""
+    text = re.sub(r'[&<>|%"^;]', " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:50].strip() or fallback
+
+
 def _worker_title(iid, json_file):
     """The INITIAL tab title (shown for the ~1s before the worker's Claude session renames the tab
     itself). Short and human-readable; falls back to the id on any error."""
@@ -846,9 +856,7 @@ def _worker_title(iid, json_file):
     title = f"{label}: {subject}" if subject else label
     if who:
         title += f" - {who}"
-    title = re.sub(r'[&<>|%"^]', " ", title)  # neutralize cmd-breaking chars
-    title = re.sub(r"\s+", " ", title).strip()  # collapse whitespace
-    return title[:50].strip() or f"drain:{iid}"
+    return _tab_title(title, f"drain:{iid}")
 
 
 def _worker_summary(json_file):
@@ -857,15 +865,13 @@ def _worker_summary(json_file):
     (no --suppressApplicationTitle needed). Lead with the CONTENT — the subject/card and who it's from —
     since that's what matters at a glance; the source is incidental and is NOT forced into the title.
 
-    MUST stay free of characters that break PowerShell 5.1 native-arg passing when launch-session.ps1
-    hands the seed to `claude`: an embedded double quote (or `;`) truncates the ENTIRE seed mid-word,
-    silently dropping the 'Read the file …' pointer so the worker never learns what item it's on. So the
-    subject is NOT wrapped in quotes and any quotes/semicolons/newlines in it are stripped. '' when there's
-    nothing to say."""
+    launch-session.ps1 removes the characters that break PowerShell 5.1 native-arg passing (quotes,
+    semicolons) from the summary itself, so this function only collapses each part to one line. The subject
+    is NOT wrapped in quotes. '' when there's nothing to say."""
     _label, subject, who = _item_bits(json_file)
 
-    def safe(x):  # strip seed-breaking chars (quotes, semicolons) and collapse whitespace to one line
-        return re.sub(r"\s+", " ", re.sub(r'["“”;]', "", x or "")).strip()
+    def safe(x):  # collapse whitespace to one line
+        return re.sub(r"\s+", " ", x or "").strip()
 
     subject, who = safe(subject), safe(who)
     if not subject and not who:
@@ -1166,9 +1172,7 @@ def spawn_resume_tab(session_id, cwd, repo):
     <session_id>`, in ITS OWN original `cwd` (not the drainer's repo) — unlike every other
     source, there's no prompt seed to write; the session already has its full history."""
     base = os.path.basename((cwd or "").rstrip("/\\")) or session_id[:8]
-    title = f"Resume: {base}"
-    title = re.sub(r'[&<>|%"^]', " ", title)
-    title = re.sub(r"\s+", " ", title).strip()[:50] or f"resume:{session_id[:8]}"
+    title = _tab_title(f"Resume: {base}", f"resume:{session_id[:8]}")
     spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-resume-tab.cmd")
     spawn_tab([spawn_cmd, title, cwd or repo, session_id], cwd=repo)
 

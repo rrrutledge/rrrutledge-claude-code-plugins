@@ -91,6 +91,15 @@ function Show-LaunchFailureHelp {
   Write-Host "        and plugins/drainer/skills/drainer/engine/worker-core.md (what a worker tab normally does)." -ForegroundColor Yellow
 }
 
+# The characters that cut the seed short when this script hands it to `claude`: PowerShell 5.1 passes native
+# args without escaping an embedded double quote (straight or curly) or semicolon, and a line break ends the
+# arg. Every seed-bound string passes through here, so the set lives in this one place. The curly quotes are
+# built from code points because PowerShell 5.1 reads a script without a BOM as ANSI, which garbles literal ones.
+$SeedHazardChars = '"' + [char]0x201C + [char]0x201D + ';'
+function Get-SeedSafeText([string]$Text) {
+  return ($Text -replace "[$SeedHazardChars]", '' -replace '\s+', ' ').Trim()
+}
+
 $seed = $null
 $summaryName = ''   # drainer's one-line item summary, reused as this session's name when set
 if ($PromptFile) {
@@ -104,16 +113,16 @@ if ($PromptFile) {
   # title like "Handle Gmail security message" instead of "Review prompt-file instructions" — while the
   # attention star still works (no --suppressApplicationTitle). Then point it at the full instructions.
   # Keep the seed ONE line (the proven-safe format — the original seed was single-line and unbroken).
-  # A space-join (not a newline) plus a quote-free summary avoids PowerShell 5.1 mangling the seed when it
-  # hands it to `claude`: an embedded newline or double quote truncates the arg and drops the read-the-file
-  # pointer, leaving the worker with no idea what item it's on.
+  # A space-join (not a newline) plus a summary cleaned by Get-SeedSafeText avoids PowerShell 5.1 mangling
+  # the seed when it hands it to `claude`: an embedded newline or double quote truncates the arg and drops
+  # the read-the-file pointer, leaving the worker with no idea what item it's on.
   # Resilient by design: the summary is a NICETY (a descriptive tab title), never required. Whatever we
   # get — no file, missing file, empty file, or an unreadable one — we just skip the lead and move on with
   # the plain pointer. Any failure reading it must never block the worker from launching.
   $lead = ''
   try {
     if ($SummaryFile -and (Test-Path -LiteralPath $SummaryFile)) {
-      $summaryName = (Get-Content -Raw -Encoding utf8 -LiteralPath $SummaryFile -ErrorAction Stop).Trim() -replace '\s+', ' '
+      $summaryName = Get-SeedSafeText (Get-Content -Raw -Encoding utf8 -LiteralPath $SummaryFile -ErrorAction Stop)
       if ($summaryName) { $lead = $summaryName + " " }
     }
   } catch { $lead = ''; $summaryName = '' }
@@ -127,7 +136,11 @@ elseif ($SeedFile) {
   # Same receipt as the -PromptFile branch above, so a handoff can be peeked at too — this previously
   # only fired when a caller happened to pass -SessionId explicitly, which none do.
   $SessionId = Register-SessionReceipt -AnchorFile $SeedFile -SessionId $SessionId
-  $seed = (Get-Content -Raw -LiteralPath $SeedFile).Trim()
+  $rawSeed = (Get-Content -Raw -LiteralPath $SeedFile).Trim()
+  $seed = Get-SeedSafeText $rawSeed
+  if ($rawSeed -match "[$SeedHazardChars\r\n]") {
+    Write-Host "launch-session: removed quote, semicolon, or line-break characters from the seed file." -ForegroundColor Yellow
+  }
 }
 elseif (-not $Resume) {
   Write-Host "launch-session: supply -PromptFile, -SeedFile, or -Resume <session-id>" -ForegroundColor Red
