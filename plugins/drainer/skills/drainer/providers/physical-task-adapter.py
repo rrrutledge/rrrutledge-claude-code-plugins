@@ -21,7 +21,10 @@ surfacing rather than silently aging out of view. There is no delete and no seco
 to this source is a SECOND gate on top of "queued": a physical task also needs a live free gap —
 computed fresh every cycle — of at least its own duration (plus a buffer) before Russell's next real
 (non-solo) calendar commitment, because unlike every other source, nobody but Russell can do the
-actual work.
+actual work. A THIRD, opt-in gate sits alongside it: a task with a `Window: HH:MM-HH:MM` body marker
+(or any task, when `default_window` is configured) only enumerates while local now falls inside that
+time-of-day window, because some tasks only fit certain hours of the day, however much free time the
+calendar shows.
 """
 import json
 import os
@@ -45,6 +48,7 @@ class Provider(ProviderBase):
         self.buffer_minutes = 20
         self.lookback_days = 365
         self.exclude = []
+        self.default_window = None
 
     @staticmethod
     def _find_calendar_js():
@@ -64,7 +68,10 @@ class Provider(ProviderBase):
         Russell actually opening the worker tab), `lookback_days` (default 365 — how far back the
         queued scan reaches, so a task that has sat unstarted for months keeps re-surfacing rather
         than dropping out of view; raise it toward the Graph ceiling of 1825 to widen that margin),
-        `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription).
+        `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription),
+        `default_window` (unset by default; an `HH:MM-HH:MM` local time-of-day window applied to
+        every task that has no `Window:` body marker of its own; unset leaves such a task
+        unrestricted).
         Called by the poller after construction; harmless with no block at all."""
         block = self._block(cfg.get("repo"))
         self.calendar = self._str_knob(block, "calendar") or self.calendar
@@ -72,6 +79,7 @@ class Provider(ProviderBase):
         self.buffer_minutes = self._int_knob(block, "buffer_minutes", self.buffer_minutes)
         self.lookback_days = self._int_knob(block, "lookback_days", self.lookback_days)
         self.exclude = self._list_knob(block, "exclude")
+        self.default_window = self._str_knob(block, "default_window") or None
 
     @staticmethod
     def _block(repo):
@@ -117,10 +125,18 @@ class Provider(ProviderBase):
         (calendar.js requires a finite window and Graph caps it at 1825 days), set well past a
         month so a task that sits unstarted for a long stretch keeps re-surfacing instead of
         silently dropping off once it ages out of the window. Raises ProviderError on an auth/API
-        failure."""
-        res = run_node([self.calendarjs, "--list-due-tasks", f"--calendar={self.calendar}",
-                        f"--lookback-days={self.lookback_days}", "--json"])
+        failure, or a config failure when `default_window` is malformed.
+        Each task carries `window`/`inWindow` (see calendar.js's listDueTasks), computed there so
+        "what time is it now" comes from the same timezone the parking grid reads."""
+        args = [self.calendarjs, "--list-due-tasks", f"--calendar={self.calendar}",
+                f"--lookback-days={self.lookback_days}", "--json"]
+        if self.default_window:
+            args.append(f"--default-window={self.default_window}")
+        res = run_node(args)
         if res.returncode != 0:
+            if "--default-window" in res.stderr:
+                raise ProviderError(f"physical-task default_window is malformed: {res.stderr.strip()[:300]}",
+                                    kind="config")
             raise ProviderError(f"physical-task enumerate failed (auth?): {res.stderr.strip()[:300]}",
                                 kind="auth")
         return json.loads(res.stdout or "[]")
@@ -135,7 +151,10 @@ class Provider(ProviderBase):
         return json.loads(res.stdout or "{}").get("minutes", 0)
 
     def enumerate(self, limit):
-        due = self._due_tasks()
+        # A task outside its time-of-day window (a `Window:` marker, or `default_window`) sits this
+        # cycle out, exactly like one still waiting on a gap: no state, it just re-checks next poll.
+        # `inWindow` defaults to True so a row without the field stays unrestricted.
+        due = [t for t in self._due_tasks() if t.get("inWindow", True)]
         if not due:
             return []
         gap = self._gap_minutes()
@@ -199,7 +218,7 @@ class Provider(ProviderBase):
             "subject": item["subject"], "date": item["date"], "minutes": item["minutes"],
             "isRecurring": item["isRecurring"], "calendar": self.calendar,
             "eventId": item["id"], "seriesMasterId": item.get("seriesMasterId"),
-            "repeatAfter": item.get("repeatAfter"),
+            "repeatAfter": item.get("repeatAfter"), "window": item.get("window"),
             "url": item.get("webLink"), "correspondent": item.get("_correspondent"),
             "ts": datetime.now(timezone.utc).isoformat(),
         }
