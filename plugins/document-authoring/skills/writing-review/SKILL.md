@@ -27,14 +27,17 @@ The reviewer must come to the text cold.
 This is the **Review** step of `writing-flow`, the cold pass every piece of writing runs before it stages or ships.
 
 - After authoring or editing any shipped prose, before handing the work to Russell.
-- On a diff, when asked to check a branch or PR.
-- On a single document, when asked to check it directly.
+- When asked to check a branch, a PR, or a diff.
+- When asked to review an existing document on its own terms.
+
+Which mode each case collects - diff or whole-document - is "How to run it" step 1's call, not this list's.
 
 ## How to run it
 
 1. Collect the text under review.
-   For a diff: `git diff <base>..<head>` restricted to prose-bearing files.
-   For a document: the file itself.
+   Default to diff mode - `git diff <base>..<head>` restricted to prose-bearing files - any time the text lives in a file that already existed before this change.
+   Reserve whole-document mode - the file itself - for a brand-new file with no `<base>` version to diff against, or an explicit, standalone request to review an existing document for its own sake, unrelated to any specific change.
+   Whole-document mode has no "stay on what changed" guardrail: it reviews everything the file contains against the rubric, so picking it for an existing file under active change reopens prose the change never touched.
 2. Skip `.tmp/`.
    Plans, specs, handoffs, and staged commit messages live there, and they are change-explanations rather than shipped artifacts.
    Different rules apply to them, so reviewing them against this rubric produces false findings.
@@ -72,6 +75,7 @@ The Teams and Slack composers type into a web page rather than a command argumen
 A skill, a README, or a repo doc reaches Russell when a PR opens, so the gate fires on `gh pr create` - the moment the prose lands on the Files Changed tab (a draft PR counts; Russell reviews drafts there).
 It does not fire on `gh pr ready` or `gh pr merge`, which act on an already-open PR whose prose he has already seen - those are the time-to-merge step, not a fresh prose-reaches-Russell moment.
 The hook computes the PR diff itself and blocks unless every changed markdown file that ships has a fresh receipt for its current content.
+The receipt is a freshness check on the file's current content: the review itself stays diff-scoped per "How to run it" above, and the mint targets the whole file, per step 6.
 Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts - and a code-only PR passes straight through.
 Mint each changed prose file after its review, so `gh pr create` lets the PR through; the voice-learning loop's independent-reviewer step already runs the review, and mints there so it composes with this gate rather than fighting it.
 
