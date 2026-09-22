@@ -44,6 +44,8 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
 - **Exception - a colleague with full, established context on the specific document or event referenced** (they run it, coordinate it, or work with it directly): name the concrete detail in plain text and skip the link. They already know the page inside and out, so citing it over-formalizes what's otherwise a plain internal exchange.
 
+**A threaded reply drops a link, file, or detail already visible in the auto-quoted original sitting below it** — even a first reply on a new sub-topic that isn't itself a nudge (e.g. answering a delay explanation elsewhere in the thread). The recipient can scroll to see it, so the new text only needs what the quote doesn't already say. See **Follow-up nudges**' "Don't re-paste" for the repeat-ask case this generalizes.
+
 ---
 
 ## Asks
