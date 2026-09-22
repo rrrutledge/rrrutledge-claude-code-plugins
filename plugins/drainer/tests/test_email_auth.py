@@ -39,9 +39,34 @@ r = parse("alerts@chase.com", [ar], [])
 check("dmarc pass", r["dmarc"], "pass")
 check("dkim pass", r["dkim"], "pass")
 check("spf pass", r["spf"], "pass")
+check("compauth pass", r["compauth"], "pass")
 check("fromDomain is what the reader sees", r["fromDomain"], "chase.com")
 check("sendingDomain is the authenticated domain", r["sendingDomain"], "chase.com")
 check("aligned true on DMARC pass", r["aligned"], True)
+check("summary names compAuth when present", "compAuth=pass" in r["summary"], True)
+
+
+# --- compauth: Microsoft's composite verdict, present only when the header carries it -------------
+print("\ncompauth parsing — the shared-domain mailbox-level verdict")
+selfmail = ("spf=pass (sender IP is 52.103.14.27) smtp.mailfrom=outlook.com; dkim=pass (signature was "
+            "verified) header.d=outlook.com;dmarc=pass action=none header.from=outlook.com;"
+            "compauth=pass reason=100")
+r = parse("russell.rutledge@outlook.com", [selfmail], [])
+check("self-mail dmarc pass", r["dmarc"], "pass")
+check("self-mail compauth pass (genuine own mailbox)", r["compauth"], "pass")
+
+# A different outlook.com user spoofing the From aligns on the shared signing domain (DMARC pass) but
+# fails Microsoft's mailbox-level check — the case compauth exists to catch.
+intra = ("spf=pass smtp.mailfrom=outlook.com; dkim=pass header.d=outlook.com;"
+         "dmarc=pass header.from=outlook.com;compauth=fail reason=601")
+r = parse("russell.rutledge@outlook.com", [intra], [])
+check("intra-domain spoof still shows dmarc pass", r["dmarc"], "pass")
+check("but compauth fail exposes it", r["compauth"], "fail")
+
+check("compauth absent -> None (and no compAuth in summary)",
+      (parse("x@y.com", ["dmarc=fail header.from=y.com"], [])["compauth"],
+       "compAuth" in parse("x@y.com", ["dmarc=fail header.from=y.com"], [])["summary"]),
+      (None, False))
 
 
 # --- spoof of a p=none domain: SPF fail, DMARC fail, misaligned sending domain --------------------

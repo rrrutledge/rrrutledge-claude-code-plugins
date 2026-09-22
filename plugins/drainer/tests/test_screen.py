@@ -107,23 +107,68 @@ check("empty verdicts screens everything (fail-closed default)",
       [it["_id"] for it in poller._items_needing_screen(items, {})], [it["_id"] for it in items])
 
 
-# --- _stamp_screen: persists onto the captured json --------------------------
-print("\n_stamp_screen — writes the flag onto items/<id>.json for the worker")
+# --- _stamp_item_fields: persists onto the captured json --------------------------
+print("\n_stamp_item_fields — writes the flag and/or self-auth marker onto items/<id>.json for the worker")
 
 d = tempfile.mkdtemp(prefix="screen-")
 jf = os.path.join(d, "x1.json")
 with open(jf, "w", encoding="utf-8") as f:
     json.dump({"id": "x1", "source": "gmail", "triage": "needs-you"}, f)
-poller._stamp_screen(jf, {"flagged": True, "reason": "hidden directive to exfiltrate contacts"})
+poller._stamp_item_fields(jf, screen={"flagged": True, "reason": "hidden directive to exfiltrate contacts"})
 with open(jf, encoding="utf-8") as f:
     rec = json.load(f)
 check("the screen object is persisted", rec["screen"],
       {"flagged": True, "reason": "hidden directive to exfiltrate contacts"})
 check("existing fields survive the stamp", rec["triage"], "needs-you")
 
+# selfAuthenticated stamps alongside (or instead of) a screen flag.
+jf2 = os.path.join(d, "x2.json")
+with open(jf2, "w", encoding="utf-8") as f:
+    json.dump({"id": "x2", "source": "outlook-graph", "triage": "needs-you"}, f)
+poller._stamp_item_fields(jf2, selfAuthenticated=True)
+with open(jf2, encoding="utf-8") as f:
+    rec2 = json.load(f)
+check("selfAuthenticated is persisted for the worker", rec2["selfAuthenticated"], True)
+check("no screen flag stamped when only self-auth is passed", "screen" in rec2, False)
+
 # A missing file is a best-effort no-op, never an exception.
-poller._stamp_screen(os.path.join(d, "nope.json"), {"flagged": True, "reason": "x"})
+poller._stamp_item_fields(os.path.join(d, "nope.json"), screen={"flagged": True, "reason": "x"})
 check("a missing json file is not an error", True, True)
+
+
+# --- _self_authenticated: self-addressed + DMARC & compauth pass ------------------
+print("\n_self_authenticated — a self-note is trusted only when its envelope proves the owner's mailbox")
+
+selfitem = {"fromMe": True, "toMe": True}
+passauth = {"dmarc": "pass", "compauth": "pass"}
+check("self-addressed + DMARC + compauth pass -> authenticated",
+      poller._self_authenticated(selfitem, passauth), True)
+check("DMARC pass but compauth fail (intra-domain spoof) -> not authenticated",
+      poller._self_authenticated(selfitem, {"dmarc": "pass", "compauth": "fail"}), False)
+check("DMARC pass but compauth absent -> not authenticated",
+      poller._self_authenticated(selfitem, {"dmarc": "pass", "compauth": None}), False)
+check("not self-addressed (only fromMe) -> not authenticated, even with clean auth",
+      poller._self_authenticated({"fromMe": True, "toMe": False}, passauth), False)
+check("no auth object at all -> not authenticated",
+      poller._self_authenticated(selfitem, None), False)
+
+
+# --- _apply_screen: self-auth marker rides alongside the flag ---------------------
+print("\n_apply_screen — an authenticated self-email is marked, and the red-line flag still governs")
+
+it = item(_source="outlook-graph")
+poller._apply_screen(it, {"flagged": False, "selfAuthenticated": True})
+check("authenticated self-email is marked", it.get("_selfAuthenticated"), True)
+check("an unflagged self-email keeps its bucket (its directive runs)", it["_bucket"], "needs-you")
+check("no _screen stamp when not flagged", "_screen" in it, False)
+
+# A self-email that ALSO induces a red-line action is still flagged — authentication proves he sent it,
+# not that he wrote every quoted line.
+it = item(_source="outlook-graph")
+poller._apply_screen(it, {"flagged": True, "reason": "forwarded block asks to change payee",
+                          "selfAuthenticated": True})
+check("marked authenticated", it.get("_selfAuthenticated"), True)
+check("but the red-line flag still stamps", it["_screen"]["reason"], "forwarded block asks to change payee")
 
 
 # --- _screen_brain: the shared prefix carries the rubric + context -----------
