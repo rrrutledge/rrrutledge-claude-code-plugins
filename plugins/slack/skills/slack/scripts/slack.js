@@ -9,10 +9,14 @@
 //                (calls auth.test; prints the signed-in user/team; non-zero exit on auth failure)
 // List unread:   node slack.js --list-unread [--top=50] [--json]
 //                (unread DMs + group DMs + @-mentions + channel unreads + unread subscribed-thread
-//                 replies, newest-first; muted conversations are skipped; --json emits a structured array.
-//                 Each item also carries `unread`: the FULL span of unread messages since the last read
-//                 cursor, oldest-first, each with from/received/text — so a conversation that accreted
-//                 several distinct asks between reads exposes every one, not only its newest message)
+//                 replies, newest-first; muting a channel/DM skips its plain unreads and @-mentions, but
+//                 a thread you're actually a participant in (replied to, or mentioned in) still surfaces
+//                 even when its channel is muted — same distinction Slack's own Threads panel makes,
+//                 since muting silences ambient channel noise but doesn't unsubscribe you from a thread
+//                 you're personally on; --json emits a structured array. Each item also carries `unread`:
+//                 the FULL span of unread messages since the last read cursor, oldest-first, each with
+//                 from/received/text — so a conversation that accreted several distinct asks between
+//                 reads exposes every one, not only its newest message)
 // Show one:      node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]
 //                (the message text + a chat.getPermalink url; pass --thread-ts for a threaded reply)
 // History:       node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]
@@ -185,56 +189,56 @@ async function listUnread() {
     }
   }
 
-  // Channel @-mentions (top-level): one item per mentioning message (since last_read) that names me.
+  // Channels with unread activity: an @-mention message (since last_read) that names me becomes one item
+  // per mention; otherwise — including when `mention_count` says there's a mention but none turns up in
+  // the fetch window, e.g. a stale badge left over from a mention that's actually older than last_read —
+  // fall back to one plain "Unread in #channel" item keyed to the latest unread message. Merging these
+  // into a single pass (rather than skipping the plain-unread pass whenever mention_count >= 1) means a
+  // channel's genuinely new message is never silently dropped just because Slack's mention badge hasn't
+  // caught up to the read cursor.
   for (const c of counts.channels || []) {
-    if (!c.mention_count || c.mention_count < 1 || muted.has(c.id)) continue;
-    const msgs = await unreadMessages(c.id, c.last_read, me);
-    const mentions = msgs.filter(m => (m.text || '').includes(`<@${me}>`));
-    if (!mentions.length) continue;
-    const info = await convInfo(c.id);
-    const chName = info.name ? `#${info.name}` : c.id;
-    for (const m of mentions) {
-      const from = await userName(m.user);
-      const rendered = await renderText(m.text);
-      items.push({
-        id: `${c.id}:${m.ts}`, channel: c.id, channelType: 'channel',
-        ts: m.ts, threadTs: '', from, fromId: m.user, subject: `@mention in ${chName}`, channelName: chName,
-        received: tsToIso(m.ts), isRead: false, unreadCount: 1,
-        preview: rendered.slice(0, 600),
-        unread: [{ ts: m.ts, from, received: tsToIso(m.ts), text: rendered }],
-      });
-    }
-  }
-
-  // Channel unread messages (no @-mention): one item per channel, keyed to the latest unread message.
-  // Channels with mention_count >= 1 are handled exclusively by the @-mention loop above — skip them
-  // here even if no mentions were found in the fetch window (avoids silently demoting an @-mention that
-  // sits beyond the 30-message history limit to a plain "Unread in #channel" item).
-  for (const c of counts.channels || []) {
-    if (!c.has_unreads || muted.has(c.id) || (c.mention_count || 0) >= 1) continue;
+    if (muted.has(c.id) || (!c.has_unreads && !(c.mention_count > 0))) continue;
     const msgs = await unreadMessages(c.id, c.last_read, me);
     if (!msgs.length) continue;
-    const latest = msgs[0];
+    const mentions = msgs.filter(m => (m.text || '').includes(`<@${me}>`));
     const info = await convInfo(c.id);
     const chName = info.name ? `#${info.name}` : c.id;
-    const from = await userName(latest.user);
-    items.push({
-      id: `${c.id}:${latest.ts}`, channel: c.id, channelType: 'channel',
-      ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
-      channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
-      preview: await previewText(msgs), unread: await unreadSpan(msgs),
-    });
+    if (mentions.length) {
+      for (const m of mentions) {
+        const from = await userName(m.user);
+        const rendered = await renderText(m.text);
+        items.push({
+          id: `${c.id}:${m.ts}`, channel: c.id, channelType: 'channel',
+          ts: m.ts, threadTs: '', from, fromId: m.user, subject: `@mention in ${chName}`, channelName: chName,
+          received: tsToIso(m.ts), isRead: false, unreadCount: 1,
+          preview: rendered.slice(0, 600),
+          unread: [{ ts: m.ts, from, received: tsToIso(m.ts), text: rendered }],
+        });
+      }
+    } else {
+      const latest = msgs[0];
+      const from = await userName(latest.user);
+      items.push({
+        id: `${c.id}:${latest.ts}`, channel: c.id, channelType: 'channel',
+        ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
+        channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
+        preview: await previewText(msgs), unread: await unreadSpan(msgs),
+      });
+    }
   }
 
   // Subscribed threads with unread replies: one item per thread, keyed to the latest unread reply. A
   // thread carries its OWN read cursor (root_msg.last_read) separate from the channel's, so thread
   // replies never appear in conversations.history above — they're enumerated here.
+  // Deliberately NOT muted-filtered: `subscriptions.thread.getView` only returns threads you replied to
+  // or were mentioned in, so muting the parent channel (ambient noise) doesn't apply — Slack's own
+  // Threads panel surfaces these the same way, mute or not.
   try {
     const view = await call('subscriptions.thread.getView', { limit: '50' });
     for (const t of view.threads || []) {
       const root = t.root_msg || {};
       const channel = root.channel;
-      if (!channel || muted.has(channel)) continue;
+      if (!channel) continue;
       if (!newer(root.latest_reply, root.last_read)) continue;  // no unread replies
       const unread = (t.unread_replies || [])
         .filter(m => m.ts && newer(m.ts, root.last_read) && m.user && m.user !== me)
