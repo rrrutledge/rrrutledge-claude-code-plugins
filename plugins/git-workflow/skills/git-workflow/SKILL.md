@@ -28,6 +28,10 @@ Create the branch/commit/PR, hand Russell the link, and wait.
 Drive the work right up to "PR is open and green," then stop.
 If review surfaces changes, push follow-up commits to the same branch.
 
+**Each round of review feedback gets its own commit - never amend or squash rounds together, and don't force-push across them.**
+When Russell reviews a PR and asks for changes, make that round's changes a new commit and push it normally, so he can review just that round's diff instead of re-reading the whole PR each time.
+Reserve amend/force-push for fixing your own most-recent commit before Russell has looked at it; once a round is his to review, it stays its own commit.
+
 **Closing a PR without merging it (superseded, duplicate, abandoned experiment): use `gh pr close <n> --delete-branch` as one command.**
 GitHub's repo-level "auto-delete branch on merge" setting only fires on merge, never on close, so a closed PR's branch needs explicit cleanup.
 `gh pr close --delete-branch` deletes it via the GitHub API as part of the close and is already on the trusted `gh pr` allowlist regardless of flags - it never prompts for approval.
