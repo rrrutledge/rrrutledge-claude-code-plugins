@@ -16,20 +16,21 @@ Outlook / Teams / outreach are all the **same loop** with different **sources**.
 
 The drainer runs as a **continuous keeper**: a **poller** runs a short cycle every few minutes (a ~5-min cron) and holds each source at **zero un-started actionable items** all day.
 
-- **needs-you →** the poller immediately spawns a **worker tab** so the user starts acting right away, dispatching as fast as possible until the count of live Claude Code tabs system-wide reaches `target_open_tabs` (the `DRAINER_TARGET_OPEN_TABS` env var, default 12); beyond that, items wait for a later cycle.
+- **needs-you →** the poller immediately spawns a **headless worker** (a `claude --bg` background session, no terminal tab, so a spawn never steals focus) so the user starts acting right away.
+  Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.
 - **The poller never clears.**
-  The source is cleared in exactly one place: the worker tab on completion (needs-you), or the daily digest after the user reviews it (fyi/junk).
+  The source is cleared in exactly one place: the worker on completion (needs-you), or the daily digest after the user reviews it (fyi/junk).
 
 ## The poller is code; AI is judgment
 
-The loop - enumerate everything eligible → drop already-seen → dispatch against `target_open_tabs` → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
+The loop - enumerate everything eligible → drop already-seen → dispatch against the worker buffer → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
 There is no per-cycle work cap upstream of that: every source is asked for everything it currently has.
 AI is used for exactly three things: **one triage call per new item** (the bucket judgment), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only).
 
-This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets its **own worker** that handles it to completion in a fresh context (its own tab), so context stays bounded and nothing is half-done.
-`target_open_tabs`, not a queue, bounds how many face the user at once.
+This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets its **own worker** that handles it to completion in a fresh context (its own headless background session), so context stays bounded and nothing is half-done.
+The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss
 
@@ -58,7 +59,7 @@ It is **fail-safe**: on any git error - offline, no `origin`, or a refresh race 
 | --- | --- |
 | `engine/` - poller contract, worker procedure, triage rubric, provider contract; `scripts/` - the deterministic glue | `.claude/drainer.local.md` - which providers are active, per-provider config |
 | `providers/` - the providers (Outlook, Teams, Trello) | `context.md` (in `local_dir`) - who the user is, their systems, standing rules |
-| `docs/`, `templates/` | **credentials + tuning env vars** (OS store / env) - e.g. `DRAINER_TARGET_OPEN_TABS` |
+| `docs/`, `templates/` | **credentials + tuning env vars** (OS store / env) - e.g. `DRAINER_TARGET_REVIEWABLE` |
 
 The plugin never contains anything that identifies the user or their organization.
 

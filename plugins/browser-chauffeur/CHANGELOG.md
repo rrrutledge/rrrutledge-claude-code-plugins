@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.16.0] - 2026-09-23
+
+### Changed
+- **A tab is now owned by the Claude session that opened it via `CLAUDE_PID` - the session's own claude process - and `BROWSER_CHAUFFEUR_OWNER_PID` is retired.**
+  `CLAUDE_PID` is injected by Claude Code into every tool subprocess and is the same pid across all of a session's tool calls (each call runs in its own short-lived process, so the opening script's own pid would differ call to call), and it lives exactly as long as the session.
+  That makes it the one stable per-session owner - the exact role `BROWSER_CHAUFFEUR_OWNER_PID` was created to fill - so it now covers every session identically with nothing to set up: a launched handoff tab, a headless `claude --bg` drainer worker, and a `claude` started in a terminal all get session-lifetime tab ownership automatically.
+  `tab-registry.js` `ownerInfo` and `chauffeur.py --close-owned` both resolve the owner from `CLAUDE_PID`, falling back to the short-lived node process only outside a Claude session.
+  `scripts/launch-session.ps1` no longer exports `BROWSER_CHAUFFEUR_OWNER_PID`/`BROWSER_CHAUFFEUR_OWNER_START`, and the per-terminal `$PROFILE` line that used to set the owner pid is no longer needed - the recycle guard the exported start time provided is now covered by reading `CLAUDE_PID`'s liveness directly plus the idle/count sweep, and any tab record still carrying a recorded start is honored on read for the rollout window.
+  The single behavior change: a tab is reclaimed when its claude session ends rather than persisting across a claude restart in the same terminal - which for the dedicated automation browser is the tidier outcome.
+
 ## [1.15.2] - 2026-09-03
 
 ### Fixed

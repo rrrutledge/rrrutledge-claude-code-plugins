@@ -128,8 +128,7 @@ When you read the content and determine no action is needed and there's nothing 
 2. **Patch `triage` to `"fyi"`** in the `items/<id>.json` file using the Edit tool before queuing, so the digest categorizes it correctly (not as needs-you).
 3. **Queue a digest entry**:
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
-4. **Close this tab** - via the Bash tool, run `python <skill>/scripts/close-session.py` (fires the SessionEnd event, then kills the tab - see `engine/auto-handle.md`'s close-up step for the full mechanic).
-   If it reports `CLAUDE_HOST_PID` unset, stop normally.
+4. **Close this session** - via the Bash tool, run `python <skill>/scripts/close-session.py` (fires the SessionEnd event, then ends the session - a headless `--bg` worker stops its own background session, a tab kills its host - see `engine/auto-handle.md`'s close-up step for the full mechanic).
 
 Do not present anything to Russell.
 The digest is how he learns about it.
@@ -316,7 +315,7 @@ Use the same one-liner you wrote as the source's dated comment for `dispositionR
 This files the entry under the digest's **"Auto-handled"** section (already done, dismiss-only), so a finished item is shown as handled rather than resurfacing as a live needs-you.
 Queue it via
 `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`,
-then close the tab (`python <skill>/scripts/close-session.py`) instead of presenting-and-waiting.
+then close the session (`python <skill>/scripts/close-session.py`) instead of presenting-and-waiting.
 
 **This is judgment, not a checklist - hold the same bar the other silent-resolution cases in this file already use: unsure → stay needs-you and present as normal (§1).**
 Self-close here only when ALL of these are unambiguously true:
@@ -328,8 +327,8 @@ Self-close here only when ALL of these are unambiguously true:
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
 
-Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), or completed work that left nothing for Russell (§6a) - likewise close the tab at once (`python <skill>/scripts/close-session.py`).
-A silently-resolved tab is just noise in the taskbar; close it.
+Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
+A silently-resolved session left open is just noise; close it.
 
 **Close your browser tabs when you and the user are truly finished with the item.**
 If you opened tabs in the browser (read a card, drove a web composer, clicked through a link), close them as your last act once the item is genuinely done - the ideal that keeps the browser sweep a rare backstop rather than the norm.

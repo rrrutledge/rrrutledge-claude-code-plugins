@@ -39,9 +39,9 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
    An auto-handle item has no one to wait for, so anything left open just sits there reading "finished" until Russell checks it by hand - exactly the interruption auto-handle exists to avoid.
    1. **Your browser tabs** - if you opened any (clicked a button, read a card in the browser), close them: invoke browser-chauffeur to run `chauffeur.py --close-owned`, which closes only the tabs your session opened (never the user's, never another session's).
       Cleaning up your own tabs here means they never reach the browser sweep.
-   2. **Your session tab** - via the Bash tool, run `python <skill>/scripts/close-session.py`.
-      It ends the session the way a clean exit would: it fires the SessionEnd hook event first (so the live-session registry drops this session instead of listing it as crash-interrupted for resume-sessions to resurrect), then kills this tab's process tree (the hosting PID from `CLAUDE_HOST_PID`, set by the user's PowerShell profile when this tab launched).
-      Never raw-`taskkill` the host PID - a force-killed session dies before SessionEnd can fire.
-      If the script reports `CLAUDE_HOST_PID` is unset (a session launched without loading the profile), just stop normally - don't hunt for the process.
+   2. **Your session** - via the Bash tool, run `python <skill>/scripts/close-session.py`.
+      It ends the session the way a clean exit would: it fires the SessionEnd hook event first (so the live-session registry drops this session instead of listing it as crash-interrupted for resume-sessions to resurrect), then closes the session for good.
+      It reads your environment to know how: a headless `--bg` worker (the drainer's fresh-worker path) closes with `claude stop` of its own background session; a tab worker kills its hosting process tree (the PID from `CLAUDE_HOST_PID`, set by the user's PowerShell profile when the tab launched).
+      Never raw-`taskkill` your own session - a force-killed session dies before SessionEnd can fire, and force-killing a headless worker's own process only makes the background service respawn it under a new PID.
 
 This whole close-up-front procedure is **auto-handle only** - a needs-you item stays open through the conversation and only closes once the work and any follow-up are genuinely finished (worker-core §6).

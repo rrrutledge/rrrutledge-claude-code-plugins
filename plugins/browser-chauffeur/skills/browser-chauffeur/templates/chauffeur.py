@@ -152,15 +152,17 @@ def probe_owner(pid: int) -> tuple[str, int | None]:
         _K32.CloseHandle(handle)
 
 
-# Start times are compared with slack rather than for equality, because the two
-# sides are written by different runtimes: the launcher records what PowerShell
-# reports for the session, the sweep reads what the Win32 API reports. Both are
-# FILETIMEs, but demanding they agree to the tick would make any rounding
+# A record that carries a start time (a tab stamped with one — the recycle guard
+# for those) has it compared with slack rather than for equality, because the
+# recorded value and the sweep's live reading can come from different runtimes.
+# Both are FILETIMEs, but demanding they agree to the tick would make any rounding
 # difference look like a recycled PID and reap every live session's tabs at once
 # — a catastrophic answer to a cosmetic disagreement. Two seconds cannot hide a
 # real recycle: the replacement process starts no earlier than the moment the
 # original exited, so mistaking one for the other needs the original to have
-# lived under two seconds, which a session host never does.
+# lived under two seconds, which a session process never does. Records that carry
+# no start (the norm — ownership tracks CLAUDE_PID, whose liveness the sweep reads
+# directly) fall through to matching on the PID alone.
 START_TIME_SLACK_TICKS = 2 * 10**7  # FILETIME ticks are 100ns
 
 
@@ -309,6 +311,25 @@ def record_for(target_id: str, owner_pid: int | None) -> TabRecord:
     return TabRecord(TABS_DIR / name, target_id, owner_pid, int(time.time() * 1000))
 
 
+def _resolve_owner_pid() -> int | None:
+    """This session's tab-owner pid, resolved exactly as the open path records it
+    (tab-registry.js ownerInfo): CLAUDE_PID, the session's own claude process,
+    which owns every session's tabs. None when it is unset (not running under a
+    Claude session), so --close-owned has nothing it can match. The node-pid
+    fallback the open path uses last has no analog here: this process's pid could
+    not match the node process that recorded the tab, so a bare invocation outside
+    a Claude session simply owns nothing to close."""
+    raw = os.environ.get("CLAUDE_PID")
+    if raw:
+        try:
+            pid = int(raw)
+        except ValueError:
+            return None
+        if pid > 0:
+            return pid
+    return None
+
+
 def is_cdp_alive(port: int) -> bool:
     try:
         resp = urlopen(f"http://localhost:{port}/json/version", timeout=2)
@@ -326,10 +347,9 @@ def sweep_tabs(port: int) -> None:
       1. Owner reap (the courtesy) — a tab whose owning session has ended is
          closed right away, rather than waiting for it to age out or become the
          idlest under the cap. The owner is the Claude session that opened the
-         tab (its long-lived host process; see the launcher's OWNER_PID env), so
-         a tab lives as long as that session's window is open and is cleaned up
-         when it closes. A tab opened without the openTab helper has no owner —
-         it's cleaned up by layers 2–3 instead.
+         tab (its own claude process, CLAUDE_PID), so a tab lives as long as that
+         session runs and is cleaned up when it ends. A tab opened without the
+         openTab helper has no owner — it's cleaned up by layers 2–3 instead.
       2. Age-out (TTL) — any tab idle (no activity) longer than TAB_TTL_SECONDS
          is closed, regardless of owner, catching genuinely abandoned tabs.
          Activity = a tab created/reused via the openTab/findTab helpers, or a
@@ -484,17 +504,14 @@ def close_owned_tabs() -> int:
 
     A session's final courtesy: close its own browser tabs when it's genuinely
     done with them, so they never reach the sweep. Matches tabs whose recorded
-    owner is this session's BROWSER_CHAUFFEUR_OWNER_PID. Uses the raw CDP HTTP
+    owner is this session's CLAUDE_PID — the session's own claude process, the same
+    owner the open path (tab-registry.js ownerInfo) records. Uses the raw CDP HTTP
     endpoint (never auto-attaches, can't hang), only ever touches this session's
     own tabs, and never closes the browser's last remaining page. Best-effort.
     """
-    owner_env = os.environ.get("BROWSER_CHAUFFEUR_OWNER_PID")
-    if not owner_env:
-        print("No BROWSER_CHAUFFEUR_OWNER_PID set — nothing owned to close.")
-        return 0
-    try:
-        owner = int(owner_env)
-    except ValueError:
+    owner = _resolve_owner_pid()
+    if owner is None:
+        print("No CLAUDE_PID set (not running under a Claude session) — nothing owned to close.")
         return 0
 
     state = load_state()
@@ -634,7 +651,7 @@ def main() -> int:
     p.add_argument("--profile-dir", default=None,
                    help="Profile directory (--fresh only; auto-generated if omitted)")
     p.add_argument("--close-owned", action="store_true",
-                   help="Close all tabs owned by this session (BROWSER_CHAUFFEUR_OWNER_PID) and exit")
+                   help="Close all tabs owned by this session (its CLAUDE_PID) and exit")
     args = p.parse_args()
 
     if args.close_owned:

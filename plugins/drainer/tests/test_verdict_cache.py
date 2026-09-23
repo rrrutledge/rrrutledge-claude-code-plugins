@@ -1,5 +1,5 @@
-"""Tests for run-poller.py's judged-verdict cache: an item the dispatch step holds (target_open_tabs
-reached, same-correspondent hold) re-enumerates every cycle, and must not be triaged and screened again
+"""Tests for run-poller.py's judged-verdict cache: an item the dispatch step holds (worker buffer full,
+same-correspondent hold) re-enumerates every cycle, and must not be triaged and screened again
 each time. judge_items() reads a cached verdict back when the item's text is unchanged and the verdict is
 under a day old, and caches only verdicts a model really returned.
 

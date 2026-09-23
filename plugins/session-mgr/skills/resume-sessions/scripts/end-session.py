@@ -1,4 +1,4 @@
-"""End this Claude Code session the way a clean exit would, then close its tab.
+"""End this Claude Code session the way a clean exit would, then close it for good.
 
 A session that force-kills its own host process (`taskkill /T /F`) dies before
 Claude Code can fire the SessionEnd hook event, so anything wired to that event
@@ -10,7 +10,18 @@ stale entry comes back forever.
 This script is the correct self-close primitive. It fires this plugin's
 SessionEnd hooks exactly as the harness would — the same commands from
 hooks/hooks.json, the same JSON payload on stdin — rather than presuming what
-the event does, and only then kills the hosting process tree.
+the event does, and only then tears the session down.
+
+There are two kinds of session to close, told apart by the environment:
+
+    Tab worker (CLAUDE_HOST_PID set) — a session launched through the
+        interactive launcher, hosted by a PowerShell tab. Its close is the
+        force-kill of that hosting process tree.
+    Headless worker (CLAUDE_HOST_PID unset, CLAUDE_PID set) — a `claude --bg`
+        background session with no hosting tab. Force-killing its own claude
+        process does not close it: the background service respawns it under a
+        new pid. Its clean close is `claude stop <short id>`, which tells the
+        service to end that session for good.
 
 Usage, from inside the session that wants to close (via the Bash tool):
 
@@ -21,10 +32,12 @@ Everything needed comes from the session's own environment:
     CLAUDE_CODE_SESSION_ID — set by Claude Code for its child processes
     CLAUDE_HOST_PID        — the tab's hosting PID, set by the user's
                              PowerShell profile when the tab launched
+    CLAUDE_PID             — the session's own claude process pid, set by
+                             Claude Code for its child processes
 
-If CLAUDE_HOST_PID is unset (a session launched without loading the profile),
-nothing is fired and the exit code is 1: there is no tab to kill, the session
-keeps running, and the real SessionEnd fires whenever it actually ends.
+If it is neither a tab nor a headless worker (no host pid, no claude pid), the
+exit code is 1: nothing is killed, the session keeps running, and the real
+SessionEnd fires whenever it actually ends.
 """
 import json
 import os
@@ -37,22 +50,23 @@ HOOKS_JSON = os.path.join(PLUGIN_ROOT, "hooks", "hooks.json")
 DEFAULT_HOOK_TIMEOUT = 10
 
 
-def host_pid_is_ancestor(host_pid):
-    """The only PID this script may kill is the one hosting its own tab — the
-    same self-target rule safe-compounds proves for a literal `taskkill /PID`.
-    Walk our own ancestry to confirm the claimed host is really upstream of us,
-    so a stale or hand-set CLAUDE_HOST_PID can never take down an unrelated
-    process."""
+def pid_is_ancestor(pid, label):
+    """The only session this script may close is its own — the same self-target
+    rule safe-compounds proves for a literal `taskkill /PID`. Walk our own
+    ancestry to confirm the claimed pid (the tab host, or the worker's own claude
+    process) is really upstream of us, so a stale or hand-set CLAUDE_HOST_PID /
+    CLAUDE_PID can never take down an unrelated session. `label` names which pid
+    for the refusal message."""
     try:
         import psutil
     except ImportError:
-        print("end-session: psutil unavailable — cannot verify the host PID is "
-              "this tab's own ancestor; refusing to kill. Close the tab manually.")
+        print(f"end-session: psutil unavailable — cannot verify the {label} PID is "
+              "this session's own ancestor; refusing to close. Close it manually.")
         return False
     try:
         proc = psutil.Process(os.getpid())
         while proc is not None:
-            if proc.pid == host_pid:
+            if proc.pid == pid:
                 return True
             proc = proc.parent()
     except psutil.Error:
@@ -91,28 +105,57 @@ def fire_session_end(session_id):
                 print(f"end-session: SessionEnd hook failed ({e}): {command}")
 
 
-def main():
-    host_pid = os.environ.get("CLAUDE_HOST_PID")
-    if not host_pid or not host_pid.isdigit():
-        print("end-session: CLAUDE_HOST_PID is unset — no tab to close. "
-              "Stop normally instead; SessionEnd will fire on the real exit.")
-        return 1
-
-    if not host_pid_is_ancestor(int(host_pid)):
-        print(f"end-session: PID {host_pid} is not an ancestor of this process — "
-              "refusing to kill it. Close the tab manually.")
-        return 1
-
-    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    if session_id:
-        fire_session_end(session_id)
-    else:
-        print("end-session: CLAUDE_CODE_SESSION_ID is unset — killing the tab "
-              "without firing SessionEnd (nothing to deregister it by).")
-
-    print(f"end-session: killing host process tree (PID {host_pid}).")
-    subprocess.run(["taskkill", "/PID", host_pid, "/T", "/F"], check=False)
+def stop_own_bg_session(session_id):
+    """Close a headless `claude --bg` worker by asking the background service to
+    stop this session. Force-killing the worker's own claude process only makes
+    the service respawn it under a new pid, so `claude stop` is the clean teardown
+    — it drops the session off the live list (`claude agents`) for good, leaving it
+    only in the stopped history. The handle `claude stop` takes is the short id: the
+    session guid's first hyphen-delimited segment (its 8-hex prefix); the full guid
+    is rejected. `claude` is a trusted bare command, so this auto-approves even under
+    --permission-mode manual."""
+    short_id = session_id.split("-", 1)[0]
+    print(f"end-session: stopping headless background session {short_id}.")
+    subprocess.run(["claude", "stop", short_id], check=False)
     return 0
+
+
+def main():
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+
+    host_pid = os.environ.get("CLAUDE_HOST_PID")
+    if host_pid and host_pid.isdigit():
+        # Tab worker: close by force-killing the hosting PowerShell process tree.
+        if not pid_is_ancestor(int(host_pid), "host"):
+            print(f"end-session: PID {host_pid} is not an ancestor of this process — "
+                  "refusing to kill it. Close the tab manually.")
+            return 1
+        if session_id:
+            fire_session_end(session_id)
+        else:
+            print("end-session: CLAUDE_CODE_SESSION_ID is unset — killing the tab "
+                  "without firing SessionEnd (nothing to deregister it by).")
+        print(f"end-session: killing host process tree (PID {host_pid}).")
+        subprocess.run(["taskkill", "/PID", host_pid, "/T", "/F"], check=False)
+        return 0
+
+    claude_pid = os.environ.get("CLAUDE_PID")
+    if claude_pid and claude_pid.isdigit() and session_id:
+        # Headless worker: no hosting tab, so close via `claude stop` instead of a
+        # process kill. The same self-target guard as the tab path, pointed at the
+        # worker's own claude process, confirms we are really running inside it
+        # before we deregister and stop it.
+        if not pid_is_ancestor(int(claude_pid), "worker"):
+            print(f"end-session: PID {claude_pid} is not an ancestor of this process — "
+                  "refusing to stop the session. Close it manually.")
+            return 1
+        fire_session_end(session_id)
+        return stop_own_bg_session(session_id)
+
+    print("end-session: neither CLAUDE_HOST_PID (a tab) nor CLAUDE_PID plus a session id "
+          "(a headless worker) is set — nothing to close. Stop normally instead; "
+          "SessionEnd will fire on the real exit.")
+    return 1
 
 
 if __name__ == "__main__":

@@ -41,8 +41,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
-from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_silent,  # noqa: E402
-                           band_rank, slug, self_directed, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + self-addressed predicate + shared adapter loader + seen-state reader
+from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_bg, spawn_silent,  # noqa: E402
+                           band_rank, slug, self_directed, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -56,9 +56,10 @@ BACKOFF_FILE = "background-backoff.json"
 # rubric or context.md change reaches items that have sat held for days without paying a call per cycle.
 VERDICT_TTL = timedelta(hours=24)
 # A page-size ceiling for each provider's own API list call — not a per-cycle work throttle. There is
-# no such throttle: every cycle enumerates everything currently eligible from every source, and
-# target_open_tabs is the only thing that gates how much of it actually gets dispatched (held items
-# retry next cycle). This constant only bounds how many rows one API call asks for, generous enough
+# no such throttle: every cycle enumerates everything currently eligible from every source, and the
+# worker buffer (target_reviewable / max_concurrent) is the only thing that gates how much of it
+# actually gets dispatched (held items retry next cycle). This constant only bounds how many rows one
+# API call asks for, generous enough
 # that a real inbox/board/channel backlog fits in a single page; if a source's backlog ever exceeds
 # it, that source's overflow just carries to the next cycle same as a held dispatch would.
 ENUMERATE_PAGE_SIZE = 500
@@ -146,7 +147,7 @@ def record_heartbeat(health):
 
 # ---------------------------------------------------------------------------- judged-verdict cache
 #
-# A needs-you item the dispatch step can't place (target_open_tabs reached, or an earlier item from the
+# A needs-you item the dispatch step can't place (the worker buffer is full, or an earlier item from the
 # same correspondent still open) is left unrecorded so it re-enumerates next cycle - and would be triaged
 # and screened all over again, for as long as it stays held. Each real model verdict is persisted here
 # instead, keyed by item id, so a held item is judged once and later cycles read the answer back. An entry
@@ -1060,28 +1061,27 @@ def _record_scan_ok(health):
 
 
 def _spawn_scan_diagnostic(repo, runtime_dir, worker_model):
-    """Spawn a single visible worker tab to diagnose why total_claude_tabs() failed to scan/parse.
+    """Spawn a single visible worker tab to diagnose why worker_counts() failed to scan/parse.
 
-    A failed scan means the tab-count throttle can't see how many claude.exe processes are running,
-    so dispatch now fail-CLOSES (holds every needs-you item this cycle) instead of silently skipping
-    the cap. This tab is Russell's (or the worker's) visible signal that it happened, and a chance to
+    A failed scan means the worker-buffer throttle can't see how many background workers are running or
+    waiting, so dispatch now fail-CLOSES (holds every needs-you item this cycle) instead of dispatching
+    unbounded. This tab is Russell's (or the worker's) visible signal that it happened, and a chance to
     find and fix the real cause rather than it recurring silently every cycle.
     """
     body = (
         "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
-        "The drainer poller's `total_claude_tabs()` (run-poller.py, drainer plugin scripts/) just "
-        "failed to run or parse its `tasklist` scan. That function throttles new worker-tab "
-        "dispatch against DRAINER_TARGET_OPEN_TABS, so a failed scan means dispatch was held back "
-        "entirely this cycle rather than risking an unbounded burst.\n\n"
-        "Diagnose why the scan failed: run the exact command yourself - `tasklist /FI \"IMAGENAME "
-        "eq claude.exe\" /NH /FO CSV` - and see what happens (hangs, errors, returns something "
-        "unparseable). Check whether the "
-        "machine was under heavy load (many open tabs, high CPU/memory) as a likely cause. If you "
-        "find a concrete, safe fix, apply it. Either way, tell Russell plainly what you found and "
-        "whether it's fixed or still needs his attention.\n"
+        "The drainer poller's `worker_counts()` (run-poller.py, drainer plugin scripts/) just failed to "
+        "run or parse its `claude agents --json` scan. That scan feeds the worker-buffer throttle "
+        "(DRAINER_TARGET_REVIEWABLE / DRAINER_MAX_CONCURRENT), so a failed scan means dispatch was held "
+        "back entirely this cycle rather than risking an unbounded burst.\n\n"
+        "Diagnose why the scan failed: run the exact command yourself - `claude agents --json` - and see "
+        "what happens (hangs, errors, returns something unparseable). Check whether the machine was under "
+        "heavy load (many open sessions, high CPU/memory) as a likely cause. If you find a concrete, safe "
+        "fix, apply it. Either way, tell Russell plainly what you found and whether it's fixed or still "
+        "needs his attention.\n"
     )
-    _spawn_diagnostic_tab("scan-failure-diagnostic", "drainer: tab-scan failed - diagnose",
-                          "Diagnose: drainer tab-count scan failed", body, repo, runtime_dir, worker_model)
+    _spawn_diagnostic_tab("scan-failure-diagnostic", "drainer: session-scan failed - diagnose",
+                          "Diagnose: drainer session-count scan failed", body, repo, runtime_dir, worker_model)
 
 
 # A provider whose enumerate fails with kind="config" (a broken deploy — a missing helper .js or, most
@@ -1195,14 +1195,32 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
             f"config repo `{config_repo}`.\n"
         )
-    # A one-line summary leads the seed so the worker's Claude session self-titles the tab descriptively
-    # while keeping its attention star (the launcher prepends this; see launch-session.ps1 -SummaryFile).
+    # A one-line summary leads the seed so the worker's Claude session self-titles descriptively while
+    # keeping its attention star (the same lead the tab launcher prepends; see launch-session.ps1
+    # -SummaryFile). Written to a sibling file too so anything reading the item's summary off disk still
+    # finds it.
     summary_file = os.path.join(seeds, f"{iid}.summary.txt")
+    summary_text = _worker_summary(json_file)
     with open(summary_file, "w", encoding="utf-8") as f:
-        f.write(_worker_summary(json_file))
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab([spawn_cmd, _worker_title(iid, json_file), repo, prompt_file, worker_model, summary_file],
-              cwd=repo)
+        f.write(summary_text)
+    # A fresh worker spawns headless: a `claude --bg` background session, no Windows Terminal tab, so a
+    # spawn never steals desktop focus. Build the SAME one-line seed the tab launcher builds - a
+    # descriptive lead so the session self-names, then the pointer at the on-disk instructions - and
+    # write the background session's short id into the SAME receipt file every other path reads
+    # (<prompt_file>.session), so open_correspondents, reconcile, and peek stay path-agnostic. A launch
+    # that returns no id leaves no receipt, so reconcile re-queues the item after the launch grace,
+    # exactly as it recovers a tab that never came up.
+    lead = re.sub(r"\s+", " ", summary_text).strip()
+    seed = ((lead + " ") if lead else "") + (
+        f"Your task instructions are in '{prompt_file}' - open it and begin immediately "
+        "without waiting for further input.")
+    bg_id = spawn_bg(seed, worker_model, repo, _worker_title(iid, json_file))
+    if bg_id:
+        with open(prompt_file + ".session", "w", encoding="utf-8") as f:
+            f.write(bg_id)
+    else:
+        print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
+              "left unrecorded to retry next cycle.")
 
 
 def spawn_resume_tab(session_id, cwd, repo):
@@ -1217,24 +1235,46 @@ def spawn_resume_tab(session_id, cwd, repo):
 
 # ---------------------------------------------------------------------------- the cycle
 
-def live_session_ids():
-    """The set of session guids that currently have a running `claude --session-id <guid>` process.
-    Worker tabs launch claude with --session-id on the command line (launch-session.ps1), so a tab that
-    was closed (or whose claude exited) drops out of this set. That distinguishes 'tab closed' (process
-    gone — never going to finish) from 'parked, waiting for Russell' (process alive, just idle), which a
-    transcript-activity check cannot. One CIM query per cycle.
+def _claude_agents():
+    """The parsed `claude agents --json` list - every live interactive and background Claude session on
+    this machine (each carries `pid`, `id` (its short id), `sessionId`, `kind` (interactive/background),
+    `status`, and, for a background session, a `state` of working/blocked/idle) - or None if the call
+    can't be run or parsed.
 
-    Returns None if the scan can't be run/parsed — the caller then SKIPS the liveness fast-path this cycle
-    (the time-based backstop still applies), so an inability to see processes never reaps a live tab."""
-    ps = (r"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'session-id' } | "
-          r"ForEach-Object { $_.CommandLine }")
+    This is the one machine-wide session signal the cycle reads: a background worker's short `id` here is
+    the same id spawn_bg writes to the per-item receipt, and a finished worker stays listed (parked, like
+    an open tab) until it self-terminates its own close-up. None flows through to the callers' fail-safe
+    (skip the liveness fast-path / treat the cycle as at the concurrency cap)."""
+    claude = shutil.which("claude") or "claude"
     try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                             capture_output=True, text=True, encoding="utf-8", errors="replace",
-                             timeout=30, creationflags=NO_WINDOW).stdout
+        res = subprocess.run([claude, "agents", "--json"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None
-    return set(re.findall(r"session-id\s+([0-9a-fA-F-]{36})", out))
+    if res.returncode != 0:
+        return None
+    try:
+        data = json.loads(res.stdout or "[]")
+    except ValueError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+def live_session_ids():
+    """The set of ids of the live worker sessions, so a second item from a correspondent whose earlier
+    one still has a live worker is held, and reconcile can tell 'worker gone, never going to finish' from
+    'parked, waiting for Russell'. One scan per cycle.
+
+    A fresh worker runs headless (`claude --bg`), so this is the set of short ids of the live BACKGROUND
+    sessions from `claude agents --json` - the same short id spawn_bg wrote to each receipt. A finished
+    worker stays listed until it self-terminates, the faithful analog of a tab left open and parked for
+    Russell. Returns None if the scan can't be run/parsed - the caller then SKIPS the liveness fast-path
+    this cycle (the time-based backstop still applies), so an inability to see sessions never reaps a
+    live worker."""
+    agents = _claude_agents()
+    if agents is None:
+        return None
+    return {a["id"] for a in agents if a.get("kind") == "background" and a.get("id")}
 
 
 def open_correspondents(runtime_dir, live):
@@ -1248,8 +1288,8 @@ def open_correspondents(runtime_dir, live):
     and on the same cycle this set no longer contains its correspondent, so anything behind it dispatches.
     Worst case is one poll cycle's delay, never indefinite starvation.
 
-    Keyed off `live` (the running `claude --session-id` guids): for each worker session file whose guid
-    is live, read its captured item's persisted `correspondent`. Bounded by the number of session files,
+    Keyed off `live` (the live background worker short ids): for each worker session file whose id is
+    live, read its captured item's persisted `correspondent`. Bounded by the number of session files,
     the same order of per-cycle work reconcile already does. A None/empty `live` (scan failed, or nothing
     open) yields the empty set, so a cross-cycle hold fails open — the in-cycle dedup in main still holds
     a same-cycle burst."""
@@ -1289,99 +1329,53 @@ def held_for_correspondent(corr, active):
     return bool(corr) and corr in active
 
 
-def _process_snapshot():
-    """{pid: (imagename_lower, parent_pid)} for every running process, from a single
-    Toolhelp32 snapshot. Returns None if the snapshot can't be taken.
+def worker_counts():
+    """The two numbers the dynamic-concurrency dispatch rule reads, as `(waiting, total)`:
 
-    A Toolhelp32 snapshot reads the kernel process table directly, so it stays fast under the exact
-    load (many concurrent tabs, high CPU/memory pressure) where PowerShell's Get-Process stalls
-    resolving each match's file-version info. It also carries the parent pid, which flat tasklist
-    output does not — total_claude_tabs() needs the parent link to tell a real tab apart from the
-    poller's own headless subprocesses."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-    except Exception:
-        return None
-    TH32CS_SNAPPROCESS = 0x00000002
+      - `waiting` — every live session NOT actively busy (`claude agents --json` status != "busy"): a
+        background worker parked for review (blocked, or idle-but-alive), and equally an interactive
+        session Russell left sitting idle. Both show the same way in the Claude app and both are something
+        already awaiting his attention, so they count the same here — the buffer is topped up to
+        target_reviewable so that whenever he turns his attention there is always something waiting, and
+        he is never idle on the AI, without piling more on when he already has idle sessions open.
+      - `total` — every live session competing for his attention: background drainer workers AND any
+        interactive session he started himself, all of which show together in the Claude app. The
+        max_concurrent cap bounds that whole attention load, so the drainer backs off dispatch when he
+        already has a lot open, regardless of how each session was started.
 
-    class _PROCESSENTRY32(ctypes.Structure):
-        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
-                    ("th32ProcessID", wintypes.DWORD),
-                    ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
-                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
-                    ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_char * 260)]
-    try:
-        k32 = ctypes.windll.kernel32
-        k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-        snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-        if not snap or snap == wintypes.HANDLE(-1).value:
-            return None
-        try:
-            entry = _PROCESSENTRY32()
-            entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
-            if not k32.Process32First(snap, ctypes.byref(entry)):
-                return None
-            procs = {}
-            ok = True
-            while ok:
-                procs[entry.th32ProcessID] = (
-                    entry.szExeFile.decode("ascii", "ignore").lower(),
-                    entry.th32ParentProcessID,
-                )
-                ok = k32.Process32Next(snap, ctypes.byref(entry))
-            return procs
-        finally:
-            k32.CloseHandle(snap)
-    except Exception:
-        return None
+    A session's kind (background vs interactive) never changes either count — the two are indistinguishable
+    to Russell in the app, so they are indistinguishable here.
 
-
-def total_claude_tabs():
-    """Count of the real Claude Code tabs open right now — drainer worker tabs and any tab Russell
-    opened by hand. The real constraint on dispatch speed is total open Claude Code tabs competing
-    for his attention, not how many the drainer itself has dispatched, so target_open_tabs is checked
-    against this instead of the drainer's own seen-state bookkeeping.
-
-    An attention-competing tab is one open in Windows Terminal. A spawned worker (spawn-tab.cmd hands
-    the tab to Windows Terminal via `wt`) and a tab Russell opens himself both run as
-    claude.exe -> powershell.exe under the WindowsTerminal.exe window process, so a claude.exe counts
-    exactly when WindowsTerminal.exe is somewhere in its ancestry. The poller's own headless claude.exe
-    — the per-item triage calls (`claude -p`, up to TRIAGE_PARALLEL_CALLS of them running at once) and
-    the launcher's `claude plugin update` — are spawned directly by the poller/launcher Python process,
-    with no terminal in between, so they have no WindowsTerminal ancestor and don't count. That is what
-    keeps a mid-cycle burst of triage calls from inflating the count past target and wrongly holding
-    back a cycle's dispatch. The count reflects the tabs competing for Russell's attention alone.
-
-    Returns None if the snapshot can't be taken — the caller then treats this cycle as AT the cap
-    (fail CLOSED: hold every needs-you item rather than dispatch unbounded), since a scan failure is
+    Returns None if the scan can't be run/parsed — the caller then treats this cycle as AT the cap
+    (fail CLOSED: open no new needs-you workers rather than dispatch unbounded), since a scan failure is
     exactly the condition — a bogged-down machine — most likely to coincide with a large eligible
-    backlog, and skipping the throttle there is how a cycle dispatches everything eligible at once
-    instead of nothing. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD
-    consecutive failures spawns one visible diagnostic tab."""
-    procs = _process_snapshot()
-    if not procs:
+    backlog. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD consecutive
+    failures spawns one visible diagnostic tab."""
+    agents = _claude_agents()
+    if agents is None:
         return None
+    total = len(agents)
+    waiting = sum(1 for a in agents if a.get("status") != "busy")
+    return waiting, total
 
-    def descends_from_terminal(pid):
-        seen = set()
-        parent = procs.get(pid, (None, 0))[1]
-        while parent and parent in procs and parent not in seen and len(seen) < 64:
-            seen.add(parent)
-            name, grandparent = procs[parent]
-            if name == "windowsterminal.exe":
-                return True
-            parent = grandparent
-        return False
 
-    return sum(1 for pid, (name, _) in procs.items()
-               if name == "claude.exe" and descends_from_terminal(pid))
+def open_slots(waiting, total, auto_count, cfg):
+    """How many fresh needs-you workers this cycle may open, per the dynamic-concurrency rule: top the
+    waiting pile up toward target_reviewable, bounded by the max_concurrent headroom. Each opened worker
+    starts out working (not yet waiting) but consumes one of both budgets - it will mature into a waiting
+    reviewable, and it counts against the concurrency cap now - so the loop decrements this per dispatch.
+    `auto_count` is the auto-handle workers already opened this cycle (unconditional, but still live
+    background sessions), subtracted from the concurrency headroom so the cap holds. `waiting`/`total`
+    are None when the session scan failed - then this is 0, fail-closed: open nothing this cycle."""
+    if waiting is None or total is None:
+        return 0
+    return max(0, min(cfg["target_reviewable"] - waiting,
+                      cfg["max_concurrent"] - total - auto_count))
 
 
 def _session_guid(runtime_dir, iid):
-    """(guid, mtime) from the worker's seeds/<id>.prompt.txt.session, or (None, None). mtime ~ launch
-    time, used to give a freshly-launched tab a grace period before liveness can reap it."""
+    """(short id, mtime) from the worker's seeds/<id>.prompt.txt.session, or (None, None). mtime ~ launch
+    time, used to give a freshly-launched worker a grace period before liveness can reap it."""
     p = os.path.join(runtime_dir, "seeds", f"{iid}.prompt.txt.session")
     try:
         with open(p, encoding="utf-8") as f:
@@ -1434,9 +1428,9 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
 
     Completion is read off the source itself. A worker that finished archived the message, so the
     message is gone from the inbox and its item drops out of consideration on its own. What remains -
-    still sitting in the inbox, with no `claude --session-id` process working it - was never finished,
-    and the reason doesn't matter: the tab was closed, the worker died, or its archive call silently
-    failed. Dropping the seen key re-enumerates it as a fresh item, and the ordinary machinery takes it
+    still sitting in the inbox, with no live worker session working it - was never finished, and the
+    reason doesn't matter: the worker self-terminated, it died, or its archive call silently failed.
+    Dropping the seen key re-enumerates it as a fresh item, and the ordinary machinery takes it
     from there (worker-core's situational-check recognizes an already-answered thread and closes
     quietly; a genuinely open one surfaces as a normal needs-you item).
 
@@ -1450,19 +1444,19 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     Three guards, each load-bearing:
       - an item awaiting the daily digest sits in the inbox BY DESIGN, so the digest queue is excluded;
         without that every queued fyi/junk item would requeue on every cycle
-      - a live session guid means a worker tab is open on it: being worked, or parked for Russell
+      - a live worker id means a session is open on it: being worked, or parked for Russell
       - the launch grace (orphan_grace_minutes) covers the window where a just-dispatched worker hasn't
         written its .session file yet and so briefly looks session-less
 
     Both fail-safes point the same way, at reconciling nothing rather than requeuing live work: a
-    process scan that can't run skips the cycle, and a provider whose inbox listing fails skips that
+    session scan that can't run skips the cycle, and a provider whose inbox listing fails skips that
     provider, since an empty id set would otherwise read as "every item is archived".
 
     Under `dry_run` it counts and prints what it would requeue, touching no state.
 
-    `live` (the running `claude --session-id` guids) is normally scanned here, but the caller may pass
-    the set it already scanned this cycle so the correspondent-hold below reuses it — keeping the whole
-    cycle to one process scan."""
+    `live` (the live background worker short ids) is normally scanned here, but the caller may pass the
+    set it already scanned this cycle so the correspondent-hold below reuses it — keeping the whole cycle
+    to one session scan."""
     if live is _LIVE_UNSET:
         live = live_session_ids()
     if live is None:
@@ -1603,10 +1597,10 @@ def main():
             save_health(cfg["runtime_dir"], health)  # persist any config-load failures recorded above
         return
 
-    # One live-session scan for the whole cycle: reconcile reads it to spot dead workers, and the
-    # dispatch step below reuses it to hold a second item from a correspondent whose earlier item still
-    # has a live worker (open_correspondents). Runs BEFORE the enumerate, so anything reconcile re-queues
-    # is picked up in this same cycle.
+    # One live-session scan for the whole cycle: reconcile reads it to spot workers that never finished,
+    # and the dispatch step below reuses it to hold a second item from a correspondent whose earlier item
+    # still has a live worker (open_correspondents). Runs BEFORE the enumerate, so anything reconcile
+    # re-queues is picked up in this same cycle.
     live = live_session_ids()
     unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
     if args.dry_run:
@@ -1725,18 +1719,22 @@ def main():
     correctly_junked = [it for it in all_new if it["_source"] == "outlook-graph-junk" and it["_bucket"] == "junk"]
     needs_and_others = [it for it in all_new if not (it["_source"] == "outlook-graph-junk" and it["_bucket"] == "junk")]
 
-    # --- live tab count, checked against target_open_tabs (None -> scan failed, fail closed below) ---
-    live_tabs = total_claude_tabs()
-    if live_tabs is None:
+    # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
+    # fail closed: open no new needs-you workers this cycle) ---
+    wcounts = worker_counts()
+    if wcounts is None:
+        waiting = total = None
         fails = _record_scan_failure(health)
         if (fails >= SCAN_FAILURE_ALERT_THRESHOLD and not args.dry_run
                 and _scan_failure_alert_due(health)):
             _spawn_scan_diagnostic(repo, cfg["runtime_dir"], cfg["worker_model"])
             health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
         save_health(cfg["runtime_dir"], health)
-    elif health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
-        _record_scan_ok(health)
-        save_health(cfg["runtime_dir"], health)
+    else:
+        waiting, total = wcounts
+        if health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
+            _record_scan_ok(health)
+            save_health(cfg["runtime_dir"], health)
 
     # --- split: needs-you (globally ordered), auto-handle (own worker, no cap), others (digest) ---
     # Ordered across ALL sources by band_rank (priority, level, referral — the queue policy defined once
@@ -1764,10 +1762,11 @@ def main():
         reverse=True,
     )
     needs = orphan_needs + other_needs
-    # auto-handle items get a worker tab too (they need a browser to act), but the worker acts and CLEARs
-    # the source without ever waiting on Russell - so they resolve fast and are dispatched unconditionally,
-    # never held behind the target_open_tabs throttle that gates needs-you below, letting a standing-rule
-    # action run without waiting behind tabs parked for Russell's attention.
+    # auto-handle items get a worker too (they need a browser to act), but the worker acts and CLEARs the
+    # source without ever waiting on Russell - so they resolve fast and are dispatched unconditionally,
+    # never held behind the worker-buffer throttle that gates needs-you below, letting a standing-rule
+    # action run without waiting behind workers parked for Russell's attention. They still consume a
+    # concurrency slot, so the needs-you budget below subtracts the auto workers opened this cycle.
     auto = [it for it in needs_and_others if it["_bucket"] == "auto-handle"]
     others = [it for it in needs_and_others if it["_bucket"] not in ("needs-you", "auto-handle")]
 
@@ -1783,11 +1782,12 @@ def main():
         counts = {b: sum(1 for it in all_new if it["_bucket"] == b)
                   for b in ("needs-you", "auto-handle", "fyi", "junk")}
         total_all = sum(totals.values())
+        buf = ("scan failed" if wcounts is None
+               else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
         print(f"DRY-RUN — {len(all_new)} new of {total_all} across {len(providers)} source(s) | "
               f"{counts['needs-you']} needs-you, {counts['auto-handle']} auto-handle, "
               f"{counts['fyi']} fyi, {counts['junk']} junk ({len(correctly_junked)} correctly-filed junk) | "
-              f"target open tabs {cfg['target_open_tabs']}, currently open "
-              f"{live_tabs if live_tabs is not None else 'unknown'}")
+              f"worker buffer {buf}")
         if auto:
             print("  auto-handle (autonomous worker, not capped):")
             for it in auto:
@@ -1798,17 +1798,16 @@ def main():
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  spawn auto-worker [{it['_complexity']} -> {model}]\n"
                       f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
         print("  needs-you (orphan-sessions first, then priority band, then level band, then referral band, then newest-first):")
-        tabs = live_tabs
+        slots = open_slots(waiting, total, len(auto), cfg)
         for it in needs:
             corr = prov[it["_source"]].correspondent(it)
             corr_held = held_for_correspondent(corr, active_correspondents)
-            held = corr_held or tabs is None or tabs >= cfg["target_open_tabs"]
+            held = corr_held or slots <= 0
             if not held:
-                if tabs is not None:
-                    tabs += 1
+                slots -= 1
                 if corr:
                     active_correspondents.add(corr)
-            hold_label = "HOLD (same correspondent)" if corr_held else "HOLD (at cap)"
+            hold_label = "HOLD (same correspondent)" if corr_held else "HOLD (buffer full)"
             if it["_source"] == "orphan-sessions":
                 action = hold_label if held else "spawn resume tab"
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
@@ -1836,7 +1835,7 @@ def main():
 
     dispatched, auto_dispatched, held, held_corr, queued, poll_cleared = 0, 0, 0, 0, 0, 0
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
-    # throttled by target_open_tabs, recorded with its own triage so capture stamps the json and the seed
+    # throttled by the worker buffer, recorded with its own triage so capture stamps the json and the seed
     # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
     # is stamped and registered so a same-cycle needs-you duplicate from the same person waits behind it.
     for it in auto:
@@ -1850,6 +1849,10 @@ def main():
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
         auto_dispatched += 1
+    # This cycle's needs-you budget: top the waiting pile up toward target_reviewable, capped by the
+    # max_concurrent headroom left after the auto workers just opened. Decremented per dispatch below;
+    # 0 when the session scan failed, so a failed scan holds every needs-you item (fail-closed).
+    slots = open_slots(waiting, total, auto_dispatched, cfg)
     for it in needs:
         provider = prov[it["_source"]]
         iid = it["_id"]
@@ -1858,12 +1861,12 @@ def main():
             # An earlier item from this correspondent is still open (a live worker, or one dispatched
             # earlier this cycle). Leave this UNRECORDED so it re-enumerates next cycle (its verdicts are
             # read back from the cache, not re-judged); once that worker clears, the hold is gone and one
-            # tab has already read the full context.
+            # worker has already read the full context.
             held += 1
             held_corr += 1
             continue
-        if live_tabs is None or live_tabs >= cfg["target_open_tabs"]:
-            held += 1  # leave UNRECORDED -> re-enumerated next cycle, its verdicts read back from the cache (fail-closed: a failed scan holds too)
+        if slots <= 0:
+            held += 1  # buffer full (or a failed scan held it): leave UNRECORDED -> re-enumerated next cycle, verdicts read back from the cache
             continue
         it["_correspondent"] = corr
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
@@ -1882,8 +1885,7 @@ def main():
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         if corr:
             active_correspondents.add(corr)
-        if live_tabs is not None:
-            live_tabs += 1
+        slots -= 1
         dispatched += 1
     for it in others:
         provider = prov[it["_source"]]
@@ -1916,11 +1918,13 @@ def main():
     if teams_others and prov.get("teams"):
         _spawn_teams_mark_read(teams_others, prov["teams"], repo, cfg["runtime_dir"], cfg["worker_model"])
 
-    print(f"dispatched {dispatched} worker tab(s), {auto_dispatched} auto-handle worker(s), "
+    buf = ("scan failed" if wcounts is None
+           else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
+    print(f"dispatched {dispatched} worker(s), {auto_dispatched} auto-handle worker(s), "
           f"queued {queued} for digest ({poll_cleared} archived at triage), "
           f"{correctly_junked_count} correctly-filed junk (no action), "
           f"held {held} (of which {held_corr} behind an open item from the same correspondent) at "
-          f"target open tabs of {cfg['target_open_tabs']}. Workers clear needs-you on completion.")
+          f"worker buffer {buf}. Workers clear needs-you on completion.")
 
 
 if __name__ == "__main__":

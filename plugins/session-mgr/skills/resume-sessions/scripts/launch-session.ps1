@@ -196,15 +196,9 @@ if ($seed) { $claudeArgs += $seed }
 # --disallowedTools is variadic, so it swallows every positional after it as another tool name; it
 # must come AFTER the seed positional above, or the seed is eaten and the session starts with no prompt.
 $claudeArgs += @('--disallowedTools', 'Artifact,Workflow,SendFeedback,PowerShell')
-# Own any browser-chauffeur tabs this session opens. The browser-chauffeur sweep
-# keeps a tab alive while its owner process is running and reclaims it when the
-# owner is gone, so tying ownership to THIS host process (which lives exactly as
-# long as this WT tab) means the browser tab is cleaned up when the tab closes —
-# not orphaned. Every node script the session spawns inherits these env vars.
-$env:BROWSER_CHAUFFEUR_OWNER_PID = $PID
-# Paired with the PID so the sweep can tell this session's tabs from those of a
-# later process that inherits the same PID — Windows recycles PID numbers, and a
-# recycled one makes a dead session's tabs look owned and alive indefinitely.
-# Expressed as a Windows FILETIME, matching what the sweep reads back from the OS.
-$env:BROWSER_CHAUFFEUR_OWNER_START = (Get-Process -Id $PID).StartTime.ToFileTime()
+# Browser-chauffeur owns any tab a session opens by that session's own claude
+# process (CLAUDE_PID, which Claude Code injects into every tool subprocess and
+# which lives exactly as long as the session), so a tab is reclaimed when the
+# session ends with nothing to set up here. That covers this launched session too,
+# so no owner env is exported.
 claude @claudeArgs

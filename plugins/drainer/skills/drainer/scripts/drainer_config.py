@@ -121,12 +121,21 @@ def read_config(repo, runtime_root=None):
         "repo": repo,  # so adapters that drain configured targets (e.g. trello boards) can re-read this file
         "runtime_dir": runtime_dir,
         "local_dir": local_dir,
-        # Target total open Claude Code tabs system-wide — drainer worker tabs, the drainer itself,
-        # and any tab Russell opened by hand. The poller drains as fast as possible (no artificial
-        # per-cycle throttle) until the live tab count reaches this, then holds new dispatches until
-        # it drops back below. Read from the DRAINER_TARGET_OPEN_TABS env var (default 12) — a fresh
-        # process each poller cycle, so a changed value takes effect on the very next cycle.
-        "target_open_tabs": int(os.environ.get("DRAINER_TARGET_OPEN_TABS", "12")),
+        # The worker buffer, expressed as two numbers the dispatch loop reads together (see run-poller's
+        # main dispatch). The point of the buffer was never "N workers" - it is "whenever Russell turns
+        # his attention there is always something waiting for his review, so he is never idle waiting on
+        # the AI". So each cycle the poller tops the WAITING pile up toward target_reviewable (any live
+        # session not actively busy - a parked background worker, or an idle interactive session Russell
+        # left open), opening `target_reviewable - waiting` fresh needs-you workers, floored at 0 - no
+        # in-flight accounting. max_concurrent caps the TOTAL live-session load
+        # as a load guard - every session in the Claude app, background drainer workers and interactive
+        # sessions Russell started himself alike - so the drainer also backs off when he already has a lot
+        # open, and it bounds the working pile-up that "open the difference" can create over several cycles
+        # before fresh workers mature into the waiting state. At ~1 worker/minute matured and a 5-minute
+        # cycle, a target of 5 keeps a full review buffer. Both are read from env each cycle (a fresh
+        # process), so a changed value takes effect on the very next cycle.
+        "target_reviewable": int(os.environ.get("DRAINER_TARGET_REVIEWABLE", "5")),
+        "max_concurrent": int(os.environ.get("DRAINER_MAX_CONCURRENT", "18")),
         # Worker tabs need an explicit model — otherwise they inherit the session default, which may be
         # a 1M-context model the account can't use. The poller picks per item by triage complexity:
         # simple -> worker_model, complex -> worker_model_complex (both standard context).

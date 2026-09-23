@@ -19,7 +19,7 @@ AI is invoked for exactly three things:
    On a flag the item loses all autonomy (forced to needs-you, never auto-handled or digested); an item it can't screen is held out of dispatch (fail-closed), so nothing is acted on unscreened.
    Junk is the one bucket the screen skips: it never resolves a pointer and never acts without the user's own review at digest time, so there's nothing there for the screen to protect against, and triage's own `kind: phishing` marking already carries the deceptive ones to the report-phishing digest action - flagging them again here would only force a duplicate, unnecessary escalation on content that's already correctly triaged. needs-you, auto-handle, and fyi (which *does* resolve a pointer autonomously, see `engine/digest-core.md` step 2) all still get screened.
    See the screen's dispatch handling in the cycle below.
-3. **The per-item worker session** - each needs-you (or auto-handle) item opens a worker tab running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
+3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
 
 Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record - is code.
@@ -30,13 +30,13 @@ No AI re-implements the loop.
 `python run-poller.py --repo <project> [--dry-run]`
 
 1. **Read config** from `<project>/.claude/drainer.local.md`: enabled providers, `runtime_dir`.
-   Also reads `target_open_tabs` from the `DRAINER_TARGET_OPEN_TABS` environment variable (default 12) - the only per-cycle throttle in the whole loop (see step 5).
+   Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-cycle throttle in the whole loop (see step 5).
 2. **Reconcile** (`reconcile_unhandled()`) - re-queue any email item whose source object is still unhandled with no live worker session on it, so it re-enumerates below.
    See the section after this list for the rule and its guards.
 3. **Per provider - enumerate everything eligible:** call the provider's enumerate (for outlook-graph, `mail.js --list-inbox --json --top=<ENUMERATE_PAGE_SIZE>` - read+unread, newest-first, no time window).
    There is no per-cycle work cap: every cycle asks every source for everything it currently has to offer (`ENUMERATE_PAGE_SIZE`, a generous constant in `run-poller.py`, bounds only how many rows one API call requests - a technical page size, not a throttle; a backlog bigger than that one page just carries into the next cycle).
    Compute each item's stable id and drop any already in seen-state (`scripts/seen-state.js`).
-   Whatever remains all becomes triage/dispatch input this cycle; `target_open_tabs` in step 5 is what actually limits how much of it gets worked on at once.
+   Whatever remains all becomes triage/dispatch input this cycle; the worker buffer in step 5 is what actually limits how much of it gets worked on at once.
 4. **Triage** each new item with its own `claude -p` call → bucket (needs-you / auto-handle / fyi / junk) + kind + complexity (simple / complex).
    Every call this cycle shares one prompt prefix - `engine/triage.md`, the local `context.md`, and each enabled provider's AUTO-HANDLE section (so the model can recognize a standing-rule item; the rules live in the provider docs, surfaced here at triage time) - with only the one item's payload varying per call, so the model spends its full attention on that item instead of a whole cycle's batch at once.
 4b. **Screen** each new item - except one step 4 already bucketed junk - with its own separate `claude -p` call (`engine/screen.md` + `context.md`) → `{flagged, reason}`.
@@ -58,10 +58,13 @@ No AI re-implements the loop.
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic):
-   - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, if live Claude Code tabs system-wide (`total_claude_tabs()` - every running `claude.exe` process: drainer worker tabs, the drainer itself, and any tab Russell opened by hand) is below `target_open_tabs`: capture to `items/<id>.json`, spawn a worker tab (`spawn-tab.cmd`) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), then record seen **after** the spawn succeeds.
-     At the target: leave it **unrecorded** so a later cycle picks it up (throttle + fail-safe).
-     If the live-tab scan itself fails, the throttle is skipped entirely for that cycle (fail-safe: never block dispatch just because tabs couldn't be counted).
-   - **auto-handle** → capture + spawn a worker tab too (it needs a browser to act), but the worker runs the standing rule autonomously and clears the source right away, so it resolves fast and is dispatched unconditionally, never throttled by `target_open_tabs`.
+   - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless `claude --bg` worker** (no terminal tab, so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
+     The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
+     Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
+     The point is that whenever Russell turns his attention there is always something waiting for review, so he is never idle on the AI; while he is busy those waiting workers stay unresolved, so the buffer stays full and few new ones open.
+     With no room: leave the item **unrecorded** so a later cycle picks it up (throttle + fail-safe).
+     If the `claude agents --json` scan itself fails, dispatch fail-CLOSES this cycle (opens no new needs-you workers) rather than dispatching unbounded.
+   - **auto-handle** → capture + spawn a headless worker too (it needs a browser to act), but the worker runs the standing rule autonomously and clears the source right away, so it resolves fast and is dispatched unconditionally, never throttled by the worker buffer (though it still counts toward `max_concurrent`).
      It's recorded with its own `auto-handle` triage, which makes the worker's seed name `engine/auto-handle.md`; the worker runs that branch (act → CLEAR → queue a digest entry → close up) and never interrupts the user.
      The digest reports it under "Auto-handled."
    - **fyi / junk** → capture, add to the digest queue (`seen-state.js queue-add`), record seen, **then archive the source** (the provider's `clear`) so mail that Russell has effectively already dispositioned leaves his inbox at triage instead of sitting there as noise through to the digest.
@@ -80,14 +83,14 @@ The rule is a single observable condition:
 > Drop its seen key so it re-enumerates.
 
 The success case needs no signal at all: a worker that finished archived the message, so the message is gone from the inbox and its item is excluded automatically.
-What is left is work nobody completed, and one condition covers every way that happens - the tab was closed, the worker died, or its archive call silently failed.
+What is left is work nobody completed, and one condition covers every way that happens - the worker self-terminated, it died, or its archive call silently failed.
 Because the reconcile runs ahead of the enumerate, anything it re-queues is re-dispatched in the same cycle.
 
 Three guards keep it from re-queuing work that is fine:
 
 - **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 6) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
-- **a live session guid** (`claude --session-id <guid>`, recorded in `seeds/<id>.prompt.txt.session`) means a tab is open on the item: being worked, or parked for Russell.
-  Liveness is the whole test - an open tab is left alone however long it's up, so there is no timeout.
+- **a live worker id** (the background session's short id, recorded in `seeds/<id>.prompt.txt.session`, matched against the live background sessions in `claude agents --json`) means a worker is open on the item: being worked, or parked for Russell.
+  Liveness is the whole test - a live worker is left alone however long it's up, so there is no timeout.
 - **the launch grace** (`orphan_grace_minutes`) covers the window in which a just-dispatched worker hasn't written its `.session` file yet and so briefly looks session-less
 
 Both fail-safes point at reconciling nothing rather than re-queuing live work: a process scan that can't run skips the cycle, and a provider whose inbox listing fails skips that provider (an empty id set would otherwise read as "every item is archived").
@@ -105,15 +108,15 @@ Because the poller is headless, this file is how a silently-dead provider become
 
 **Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended action, including any held at the cap) plus the count of items the reconcile would re-queue, with no spawns, no queueing, no records, no clears, and no re-queues.
 
-## Hold by correspondent: one open item per person, so one tab reads them all
+## Hold by correspondent: one open item per person, so one worker reads them all
 
-Two items from the same person close together should be handled by **one tab reading both**, not two tabs racing independently and possibly drafting two separate replies.
+Two items from the same person close together should be handled by **one worker reading both**, not two workers racing independently and possibly drafting two separate replies.
 This is the general case behind exact-duplicate notifications (a stack of Securus "new mail" notices for the same incarcerated contact) as well as a real person sending two genuinely different emails minutes apart.
 The fix is not to detect sameness - that needs content judgment and is fragile.
-It is to **hold a second item from a correspondent out of dispatch while an earlier item from them is still open**, and let the worker's existing situational-check (it reads the whole thread across Inbox/Archive/Deleted Items before drafting) do the grouping once, in one tab, with full context.
+It is to **hold a second item from a correspondent out of dispatch while an earlier item from them is still open**, and let the worker's existing situational-check (it reads the whole thread across Inbox/Archive/Deleted Items before drafting) do the grouping once, in one worker, with full context.
 
 At dispatch, before spawning a worker for a needs-you item, the poller compares its **correspondent identity** against the correspondents that currently have an open item.
-If one matches, the item is left **unrecorded** - the exact "leave it for a later cycle" pattern the `target_open_tabs` throttle uses - so it just waits in the source and re-evaluates next cycle.
+If one matches, the item is left **unrecorded** - the exact "leave it for a later cycle" pattern the worker-buffer throttle uses - so it just waits in the source and re-evaluates next cycle.
 
 "Currently has an open item" is recomputed **every cycle from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
 The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in this same cycle (so even two duplicates arriving in one cycle don't both spawn - the first claims the identity, the rest wait).
@@ -132,7 +135,7 @@ New relays plug in by adding a registry entry.
 
 - Seen-state is a separate id store, not the read/unread flag - losing it re-processes (safe).
 - A seen-id is recorded only **after** dispatch succeeds - an aborted cycle loses no item.
-- Workers are idempotent: a duplicate tab's situational-check resolves quietly.
+- Workers are idempotent: a duplicate worker's situational-check resolves quietly.
   No overlap lock.
 - Completion is observed on the source, never reported: an item is done because its source object is handled, so a worker that dies, is closed, or fails its own archive call re-queues rather than vanishing.
 
