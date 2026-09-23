@@ -133,14 +133,29 @@ elseif ($SeedFile) {
     Show-LaunchFailureHelp -Detail "launch-session: seed file not found: $SeedFile"
     return
   }
-  # Same receipt as the -PromptFile branch above, so a handoff can be peeked at too — this previously
-  # only fired when a caller happened to pass -SessionId explicitly, which none do.
-  $SessionId = Register-SessionReceipt -AnchorFile $SeedFile -SessionId $SessionId
   $rawSeed = (Get-Content -Raw -LiteralPath $SeedFile).Trim()
   $seed = Get-SeedSafeText $rawSeed
+  # A real seed is a short pointer ("Resume from the handoff at <path>. Read it fully, then begin
+  # the work it describes."), never the handoff document itself. A full document's own frontmatter
+  # ('---'), once flattened to one line, reads to claude's arg parser as an unrecognized flag —
+  # claude exits before a session (or transcript) ever exists, leaving a dead tab with no
+  # explanation printed in it (observed in practice). Catch that mistake here instead of passing
+  # the mangled text through: a real pointer is a couple hundred characters at most and never
+  # starts with a dash once cleaned. A full document belongs behind -PromptFile, which this script
+  # already wraps in a safe "open and begin" pointer instead of inlining the content.
+  $SeedPointerMaxChars = 500
+  if ($rawSeed.Length -gt $SeedPointerMaxChars -or $seed -match '^-') {
+    $detail = "launch-session: -SeedFile is $($rawSeed.Length) chars - that looks like a full document, not a short pointer, and claude would likely misread it as a command-line flag. " `
+      + 'Write a short pointer file instead (e.g. "Resume from the handoff at <path>. Read it fully, then begin the work it describes."), or pass the document itself via -PromptFile, which wraps it safely.'
+    Show-LaunchFailureHelp -Detail $detail
+    return
+  }
   if ($rawSeed -match "[$SeedHazardChars\r\n]") {
     Write-Host "launch-session: removed quote, semicolon, or line-break characters from the seed file." -ForegroundColor Yellow
   }
+  # Same receipt as the -PromptFile branch above, so a handoff can be peeked at too — this previously
+  # only fired when a caller happened to pass -SessionId explicitly, which none do.
+  $SessionId = Register-SessionReceipt -AnchorFile $SeedFile -SessionId $SessionId
 }
 elseif (-not $Resume) {
   Write-Host "launch-session: supply -PromptFile, -SeedFile, or -Resume <session-id>" -ForegroundColor Red

@@ -71,4 +71,6 @@ Check the last line of every `--body-file` against this before running `--reply`
 - **Reply-all on the thread:** `node gmail.js --reply --message-id=<messageId> --body-file=<file>` - sets In-Reply-To/References, appends the quoted original, and CCs all original To+CC recipients.
   Thread off the **most recent message** (see `email-base.md`).
   Pass the latest message-id even when that message is one the user sent; `--reply` searches All Mail so no inbox restore is needed.
+  When the original message's `From` is a relay/group-forwarded address (Google Groups' `'X' via <Group>` rewrite is the common case - e.g. an Eventbrite notification relayed through an ISC Google Group), `--reply`'s computed recipient prefers a `Reply-To` header automatically when one is present.
+  If a staged reply still looks like it's going to the relay/group instead of the real person, check the original message's headers and pass the real address explicitly via `--to="<addr>"`.
 - **Fresh note:** `node gmail.js --draft-new --to="<addr>" --subject="<subj>" --body-file=<file> [--cc="<addrs>"]`

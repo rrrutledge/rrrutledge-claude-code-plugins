@@ -683,35 +683,32 @@ async function catchUpSeries({ seriesMasterId, exceptId, tz = 'America/Chicago',
   return deleted;
 }
 
-// Minutes from now until the next REAL commitment across every writable calendar — a non-all-day
-// event with an attendee other than Russell, or one he didn't organize. Excludes solo self-owned
-// events (task placeholders, on the Physical Tasks calendar or anywhere else) and all-day events,
-// since neither blocks him from starting something. Returns 0 when a real commitment is in
-// progress right now; caps at `lookaheadHours` (default 48) when nothing real is found that soon —
-// there's no practical ceiling on "how much free time," so the cap just bounds the query.
+// Minutes from now until the next REAL commitment across every writable calendar — any
+// non-all-day event, solo or not, organized by Russell or not. Excludes all-day events, since
+// those don't block him from starting something, and excludes whatever calendars the caller
+// passes in `exclude` — the physical-task adapter always excludes its own Physical Tasks
+// calendar there, since that calendar is the to-do queue itself, not a commitment (see
+// physical-task-adapter.py's `_gap_minutes`). Returns 0 when a real commitment is in progress
+// right now; caps at `lookaheadHours` (default 48) when nothing real is found that soon — there's
+// no practical ceiling on "how much free time," so the cap just bounds the query.
 async function getGapUntilNextCommitment({ tz = 'America/Chicago', lookaheadHours = 2, exclude = [], client } = {}) {
   client = client || await getGraphClient();
-  const ME = 'russell.rutledge@outlook.com';
   const now = new Date();
   const end = new Date(now.getTime() + lookaheadHours * 3600000);
   const excludeSet = new Set(exclude.map(s => s.trim().toLowerCase()));
   const cals = (await client.api('/me/calendars').select('id,name,canEdit').top(100).get()).value || [];
   const targets = cals.filter(c => c.canEdit && !excludeSet.has(c.name.toLowerCase()));
-  const isSoloTask = e => {
-    if (e.isAllDay || !e.isOrganizer) return false;
-    return (e.attendees || []).every(a => (a.emailAddress?.address || '').toLowerCase() === ME);
-  };
   let earliest = null;
   for (const cal of targets) {
     let page = await client.api(`/me/calendars/${cal.id}/calendarView`)
       .query({ startDateTime: now.toISOString(), endDateTime: end.toISOString() })
       .header('Prefer', `outlook.timezone="${tz}"`)
       .top(200).orderby('start/dateTime')
-      .select('start,end,isAllDay,isOrganizer,attendees')
+      .select('start,end,isAllDay')
       .get();
     while (page) {
       for (const e of page.value || []) {
-        if (e.isAllDay || isSoloTask(e)) continue;
+        if (e.isAllDay) continue;
         const start = new Date(e.start.dateTime);
         const finish = new Date(e.end.dateTime);
         if (finish <= now) continue; // already over

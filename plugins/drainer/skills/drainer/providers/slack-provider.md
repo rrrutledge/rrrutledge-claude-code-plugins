@@ -22,7 +22,8 @@ The `slack` `slack.js` lives at `<slack-skill>/scripts/slack.js` - run it with `
 - one **unread channel** (no @-mention) - one item per channel, keyed to its latest unread message,
 - one **subscribed thread with unread replies** - keyed to its latest unread reply (the `subject` notes whether it also @-mentions you).
 
-**Muted conversations are skipped** by enumerate - muting a channel/DM is the user's "stop," so the drainer honors it.
+**Muted conversations are skipped** by enumerate for the first four kinds above - muting a channel/DM is the user's "stop" on ambient noise, so the drainer honors it.
+A **subscribed thread** is different: it only exists because Russell replied to it or was mentioned in it, so it still surfaces even when the parent channel is muted - the same distinction Slack's own Threads panel makes.
 A new message/reply produces a new `ts`, so the conversation re-surfaces next cycle.
 
 ## AUTH-GLANCE
