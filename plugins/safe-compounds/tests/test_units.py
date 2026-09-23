@@ -150,6 +150,9 @@ class TestGit:
     def test_rebase_allowed(self):
         assert is_git_command_safe("git rebase main") is True
 
+    def test_sparse_checkout_allowed(self):
+        assert is_git_command_safe("git -C .tmp/repo sparse-checkout set board/meeting") is True
+
     def test_global_opt_before_subcommand(self):
         assert is_git_command_safe("git -C /repo push --force") is False
 
