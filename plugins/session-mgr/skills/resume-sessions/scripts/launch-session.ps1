@@ -60,6 +60,22 @@ Remove-Item Env:\CLAUDE_CODE_CHILD_SESSION -ErrorAction SilentlyContinue
 Remove-Item Env:\CLAUDE_CODE_SESSION_ID -ErrorAction SilentlyContinue
 Remove-Item Env:\CLAUDE_PID -ErrorAction SilentlyContinue
 
+# A tab launched into an already-running Windows Terminal window (the persistent "drainer" home
+# window, or any window reused across sessions) inherits that window process's own environment -
+# a snapshot taken whenever the window itself was created, not the environment of whatever spawned
+# this new tab. claude-account main|backup (scripts/claude-switch-account.ps1 in personal-ai-pod)
+# only updates the User-level CLAUDE_CONFIG_DIR registry value and the profile, so a window that
+# predates a later account switch keeps launching every tab - including handoffs and drainer
+# workers - on the stale account until that window is closed and reopened. Re-read the persisted
+# User-level value fresh here so every launch resolves to whichever account is currently set,
+# regardless of what this process happened to inherit.
+$persistedConfigDir = [Environment]::GetEnvironmentVariable('CLAUDE_CONFIG_DIR', 'User')
+if ($persistedConfigDir) {
+  $env:CLAUDE_CONFIG_DIR = $persistedConfigDir
+} else {
+  Remove-Item Env:\CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
+}
+
 # Ensures a session id exists and writes it to "<AnchorFile>.session" so peek.py (and anything else
 # that wants to follow this tab's live transcript) can find it later. One function, called from both
 # the -PromptFile and -SeedFile branches below, so every launch mode writes a receipt and the two
