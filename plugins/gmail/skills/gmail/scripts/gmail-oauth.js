@@ -50,7 +50,7 @@ function resolveAccount() {
   if (!name && process.env.GMAIL_ACCOUNT) name = process.env.GMAIL_ACCOUNT;
   if (!name) return null;
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-    throw new Error(`Invalid --account name "${name}": use lowercase letters, digits, and hyphens (e.g. --account=christina).`);
+    throw new Error(`Invalid --account name "${name}": use lowercase letters, digits, and hyphens (e.g. --account=personal).`);
   }
   return name;
 }
@@ -85,6 +85,14 @@ function readAccountEmail() {
   return t && t.account_email ? String(t.account_email).toLowerCase() : null;
 }
 
+// The exact command that signs this account in again, carrying its --account name and its recorded
+// --expect-email, so every auth error can name the one fix without the caller knowing the account's details.
+function signInCommand() {
+  const expected = readAccountEmail();
+  return `node <gmail>/scripts/gmail-auth.js${ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : ''}` +
+    `${expected ? ` --expect-email=${expected}` : ''} (via browser-chauffeur)`;
+}
+
 // The wrong-mailbox guard: refuse to operate when the mailbox the token authorizes differs from the one it
 // was set up for. Cheap — one profile GET — and a no-op for a legacy token with no recorded address, so it
 // never disturbs an account that predates this. `authedClient` is the raw OAuth2Client (both gmail.js and
@@ -98,7 +106,7 @@ async function assertAccountEmail(authedClient) {
     throw new Error(
       `Account guard tripped: this token (account "${ACCOUNT_NAME || 'default'}") was set up for ${expected}, ` +
       `but it now authorizes ${live || '(unknown)'}. Refusing to operate on the wrong mailbox. ` +
-      `Re-run gmail-auth.js${ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : ''} --expect-email=${expected} to fix.`
+      `To fix, run: ${signInCommand()}`
     );
   }
 }
@@ -136,8 +144,7 @@ function buildOAuthClient() {
 function getAuthedClient() {
   const tokens = readTokens();
   if (!tokens || !tokens.refresh_token) {
-    const which = ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : '';
-    throw new Error(`Not signed in (account "${ACCOUNT_NAME || 'default'}"). Run: node <gmail>/scripts/gmail-auth.js${which} (via browser-chauffeur)`);
+    throw new Error(`Not signed in (account "${ACCOUNT_NAME || 'default'}"). Run: ${signInCommand()}`);
   }
   const client = buildOAuthClient();
   client.setCredentials(tokens);
@@ -145,6 +152,6 @@ function getAuthedClient() {
 }
 
 module.exports = {
-  buildOAuthClient, getAuthedClient, readTokens, writeTokens, readAccountEmail, assertAccountEmail,
+  buildOAuthClient, getAuthedClient, readTokens, writeTokens, readAccountEmail, assertAccountEmail, signInCommand,
   SCOPES, REDIRECT_URI, TOKEN_PATH, DEP_HOME, ACCOUNT_NAME, PROFILE_URL,
 };

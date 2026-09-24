@@ -103,7 +103,7 @@ const { marked } = require('marked');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
 const { ImapFlow } = require('imapflow');
-const { getAuthedClient, assertAccountEmail, ACCOUNT_NAME } = require('./gmail-oauth');
+const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -683,8 +683,8 @@ function describeError(e) {
   let msg = e.message;
   if (data && data.error) msg = data.error.message || data.error_description || data.error || msg;
   const blob = `${msg} ${JSON.stringify(data || {})}`;
-  if (/insufficient|scope|invalid_grant|unauthorized|Not signed in/i.test(blob)) {
-    return `${msg} — re-run the one-time sign-in (node <gmail>/scripts/gmail-auth.js via browser-chauffeur), then retry.`;
+  if (/insufficient|scope|invalid_grant|unauthorized/i.test(blob) && !msg.includes('gmail-auth.js')) {
+    return `${msg} — sign in again, then retry: ${signInCommand()}`;
   }
   return msg;
 }

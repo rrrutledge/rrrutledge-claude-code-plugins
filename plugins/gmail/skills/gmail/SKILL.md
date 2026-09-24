@@ -43,8 +43,8 @@ with `filters.js`, that auto-refreshes — nothing to re-enter after the one-tim
    intended account — for ISC that's the Workspace account `russ@innersourcecommons.org`. The consent
    screen grants three scopes at once: `gmail.modify` (read + label), `gmail.compose` (drafts + send),
    and `gmail.settings.basic` (filters). After this, `gmail.js` and `filters.js` both run silently (the
-   client auto-refreshes the access token). This is the **default (ISC) account**; a second account
-   (Christina's Gmail) is served the same way with `--account` - see **Accounts** below.
+   client auto-refreshes the access token). This is the **default account**; further mailboxes are served
+   with `--account` - see **Accounts** below.
 4. **Optional signature** — set `GMAIL_SIGNATURE_HTML` to an HTML snippet (e.g.
    `Name<br>Title<br><a href="...">...</a>`) and `--draft-new`/`--reply` append it to every staged draft
    automatically. Set it once from whatever your Gmail signature says, and update it by hand if that
@@ -70,35 +70,10 @@ works with just the OAuth setup above.
 
 ## Accounts
 
-The skill serves two mailboxes on this machine, selected by the `--account` flag:
-
-- **default** (no flag) - the ISC Workspace account `russ@innersourcecommons.org`, token at `~/.claude/gmail/oauth-token.json`.
-- **`--account=christina`** - Christina's personal Gmail `christina.rutledge@gmail.com`, token at `~/.claude/gmail/oauth-token-christina.json`.
-
-Pass `--account=christina` on any `gmail.js`/`filters.js` command to act on her mailbox; omit it for the ISC account.
-Each account has its own token file, so signing one in never overwrites the other.
-
-The two accounts use **different OAuth clients**, because the ISC client is Internal to the innersourcecommons.org Workspace and refuses a personal Gmail.
-The default account uses `GMAIL_OAUTH_CLIENT_ID`/`SECRET` (the ISC Internal client); Christina's uses her own External client in `GMAIL_OAUTH_CLIENT_ID_CHRISTINA`/`GMAIL_OAUTH_CLIENT_SECRET_CHRISTINA`.
-A named account reads its own `GMAIL_OAUTH_CLIENT_ID_<NAME>`/`_SECRET` when set and falls back to the shared pair otherwise.
-
-Christina's account was signed in with its expected address, which is what makes a mix-up impossible:
-
-```
-node <skill>/scripts/gmail-auth.js --account=christina --expect-email=christina.rutledge@gmail.com
-```
-
-`--expect-email` refuses to save the token unless the account that actually consents matches, and records that address in the token file.
-Every `gmail.js`/`filters.js` run then asserts the token still authorizes that same mailbox before doing anything, so no `--account` value (or its absence) can act on the wrong inbox.
-The default ISC account has no expected address recorded, so it skips the guard.
-
-Christina's External OAuth client is in **Testing** mode, so Google expires her refresh token roughly every 7 days.
-When her account starts returning an auth error (`invalid_grant`), re-run the sign-in above via browser-chauffeur with Christina consenting at the Google screen.
-The ISC account has no such expiry (its Internal client's token is durable).
-
-**Signature is per-account.**
-The default account appends `GMAIL_SIGNATURE_HTML`; `--account=christina` reads `GMAIL_SIGNATURE_HTML_CHRISTINA` instead, and with none set her drafts get no signature - the right default for staging a draft in her mailbox.
-Draft-only and send rules are identical for both - a staged draft in either mailbox goes out only on an explicit per-message say-so.
+`--account=<name>` on any `gmail.js`/`filters.js` command acts on another signed-in mailbox instead of the default one.
+The repo that uses this skill records which account names exist and whose mailbox each one is.
+Add an account with `node <skill>/scripts/gmail-auth.js --account=<name> --expect-email=<address>`.
+When the default client can't sign that mailbox in, or the account needs its own signature, give it `_<NAME>`-suffixed copies of the env vars above.
 
 ## Scripts
 

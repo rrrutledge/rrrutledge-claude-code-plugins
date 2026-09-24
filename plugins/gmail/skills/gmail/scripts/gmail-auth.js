@@ -5,8 +5,8 @@
 // russ@innersourcecommons.org).
 //
 //   node gmail-auth.js                    -> sign in the default account (~/.claude/gmail/oauth-token.json)
-//   node gmail-auth.js --account=christina --expect-email=christina.rutledge@gmail.com
-//                                         -> sign in a second account (oauth-token-christina.json)
+//   node gmail-auth.js --account=<name> --expect-email=<address>
+//                                         -> sign in another mailbox (oauth-token-<name>.json)
 //
 // --account=<name> selects a per-account token file so a second mailbox can be added without overwriting
 // the first (see gmail-oauth.js). --expect-email=<addr> is the wrong-mailbox guard: after consent the flow
