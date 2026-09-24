@@ -181,16 +181,17 @@ Route each piece of work by where it belongs - which is also where Russell can r
 The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely "a second step": a two-step task whose steps genuinely share this item's context stays inline.
 This is Russell's own cost-lens (same section of `~/.claude/CLAUDE.md`) applied to a running worker.
 
-**Reset this item's own context at a boundary - the session-lifecycle hook will tell you when.**
+**Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this tab; this rule resets the context the work you keep has accumulated.
 Because the whole prefix is re-read every model call (above), a tab that has grown long makes even a one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against the largest context.
-You don't have to watch your own size for this: once this session has grown about 150K tokens past its own baseline, the personal `session-lifecycle.py` hook (wired to `UserPromptSubmit`) injects the live number at the start of your next turn and asks you to judge the incoming work against the whole conversation - and it fires again every further 150K of growth, not just once. When it fires, weigh the three options it names:
+You don't have to watch your own size for this: once this session has grown about 150K tokens past its own baseline, the personal `session-lifecycle.py` hook (wired to `UserPromptSubmit`) injects the live number at the start of your next turn and asks you to judge the incoming work against the whole conversation - and it fires again every further 150K of growth, not just once.
+When it fires, weigh the three options it names - the same handoff-versus-compact judgment as the cost-lens's seed-versus-summary test (`~/.claude/CLAUDE.md`):
 
-- **new line of work, unrelated to what you were doing** -> hand off to a fresh session (short `.tmp/handoff-*.md` via the same `spawn-tab.cmd` the dispatch rule uses); if you're currently on Opus and the new work is mechanical, name the fresh session `claude-sonnet-5` - the step-down below.
-- **earlier context is dead weight a summary would preserve** -> `/compact` with instructions on what to keep.
+- **new, unrelated line of work** -> hand off to a fresh session (short `.tmp/handoff-*.md` via the same `spawn-tab.cmd` the dispatch rule uses); if you're currently on Opus and the new work is mechanical, name the fresh session `claude-sonnet-5` - the step-down below.
+- **earlier context is dead weight** -> `/compact` with instructions on what to keep.
 - **a refinement that still needs the detail** -> continue as is.
 
-It's a nudge weighing on your own judgment, not a rule - a turn it fires on can genuinely be a refinement, in which case continuing is correct.
+It's a nudge weighing on your own judgment - continuing, the third option above, can genuinely be correct.
 A single autonomous run that never yields a turn (so the hook never gets a chance to fire) is caught instead by the `--autocompact` floor set at worker spawn - a lossy, cooperation-free backstop, not a substitute for judging the call yourself when you get the chance.
 
 **A complex worker steps its model down when the open-ended phase ends.**
