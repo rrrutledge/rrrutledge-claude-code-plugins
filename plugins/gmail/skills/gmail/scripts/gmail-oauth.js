@@ -10,14 +10,16 @@
 // bypassing purge.
 //
 // Secrets come from env vars (never a file): GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET (from a
-// Google Cloud OAuth "Desktop app" client). One Desktop client can consent several Google accounts, so
-// the same id/secret pair covers every account the skill serves. The client auto-refreshes the access
-// token from the cached refresh token, so every script runs silently after the one-time sign-in.
+// Google Cloud OAuth "Desktop app" client). The client auto-refreshes the access token from the cached
+// refresh token, so every script runs silently after the one-time sign-in.
 //
 // Multiple accounts. By default the skill serves one account, cached at ~/.claude/gmail/oauth-token.json.
 // Pass --account=<name> (or set GMAIL_ACCOUNT=<name>) to serve a second mailbox alongside the first: the
 // token then caches to ~/.claude/gmail/oauth-token-<name>.json, so signing in as one account never
-// overwrites another's token. No flag = the default single-file behavior.
+// overwrites another's token. No flag = the default single-file behavior. A named account can also carry
+// its own OAuth client via GMAIL_OAUTH_CLIENT_ID_<NAME> / _SECRET (see buildOAuthClient) — needed when the
+// default client can't consent that account, e.g. a personal mailbox and a default client that is Internal
+// to one Workspace org.
 //
 // Wrong-mailbox guard. A token minted with an --expect-email records the address it was authorized for
 // (account_email) in its token file. assertAccountEmail() then asserts, on every run, that the mailbox
@@ -101,11 +103,25 @@ async function assertAccountEmail(authedClient) {
   }
 }
 
+// A named account can point at its own OAuth client via GMAIL_OAUTH_CLIENT_ID_<NAME> /
+// GMAIL_OAUTH_CLIENT_SECRET_<NAME>, falling back to the shared GMAIL_OAUTH_CLIENT_ID / _SECRET. This lets
+// an account the default client can't serve — e.g. a personal mailbox that the default Internal Workspace
+// client refuses — sign in through its own client, and its token then refreshes silently against that same
+// client. <NAME> is the account name uppercased with hyphens turned to underscores.
+function accountEnv(base) {
+  if (ACCOUNT_NAME) {
+    const scoped = process.env[`${base}_${ACCOUNT_NAME.toUpperCase().replace(/-/g, '_')}`];
+    if (scoped) return scoped;
+  }
+  return process.env[base];
+}
+
 function buildOAuthClient() {
-  const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
-  if (!clientId) throw new Error('GMAIL_OAUTH_CLIENT_ID env var not set');
-  if (!clientSecret) throw new Error('GMAIL_OAUTH_CLIENT_SECRET env var not set');
+  const clientId = accountEnv('GMAIL_OAUTH_CLIENT_ID');
+  const clientSecret = accountEnv('GMAIL_OAUTH_CLIENT_SECRET');
+  const suffix = ACCOUNT_NAME ? ` (or GMAIL_OAUTH_CLIENT_ID_${ACCOUNT_NAME.toUpperCase().replace(/-/g, '_')})` : '';
+  if (!clientId) throw new Error(`GMAIL_OAUTH_CLIENT_ID${suffix} env var not set`);
+  if (!clientSecret) throw new Error(`GMAIL_OAUTH_CLIENT_SECRET${suffix} env var not set`);
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri: REDIRECT_URI });
   // On a silent refresh the client emits 'tokens' with a fresh access_token (and usually no
   // refresh_token — that only arrives on first consent). Merge so the refresh_token (and the recorded

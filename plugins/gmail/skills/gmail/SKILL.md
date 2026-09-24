@@ -76,7 +76,11 @@ The skill serves two mailboxes on this machine, selected by the `--account` flag
 - **`--account=christina`** - Christina's personal Gmail `christina.rutledge@gmail.com`, token at `~/.claude/gmail/oauth-token-christina.json`.
 
 Pass `--account=christina` on any `gmail.js`/`filters.js` command to act on her mailbox; omit it for the ISC account.
-Both use the same Desktop OAuth client (`GMAIL_OAUTH_CLIENT_ID`/`SECRET`) - one client consents several Google accounts, so no extra credential exists - and each has its own token file, so signing one in never overwrites the other.
+Each account has its own token file, so signing one in never overwrites the other.
+
+The two accounts use **different OAuth clients**, because the ISC client is Internal to the innersourcecommons.org Workspace and refuses a personal Gmail.
+The default account uses `GMAIL_OAUTH_CLIENT_ID`/`SECRET` (the ISC Internal client); Christina's uses her own External client in `GMAIL_OAUTH_CLIENT_ID_CHRISTINA`/`GMAIL_OAUTH_CLIENT_SECRET_CHRISTINA`.
+A named account reads its own `GMAIL_OAUTH_CLIENT_ID_<NAME>`/`_SECRET` when set and falls back to the shared pair otherwise.
 
 Christina's account was signed in with its expected address, which is what makes a mix-up impossible:
 
@@ -86,8 +90,11 @@ node <skill>/scripts/gmail-auth.js --account=christina --expect-email=christina.
 
 `--expect-email` refuses to save the token unless the account that actually consents matches, and records that address in the token file.
 Every `gmail.js`/`filters.js` run then asserts the token still authorizes that same mailbox before doing anything, so no `--account` value (or its absence) can act on the wrong inbox.
-Re-run that command (via browser-chauffeur, Christina consenting at the Google screen) only if her token is ever revoked or lost.
 The default ISC account has no expected address recorded, so it skips the guard.
+
+Christina's External OAuth client is in **Testing** mode, so Google expires her refresh token roughly every 7 days.
+When her account starts returning an auth error (`invalid_grant`), re-run the sign-in above via browser-chauffeur with Christina consenting at the Google screen.
+The ISC account has no such expiry (its Internal client's token is durable).
 
 **Signature is per-account.**
 The default account appends `GMAIL_SIGNATURE_HTML`; `--account=christina` reads `GMAIL_SIGNATURE_HTML_CHRISTINA` instead, and with none set her drafts get no signature - the right default for staging a draft in her mailbox.
