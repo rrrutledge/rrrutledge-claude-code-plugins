@@ -10,9 +10,20 @@
 // bypassing purge.
 //
 // Secrets come from env vars (never a file): GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET (from a
-// Google Cloud OAuth "Desktop app" client). The OAuth token cache persists to
-// ~/.claude/gmail/oauth-token.json (machine-local). The client auto-refreshes the access token from the
-// cached refresh token, so both scripts run silently after the one-time sign-in via gmail-auth.js.
+// Google Cloud OAuth "Desktop app" client). One Desktop client can consent several Google accounts, so
+// the same id/secret pair covers every account the skill serves. The client auto-refreshes the access
+// token from the cached refresh token, so every script runs silently after the one-time sign-in.
+//
+// Multiple accounts. By default the skill serves one account, cached at ~/.claude/gmail/oauth-token.json.
+// Pass --account=<name> (or set GMAIL_ACCOUNT=<name>) to serve a second mailbox alongside the first: the
+// token then caches to ~/.claude/gmail/oauth-token-<name>.json, so signing in as one account never
+// overwrites another's token. No flag = the default single-file behavior.
+//
+// Wrong-mailbox guard. A token minted with an --expect-email records the address it was authorized for
+// (account_email) in its token file. assertAccountEmail() then asserts, on every run, that the mailbox
+// the token actually authorizes still matches that recorded address — so an operation can never land on
+// the wrong account, whatever name (or none) was passed. A legacy token with no account_email recorded
+// skips the check, so the default account still works until it's re-signed with --expect-email.
 //
 //   const { getAuthedClient } = require('./gmail-oauth');
 
@@ -25,7 +36,28 @@ module.paths.push(path.join(DEP_HOME, 'node_modules'));
 
 const { OAuth2Client } = require('google-auth-library');
 
-const TOKEN_PATH = path.join(DEP_HOME, 'oauth-token.json');
+// Which account this invocation serves. --account=<name> on the command line wins; GMAIL_ACCOUNT is the
+// fallback; neither set means the default (single-file) account. The name is a filename fragment, so it's
+// held to a strict slug — a bad name should fail loudly here, never silently point at a surprise path.
+function resolveAccount() {
+  let name = null;
+  for (const a of process.argv.slice(2)) {
+    const m = a.match(/^--account=(.*)$/);
+    if (m) { name = m[1]; break; }
+  }
+  if (!name && process.env.GMAIL_ACCOUNT) name = process.env.GMAIL_ACCOUNT;
+  if (!name) return null;
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+    throw new Error(`Invalid --account name "${name}": use lowercase letters, digits, and hyphens (e.g. --account=christina).`);
+  }
+  return name;
+}
+const ACCOUNT_NAME = resolveAccount();
+
+// Per-account token file: the default account keeps the original oauth-token.json (so existing setups are
+// untouched); a named account gets its own oauth-token-<name>.json beside it.
+const TOKEN_PATH = path.join(DEP_HOME, ACCOUNT_NAME ? `oauth-token-${ACCOUNT_NAME}.json` : 'oauth-token.json');
+const PROFILE_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/profile';
 // A Desktop-app OAuth client allows any loopback redirect without pre-registering it. Fixed port keeps
 // the local callback deterministic; distinct from ms-graph's 8080 so the two auth flows never collide.
 const REDIRECT_URI = 'http://localhost:8710/callback';
@@ -44,6 +76,31 @@ function writeTokens(tokens) {
   fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
 }
 
+// The address this token was authorized for at sign-in, if it was recorded (see gmail-auth.js). null for a
+// legacy token minted before the wrong-mailbox guard existed — such a token skips the guard entirely.
+function readAccountEmail() {
+  const t = readTokens();
+  return t && t.account_email ? String(t.account_email).toLowerCase() : null;
+}
+
+// The wrong-mailbox guard: refuse to operate when the mailbox the token authorizes differs from the one it
+// was set up for. Cheap — one profile GET — and a no-op for a legacy token with no recorded address, so it
+// never disturbs an account that predates this. `authedClient` is the raw OAuth2Client (both gmail.js and
+// filters.js hold one), so this works whatever REST wrapper the caller layers on top.
+async function assertAccountEmail(authedClient) {
+  const expected = readAccountEmail();
+  if (!expected) return;
+  const res = await authedClient.request({ url: PROFILE_URL, method: 'GET' });
+  const live = (res.data.emailAddress || '').toLowerCase();
+  if (live !== expected) {
+    throw new Error(
+      `Account guard tripped: this token (account "${ACCOUNT_NAME || 'default'}") was set up for ${expected}, ` +
+      `but it now authorizes ${live || '(unknown)'}. Refusing to operate on the wrong mailbox. ` +
+      `Re-run gmail-auth.js${ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : ''} --expect-email=${expected} to fix.`
+    );
+  }
+}
+
 function buildOAuthClient() {
   const clientId = process.env.GMAIL_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET;
@@ -51,7 +108,8 @@ function buildOAuthClient() {
   if (!clientSecret) throw new Error('GMAIL_OAUTH_CLIENT_SECRET env var not set');
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri: REDIRECT_URI });
   // On a silent refresh the client emits 'tokens' with a fresh access_token (and usually no
-  // refresh_token — that only arrives on first consent). Merge so the refresh_token is never lost.
+  // refresh_token — that only arrives on first consent). Merge so the refresh_token (and the recorded
+  // account_email) are never lost.
   client.on('tokens', (tokens) => {
     writeTokens({ ...(readTokens() || {}), ...tokens });
   });
@@ -62,11 +120,15 @@ function buildOAuthClient() {
 function getAuthedClient() {
   const tokens = readTokens();
   if (!tokens || !tokens.refresh_token) {
-    throw new Error('Not signed in for the OAuth settings path. Run: node <gmail>/scripts/gmail-auth.js (via browser-chauffeur)');
+    const which = ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : '';
+    throw new Error(`Not signed in (account "${ACCOUNT_NAME || 'default'}"). Run: node <gmail>/scripts/gmail-auth.js${which} (via browser-chauffeur)`);
   }
   const client = buildOAuthClient();
   client.setCredentials(tokens);
   return client;
 }
 
-module.exports = { buildOAuthClient, getAuthedClient, readTokens, writeTokens, SCOPES, REDIRECT_URI, TOKEN_PATH, DEP_HOME };
+module.exports = {
+  buildOAuthClient, getAuthedClient, readTokens, writeTokens, readAccountEmail, assertAccountEmail,
+  SCOPES, REDIRECT_URI, TOKEN_PATH, DEP_HOME, ACCOUNT_NAME, PROFILE_URL,
+};

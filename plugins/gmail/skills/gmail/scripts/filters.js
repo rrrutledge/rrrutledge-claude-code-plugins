@@ -20,7 +20,7 @@
 // Delete filter:  node filters.js --delete-filter=<id>
 //                 (removes the filter — reversible: re-create it. Does not touch already-archived mail.)
 
-const { getAuthedClient } = require('./gmail-oauth');
+const { getAuthedClient, assertAccountEmail } = require('./gmail-oauth');
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me/settings/filters';
 
@@ -176,6 +176,7 @@ module.exports = { createFilter, insertIntoGroup, insertIntoLeadingGroup };
 if (require.main === module) {
   (async () => {
     const client = getAuthedClient();
+    await assertAccountEmail(client); // wrong-mailbox guard before touching any filter
     if (args['list-filters']) return listFilters(client);
     if (args['create-filter']) return createFilterCli(client);
     if (args['append-filter']) return appendFilter(client);

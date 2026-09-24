@@ -43,7 +43,8 @@ with `filters.js`, that auto-refreshes — nothing to re-enter after the one-tim
    intended account — for ISC that's the Workspace account `russ@innersourcecommons.org`. The consent
    screen grants three scopes at once: `gmail.modify` (read + label), `gmail.compose` (drafts + send),
    and `gmail.settings.basic` (filters). After this, `gmail.js` and `filters.js` both run silently (the
-   client auto-refreshes the access token).
+   client auto-refreshes the access token). This is the **default account**; add a second mailbox with
+   the same command plus `--account`/`--expect-email` (see **Multiple accounts** below).
 4. **Optional signature** — set `GMAIL_SIGNATURE_HTML` to an HTML snippet (e.g.
    `Name<br>Title<br><a href="...">...</a>`) and `--draft-new`/`--reply` append it to every staged draft
    automatically. Set it once from whatever your Gmail signature says, and update it by hand if that
@@ -66,6 +67,28 @@ single-message fetch, interactive `--list-inbox`) stays on the REST/OAuth path a
 Google App Password (Google Account → Security → 2-Step Verification → App Passwords; requires 2SV enabled
 on the account) only if you want the drainer's polling to run over IMAP - everything else in this skill
 works with just the OAuth setup above.
+
+## Multiple accounts
+
+The skill serves one mailbox by default (the token above, at `~/.claude/gmail/oauth-token.json`).
+Add a second mailbox with `--account=<name>` on any command: it selects that account's own token file (`~/.claude/gmail/oauth-token-<name>.json`), so signing in as one account never overwrites another's token.
+No flag means the default account.
+The name is a slug (lowercase letters, digits, hyphens), and it reuses the same Desktop OAuth client (`GMAIL_OAUTH_CLIENT_ID`/`SECRET`): one client can consent any number of Google accounts, so no new credential is needed.
+
+**Set a named account up with its expected address**, so a name can never be wired to the wrong mailbox:
+
+```
+node <skill>/scripts/gmail-auth.js --account=christina --expect-email=christina.rutledge@gmail.com
+```
+
+Drive it via browser-chauffeur, with the person signing into *their own* Google account at the consent screen.
+`--expect-email` makes the flow refuse to save the token unless the account that actually consented matches, and it records the confirmed address in the token file.
+From then on **every** `gmail.js`/`filters.js` run asserts the token still authorizes that same mailbox before doing anything, so an operation can't land on the wrong account - whatever `--account` value (or none) is passed.
+The default account has no expected address recorded, so it skips the guard until re-signed with `--expect-email`.
+
+**Signature is per-account.**
+With `--account=<name>`, drafts read `GMAIL_SIGNATURE_HTML_<NAME>` (uppercased, hyphens → underscores) instead of `GMAIL_SIGNATURE_HTML`; unset means no signature, which is the right default when staging a draft in someone else's mailbox.
+Draft-only and send rules are identical across accounts - a staged draft in any mailbox still goes out only on an explicit per-message say-so.
 
 ## Scripts
 
