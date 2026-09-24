@@ -178,14 +178,10 @@ Route each piece of work by where it belongs - which is also where Russell can r
   Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
-The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely "a second step": a two-step task whose steps genuinely share this item's context stays inline.
-This is Russell's own cost lens (`~/OneDrive/Claude/handoffs.md`, "The cost lens: four levers for resetting a session") applied to a running worker.
-
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this tab; this rule resets the context the work you keep has accumulated.
 Because the whole prefix is re-read every model call (above), a tab that has grown long makes even a one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against the largest context.
-You don't have to watch your own size for this: once this session has grown enough past its own baseline, the personal `session-lifecycle.py` hook injects the live token count and the hand-off-versus-compact-versus-continue judgment at the start of your next turn, and keeps re-firing as the session keeps growing.
-Act on what it says when it fires - hand off via the same `spawn-tab.cmd` the dispatch rule uses, `/compact` with instructions on what to keep, or continue, whichever it calls for.
+The personal `session-lifecycle.py` hook watches for this: once the session has grown enough past its own baseline, it injects the live token count and the hand-off/compact/continue call at the start of your next turn - act on what it says, and expect it to fire again as the session keeps growing.
 It's a nudge weighing on your own judgment - continuing can genuinely be the right call.
 
 **A complex worker steps its model down when the open-ended phase ends.**
