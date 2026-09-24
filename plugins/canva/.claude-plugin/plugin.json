@@ -1,0 +1,9 @@
+{
+  "name": "canva",
+  "version": "1.0.0",
+  "description": "Upload assets and manage folders in a Canva account via the Canva Connect API — no browser. OAuth 2.0 + PKCE against Canva's own developer app (not a shared client), with a token cache that auto-refreshes.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
