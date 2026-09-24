@@ -87,10 +87,15 @@ function readAccountEmail() {
 
 // The exact command that signs this account in again, carrying its --account name and its recorded
 // --expect-email, so every auth error can name the one fix without the caller knowing the account's details.
+// The trailing note covers the part only a person can do: the mailbox's owner clicks through Google's consent
+// screen, and the callback server waits 5 minutes for them.
 function signInCommand() {
   const expected = readAccountEmail();
   return `node <gmail>/scripts/gmail-auth.js${ACCOUNT_NAME ? ` --account=${ACCOUNT_NAME}` : ''}` +
-    `${expected ? ` --expect-email=${expected}` : ''} (via browser-chauffeur)`;
+    `${expected ? ` --expect-email=${expected}` : ''} (via browser-chauffeur). ` +
+    `The mailbox's owner approves Google's consent screen within 5 minutes of starting it, so confirm they're ` +
+    `at the keyboard first; they pick ${expected || 'their address'}, click Continue past any ` +
+    `"hasn't verified this app" warning, and allow every Gmail permission.`;
 }
 
 // The wrong-mailbox guard: refuse to operate when the mailbox the token authorizes differs from the one it
