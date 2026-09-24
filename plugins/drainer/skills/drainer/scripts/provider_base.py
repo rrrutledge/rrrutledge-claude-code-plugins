@@ -96,17 +96,23 @@ _BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
 _BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
 
 
-def spawn_bg(seed, model, cwd, name):
+def spawn_bg(seed, model, cwd, name, autocompact=None):
     """Launch a headless background Claude worker with `claude --bg` - no window, no terminal tab, so no
     focus steal (the whole point, and the single way a fresh worker spawns). Returns the short session id
     claude prints (which the caller writes into the per-item receipt so liveness, reconcile, and peek all
     read one receipt), or None when the launch fails or the id can't be parsed.
 
-    Three details are load-bearing:
+    Four details are load-bearing:
       - `--permission-mode manual` is the safety anchor: every action the safe-compounds hook does not
         auto-approve pauses for Russell, so reaching a "send" becomes the blocked state rather than an
         autonomous send. The hook still auto-approves safe commands, so day-to-day the worker feels like
         a tab worker; only the final irreversible steps wait.
+      - `--autocompact <autocompact>` (when given) is the dumb, cooperation-free ceiling for a worker
+        that runs a single long autonomous tool-call chain and never yields a turn: the per-turn
+        session-lifecycle hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) can only judge a
+        reset at a turn boundary, so this is what catches the run that never reaches one. The worker
+        models report a 1M context window, so native auto-compact's own default (~967K) would never
+        bite in time to matter as a cost control - `autocompact` should be well under that.
       - `--` precedes the seed because `--disallowedTools` is variadic and would otherwise swallow the
         seed as another tool name, leaving the session idle with no prompt (the same greedy-variadic
         gotcha the headless triage/screen calls avoid by putting their prompt on stdin; a --bg seed is a
@@ -127,8 +133,10 @@ def spawn_bg(seed, model, cwd, name):
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
                         "CLAUDE_HOST_PID")}
-    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model,
-            "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
+    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model]
+    if autocompact:
+        args += ["--autocompact", str(autocompact)]
+    args += ["--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
     try:
         res = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)

@@ -38,8 +38,8 @@ def spawn(triage, config_repo, bg_id="abc123ef"):
     (error, prompt, summary_exists, calls, receipt)."""
     calls = []
 
-    def fake_spawn_bg(seed, model, cwd, name):
-        calls.append({"seed": seed, "model": model, "cwd": cwd, "name": name})
+    def fake_spawn_bg(seed, model, cwd, name, autocompact=None):
+        calls.append({"seed": seed, "model": model, "cwd": cwd, "name": name, "autocompact": autocompact})
         return bg_id
 
     poller.spawn_bg = fake_spawn_bg
@@ -53,7 +53,7 @@ def spawn(triage, config_repo, bg_id="abc123ef"):
         error = None
         try:
             poller.spawn_worker("item-x1", json_file, tmp, runtime, "sonnet", local_dir, config_repo,
-                                {"_source": "trello", "subject": "Kirk Strobeck"})
+                                {"_source": "trello", "subject": "Kirk Strobeck"}, autocompact=250000)
         except Exception as e:  # the regression under test: any exception here aborts the whole poll cycle
             error = e
         prompt_file = os.path.join(runtime, "seeds", "item-x1.prompt.txt")
@@ -79,6 +79,7 @@ for triage in ("needs-you", "auto-handle"):
         check("seed points the worker at its prompt file",
               "open it and begin immediately without waiting for further input." in calls[0]["seed"], True)
         check("seed passes the worker model", calls[0]["model"], "sonnet")
+        check("passes the autocompact window through to spawn_bg", calls[0]["autocompact"], 250000)
     check("receipt records the returned bg short id", receipt, "abc123ef")
 
 print("\nspawn_worker leaves no receipt when the headless launch returns no id")

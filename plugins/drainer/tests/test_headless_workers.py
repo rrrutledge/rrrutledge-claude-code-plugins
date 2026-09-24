@@ -39,7 +39,7 @@ class _FakeCompleted:
 
 
 def _run_spawn_bg(returncode=0, stdout="Starting background service…\nbackgrounded · 6997ef2f · a worker\n",
-                  raise_exc=None, base_env=None):
+                  raise_exc=None, base_env=None, autocompact=None):
     """Call spawn_bg with subprocess.run stubbed; return (result_id, captured_args, captured_env)."""
     captured = {}
 
@@ -57,7 +57,7 @@ def _run_spawn_bg(returncode=0, stdout="Starting background service…\nbackgrou
     if base_env is not None:
         provider_base.os.environ = base_env
     try:
-        rid = provider_base.spawn_bg("SEED TEXT", "sonnet", "C:/repo", "a worker")
+        rid = provider_base.spawn_bg("SEED TEXT", "sonnet", "C:/repo", "a worker", autocompact=autocompact)
     finally:
         provider_base.subprocess.run = real_run
         provider_base.os.environ = real_environ
@@ -75,6 +75,11 @@ check("disallows the four unused tools", args[args.index("--disallowedTools") + 
 # The seed is the last arg, and `--` immediately precedes it so --disallowedTools cannot swallow it.
 check("seed is the final arg", args[-1], "SEED TEXT")
 check("`--` separates the seed as a positional", args[-2], "--")
+check("no --autocompact flag when omitted", "--autocompact" in args, False)
+
+print("\nspawn_bg adds --autocompact when given a window")
+rid, args, env = _run_spawn_bg(autocompact=250000)
+check("passes the autocompact window", args[args.index("--autocompact") + 1], "250000")
 
 print("\nspawn_bg clears the inherited identity env so the worker is a clean top-level session")
 base = {"CLAUDE_CODE_CHILD_SESSION": "1", "CLAUDE_CODE_SESSION_ID": "g", "CLAUDE_PID": "1",

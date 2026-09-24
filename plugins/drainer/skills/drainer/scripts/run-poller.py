@@ -1147,7 +1147,7 @@ def write_worker_context(item, local_dir, json_file):
     return path
 
 
-def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item):
+def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item, autocompact=None):
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, f"{iid}.prompt.txt")
@@ -1214,7 +1214,7 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     seed = ((lead + " ") if lead else "") + (
         f"Your task instructions are in '{prompt_file}' - open it and begin immediately "
         "without waiting for further input.")
-    bg_id = spawn_bg(seed, worker_model, repo, _worker_title(iid, json_file))
+    bg_id = spawn_bg(seed, worker_model, repo, _worker_title(iid, json_file), autocompact=autocompact)
     if bg_id:
         with open(prompt_file + ".session", "w", encoding="utf-8") as f:
             f.write(bg_id)
@@ -1844,7 +1844,8 @@ def main():
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                     autocompact=cfg["autocompact_window"])
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -1881,7 +1882,8 @@ def main():
             spawn_resume_tab(it["session_id"], it["cwd"], repo)
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                         autocompact=cfg["autocompact_window"])
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         if corr:
             active_correspondents.add(corr)

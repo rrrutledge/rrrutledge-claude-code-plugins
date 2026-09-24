@@ -175,28 +175,27 @@ Route each piece of work by where it belongs - which is also where Russell can r
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this tab.
   Emit it via the drainer's own tab-spawn (no new launcher) and let this tab stay on its own item:
   `<skill>/scripts/spawn-tab.cmd "<title>" "<repo dir>" "<.tmp/handoff-*.md>" "<model id>" "<.tmp/summary.txt>"`
-  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-4-8[1m]` for open investigation or design), per `~/.claude/CLAUDE.md`, "Handoffs & session model default".
+  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-4-8` for open investigation or design), per `~/.claude/CLAUDE.md`, "Handoffs & session model default".
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
 The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely "a second step": a two-step task whose steps genuinely share this item's context stays inline.
 This is Russell's own cost-lens (same section of `~/.claude/CLAUDE.md`) applied to a running worker.
 
-**Reset this item's own context at a boundary, not only route other work out.**
+**Reset this item's own context at a boundary - the session-lifecycle hook will tell you when.**
 The dispatch rule above moves *new or unrelated* work out of this tab; this rule resets the context the work you keep has accumulated.
 Because the whole prefix is re-read every model call (above), a tab that has grown long makes even a one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against the largest context.
-When the item you are working reaches a natural boundary, reset rather than continue on the bloated prefix:
+You don't have to watch your own size for this: once this session has grown about 150K tokens past its own baseline, the personal `session-lifecycle.py` hook (wired to `UserPromptSubmit`) injects the live number at the start of your next turn and asks you to judge the incoming work against the whole conversation - and it fires again every further 150K of growth, not just once. When it fires, weigh the three options it names:
 
-- **a deliverable has shipped** and independent further work remains (a PR merged, and the next asks are separate edits), or
-- **a long idle wait is coming** (on Russell for an image, a decision, or an external action), or
-- **the conversation has crossed phases** (planning into execution).
+- **new line of work, unrelated to what you were doing** -> hand off to a fresh session (short `.tmp/handoff-*.md` via the same `spawn-tab.cmd` the dispatch rule uses); if you're currently on Opus and the new work is mechanical, name the fresh session `claude-sonnet-5` - the step-down below.
+- **earlier context is dead weight a summary would preserve** -> `/compact` with instructions on what to keep.
+- **a refinement that still needs the detail** -> continue as is.
 
-Choose handoff versus `/compact` by the cost-lens's seed-versus-summary test (`~/.claude/CLAUDE.md`).
-Emit the handoff with the same `spawn-tab.cmd` the dispatch rule uses, seeding the new session from a short `.tmp/handoff-*.md`.
-Reset at a genuine boundary, not after every turn - a mid-flow reset pays a re-cache for no benefit.
+It's a nudge weighing on your own judgment, not a rule - a turn it fires on can genuinely be a refinement, in which case continuing is correct.
+A single autonomous run that never yields a turn (so the hook never gets a chance to fire) is caught instead by the `--autocompact` floor set at worker spawn - a lossy, cooperation-free backstop, not a substitute for judging the call yourself when you get the chance.
 
 **A complex worker steps its model down when the open-ended phase ends.**
 A worker triaged complex runs on Opus to investigate and plan; the mechanical implementation that follows does not need Opus.
-The planning-into-execution boundary above is exactly where to re-handoff, so take it and step the model down: write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id, the residual-work choice the dispatch rule already names.
+The planning-into-execution boundary is exactly the "new line of work" case above: when the hook prompts you there (or you notice the boundary yourself first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id.
 Doing so drops the plan-phase context from the implementation session, runs the mechanical half on the cheaper model, and keeps correctness because the plan doc carries the distilled context that makes the build correct.
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
