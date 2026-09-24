@@ -86,6 +86,14 @@ Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full con
 **When you DO draft (a reply or a follow-up nudge), thread it off the most recent message in the thread - even when that latest message is one the user sent.**
 A follow-up answers where the conversation actually stands, so quote and thread on the newest message, not an older inbound one; provider DRAFT-MODE notes how to target a sent message.
 
+**A draft must add something the thread doesn't already have - never restate what the user already told this contact.**
+Reading the whole thread (above) means treating the user's own prior messages in it as already-delivered content, not just history to summarize back before you draft.
+If the user's most recent message in the thread already shared the news, the answer, or the update your draft was about to open with, cut that line - restating it to the person who already has it (or who told it to the user in the first place) is the tell that the thread got read for its shape, not for what's actually in it.
+This is the same failure mode as missing an already-answered ask, just pointed the other direction: one drops a question that got resolved, the other repeats an answer that's already landed.
+Open the draft with the actual new content, not a recap.
+**The same full-thread read must also surface every one of the user's own OTHER asks to this contact that never got a reply - not just the one the item/card names.**
+A thread accumulates asks over weeks; scan every message the user sent in it for a distinct ask or question, and check each one against what the contact actually replied to, not only the most recent exchange - an old, still-unanswered ask sitting a few messages back is exactly what §4's "one active ask per person" check exists to catch, and it's easy to skim past when the thread's most recent turns are about a different topic entirely.
+
 **One captured conversation can hold several distinct open asks - group them, then handle each.**
 When a chat source keys one item per conversation (a DM, a group chat, an unread channel, a subscribed thread), the messages waiting since the user's last read may be several separate tasks or one topic typed across rapid-fire messages - and it takes judgment to tell which.
 The item stands for the **whole unread span**, not the single message it is keyed to, so **start by grouping** the unread messages into distinct asks: messages that are one train of thought (someone typing fast, or refining the same request across a few lines) collapse into a single ask; messages on genuinely different topics ("update the graphics" / "post the case study" / "remove that line") are separate asks.
@@ -226,7 +234,9 @@ If no message is needed (automated reminder, pure action item), skip to step 6.
 
 **One active ask per person at a time.**
 Before staging any outreach message to a contact, check whether you already have an *unanswered* ask out to them - on any thread or any tracker card, not just this one.
+This includes the very thread you just pulled for this item's situational check (§2's full-thread read): reread every message the user sent in it, not only the ones the item/card already names, for another ask that never got a reply.
 If you do and they haven't replied yet, hold the second ask until the first is answered or its normal nudge window has passed; treat every thread and card for the same contact as sharing one cadence rather than piling on.
+When a still-open older ask turns up this way, don't leave it silently orphaned either - fold it into the same draft as the current ask (one message covering both) rather than sending it separately later, per §2's grouping guidance.
 
 **Deeply personal messages: don't draft - surface them for the user to write.**
 When the message is genuinely personal - a friend venting about their job or boss, a hard life update, grief, family or relationship matters, anything where the right words depend on shared history you don't have - a staged draft just gets in the way, because there's no way to know exactly what to say.
