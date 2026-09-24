@@ -108,24 +108,24 @@ class FakeCompleted:
 def run_triage_one_with_stdout(model_reply_text, returncode=0, stderr=""):
     # Mirrors `claude --output-format json`, which wraps the model's raw reply in {"result": "..."}.
     envelope = json.dumps({"result": model_reply_text})
-    poller.subprocess.run = lambda *a, **k: FakeCompleted(returncode, envelope, stderr)
+    poller.run_subprocess_bounded = lambda *a, **k: FakeCompleted(returncode, envelope, stderr)
     return poller._triage_one({"_id": "x", "_source": "demo", "from": "", "subject": "", "preview": ""},
                                "BRAIN", "R", "M", {})
 
 
-real_subprocess_run = poller.subprocess.run
+real_run_subprocess_bounded = poller.run_subprocess_bounded
 
 try:
     got = run_triage_one_with_stdout('[{"id": "x", "bucket": "junk", "kind": "read"}]')
     check("a well-formed array reply still parses to its one verdict", got, {"id": "x", "bucket": "junk", "kind": "read"})
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 try:
     got = run_triage_one_with_stdout('{"id": "x", "bucket": "junk", "kind": "read"}')
     check("a bare object reply (no [ ] wrapper) is accepted, not fatal", got, {"id": "x", "bucket": "junk", "kind": "read"})
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 try:
     run_triage_one_with_stdout("the model rambled and returned no JSON at all")
@@ -133,7 +133,7 @@ try:
 except poller.TriageUnavailable:
     check("no-JSON reply raises TriageUnavailable, not SystemExit", True, True)
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 try:
     run_triage_one_with_stdout('[{"id": "x", "bucket": "junk" "kind": "read"}]')  # missing comma
@@ -141,7 +141,7 @@ try:
 except poller.TriageUnavailable:
     check("malformed-JSON array reply raises TriageUnavailable, not SystemExit", True, True)
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 try:
     run_triage_one_with_stdout("", returncode=1, stderr="rate limited")
@@ -149,7 +149,7 @@ try:
 except poller.TriageUnavailable:
     check("nonzero CLI exit raises TriageUnavailable, not SystemExit", True, True)
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 # --- bg_config_dir routes ONLY the triage subprocess to the background account -------------------
 # Triage is the one Claude launch that moves accounts; passing a background CLAUDE_CONFIG_DIR must set
@@ -163,7 +163,7 @@ def capture_run(*a, **k):
 
 demo_item = {"_id": "x", "_source": "demo", "from": "", "subject": "", "preview": ""}
 
-poller.subprocess.run = capture_run
+poller.run_subprocess_bounded = capture_run
 try:
     poller._triage_one(demo_item, "BRAIN", "R", "M", {}, r"C:\Users\russe\.claude-background")
     env = captured["env"] or {}
@@ -172,15 +172,15 @@ try:
     check("the triage env still inherits the parent environment (not just the one override)",
           len(env) > 1, True)
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
-poller.subprocess.run = capture_run
+poller.run_subprocess_bounded = capture_run
 try:
     poller._triage_one(demo_item, "BRAIN", "R", "M", {})
     check("no bg_config_dir leaves the triage env unset, so the call inherits the ambient account",
           captured["env"], None)
 finally:
-    poller.subprocess.run = real_subprocess_run
+    poller.run_subprocess_bounded = real_run_subprocess_bounded
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

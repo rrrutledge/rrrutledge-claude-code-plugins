@@ -41,8 +41,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
-from provider_base import (run_node, NO_WINDOW, ProviderError, ProviderBase, spawn_tab, spawn_bg, spawn_silent,  # noqa: E402
-                           band_rank, slug, self_directed, load_providers as base_load_providers, load_seen)  # subprocess helper + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader
+from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
+                           spawn_tab, spawn_bg, spawn_silent, band_rank, slug, self_directed,
+                           load_providers as base_load_providers, load_seen)  # subprocess helpers + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -604,19 +605,18 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     # ambient environment, exactly as before.
     env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
     try:
-        res = subprocess.run(
+        res = run_subprocess_bounded(
             # Triage is pure text-in / JSON-out (rubric + context are embedded above), so it needs no
             # tools and no elevated permissions; HEADLESS_CLAUDE_FLAGS keeps the call lightweight.
             [claude, "-p", "--model", model, *HEADLESS_CLAUDE_FLAGS],
             input=prompt,  # prompt goes on stdin (too long for an argv on Windows)
-            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=repo, timeout=420,
-            env=env,
+            timeout=420, cwd=repo, env=env,
             creationflags=NO_WINDOW,  # no console flash under pythonw
         )
-    except subprocess.TimeoutExpired:
-        raise TriageUnavailable(f"{item['_id']}: triage call timed out after 420s (likely a network drop)")
     except OSError as e:
         raise TriageUnavailable(f"{item['_id']}: couldn't launch the triage call: {e}")
+    if getattr(res, "timed_out", False):
+        raise TriageUnavailable(f"{item['_id']}: triage call timed out after 420s (likely a network drop)")
     _raise_if_account_refused(res, item["_id"], "triage")
     if res.returncode != 0:
         raise TriageUnavailable(f"{item['_id']}: triage call failed: {res.stderr.strip()[:400]}")
@@ -749,15 +749,14 @@ def _screen_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     # Same background-account threading as triage (env-only, never process-wide) — see _triage_one.
     env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
     try:
-        res = subprocess.run(
+        res = run_subprocess_bounded(
             [claude, "-p", "--model", model, *HEADLESS_CLAUDE_FLAGS],
-            input=prompt, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            cwd=repo, timeout=420, env=env, creationflags=NO_WINDOW,
+            input=prompt, timeout=420, cwd=repo, env=env, creationflags=NO_WINDOW,
         )
-    except subprocess.TimeoutExpired:
-        raise TriageUnavailable(f"{item['_id']}: screen call timed out after 420s (likely a network drop)")
     except OSError as e:
         raise TriageUnavailable(f"{item['_id']}: couldn't launch the screen call: {e}")
+    if getattr(res, "timed_out", False):
+        raise TriageUnavailable(f"{item['_id']}: screen call timed out after 420s (likely a network drop)")
     _raise_if_account_refused(res, item["_id"], "screen")
     if res.returncode != 0:
         raise TriageUnavailable(f"{item['_id']}: screen call failed: {res.stderr.strip()[:400]}")
@@ -1247,8 +1246,7 @@ def _claude_agents():
     (skip the liveness fast-path / treat the cycle as at the concurrency cap)."""
     claude = shutil.which("claude") or "claude"
     try:
-        res = subprocess.run([claude, "agents", "--json"], capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=30, creationflags=NO_WINDOW)
+        res = run_subprocess_bounded([claude, "agents", "--json"], timeout=30, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None
     if res.returncode != 0:
