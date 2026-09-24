@@ -139,23 +139,17 @@ def read_config(repo, runtime_root=None):
         # Worker tabs need an explicit model — otherwise they inherit the session default, which may
         # not be what a given worker should run. The poller picks per item by triage complexity:
         # simple -> worker_model, complex -> worker_model_complex. Both models report a 1M context
-        # window (`claude-opus-4-8`'s contextWindow is 1000000), so native auto-compact (~967K) is not
-        # a usable cost control on its own — see `autocompact_window` below and the session-lifecycle
-        # hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) for the actual per-turn cost control.
+        # window, so native auto-compact (~967K) is not a usable cost control on its own — the
+        # session-lifecycle hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) is what actually
+        # judges a reset, dynamically, at each turn boundary.
         "worker_model": scalar("worker_model", "claude-sonnet-5"),
-        "worker_model_complex": scalar("worker_model_complex", "claude-opus-4-8"),
+        "worker_model_complex": scalar("worker_model_complex", "claude-opus-5-5"),
         # The triage call must also pin a model — under the scheduled task it has no parent session,
         # so it would otherwise inherit whatever the session default happens to be. Sonnet.
         "triage_model": scalar("triage_model", "claude-sonnet-5"),
         # The once-a-day digest session. It summarizes fyi and groups junk with source-stop
         # proposals - judgment-heavy, so a stronger model.
-        "digest_model": scalar("digest_model", "claude-opus-4-8"),
-        # The native `--autocompact` floor passed to a spawned headless worker (spawn_bg): the dumb,
-        # cooperation-free backstop for a single autonomous run that executes a long tool-call chain
-        # without ever yielding a turn — the one case the session-lifecycle hook's UserPromptSubmit
-        # judgment can't see, since nothing fires mid-run. Well under the 1M window so it actually
-        # bites before the window itself would force a compact.
-        "autocompact_window": int(scalar("autocompact_window", "250000")),
+        "digest_model": scalar("digest_model", "claude-opus-5-5"),
         # A CLAUDE_CONFIG_DIR to run every unattended Claude launch under — triage calls, worker tabs,
         # and the digest — so they draw from a dedicated background Claude subscription instead of the
         # account Russell types into interactively. Empty (the default) leaves CLAUDE_CONFIG_DIR unset,

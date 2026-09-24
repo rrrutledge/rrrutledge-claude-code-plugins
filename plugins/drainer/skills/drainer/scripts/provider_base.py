@@ -96,23 +96,17 @@ _BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
 _BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
 
 
-def spawn_bg(seed, model, cwd, name, autocompact=None):
+def spawn_bg(seed, model, cwd, name):
     """Launch a headless background Claude worker with `claude --bg` - no window, no terminal tab, so no
     focus steal (the whole point, and the single way a fresh worker spawns). Returns the short session id
     claude prints (which the caller writes into the per-item receipt so liveness, reconcile, and peek all
     read one receipt), or None when the launch fails or the id can't be parsed.
 
-    Four details are load-bearing:
+    Three details are load-bearing:
       - `--permission-mode manual` is the safety anchor: every action the safe-compounds hook does not
         auto-approve pauses for Russell, so reaching a "send" becomes the blocked state rather than an
         autonomous send. The hook still auto-approves safe commands, so day-to-day the worker feels like
         a tab worker; only the final irreversible steps wait.
-      - `--autocompact <autocompact>` (when given) is the dumb, cooperation-free ceiling for a worker
-        that runs a single long autonomous tool-call chain and never yields a turn: the per-turn
-        session-lifecycle hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) can only judge a
-        reset at a turn boundary, so this is what catches the run that never reaches one. The worker
-        models report a 1M context window, so native auto-compact's own default (~967K) would never
-        bite in time to matter as a cost control - `autocompact` should be well under that.
       - `--` precedes the seed because `--disallowedTools` is variadic and would otherwise swallow the
         seed as another tool name, leaving the session idle with no prompt (the same greedy-variadic
         gotcha the headless triage/screen calls avoid by putting their prompt on stdin; a --bg seed is a
@@ -129,14 +123,17 @@ def spawn_bg(seed, model, cwd, name, autocompact=None):
         claude process (CLAUDE_PID, which Claude Code injects into the worker's tool subprocesses and
         which lives exactly as long as the worker), so it is released the moment the worker ends.
     No focus logic: a background session never surfaces a window to steal focus from.
+
+    No native `--autocompact` floor: Russell wants the reset decision made dynamically (the per-turn
+    session-lifecycle hook, `~/OneDrive/Claude/scripts/session-lifecycle.py`), not on a hardcoded token
+    threshold. The one gap that leaves - a single seeded run that executes a long autonomous tool-call
+    chain and never yields a turn, so the hook never gets a chance to fire - is accepted for now.
     """
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
                         "CLAUDE_HOST_PID")}
-    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model]
-    if autocompact:
-        args += ["--autocompact", str(autocompact)]
-    args += ["--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
+    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model,
+            "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
     try:
         res = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)
