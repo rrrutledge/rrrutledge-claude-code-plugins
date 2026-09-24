@@ -102,7 +102,7 @@ const { simpleParser } = require('mailparser');
 const { marked } = require('marked');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
-const { ImapFlow } = require('imapflow');
+const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 
 const USER_ID = 'me';
@@ -303,32 +303,30 @@ async function listFolder(labelId, name) {
   printListing(out, `${out.length} message(s) in ${name} (newest first):`);
 }
 
-// IMAP counterpart to listFolder() above - same output shape (id/uid/subject/from/fromAddress/fromMe/
-// toMe/received/isRead), fetched via imapflow with a Google App Password instead of the REST API, so
-// the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this file's header
-// comment for why). Envelope + flags only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
-// the account() lookup above since there's no OAuth profile to read the address from over IMAP.
-// One place that builds and connects an authenticated Gmail IMAP client from the app-password creds,
-// shared by every IMAP path the drainer poller uses (the --list-inbox-imap enumeration and the
-// --show-imap / --auth-imap per-item reads) so they run over one transport, not several. GMAIL_ADDRESS /
-// GMAIL_APP_PASSWORD stand in for the OAuth profile the REST paths read the account from.
-async function imapClient() {
+// One place that runs an IMAP operation against Gmail with the app-password creds, shared by every IMAP
+// path the drainer poller uses (the --list-inbox-imap enumeration and the --show-imap / --auth-imap
+// per-item reads) so they run over one transport, not several. GMAIL_ADDRESS / GMAIL_APP_PASSWORD stand in
+// for the OAuth profile the REST paths read the account from. The connection's lifecycle and failure
+// handling live in imap-client.js.
+function withGmailImap(fn) {
   const user = process.env.GMAIL_ADDRESS;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) {
     throw new Error('IMAP operations require GMAIL_ADDRESS and GMAIL_APP_PASSWORD in the environment.');
   }
-  const c = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass }, logger: false });
-  await c.connect();
-  return c;
+  return withImap({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user, pass } }, fn);
 }
 
+// IMAP counterpart to listFolder() above - same output shape (id/uid/subject/from/fromAddress/fromMe/
+// toMe/received/isRead), fetched via imapflow with a Google App Password instead of the REST API, so
+// the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this file's header
+// comment for why). Envelope + flags only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
+// the account() lookup above since there's no OAuth profile to read the address from over IMAP.
 async function listInboxImap() {
   const top = parseInt(args.top || '50', 10);
   const acct = (process.env.GMAIL_ADDRESS || '').toLowerCase();
-  const c = await imapClient();
   const out = [];
-  try {
+  await withGmailImap(async c => {
     const lock = await c.getMailboxLock('INBOX');
     try {
       const total = c.mailbox.exists;
@@ -352,7 +350,7 @@ async function listInboxImap() {
         out.reverse(); // fetch() walks the sequence range oldest-first; REST's --list-inbox is newest-first.
       }
     } finally { lock.release(); }
-  } finally { await c.logout(); }
+  });
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   printListing(out, `${out.length} message(s) in INBOX (newest first, via IMAP):`);
 }
@@ -363,15 +361,14 @@ async function listInboxImap() {
 // which transport fetched the bytes. Returns null when the UID isn't in the INBOX. INBOX-only by design:
 // the poller's per-item reads always run against items it just enumerated from the INBOX.
 async function fetchImap(uid) {
-  const c = await imapClient();
-  try {
+  return withGmailImap(async c => {
     const lock = await c.getMailboxLock('INBOX');
     try {
       const msg = await c.fetchOne(String(uid), { source: true }, { uid: true });
       if (!msg || !msg.source) return null;
       return await simpleParser(msg.source);
     } finally { lock.release(); }
-  } finally { await c.logout(); }
+  });
 }
 
 async function search() {
@@ -689,7 +686,14 @@ function describeError(e) {
   return msg;
 }
 
+// The IMAP paths run unattended inside the drainer poller, which gives each node call 90 seconds. Ending
+// the run a little before that means a stuck run reports its own one-line reason instead of being cut off.
+const IMAP_RUN_DEADLINE_MS = 75 * 1000;
+
 (async () => {
+  if (args['list-inbox-imap'] || args['show-imap'] || args['auth-imap']) {
+    exitIfStillRunningAfter(IMAP_RUN_DEADLINE_MS, 'IMAP operation');
+  }
   if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
   if (args['show-imap']) return await showImap();
   if (args['auth-imap']) return await authImap();
