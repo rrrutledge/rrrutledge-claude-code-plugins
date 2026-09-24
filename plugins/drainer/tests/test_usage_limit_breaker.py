@@ -88,23 +88,23 @@ class FakeCompleted:
         self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
 
 
-real_run = poller.subprocess.run
+real_run = poller.run_subprocess_bounded
 demo = {"_id": "x", "_source": "demo", "from": "", "subject": "", "preview": ""}
 
 for fn_name, call in (("triage", lambda: poller._triage_one(demo, "BRAIN", "R", "M", {})),
                       ("screen", lambda: poller._screen_one(demo, "BRAIN", "R", "M", {}))):
     for label, completed in (("an is_error result on a zero exit", FakeCompleted(0, envelope(LIMIT_TEXT))),
                              ("stderr on a nonzero exit", FakeCompleted(1, "", LIMIT_TEXT))):
-        poller.subprocess.run = lambda *a, **k: completed
+        poller.run_subprocess_bounded = lambda *a, **k: completed
         try:
             call()
             check(f"{fn_name}: {label} should raise", False, True)
         except poller.UsageLimitReached as e:
             check(f"{fn_name}: {label} raises UsageLimitReached", e.kind, "usage-limit")
         finally:
-            poller.subprocess.run = real_run
+            poller.run_subprocess_bounded = real_run
 
-poller.subprocess.run = lambda *a, **k: FakeCompleted(1, "", "rate limited")
+poller.run_subprocess_bounded = lambda *a, **k: FakeCompleted(1, "", "rate limited")
 try:
     poller._triage_one(demo, "BRAIN", "R", "M", {})
 except poller.UsageLimitReached:
@@ -112,7 +112,7 @@ except poller.UsageLimitReached:
 except poller.TriageUnavailable:
     check("an ordinary failure stays a plain TriageUnavailable", True, True)
 finally:
-    poller.subprocess.run = real_run
+    poller.run_subprocess_bounded = real_run
 
 # --- the first refusal stops the cycle's remaining calls ---------------------------------------------------------
 print("\nthe first refusal stops the cycle")

@@ -114,7 +114,6 @@ check("nothing is reported unavailable", (t_unavail2, s_unavail2), (set(), set()
 
 # --- a fresh-cache hit never launches claude -------------------------------------------------------------
 print("\na cache hit never calls claude")
-real_run = poller.subprocess.run
 
 
 def no_claude(*a, **k):
@@ -122,17 +121,20 @@ def no_claude(*a, **k):
 
 
 # A second copy of the module supplies the real _triage_one/_screen_one, so a stray call for a cached
-# item would reach subprocess.run and trip no_claude.
+# item would reach run_subprocess_bounded and trip no_claude. Patched on `real` (not `poller`) because
+# `real._triage_one`/`_screen_one` resolve `run_subprocess_bounded` out of their OWN module's globals
+# (bound at import time by `from provider_base import run_subprocess_bounded`), not poller's.
 spec_real = importlib.util.spec_from_file_location("run_poller_real", POLLER)
 real = importlib.util.module_from_spec(spec_real)
 spec_real.loader.exec_module(real)
 poller._triage_one, poller._screen_one = real._triage_one, real._screen_one
-poller.subprocess.run = no_claude
+real_run = real.run_subprocess_bounded
+real.run_subprocess_bounded = no_claude
 try:
     verdicts3, _, screens3, _ = cycle(items, rt)
     check("cached verdicts are served with claude unreachable", sorted(verdicts3), ["a", "b"])
 finally:
-    poller.subprocess.run = real_run
+    real.run_subprocess_bounded = real_run
     poller._triage_one, poller._screen_one = fake_triage_one, fake_screen_one
 
 # --- changed content or an expired TTL re-judges -----------------------------------------------------------

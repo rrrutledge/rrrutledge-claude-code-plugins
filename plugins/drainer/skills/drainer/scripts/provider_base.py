@@ -136,8 +136,7 @@ def spawn_bg(seed, model, cwd, name):
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual", "--name", name,
             "--model", model, "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
     try:
-        res = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
-                             encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)
+        res = run_subprocess_bounded(args, timeout=120, cwd=cwd, env=env, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None
     if res.returncode != 0:
@@ -212,28 +211,93 @@ class ProviderError(Exception):
         self.kind = kind
 
 
-# Every adapter's IMAP/REST/API call goes through here with no per-call timeout of its own, so a single
-# stalled node helper (a hung socket read, an IMAP server that accepts the connection but never answers)
-# used to be able to block a run_node call forever - and with it the whole poller cycle, since every
-# provider enumerates sequentially in one process. That in turn blocked the *next* scheduled cycle too:
-# DrainerKeeper's "don't start a new instance" policy refuses every trigger while the previous run is
-# still alive, so one hung IMAP read could silently freeze the entire drainer until someone noticed and
-# killed the stuck process by hand. This bound turns that failure mode into an ordinary, self-healing
-# ProviderError instead: the call fails after NODE_TIMEOUT_SECONDS, the adapter's own `res.returncode != 0`
-# check raises ProviderError like any other node-helper failure, per-provider isolation keeps the rest of
-# the cycle draining, and the next cycle just retries.
+# Bounded subprocess calls - the shared fix for a whole class of hangs discovered live on 2026-09-24.
+#
+# `subprocess.run(..., timeout=X, capture_output=True)` on Windows has a hang buried in its own stdlib
+# implementation: when the timeout fires, `subprocess.run` kills the process and then calls
+# `communicate()` a SECOND time with NO timeout at all, to drain whatever output is left, before
+# re-raising TimeoutExpired. If the killed child doesn't release its stdout/stderr pipes promptly, that
+# second call blocks forever - and every caller in this codebase that passes `timeout=` to
+# `subprocess.run` is exposed to it, not just node helpers. It first surfaced as a wedged node/ImapFlow
+# child in the gmail adapter (pipes stayed open 45+ minutes after being killed); the same signature
+# (MainThread blocked in `communicate -> _communicate -> join` against an alive-but-idle, 0%-CPU child)
+# then recurred independently ~20 minutes later in run-poller.py's headless `claude -p` triage call - a
+# completely different code path, confirming this is a property of the pattern, not of node.exe.
+# Any one of these hangs blocks not just that cycle but every cycle after it: DrainerKeeper's
+# "don't start a new instance" policy refuses every 5-minute trigger while the previous run is still
+# "alive", so one wedged child silently freezes the entire drainer until someone notices and kills the
+# stuck process by hand.
+#
+# `run_subprocess_bounded` is the fix, used everywhere in this codebase a subprocess call needs a
+# timeout: it runs the child via `Popen` directly instead of `subprocess.run(timeout=...)`, so the
+# post-kill drain gets its own short, separately-bounded timeout. Total wall-clock time is always capped
+# at `timeout + drain_timeout`, no matter what the child does after being killed.
 NODE_TIMEOUT_SECONDS = 90
+
+# How long to wait, after killing a timed-out child, for its stdout/stderr pipes to actually drain.
+# Deliberately separate from the caller's own timeout and deliberately short: it bounds the worst case at
+# that timeout + this, comfortably under DrainerKeeper's 5-minute trigger interval, no matter how long the
+# killed child takes to release its pipes.
+DRAIN_TIMEOUT_SECONDS = 10
+
+
+def run_subprocess_bounded(args, timeout, drain_timeout=DRAIN_TIMEOUT_SECONDS, check=False, **kw):
+    """Run `args` bounded end-to-end at `timeout + drain_timeout`, no matter what the child does.
+
+    Deliberately does NOT use `subprocess.run(..., timeout=...)` - see the module comment above for why
+    that hangs unboundedly on Windows once a killed child fails to release its stdout/stderr pipes
+    promptly. Popen here gives the post-kill drain its own short, separately-bounded timeout instead.
+
+    Kills the whole process tree (`taskkill /F /T`), not just the immediate child, in case the child (or
+    a library it uses) spawns its own child process - a lone `proc.kill()` would only terminate the
+    immediate process and could leave a grandchild alive, still holding the pipe open and reproducing the
+    same hang one level down.
+
+    `input=` (stdin text) is supported like `subprocess.run`. `check=True` raises
+    `subprocess.CalledProcessError` on a nonzero exit, mirroring `subprocess.run(check=True)`, so an
+    existing caller that relies on that contract (e.g. drainer_config._git) can drop in unchanged.
+
+    Never raises `subprocess.TimeoutExpired` itself (a real timeout instead comes back as an ordinary
+    failed CompletedProcess, same as `run_node`'s existing contract) - a caller that needs to tell a
+    timeout apart from any other nonzero exit reads the `timed_out` attribute this stamps onto the
+    returned CompletedProcess (absent, i.e. falsy via getattr, on the non-timeout path).
+    """
+    input_data = kw.pop("input", None)
+    stdin = subprocess.PIPE if input_data is not None else kw.pop("stdin", None)
+    proc = subprocess.Popen(args, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, encoding="utf-8", errors="replace", **kw)
+    try:
+        stdout, stderr = proc.communicate(input=input_data, timeout=timeout)
+        result = subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+    except subprocess.TimeoutExpired:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True, creationflags=NO_WINDOW)
+        try:
+            stdout, stderr = proc.communicate(timeout=drain_timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = "", ""
+        result = subprocess.CompletedProcess(
+            args, 1, stdout=stdout or "",
+            stderr=((stderr or "") + f"\ntimed out after {timeout}s: "
+                    f"{' '.join(str(a) for a in args)}")[:500])
+        result.timed_out = True
+    if check and result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, args, result.stdout, result.stderr)
+    return result
 
 
 def run_node(args, **kw):
-    kw.setdefault("timeout", NODE_TIMEOUT_SECONDS)
-    try:
-        return subprocess.run(["node", *args], capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW, **kw)
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(
-            args, 1, stdout="",
-            stderr=f"run_node timed out after {kw['timeout']}s: node {' '.join(args)}"[:500])
+    """Every adapter's IMAP/REST/API call goes through here with no per-call timeout of its own, so a
+    single stalled node helper (a hung socket read, an IMAP server that accepts the connection but never
+    answers) would otherwise be able to block a run_node call - and with it the whole poller cycle, since
+    every provider enumerates sequentially in one process. See `run_subprocess_bounded` above for the
+    bound this relies on. Bounded at NODE_TIMEOUT_SECONDS + DRAIN_TIMEOUT_SECONDS: the call fails after
+    that, the adapter's own `res.returncode != 0` check raises ProviderError like any other node-helper
+    failure, per-provider isolation keeps the rest of the cycle draining, and the next cycle just retries.
+    """
+    timeout = kw.pop("timeout", NODE_TIMEOUT_SECONDS)
+    return run_subprocess_bounded(["node", *args], timeout=timeout, creationflags=NO_WINDOW, **kw)
 
 
 # A Node helper that dies on `Error: Cannot find module 'x'` failed because a required npm package is
