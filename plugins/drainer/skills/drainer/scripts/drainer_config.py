@@ -163,6 +163,13 @@ def read_config(repo, runtime_root=None):
         # re-queued, but only once it's been launched at least this many minutes - so a just-dispatched
         # tab whose session file isn't written yet isn't misread as dead.
         "orphan_grace_minutes": int(scalar("orphan_grace_minutes", "15")),
+        # Reconcile debounce: `claude agents --json` can miss a headless worker's pid on a single scan
+        # even while that worker is genuinely still running (observed: a worker mid-task for 20+ minutes,
+        # busy the whole time, absent from one scan). Requeuing on that single miss spawns a duplicate
+        # worker racing the still-live original. A no-pid reading only turns into a requeue once it has
+        # been the reading on two scans at least this many minutes apart - one scan's blip self-heals by
+        # the next cycle; a worker that is actually gone stays missing and gets reclaimed once confirmed.
+        "reap_confirm_minutes": int(scalar("reap_confirm_minutes", "10")),
         # Wall-clock time (HH:MM, 24h) the daily digest task fires; consumed by the installer.
         "digest_time": scalar("digest_time", "17:00"),
     }

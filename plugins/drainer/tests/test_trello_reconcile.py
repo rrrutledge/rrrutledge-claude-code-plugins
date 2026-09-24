@@ -51,8 +51,9 @@ def check(name, got, want):
         failures.append(name)
 
 
-CFG = {"orphan_grace_minutes": 15}
+CFG = {"orphan_grace_minutes": 15, "reap_confirm_minutes": 10}
 GRACE_S = CFG["orphan_grace_minutes"] * 60
+REAP_S = CFG["reap_confirm_minutes"] * 60
 
 # 24-hex-char Mongo-style card ids (first 8 hex decode to a creation time, last 6 land in the stable_id).
 ID_STARTABLE = "aaaaaaaa0000000000001111"
@@ -251,6 +252,11 @@ def trello_workspace():
 
 print("\nreconcile: a crashed worker's startable card is re-queued; a cleared card is left alone")
 rt = trello_workspace()
+# The reap-confirm debounce (drainer/tests/test_reconcile_unhandled.py covers its own timing) is not
+# this test's point, so pre-seed ID_CRASHED as already past reap_confirm_minutes - a single scan
+# still exercises the CLEAR-vs-crashed distinction this test is actually about.
+with open(os.path.join(rt, poller.PENDING_REAP_FILE), "w", encoding="utf-8") as f:
+    json.dump({ID_CRASHED: time.time() - (REAP_S + 60)}, f)
 n, requeued = run(rt, [make_provider(FakeUtils(LISTS, CARDS_NOW))])
 check("the uncleared startable card is re-queued", requeued, [(trello.Provider.name, ID_CRASHED)])
 check("the cleared card's old id is NOT re-queued", ID_CLEARED_OLD in [r[1] for r in requeued], False)

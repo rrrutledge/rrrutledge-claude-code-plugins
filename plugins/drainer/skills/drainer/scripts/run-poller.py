@@ -50,6 +50,7 @@ import usage_limit  # noqa: E402  (recognises the background account refusing a 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 HEALTH_FILE = "provider-health.json"
 HANDLED_FILE = "reconciled.json"
+PENDING_REAP_FILE = "pending-reap.json"
 VERDICTS_FILE = "judged-verdicts.json"
 BACKOFF_FILE = "background-backoff.json"
 # How long a cached triage / screen verdict stays good. A held item is re-judged at most this often, so a
@@ -1437,6 +1438,22 @@ def save_handled(runtime_dir, handled):
                       {k: sorted(v) for k, v in handled.items()})
 
 
+def load_pending_reap(runtime_dir):
+    """{iid: epoch-seconds of the first cycle this item read as 'no live worker'} - the debounce state
+    reconcile_unhandled uses to require that reading twice, reap_confirm_minutes apart, before requeuing.
+    Missing or corrupt reads as empty, which only costs one item its debounce for one cycle."""
+    try:
+        with open(os.path.join(runtime_dir, PENDING_REAP_FILE), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_pending_reap(runtime_dir, pending):
+    write_json_atomic(os.path.join(runtime_dir, PENDING_REAP_FILE), pending)
+
+
 def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_UNSET):
     """Re-queue every item whose source object is still unhandled with no live worker session on it.
 
@@ -1455,12 +1472,16 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     remaining providers, so Slack, Teams and orphan-sessions are skipped and keep resurfacing on their
     own source's terms.
 
-    Three guards, each load-bearing:
+    Four guards, each load-bearing:
       - an item awaiting the daily digest sits in the inbox BY DESIGN, so the digest queue is excluded;
         without that every queued fyi/junk item would requeue on every cycle
       - a live worker id means a session is open on it: being worked, or parked for Russell
       - the launch grace (orphan_grace_minutes) covers the window where a just-dispatched worker hasn't
         written its .session file yet and so briefly looks session-less
+      - the reap-confirm debounce (reap_confirm_minutes) covers `claude agents --json` missing a
+        headless worker's pid on one scan while it is genuinely still running: a no-pid reading only
+        requeues once it has been the reading twice, reap_confirm_minutes apart, in <pending-reap.json>.
+        A worker that gets read alive on any scan in between clears its pending entry and starts over.
 
     Both fail-safes point the same way, at reconciling nothing rather than requeuing live work: a
     session scan that can't run skips the cycle, and a provider whose inbox listing fails skips that
@@ -1481,7 +1502,10 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     except ValueError:
         queued = set()
     handled = load_handled(runtime_dir)
+    pending_reap = load_pending_reap(runtime_dir)
+    new_pending_reap = {}
     grace_s = cfg["orphan_grace_minutes"] * 60
+    reap_confirm_s = cfg["reap_confirm_minutes"] * 60
     now = time.time()
     requeued = 0
     for provider in providers:
@@ -1511,14 +1535,26 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
             launched_ago = (now - smtime) if smtime is not None else (now - ts if ts else None)
             if launched_ago is not None and launched_ago < grace_s:
                 continue
+            # First cycle reading this item as no-live-worker: record it and wait for a second reading
+            # rather than requeuing on the spot - a single scan that misses a genuinely busy headless
+            # worker's pid must not spawn a duplicate racing the original.
+            first_missing = pending_reap.get(iid)
+            if first_missing is None:
+                new_pending_reap[iid] = now
+                continue
+            if now - first_missing < reap_confirm_s:
+                new_pending_reap[iid] = first_missing  # still within the debounce window; keep waiting
+                continue
             verb = "would re-queue" if dry_run else "re-queued"
             if not dry_run:
                 seen_state("requeue", runtime_dir, provider.name, iid)
-            print(f"unhandled {iid} ({provider.name}): still in the inbox, no live worker -> {verb}.")
+            print(f"unhandled {iid} ({provider.name}): still in the inbox, no live worker on "
+                  f"{int((now - first_missing) / 60)} min -> {verb}.")
             requeued += 1
         handled[provider.name] = still_handled
     if not dry_run:
         save_handled(runtime_dir, handled)
+        save_pending_reap(runtime_dir, new_pending_reap)
         if requeued:
             print(f"reconcile: {requeued} unhandled item(s) re-queued.")
     return requeued

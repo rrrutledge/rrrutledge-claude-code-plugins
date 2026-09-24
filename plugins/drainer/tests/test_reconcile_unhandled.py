@@ -32,8 +32,9 @@ def check(name, got, want):
         failures.append(name)
 
 
-CFG = {"orphan_grace_minutes": 15}
+CFG = {"orphan_grace_minutes": 15, "reap_confirm_minutes": 10}
 GRACE_S = CFG["orphan_grace_minutes"] * 60
+REAP_S = CFG["reap_confirm_minutes"] * 60
 
 
 class FakeProvider:
@@ -49,8 +50,8 @@ class FakeProvider:
         return self._inbox_ids
 
 
-def workspace(seen, items=None, queue=None, handled=None):
-    """A runtime_dir holding seen.json, items/<id>.json captures, the digest queue and the memo."""
+def workspace(seen, items=None, queue=None, handled=None, pending_reap=None):
+    """A runtime_dir holding seen.json, items/<id>.json captures, the digest queue and the memos."""
     rt = tempfile.mkdtemp(prefix="reconcile-")
     with open(os.path.join(rt, "seen.json"), "w", encoding="utf-8") as f:
         json.dump(seen, f)
@@ -64,7 +65,26 @@ def workspace(seen, items=None, queue=None, handled=None):
     if handled is not None:
         with open(os.path.join(rt, poller.HANDLED_FILE), "w", encoding="utf-8") as f:
             json.dump(handled, f)
+    if pending_reap is not None:
+        with open(os.path.join(rt, poller.PENDING_REAP_FILE), "w", encoding="utf-8") as f:
+            json.dump(pending_reap, f)
     return rt
+
+
+def pending_since(ago_s):
+    """A pending-reap.json value: the item was first read as no-live-worker `ago_s` seconds ago."""
+    return time.time() - ago_s
+
+
+def backdate_pending(rt, iid, ago_s):
+    """Rewrite a already-recorded pending-reap entry as if its first miss were `ago_s` in the past -
+    the test's way of simulating a later poll cycle without actually waiting reap_confirm_minutes."""
+    path = os.path.join(rt, poller.PENDING_REAP_FILE)
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    data[iid] = time.time() - ago_s
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
 
 
 def captured(message_id, age_s=3 * GRACE_S):
@@ -125,13 +145,22 @@ def _recording_seen_state(rt, requeued, real):
 
 GMAIL = "gmail"
 
-print("the rule: still in the inbox, no live worker -> re-queued")
+print("the rule: still in the inbox, no live worker on two scans reap_confirm_minutes apart -> re-queued")
 rt = workspace(
     seen={GMAIL: {"a": {"triage": "needs-you"}}},
     items={"a": captured("msg-a")},
 )
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})])
-check("re-queues the unhandled item", requeued, [(GMAIL, "a")])
+check("first scan: defers rather than re-queuing on the spot", requeued, [])
+check("and counts nothing yet", n, 0)
+check(
+    "but records the miss so a second scan can confirm it",
+    list(json.load(open(os.path.join(rt, poller.PENDING_REAP_FILE), encoding="utf-8")).keys()),
+    ["a"],
+)
+backdate_pending(rt, "a", REAP_S + 60)
+n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})])
+check("second scan past reap_confirm_minutes -> re-queues", requeued, [(GMAIL, "a")])
 check("and counts it", n, 1)
 
 print("\nan archived message is handled, self-evidently")
@@ -172,7 +201,11 @@ n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})],
 check("live tab is left alone however long it is up", requeued, [])
 
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], live=["99999999-0000-0000-0000-000000000000"])
-check("a dead session re-queues", requeued, [(GMAIL, "a")])
+check("a dead session's first miss defers rather than re-queuing on the spot", requeued, [])
+
+backdate_pending(rt, "a", REAP_S + 60)
+n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], live=["99999999-0000-0000-0000-000000000000"])
+check("confirmed dead on a second scan -> re-queues", requeued, [(GMAIL, "a")])
 
 print("\nguard: the launch grace covers a worker that has not written its session file yet")
 rt = workspace(
@@ -189,6 +222,22 @@ rt = workspace(
 write_session(rt, "spun-up", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", launched_ago_s=60)
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-spun-up"})])
 check("session file younger than the grace -> left alone", requeued, [])
+
+print("\nreap-confirm debounce: a single missed scan self-heals once the worker reads live again")
+rt = workspace(
+    seen={GMAIL: {"a": {"triage": "needs-you"}}},
+    items={"a": captured("msg-a")},
+)
+write_session(rt, "a", "22222222-3333-4444-5555-666666666666")
+n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], live=["99999999-0000-0000-0000-000000000000"])
+check("scan that misses a busy worker's pid: defers, not re-queued", requeued, [])
+n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], live=["22222222-3333-4444-5555-666666666666"])
+check("next scan reads it live again: left alone, the miss does not carry over", requeued, [])
+check(
+    "and its pending-reap entry is cleared, not just left stale",
+    json.load(open(os.path.join(rt, poller.PENDING_REAP_FILE), encoding="utf-8")),
+    {},
+)
 
 print("\nno capture means there is nothing to observe")
 rt = workspace(seen={GMAIL: {"nocapture": {"triage": "junk"}}})
@@ -254,9 +303,25 @@ rt = workspace(
     items={"a": captured("msg-a")},
 )
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], dry_run=True)
-check("counts what it would re-queue", n, 1)
+check("a first-miss dry-run also defers, same as a real cycle would", n, 0)
+check("re-queues nothing", requeued, [])
+check("and writes no pending-reap memo either", os.path.exists(os.path.join(rt, poller.PENDING_REAP_FILE)), False)
+
+confirmed_since = pending_since(REAP_S + 60)
+rt = workspace(
+    seen={GMAIL: {"a": {"triage": "needs-you"}}},
+    items={"a": captured("msg-a")},
+    pending_reap={"a": confirmed_since},
+)
+n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], dry_run=True)
+check("once already confirmed pending, dry-run counts what it would re-queue", n, 1)
 check("but re-queues nothing", requeued, [])
-check("and writes no memo", os.path.exists(os.path.join(rt, poller.HANDLED_FILE)), False)
+check("and writes no handled memo", os.path.exists(os.path.join(rt, poller.HANDLED_FILE)), False)
+check(
+    "and leaves the pending-reap memo exactly as it found it",
+    json.load(open(os.path.join(rt, poller.PENDING_REAP_FILE), encoding="utf-8")),
+    {"a": confirmed_since},
+)
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)
