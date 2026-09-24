@@ -79,7 +79,7 @@ For an unknown mechanism internal to the user's organization, consult the user's
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
 The state at capture time is stale by the time you act on it: the contact may have replied since, or - easy to miss - the user may have posted their own follow-up that changes what's actually being waited on (a clarifying question they asked but hasn't been answered yet turns a "ready to act" item into a blocked one).
-Before drafting or deciding the move, pull the full recent thread/history, not just the linked message, and check both directions.
+Before drafting or deciding the move, pull the full recent thread/history, not just the linked message, and check both directions - the draft's content has to come *from* that thread, not just get checked against it afterward: don't hand the contact information the user's own last message already gave them (a follow-up that opens by repeating news the contact was already told is a sign the thread got read for its shape, not for what's actually in it), and don't miss another of the user's own asks to that same contact sitting a few messages back that never got answered (§4's "one active ask per person" covers what that means for the current draft).
 If the user's most recent message on the thread is already a reply to this sender, the item is done - close it without a new draft.
 If it's a question of theirs still unanswered, the item is blocked on the other party, not ready to act.
 Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full context for that source (for email: search sent + inbox in both directions; for Slack: `slack.js --history`, not just `--show` on the one linked message).
@@ -226,7 +226,10 @@ If no message is needed (automated reminder, pure action item), skip to step 6.
 
 **One active ask per person at a time.**
 Before staging any outreach message to a contact, check whether you already have an *unanswered* ask out to them - on any thread or any tracker card, not just this one.
+This includes the very thread you just pulled for this item's situational check (§2's full-thread read): a thread accumulates asks over weeks, so reread every message the user sent in it - not only the ones the item/card already names - for another ask that never got a reply, not just the most recent exchange.
 If you do and they haven't replied yet, hold the second ask until the first is answered or its normal nudge window has passed; treat every thread and card for the same contact as sharing one cadence rather than piling on.
+An older ask that turns up this way, buried in a thread whose most recent turns are about something else, gets the same treatment, not special handling for having been missed once already: wait, the same as any other second ask, rather than stapling it onto a reply written for the thread's current topic.
+If the current topic does call for a reply, reply on that topic alone - starting a genuinely separate new ask on top of an active conversation is rare, reserved for when it's clearly more important than what's already in flight.
 
 **Deeply personal messages: don't draft - surface them for the user to write.**
 When the message is genuinely personal - a friend venting about their job or boss, a hard life update, grief, family or relationship matters, anything where the right words depend on shared history you don't have - a staged draft just gets in the way, because there's no way to know exactly what to say.
