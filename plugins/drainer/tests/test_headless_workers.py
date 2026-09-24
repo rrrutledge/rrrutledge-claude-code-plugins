@@ -99,15 +99,18 @@ def _with_agents(agent_list):
 
 
 AGENTS = [
-    {"kind": "background", "id": "aaa", "status": "busy", "state": "working"},   # working -> not waiting
-    {"kind": "background", "id": "bbb", "status": "idle", "state": "idle"},      # parked -> waiting
-    {"kind": "background", "id": "ccc", "status": "idle", "state": "blocked"},   # parked for review -> waiting
-    {"kind": "interactive", "sessionId": "iii", "status": "idle"},              # his own idle tab -> waiting, and counts toward total
+    {"kind": "background", "id": "aaa", "pid": 111, "status": "busy", "state": "working"},   # working -> not waiting
+    {"kind": "background", "id": "bbb", "pid": 222, "status": "idle", "state": "idle"},      # parked -> waiting
+    {"kind": "background", "id": "ccc", "pid": 333, "status": "idle", "state": "blocked"},   # parked for review -> waiting
+    {"kind": "interactive", "sessionId": "iii", "pid": 444, "status": "idle"},              # his own idle tab -> waiting, and counts toward total
+    # a stopped/self-closed worker: registry record survives with no pid and no status - a stale
+    # "last known state", not a session still competing for Russell's attention.
+    {"kind": "background", "id": "ddd", "state": "blocked"},
 ]
 
-print("\nlive_session_ids returns the live background short ids only")
+print("\nlive_session_ids returns the live background short ids only, excluding a stopped/dead record")
 real = _with_agents(AGENTS)
-check("the three background ids", poller.live_session_ids(), {"aaa", "bbb", "ccc"})
+check("the three live background ids (not the stopped ddd)", poller.live_session_ids(), {"aaa", "bbb", "ccc"})
 poller._claude_agents = real
 
 print("\nlive_session_ids fails safe to None when the scan fails")
@@ -115,9 +118,9 @@ real = _with_agents(None)
 check("None when the scan returns None", poller.live_session_ids(), None)
 poller._claude_agents = real
 
-print("\nworker_counts: waiting = any session not busy (bg OR interactive); total = ALL live sessions")
+print("\nworker_counts: waiting = any LIVE session not busy (bg OR interactive); total = live sessions only")
 real = _with_agents(AGENTS)
-check("(waiting=3, total=4)", poller.worker_counts(), (3, 4))
+check("(waiting=3, total=4) - the pid-less ddd counts toward neither", poller.worker_counts(), (3, 4))
 poller._claude_agents = real
 
 print("\nworker_counts fails safe to None")
