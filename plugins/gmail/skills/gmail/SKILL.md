@@ -73,7 +73,8 @@ works with just the OAuth setup above.
 `--account=<name>` on any `gmail.js`/`filters.js` command acts on another signed-in mailbox instead of the default one.
 The repo that uses this skill records which account names exist and whose mailbox each one is.
 Add an account with `node <skill>/scripts/gmail-auth.js --account=<name> --expect-email=<address>`.
-When the default client can't sign that mailbox in, or the account needs its own signature, give it `_<NAME>`-suffixed copies of the env vars above.
+A named account reads its own `GMAIL_OAUTH_CLIENT_ID_<NAME>` / `GMAIL_OAUTH_CLIENT_SECRET_<NAME>` and `GMAIL_SIGNATURE_HTML_<NAME>`, where `<NAME>` is the account name in uppercase with hyphens as underscores (`--account=work-2` reads `GMAIL_OAUTH_CLIENT_ID_WORK_2`).
+Without its own client pair it uses the shared `GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`, and without its own signature its drafts carry none.
 
 ## Scripts
 
