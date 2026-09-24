@@ -16,7 +16,7 @@ Canva mandates PKCE on every integration, confidential or not.
 - **Folder API** - create a folder, list a folder's items, move an item into a folder. Supported here.
 - **Design creation / Autofill API** - create a design from a Brand Template and fill named fields.
   Not implemented here; a separate addition if ever needed.
-- **Per-person sharing by email is not in the public API** - Canva's per-collaborator share model is a UI (and Business/Enterprise team-membership) feature with no Connect API endpoint.
+- **Per-person sharing** is not in the public API - Canva's per-collaborator share model is a UI (and Business/Enterprise team-membership) feature with no Connect API endpoint.
   Sharing a folder or design with a specific person's email stays a manual step via browser-chauffeur, not something `canva.js` can do.
 
 ## Setup (per machine, one-time)
