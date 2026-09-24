@@ -138,6 +138,13 @@ CASES = [
     {"id": "ls_from_plugin_cache",
      "command": 'ls "{HOME}/.claude/plugins/cache/repo/drainer/1.45.2/skills/drainer/providers"',
      "tool": "Bash", "expect": "BLOCK"},
+    # A find from /, a drive root, or home with no -maxdepth is blocked (see
+    # detect_unbounded_wide_find for why). Bounded finds still go through.
+    {"id": "find_root_wide", "tool": "Bash",
+     "command": 'find / -iname "mail.js" -path "*ms-graph*" 2>/dev/null | head -5', "expect": "BLOCK"},
+    {"id": "find_home_wide", "tool": "Bash", "command": 'find ~ -name trello_utils.py', "expect": "BLOCK"},
+    {"id": "find_root_maxdepth", "tool": "Bash", "command": 'find / -maxdepth 1 -name "*.log"', "expect": "ALLOW"},
+    {"id": "find_repo_dir", "tool": "Bash", "command": 'find plugins -name "*.py"', "expect": "ALLOW"},
 
     # --- enforcement (can't statically validate -> rewrite) -----------------
     {"id": "heredoc", "tool": "Bash", "command": "cat << EOF\nhi\nEOF", "expect": "BLOCK"},

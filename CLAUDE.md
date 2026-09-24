@@ -49,13 +49,15 @@ enumerate everything dangerous.
 |----------|---------|
 | **ALLOW** | Auto-approved — safe. |
 | **PROMPT** | Silent — Claude Code's normal flow asks the user. |
-| **BLOCK** | Denied *with a corrective message*. Not "forbidden" — the form can't be statically validated. The message asks for an equivalent form that *can* be checked (e.g. move complex bash into a `.tmp/` Python script, use the Write tool instead of `>`). |
+| **BLOCK** | Denied *with a corrective message*. Not "forbidden" — the form can't be statically validated, or it always has a better equivalent. The message asks for that equivalent form (e.g. move complex bash into a `.tmp/` Python script, use the Write tool instead of `>`). |
 
 ### Decision pipeline (`hook.py`)
 
 For every Bash call:
 1. `enforce_bash()` — if the *form* is unvalidatable (heredoc, output redirection, `$()`,
    3+ pipes, loops, `cd /other/dir && cmd`, etc.) → **BLOCK** with rewrite instruction.
+   It also BLOCKs an unbounded `find` from `/`, a drive root, or home, which walks the whole
+   disk for hours.
 2. Split compound command (`a && b | c`) into segments.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.
 4. All segments trusted → **ALLOW**.

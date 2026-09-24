@@ -391,6 +391,45 @@ def detect_plugin_cache_reference(command):
     return False
 
 
+_FIND_LEADING_OPTS = {'-H', '-L', '-P', '-D', '-O'}
+
+
+def _is_wide_find_root(path):
+    """True for `/`, a drive root (`/c`, `C:/`), /proc, /cygdrive, or home
+    (`~`, or its expanded Windows or MSYS spelling)."""
+    p = path.replace('\\', '/').rstrip('/').lower()
+    if p in ('', '~', '$home', '/proc', '/cygdrive') or re.fullmatch(r'/[a-z]|[a-z]:', p):
+        return True
+    home = os.path.expanduser('~').replace('\\', '/').rstrip('/').lower()
+    msys_home = re.sub(r'^([a-z]):', r'/\1', home)
+    return p in (home, msys_home)
+
+
+def detect_unbounded_wide_find(command):
+    """True if a `find` segment starts at the filesystem root, a drive root,
+    or the home directory and carries no -maxdepth. In Git Bash `/` also
+    holds /proc, which exposes the whole Windows registry (three times over)
+    and loops back into every drive, so such a walk runs for hours -- and
+    when the Bash tool times out or a downstream `head` exits, find.exe is
+    orphaned rather than killed and keeps a core pinned long after the
+    session ends. A bounded find (a repo path, or any -maxdepth) is left
+    alone."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens or tokens[0] != 'find' or '-maxdepth' in tokens:
+            continue
+        i = 1
+        while i < len(tokens) and (tokens[i] in _FIND_LEADING_OPTS or tokens[i].startswith('-O')):
+            i += 2 if tokens[i] == '-D' else 1
+        roots = []
+        while i < len(tokens) and not tokens[i].startswith(('-', '(', '!', '\\(')):
+            roots.append(tokens[i])
+            i += 1
+        if any(_is_wide_find_root(r) for r in roots):
+            return True
+    return False
+
+
 GH_API_CONTENTS_PATTERN = re.compile(r'/?repos/[^\s/]+/[^\s/]+/contents/')
 
 
@@ -504,6 +543,14 @@ def enforce_bash(command):
                 'gated. Otherwise, read the file with the Read tool directly instead of '
                 'Bash -- that triggers just the one native prompt, without also needing '
                 'this Bash command approved.')
+
+    if detect_unbounded_wide_find(command):
+        return ('BLOCKED: This find walks the whole filesystem (/, a drive root, or home) with no '
+                '-maxdepth, which in Git Bash runs for hours and outlives the session. To locate a plugin '
+                'script, take its path from the resolved skill-directory list in your drainer seed '
+                'prompt, or from the plugin\'s checked-out source under ~/Dev. Otherwise use the '
+                'Glob tool on a specific directory, or point find at that directory (or add '
+                '-maxdepth).')
 
     cmdlet, alternative = detect_powershell_cmdlet(command)
     if cmdlet:
