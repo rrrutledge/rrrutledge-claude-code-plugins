@@ -6,9 +6,16 @@
 // and auto-refreshes, so this runs silently after the first consent. The account is whatever that token
 // authorizes (read from the profile) — no address env var needed.
 //
+// Multiple accounts: pass --account=<name> to operate on a second mailbox (its own token file — see
+// gmail-oauth.js); no flag = the default account. Every run asserts the token still authorizes the mailbox
+// it was set up for, so an operation can't land on the wrong account.
+//
 // Signature: optionally set GMAIL_SIGNATURE_HTML in the environment (an HTML snippet, e.g.
 // "Name<br>Title<br><a href=\"...\">...</a>"). When set, --draft-new and --reply append it to every
 // staged draft (after a blank line; before the quoted original on replies) so it isn't retyped by hand.
+// The signature is per-account: with --account=<name>, the env var read is GMAIL_SIGNATURE_HTML_<NAME>
+// (uppercased) instead, so a second mailbox never inherits the default account's signature — an unset
+// per-account var means no signature, which is the right default for staging a draft in someone else's box.
 //
 // List inbox:    node gmail.js --list-inbox [--top=50] [--json]
 //                (inbox, newest-first; --json emits a structured array for scripts)
@@ -96,7 +103,7 @@ const { marked } = require('marked');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
 const { ImapFlow } = require('imapflow');
-const { getAuthedClient } = require('./gmail-oauth');
+const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -128,7 +135,13 @@ const args = Object.fromEntries(
 );
 
 function withSignature(html) {
-  const sig = process.env.GMAIL_SIGNATURE_HTML;
+  // Per-account signature: the default account reads GMAIL_SIGNATURE_HTML; a named account reads
+  // GMAIL_SIGNATURE_HTML_<NAME> (uppercased, hyphens → underscores) so it never inherits the default's
+  // signature. An unset var means no signature appended.
+  const envVar = ACCOUNT_NAME
+    ? `GMAIL_SIGNATURE_HTML_${ACCOUNT_NAME.toUpperCase().replace(/-/g, '_')}`
+    : 'GMAIL_SIGNATURE_HTML';
+  const sig = process.env[envVar];
   return sig ? `${html}<br><br>${sig}` : html;
 }
 
@@ -670,8 +683,8 @@ function describeError(e) {
   let msg = e.message;
   if (data && data.error) msg = data.error.message || data.error_description || data.error || msg;
   const blob = `${msg} ${JSON.stringify(data || {})}`;
-  if (/insufficient|scope|invalid_grant|unauthorized|Not signed in/i.test(blob)) {
-    return `${msg} — re-run the one-time sign-in (node <gmail>/scripts/gmail-auth.js via browser-chauffeur), then retry.`;
+  if (/insufficient|scope|invalid_grant|unauthorized/i.test(blob) && !msg.includes('gmail-auth.js')) {
+    return `${msg} — sign in again, then retry: ${signInCommand()}`;
   }
   return msg;
 }
@@ -680,7 +693,9 @@ function describeError(e) {
   if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
   if (args['show-imap']) return await showImap();
   if (args['auth-imap']) return await authImap();
-  gmail = google.gmail({ version: 'v1', auth: getAuthedClient() });
+  const authClient = getAuthedClient();
+  gmail = google.gmail({ version: 'v1', auth: authClient });
+  await assertAccountEmail(authClient); // wrong-mailbox guard before any REST operation runs
   if (args['list-inbox']) return await listFolder('INBOX', 'INBOX');
   if (args['list-drafts']) return await listDrafts();
   if (args['save-attachments']) return await saveAttachments();

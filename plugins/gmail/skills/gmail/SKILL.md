@@ -43,7 +43,8 @@ with `filters.js`, that auto-refreshes — nothing to re-enter after the one-tim
    intended account — for ISC that's the Workspace account `russ@innersourcecommons.org`. The consent
    screen grants three scopes at once: `gmail.modify` (read + label), `gmail.compose` (drafts + send),
    and `gmail.settings.basic` (filters). After this, `gmail.js` and `filters.js` both run silently (the
-   client auto-refreshes the access token).
+   client auto-refreshes the access token). This is the **default account**; further mailboxes are served
+   with `--account` - see **Accounts** below.
 4. **Optional signature** — set `GMAIL_SIGNATURE_HTML` to an HTML snippet (e.g.
    `Name<br>Title<br><a href="...">...</a>`) and `--draft-new`/`--reply` append it to every staged draft
    automatically. Set it once from whatever your Gmail signature says, and update it by hand if that
@@ -66,6 +67,14 @@ single-message fetch, interactive `--list-inbox`) stays on the REST/OAuth path a
 Google App Password (Google Account → Security → 2-Step Verification → App Passwords; requires 2SV enabled
 on the account) only if you want the drainer's polling to run over IMAP - everything else in this skill
 works with just the OAuth setup above.
+
+## Accounts
+
+`--account=<name>` on any `gmail.js`/`filters.js` command acts on another signed-in mailbox instead of the default one.
+The repo that uses this skill records which account names exist and whose mailbox each one is.
+Add an account with `node <skill>/scripts/gmail-auth.js --account=<name> --expect-email=<address>`.
+A named account reads its own `GMAIL_OAUTH_CLIENT_ID_<NAME>` / `GMAIL_OAUTH_CLIENT_SECRET_<NAME>` and `GMAIL_SIGNATURE_HTML_<NAME>`, where `<NAME>` is the account name in uppercase with hyphens as underscores (`--account=work-2` reads `GMAIL_OAUTH_CLIENT_ID_WORK_2`).
+Without its own client pair it uses the shared `GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`, and without its own signature its drafts carry none.
 
 ## Scripts
 
