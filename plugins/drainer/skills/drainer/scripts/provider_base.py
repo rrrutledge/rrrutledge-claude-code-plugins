@@ -212,9 +212,28 @@ class ProviderError(Exception):
         self.kind = kind
 
 
+# Every adapter's IMAP/REST/API call goes through here with no per-call timeout of its own, so a single
+# stalled node helper (a hung socket read, an IMAP server that accepts the connection but never answers)
+# used to be able to block a run_node call forever - and with it the whole poller cycle, since every
+# provider enumerates sequentially in one process. That in turn blocked the *next* scheduled cycle too:
+# DrainerKeeper's "don't start a new instance" policy refuses every trigger while the previous run is
+# still alive, so one hung IMAP read could silently freeze the entire drainer until someone noticed and
+# killed the stuck process by hand. This bound turns that failure mode into an ordinary, self-healing
+# ProviderError instead: the call fails after NODE_TIMEOUT_SECONDS, the adapter's own `res.returncode != 0`
+# check raises ProviderError like any other node-helper failure, per-provider isolation keeps the rest of
+# the cycle draining, and the next cycle just retries.
+NODE_TIMEOUT_SECONDS = 90
+
+
 def run_node(args, **kw):
-    return subprocess.run(["node", *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", creationflags=NO_WINDOW, **kw)
+    kw.setdefault("timeout", NODE_TIMEOUT_SECONDS)
+    try:
+        return subprocess.run(["node", *args], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", creationflags=NO_WINDOW, **kw)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args, 1, stdout="",
+            stderr=f"run_node timed out after {kw['timeout']}s: node {' '.join(args)}"[:500])
 
 
 # A Node helper that dies on `Error: Cannot find module 'x'` failed because a required npm package is
