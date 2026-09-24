@@ -1270,11 +1270,17 @@ def live_session_ids():
     worker stays listed until it self-terminates, the faithful analog of a tab left open and parked for
     Russell. Returns None if the scan can't be run/parsed - the caller then SKIPS the liveness fast-path
     this cycle (the time-based backstop still applies), so an inability to see sessions never reaps a
-    live worker."""
+    live worker.
+
+    `claude stop` (end-session.py's headless close) does not actually drop a background session out of
+    `claude agents --json` - it just ends the process, so the entry survives with no `pid`, parked in
+    "stopped" history right alongside a genuinely blocked-and-alive one, until something runs `claude rm`.
+    So `pid` presence - not just `kind` - is what "live" actually means here; a dead entry with no pid is
+    a stale record, not a worker still holding a correspondent's identity."""
     agents = _claude_agents()
     if agents is None:
         return None
-    return {a["id"] for a in agents if a.get("kind") == "background" and a.get("id")}
+    return {a["id"] for a in agents if a.get("kind") == "background" and a.get("id") and a.get("pid")}
 
 
 def open_correspondents(runtime_dir, live):
@@ -1346,6 +1352,13 @@ def worker_counts():
     A session's kind (background vs interactive) never changes either count — the two are indistinguishable
     to Russell in the app, so they are indistinguishable here.
 
+    Both counts are restricted to entries carrying a `pid` — genuinely running processes. `claude agents
+    --json` also lists background sessions that already exited (stopped or self-closed): they keep their
+    registry record with no `pid` and no `status` key, only a stale `state` from before they ended. Left
+    in, every one of those permanently inflates `waiting` (a missing `status` trivially satisfies `!=
+    "busy"`) with a session that is not competing for Russell's attention at all — which starves dispatch
+    for good once enough of them pile up, not just for one cycle.
+
     Returns None if the scan can't be run/parsed — the caller then treats this cycle as AT the cap
     (fail CLOSED: open no new needs-you workers rather than dispatch unbounded), since a scan failure is
     exactly the condition — a bogged-down machine — most likely to coincide with a large eligible
@@ -1354,8 +1367,9 @@ def worker_counts():
     agents = _claude_agents()
     if agents is None:
         return None
-    total = len(agents)
-    waiting = sum(1 for a in agents if a.get("status") != "busy")
+    live = [a for a in agents if a.get("pid")]
+    total = len(live)
+    waiting = sum(1 for a in live if a.get("status") != "busy")
     return waiting, total
 
 

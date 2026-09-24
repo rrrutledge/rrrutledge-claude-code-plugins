@@ -136,17 +136,20 @@ def read_config(repo, runtime_root=None):
         # process), so a changed value takes effect on the very next cycle.
         "target_reviewable": int(os.environ.get("DRAINER_TARGET_REVIEWABLE", "5")),
         "max_concurrent": int(os.environ.get("DRAINER_MAX_CONCURRENT", "18")),
-        # Worker tabs need an explicit model — otherwise they inherit the session default, which may be
-        # a 1M-context model the account can't use. The poller picks per item by triage complexity:
-        # simple -> worker_model, complex -> worker_model_complex (both standard context).
+        # Worker tabs need an explicit model — otherwise they inherit the session default, which may
+        # not be what a given worker should run. The poller picks per item by triage complexity:
+        # simple -> worker_model, complex -> worker_model_complex. Both models report a 1M context
+        # window, so native auto-compact (~967K) is not a usable cost control on its own — the
+        # session-lifecycle hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) is what actually
+        # judges a reset, dynamically, at each turn boundary.
         "worker_model": scalar("worker_model", "claude-sonnet-5"),
-        "worker_model_complex": scalar("worker_model_complex", "claude-opus-4-8"),
+        "worker_model_complex": scalar("worker_model_complex", "claude-opus-5-5"),
         # The triage call must also pin a model — under the scheduled task it has no parent session,
-        # so it would otherwise inherit a 1M-context default the account can't use. Standard Sonnet.
+        # so it would otherwise inherit whatever the session default happens to be. Sonnet.
         "triage_model": scalar("triage_model", "claude-sonnet-5"),
         # The once-a-day digest session. It summarizes fyi and groups junk with source-stop
-        # proposals - judgment-heavy, so a stronger standard-context model.
-        "digest_model": scalar("digest_model", "claude-opus-4-8"),
+        # proposals - judgment-heavy, so a stronger model.
+        "digest_model": scalar("digest_model", "claude-opus-5-5"),
         # A CLAUDE_CONFIG_DIR to run every unattended Claude launch under — triage calls, worker tabs,
         # and the digest — so they draw from a dedicated background Claude subscription instead of the
         # account Russell types into interactively. Empty (the default) leaves CLAUDE_CONFIG_DIR unset,

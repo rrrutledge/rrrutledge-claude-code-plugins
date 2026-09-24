@@ -29,7 +29,7 @@ param(
 #     — a param not declared there is silently dropped instead of forwarded.
 # Callers route through here:
 #   - drainer/spawn-tab.cmd  -> -PromptFile (browser loop; model = session default)
-#   - the handoff launcher   -> -SeedFile -Model "claude-opus-4-8[1m]"
+#   - the handoff launcher   -> -SeedFile -Model "claude-opus-5-5"
 #   - resuming with a follow-up prompt -> -Resume <id> -PromptFile/-SeedFile (-SeedFile for a
 #     one-off ask, -PromptFile when the instructions are already a standing file on disk)
 # Always invoked via `powershell -File` (NOT inline -Command): wt treats ';' as a tab

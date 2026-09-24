@@ -102,7 +102,13 @@ def spawn_bg(seed, model, cwd, name):
     claude prints (which the caller writes into the per-item receipt so liveness, reconcile, and peek all
     read one receipt), or None when the launch fails or the id can't be parsed.
 
-    Three details are load-bearing:
+    Four details are load-bearing:
+      - `--remote-control` is what actually gets the worker onto claude.ai/code and the phone app.
+        `remoteControlAtStartup` in settings.json (on by default) only auto-connects a normal
+        interactive launch - it does not extend to `--bg`, a wholly separate headless mode with no
+        interactive session to auto-connect in the first place. Without this flag a worker is a real,
+        live, running session that is nonetheless invisible everywhere except a terminal on this exact
+        machine, which is the whole reason "waiting for Russell" workers went unreachable from his phone.
       - `--permission-mode manual` is the safety anchor: every action the safe-compounds hook does not
         auto-approve pauses for Russell, so reaching a "send" becomes the blocked state rather than an
         autonomous send. The hook still auto-approves safe commands, so day-to-day the worker feels like
@@ -127,8 +133,8 @@ def spawn_bg(seed, model, cwd, name):
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
                         "CLAUDE_HOST_PID")}
-    args = ["claude", "--bg", "--permission-mode", "manual", "--name", name, "--model", model,
-            "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
+    args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual", "--name", name,
+            "--model", model, "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
     try:
         res = subprocess.run(args, cwd=cwd, env=env, capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=120, creationflags=NO_WINDOW)
