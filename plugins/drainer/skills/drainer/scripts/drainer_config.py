@@ -12,6 +12,8 @@ import os
 import re
 import subprocess
 
+from provider_base import run_subprocess_bounded
+
 # The drainer-owned config worktree, pinned to origin/main. A stable, machine-local path next to the
 # scheduled-task launcher (`~/.claude/drainer/`), independent of where the repo itself lives.
 DEFAULT_MAIN_WORKTREE = os.path.join(
@@ -20,9 +22,12 @@ DEFAULT_MAIN_WORKTREE = os.path.join(
 
 def _git(args, timeout=60):
     """Run one git command, raising on a nonzero exit (so the caller's try/except can fall back).
-    creationflags keeps it window-less under the pythonw poller."""
-    return subprocess.run(
-        ["git", *args], capture_output=True, text=True, timeout=timeout, check=True,
+    Bounded via run_subprocess_bounded (not a bare subprocess.run timeout) so a git process that hangs
+    past its timeout and then doesn't tear down promptly can't freeze the poller the way a wedged node
+    helper once did - see provider_base's module comment for the full story. creationflags keeps it
+    window-less under the pythonw poller."""
+    return run_subprocess_bounded(
+        ["git", *args], timeout=timeout, check=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 

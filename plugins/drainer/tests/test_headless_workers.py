@@ -40,10 +40,10 @@ class _FakeCompleted:
 
 def _run_spawn_bg(returncode=0, stdout="Starting background service…\nbackgrounded · 6997ef2f · a worker\n",
                   raise_exc=None, base_env=None):
-    """Call spawn_bg with subprocess.run stubbed; return (result_id, captured_args, captured_env)."""
+    """Call spawn_bg with run_subprocess_bounded stubbed; return (result_id, captured_args, captured_env)."""
     captured = {}
 
-    def fake_run(args, cwd=None, env=None, **kw):
+    def fake_run(args, timeout=None, cwd=None, env=None, **kw):
         captured["args"] = args
         captured["env"] = env
         captured["cwd"] = cwd
@@ -51,15 +51,15 @@ def _run_spawn_bg(returncode=0, stdout="Starting background service…\nbackgrou
             raise raise_exc
         return _FakeCompleted(returncode, stdout)
 
-    real_run = provider_base.subprocess.run
+    real_run = provider_base.run_subprocess_bounded
     real_environ = provider_base.os.environ
-    provider_base.subprocess.run = fake_run
+    provider_base.run_subprocess_bounded = fake_run
     if base_env is not None:
         provider_base.os.environ = base_env
     try:
         rid = provider_base.spawn_bg("SEED TEXT", "sonnet", "C:/repo", "a worker")
     finally:
-        provider_base.subprocess.run = real_run
+        provider_base.run_subprocess_bounded = real_run
         provider_base.os.environ = real_environ
     return rid, captured.get("args"), captured.get("env")
 
