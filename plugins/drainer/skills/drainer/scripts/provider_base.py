@@ -123,11 +123,6 @@ def spawn_bg(seed, model, cwd, name):
         claude process (CLAUDE_PID, which Claude Code injects into the worker's tool subprocesses and
         which lives exactly as long as the worker), so it is released the moment the worker ends.
     No focus logic: a background session never surfaces a window to steal focus from.
-
-    No native `--autocompact` floor: Russell wants the reset decision made dynamically (the per-turn
-    session-lifecycle hook, `~/OneDrive/Claude/scripts/session-lifecycle.py`), not on a hardcoded token
-    threshold. The one gap that leaves - a single seeded run that executes a long autonomous tool-call
-    chain and never yields a turn, so the hook never gets a chance to fire - is accepted for now.
     """
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
