@@ -71,6 +71,11 @@
       "description": "Create a Google Form via the Forms API - no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it."
     },
     {
+      "name": "canva",
+      "source": "./plugins/canva",
+      "description": "Upload assets and manage folders in a Canva account via the Canva Connect API — no browser. Create a folder, upload an image/PDF as an asset (optionally straight into that folder), list a folder's contents, or move an item between folders. Its own OAuth 2.0 + PKCE integration, not a shared client."
+    },
+    {
       "name": "mail-filters",
       "source": "./plugins/mail-filters",
       "description": "Russell's calibrated strategy for mail filters/rules that auto-archive never-process mail at the server before it reaches the drainer. Teaches the phrase-selection craft (broad enough to recur across senders, strict enough to never bury wanted mail) and the create/delete mechanics for Gmail filters and Outlook rules."

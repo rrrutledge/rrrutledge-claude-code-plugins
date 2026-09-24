@@ -1,0 +1,6 @@
+{
+  "name": "canva",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Canva Connect API helper scripts. No dependencies — Node's built-in fetch and crypto cover OAuth 2.0 + PKCE and the REST calls."
+}
