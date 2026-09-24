@@ -175,28 +175,18 @@ Route each piece of work by where it belongs - which is also where Russell can r
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this tab.
   Emit it via the drainer's own tab-spawn (no new launcher) and let this tab stay on its own item:
   `<skill>/scripts/spawn-tab.cmd "<title>" "<repo dir>" "<.tmp/handoff-*.md>" "<model id>" "<.tmp/summary.txt>"`
-  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-4-8[1m]` for open investigation or design), per `~/.claude/CLAUDE.md`, "Handoffs & session model default".
+  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
-The trigger for a handoff is *unrelated* or *heavy-and-independent*, not merely "a second step": a two-step task whose steps genuinely share this item's context stays inline.
-This is Russell's own cost-lens (same section of `~/.claude/CLAUDE.md`) applied to a running worker.
-
-**Reset this item's own context at a boundary, not only route other work out.**
+**Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this tab; this rule resets the context the work you keep has accumulated.
 Because the whole prefix is re-read every model call (above), a tab that has grown long makes even a one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against the largest context.
-When the item you are working reaches a natural boundary, reset rather than continue on the bloated prefix:
-
-- **a deliverable has shipped** and independent further work remains (a PR merged, and the next asks are separate edits), or
-- **a long idle wait is coming** (on Russell for an image, a decision, or an external action), or
-- **the conversation has crossed phases** (planning into execution).
-
-Choose handoff versus `/compact` by the cost-lens's seed-versus-summary test (`~/.claude/CLAUDE.md`).
-Emit the handoff with the same `spawn-tab.cmd` the dispatch rule uses, seeding the new session from a short `.tmp/handoff-*.md`.
-Reset at a genuine boundary, not after every turn - a mid-flow reset pays a re-cache for no benefit.
+The personal `session-lifecycle.py` hook watches for this: once the session has grown enough past its own baseline, it injects the live token count and the hand-off/compact/continue call at the start of your next turn - act on what it says, and expect it to fire again as the session keeps growing.
+It's a nudge weighing on your own judgment - continuing can genuinely be the right call.
 
 **A complex worker steps its model down when the open-ended phase ends.**
 A worker triaged complex runs on Opus to investigate and plan; the mechanical implementation that follows does not need Opus.
-The planning-into-execution boundary above is exactly where to re-handoff, so take it and step the model down: write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id, the residual-work choice the dispatch rule already names.
+The planning-into-execution boundary is exactly the hand-off case above: when you reach it (the hook may prompt you there, or you may notice it first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id.
 Doing so drops the plan-phase context from the implementation session, runs the mechanical half on the cheaper model, and keeps correctness because the plan doc carries the distilled context that makes the build correct.
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
