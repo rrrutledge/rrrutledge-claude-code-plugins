@@ -86,12 +86,11 @@ Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full con
 **When you DO draft (a reply or a follow-up nudge), thread it off the most recent message in the thread - even when that latest message is one the user sent.**
 A follow-up answers where the conversation actually stands, so quote and thread on the newest message, not an older inbound one; provider DRAFT-MODE notes how to target a sent message.
 
-**A draft must add something the thread doesn't already have - never restate what the user already told this contact.**
-Reading the whole thread (above) means treating the user's own prior messages in it as already-delivered content, not just history to summarize back before you draft.
-If the user's most recent message in the thread already shared the news, the answer, or the update your draft was about to open with, cut that line - restating it to the person who already has it (or who told it to the user in the first place) is the tell that the thread got read for its shape, not for what's actually in it.
-This is the same failure mode as missing an already-answered ask, just pointed the other direction: one drops a question that got resolved, the other repeats an answer that's already landed.
-Open the draft with the actual new content, not a recap.
-**The same full-thread read must also surface every one of the user's own OTHER asks to this contact that never got a reply - not just the one the item/card names.**
+**Read the thread before you decide what to say, not after - you don't know what to draft until you know what's already been said.**
+The full-thread read isn't a check to run against a draft once one exists; it's where the content has to come from in the first place, so do it before writing a line.
+Ground the draft in the most recent exchange the user and the contact actually had: if the user's own last message already told the contact the news, the answer, or the update, that's now common ground between them, not new content to hand back - the AlphaSense/Alan-Richards case that prompted this: the contact already knew the phone screen was booked because the user had told him directly two days earlier, so opening a new draft with that same update made no sense next to what he'd already been told, not merely repetitive.
+The same read has to surface anything the user still genuinely needs from the contact, not just confirm what's already landed.
+**That includes every one of the user's own OTHER asks to this contact that never got a reply - not just the one the item/card names.**
 A thread accumulates asks over weeks; scan every message the user sent in it for a distinct ask or question, and check each one against what the contact actually replied to, not only the most recent exchange - an old, still-unanswered ask sitting a few messages back is exactly what §4's "one active ask per person" check exists to catch, and it's easy to skim past when the thread's most recent turns are about a different topic entirely.
 
 **One captured conversation can hold several distinct open asks - group them, then handle each.**
