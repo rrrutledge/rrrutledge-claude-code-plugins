@@ -385,6 +385,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Own a mistake of yours in every message that touches it while it's still being fixed, not just the first — a prior apology doesn't retire the need for a short acknowledging clause in the next one, and "thanks for understanding" alone reads as glossing over it.
   Reply to mail that has sat for a week or more with a brief "Sorry for the delay in responding".
   A same-day gap counts too when it leaves a still-open scheduling ask unanswered - confirming a same-day proposed time hours after it was asked for still gets a brief apology naming the concrete reason ("Sorry to just respond now - I had a few meetings this morning."), since the other party can't act until you answer.
+  **Exception - a same-day follow-up just supplies detail an earlier note left out:** answer with the missing time, name, or number and skip the apology opener, since filling in that same day is a quick completion, not a delay or mistake to own.
   When the reply delivers the result or answer they were waiting on, that apology opens the reply; otherwise it goes near the sign-off.
   On a chat thread he plainly missed, the same acknowledgment opens the reply ("Sorry I missed this thread:") since a short message has no sign-off to carry it.
 - **Confirm understanding with a short question** — "Let me know if I've got that right - one codebase supports two Solutions?"
