@@ -139,6 +139,15 @@ def is_path_within_claude_plugins(path):
     return path_under(path, os.path.expanduser('~/.claude/plugins'))
 
 
+# Shared with enforce.py's Bash-side detect_plugin_cache_reference() and
+# writes.py's Write/Edit block: a path under the installed plugin cache
+# (~/.claude/plugins/cache/...) hits Claude Code's own "sensitive file"
+# confirmation no matter what this hook decides, for any tool. Matched as a
+# raw substring/regex (not home-anchored) since callers pass whole command
+# strings, not just isolated paths.
+PLUGIN_CACHE_PATTERN = re.compile(r'\.claude[/\\]plugins[/\\]cache[/\\]', re.IGNORECASE)
+
+
 def is_path_within_claude_drainer(path):
     """True if `path` is within ~/.claude/drainer/ (the drainer's own runtime
     state, including main-worktree, a git worktree it keeps pinned to

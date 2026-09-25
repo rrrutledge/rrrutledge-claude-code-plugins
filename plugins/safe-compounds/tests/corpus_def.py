@@ -273,6 +273,11 @@ CASES = [
      "file_path": "{HOME}/.claude/drainer/main-worktree/.tmp/summit-promo-scan.py", "expect": "BLOCK"},
     {"id": "write_drainer_runtime", "tool": "Write",
      "file_path": "{HOME}/.claude/drainer/runtime/seeds/item.prompt.txt", "expect": "BLOCK"},
+    # Same reasoning, same fix, for the other path Claude Code always re-prompts on regardless of
+    # this hook's decision: the installed plugin cache.
+    {"id": "write_plugin_cache", "tool": "Write",
+     "file_path": "{HOME}/.claude/plugins/cache/rrrutledge-claude-code-plugins/safe-compounds/1.10.0/hook.py",
+     "expect": "BLOCK"},
 
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},

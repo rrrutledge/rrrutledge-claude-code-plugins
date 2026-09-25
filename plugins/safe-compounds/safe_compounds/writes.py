@@ -1,19 +1,19 @@
 """Write/Edit tool handling: approve project & temp files, redirect stray temp
 files into .tmp/, and otherwise fall through to a prompt.
 
-Precedence matters: ~/.claude/drainer/ is blocked *before* the .tmp/-anywhere
-check, since a path can match both (e.g. main-worktree/.tmp/scan.py) and no
-allow decision there can actually suppress Claude Code's own prompt anyway.
-Below that, a file inside .tmp/ or a .claude config dir is approved *before*
-the temp-name check, so e.g. ".tmp/commit_tmp.txt" is allowed rather than
-redirected.
+Precedence matters: ~/.claude/drainer/ and the installed plugin cache are
+blocked *before* the .tmp/-anywhere check, since a path can match both (e.g.
+main-worktree/.tmp/scan.py) and no allow decision there can actually
+suppress Claude Code's own prompt anyway. Below that, a file inside .tmp/ or
+a .claude config dir is approved *before* the temp-name check, so e.g.
+".tmp/commit_tmp.txt" is allowed rather than redirected.
 """
 import os
 import re
 
 from . import ai
 from .log import log_debug
-from .paths import is_in_git_repo, is_path_within_claude_drainer, is_path_within_cwd
+from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_claude_drainer, is_path_within_cwd
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -69,10 +69,24 @@ def _drainer_redirect_reason(file_path):
     )
 
 
+def _plugin_cache_redirect_reason(file_path):
+    base = os.path.basename(file_path.replace('\\', '/'))
+    return (
+        f'BLOCKED: "{base}" targets the installed plugin cache (~/.claude/plugins/cache/...). '
+        'That\'s installed content, not the checked-out repo source, and it sits under Claude '
+        'Code\'s own sensitive config root, so a write there always hits Claude Code\'s native '
+        'confirmation no matter what this hook decides. Point the plugin\'s checked-out repo '
+        'source instead, or write scratch/staging files to .tmp/ in your own working repo.'
+    )
+
+
 def decide_write_edit(file_path):
     """Return ('allow'|'block'|'prompt', reason_or_None) for a Write/Edit path."""
     if is_path_within_claude_drainer(file_path):
         return 'block', _drainer_redirect_reason(file_path)
+
+    if PLUGIN_CACHE_PATTERN.search(file_path):
+        return 'block', _plugin_cache_redirect_reason(file_path)
 
     cwd = os.environ.get('CLAUDE_CWD', os.getcwd()).replace('\\', '/')
     if not cwd.endswith('/'):
