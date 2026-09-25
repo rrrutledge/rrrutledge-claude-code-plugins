@@ -1,15 +1,15 @@
-"""Drainer EOD digest launcher — opens ONE interactive digest tab, once a day.
+"""Drainer EOD digest launcher — launches ONE interactive digest session, once a day.
 
 The fast-loop poller (`run-poller.py`) is headless and silent; the digest is the OPPOSITE — it must
-be a visible, interactive session, because it empties the fyi/junk queue only AFTER Russell reviews and
-approves. So this launcher is deliberately thin: it opens a single Windows Terminal tab running a fresh
-Claude session seeded to follow `engine/digest-core.md`. All the judgment (summarize fyi, group junk
+be an interactive session Russell works in, because it empties the fyi/junk queue only AFTER he reviews
+and approves. So this launcher is deliberately thin: it launches a single background Claude session
+(reachable from claude.ai/code and the phone) seeded to follow `engine/digest-core.md`. All the judgment (summarize fyi, group junk
 with source-stop proposals, and clearing on Russell's OK) happens inside that interactive session.
 
 The daily Scheduled Task (see `install-digest-schedule.ps1`) runs this once a day.
 
 Usage:
-    python run-digest.py --repo C:/Users/russe/Dev/personal-ai-pod              # open the digest tab
+    python run-digest.py --repo C:/Users/russe/Dev/personal-ai-pod              # launch the digest session
     python run-digest.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run    # print the brief only
 """
 import argparse
@@ -23,8 +23,8 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
-from provider_base import (run_node, spawn_tab, load_providers, ProviderError,  # noqa: E402
-                           load_seen)  # shared subprocess + tab-spawn + adapter loader + seen-state reader
+from provider_base import (run_node, spawn_bg, prompt_seed, write_receipt, load_providers,  # noqa: E402
+                           ProviderError, load_seen)  # shared subprocess + background-session launch + adapter loader + seen-state reader
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -97,7 +97,7 @@ def compute_backlog(runtime_dir, cfg):
     "Not yet started" is the source's live listing minus the ids the poller has already recorded in
     seen.json - the items it dispatched a worker for (needs-you / auto-handle) or queued for the digest
     (fyi / junk). The poller leaves an item it merely held (a correspondent still being worked, or the
-    open-tab budget full) UNrecorded, so exactly the items with no worker yet launched are what remains.
+    open-worker budget full) UNrecorded, so exactly the items with no worker yet launched are what remains.
     This is the poller's own `collect_new` measure read from persisted state, so it needs no live-process
     scan: an item Russell already has a worker on is recorded and drops out. Zero AI and no body capture -
     each provider's `pending_summary` reads its envelope-only listing. A provider that can't list this run
@@ -175,7 +175,7 @@ def _print_heartbeat(hb):
 
 
 def print_brief(runtime_dir, cfg):
-    """Deterministic preview (no AI, no tab): provider health + queue counts + backlog depth. For the
+    """Deterministic preview (no AI, no session): provider health + queue counts + backlog depth. For the
     dry-run ramp."""
     q = _load_queue(runtime_dir)
     counts = {"fyi": 0, "junk": 0, "other": 0}
@@ -214,7 +214,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     # Config is read from the drainer-owned worktree pinned to origin/main (so a feature branch left
-    # checked out at the real repo root can't stale the digest's view); the digest tab itself runs with
+    # checked out at the real repo root can't stale the digest's view); the digest session itself runs with
     # cwd = the real repo, keeping its machine-local settings. Runtime state stays at the real repo too.
     source_repo = os.path.abspath(args.repo)
     config_repo = ensure_main_worktree(source_repo)
@@ -228,20 +228,23 @@ def main():
 
     try:
         backlog_block = format_backlog(compute_backlog(runtime_dir, cfg))
-    except Exception as e:  # a backlog failure must never keep the digest tab from opening
+    except Exception as e:  # a backlog failure must never keep the digest session from launching
         backlog_block = f"Backlog depth: unavailable this run ({e})."
     prompt_file = write_seed(runtime_dir, repo, cfg, backlog_block)
-    # Name this session "Drainer EOD digest" so it reads recognizably in the tab title, the /resume
-    # picker, and the Remote Control session list on the phone - the same one-line-summary path the
-    # workers use: spawn-tab.cmd's 5th arg -> launch-session.ps1 -SummaryFile -> --name. Remote Control
-    # auto-connects from the remoteControlAtStartup setting on its own; the summary only decides the
-    # label the session carries, giving the digest a descriptive name in place of a random placeholder.
+    # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
+    # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
+    # kept in a sibling summary file, the way a worker's is.
+    summary = "Drainer EOD digest"
     summary_file = os.path.join(os.path.dirname(prompt_file), "digest.summary.txt")
     with open(summary_file, "w", encoding="utf-8") as f:
-        f.write("Drainer EOD digest")
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab([spawn_cmd, "drain:digest", repo, prompt_file, cfg["digest_model"], summary_file], cwd=repo)
-    print(f"Opened digest tab (model {cfg['digest_model']}) for {runtime_dir}.")
+        f.write(summary)
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary), cfg["digest_model"], repo, summary)
+    if not bg_id:
+        print("run-digest: headless `claude --bg` launch returned no id; the digest did not start.")
+        sys.exit(1)
+    receipt = write_receipt(prompt_file, bg_id)
+    print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
+          f"for {runtime_dir}.")
 
 
 if __name__ == "__main__":

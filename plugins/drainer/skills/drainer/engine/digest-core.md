@@ -7,7 +7,7 @@ It is the opposite of the poller in one way that governs everything below: **it 
 You do not act on unfinished needs-you items here - the poller's own reconcile catches them every cycle, by re-queuing any item whose source object is still unhandled with no live worker on it, so a crashed or closed worker's item is back in the drain within minutes rather than waiting for you.
 You do still surface a count: step 1b reports, per source, how much is waiting to be started at all - a number to show rather than a queue to work.
 
-You are a single digest session in your own tab.
+You are a single digest session, running in the background like every drainer session.
 Your launcher gave you the runtime facts (runtime_dir, repo, the seen-state helper path, the providers dir, and the provider-health file).
 Everything you read and clear is under `runtime_dir`.
 
@@ -76,8 +76,8 @@ Name the gate from `helpNeeded.reason`, the `helpNeeded.url`, and that the worke
 Russell needs to go there and clear the gate himself, then tell that session to continue.
 
 **These don't finish clearing on Russell's review the way fyi/auto-handled items do.**
-Reading the digest doesn't resolve the gate; only Russell acting in the worker's own open tab does.
-On his OK here, only the digest queue entry is removed, per step 4's clearing rule for these items - the worker's session, tab, and source item stay exactly as the worker left them.
+Reading the digest doesn't resolve the gate; only Russell acting in the worker's own open session does.
+On his OK here, only the digest queue entry is removed, per step 4's clearing rule for these items - the worker's session, browser tab, and source item stay exactly as the worker left them.
 
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)
 
@@ -153,7 +153,7 @@ When the chosen stop is a mail rule, creating or appending it always routes thro
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in the terminal - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b), **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b), **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 
@@ -174,15 +174,15 @@ For any junk source-stop Russell approves, apply it per that provider's JUNK-LEA
 If Russell defers some items, leave them in the queue - they ride to the next digest.
 Empty only what he approved.
 **Do the provider CLEAR and the `queue-clear` together, in that order, for every item you empty.**
-An item dropped from the queue while its source object is still sitting in the inbox is one the poller's reconcile reads as unfinished, so it re-dispatches as a fresh worker tab.
+An item dropped from the queue while its source object is still sitting in the inbox is one the poller's reconcile reads as unfinished, so it re-dispatches as a fresh worker.
 
 ## Hard rules (carry forward from the engine)
 
-- **Dispatch execution work, don't run it in this tab.**
+- **Dispatch execution work, don't run it in this session.**
   The digest is a triage-and-dispatch role by design: it summarizes, proposes, and clears.
   When the review surfaces a real task to *do* - a reply to draft, a PR to ship, a workflow to build, anything Russell raises mid-review - hand it off to a fresh session (worker-core.md step 3's inline/subagent/handoff heuristic) rather than executing it inline.
-  This tab already holds the whole day's triaged queue; loading an execution task's skills on top of that is exactly the accumulation the heuristic prevents.
-  Triage stays in this lean tab; each execution task goes out to its own.
+  This session already holds the whole day's triaged queue; loading an execution task's skills on top of that is exactly the accumulation the heuristic prevents.
+  Triage stays in this lean session; each execution task goes out to its own.
 - **Draft-only outbound.
   Never send, never post.**
   The digest only summarizes, proposes, and clears (delete/archive is reversible).

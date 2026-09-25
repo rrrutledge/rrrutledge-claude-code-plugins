@@ -42,7 +42,7 @@ def ensure_main_worktree(source_repo, worktree=DEFAULT_MAIN_WORKTREE):
     dormant until someone restores main by hand. A worktree that ONLY the drainer owns, and that only
     ever holds origin/main, removes the coupling: config always reflects merged main.
 
-    Resetting it every cycle is safe because nothing writes to it in place — worker tabs run with
+    Resetting it every cycle is safe because nothing writes to it in place — worker sessions run with
     cwd = the real repo, and (per the git-workflow skill) any branch work creates its own worktree
     rather than checking out here, so this one stays a clean detached origin/main.
 
@@ -141,7 +141,7 @@ def read_config(repo, runtime_root=None):
         # process), so a changed value takes effect on the very next cycle.
         "target_reviewable": int(os.environ.get("DRAINER_TARGET_REVIEWABLE", "5")),
         "max_concurrent": int(os.environ.get("DRAINER_MAX_CONCURRENT", "18")),
-        # Worker tabs need an explicit model — otherwise they inherit the session default, which may
+        # Worker sessions need an explicit model — otherwise they inherit the session default, which may
         # not be what a given worker should run. The poller picks per item by triage complexity:
         # simple -> worker_model, complex -> worker_model_complex. Both models report a 1M context
         # window, so native auto-compact (~967K) is not a usable cost control on its own — the
@@ -155,18 +155,18 @@ def read_config(repo, runtime_root=None):
         # The once-a-day digest session. It summarizes fyi and groups junk with source-stop
         # proposals - judgment-heavy, so a stronger model.
         "digest_model": scalar("digest_model", "claude-opus-5-5"),
-        # A CLAUDE_CONFIG_DIR to run every unattended Claude launch under — triage calls, worker tabs,
-        # and the digest — so they draw from a dedicated background Claude subscription instead of the
-        # account Russell types into interactively. Empty (the default) leaves CLAUDE_CONFIG_DIR unset,
-        # so those launches use the same account as everything else — the prior behavior. Set it in the
+        # A CLAUDE_CONFIG_DIR to run the unattended headless calls under — the triage and screen
+        # `claude -p` subprocesses — so they draw from a dedicated background Claude subscription
+        # instead of the account Russell types into interactively. Empty (the default) leaves
+        # CLAUDE_CONFIG_DIR unset, so those calls use the same account as everything else. Set it in the
         # machine-local drainer.local.md once that background account's CLI is authenticated under the
-        # given directory. The interactive-worker path (spawn-tab.cmd) and the triage subprocess both
-        # read this; the orphan-session resume path deliberately does not (it reopens Russell's own
-        # sessions, which only his account can see).
+        # given directory. Background sessions - workers, diagnostics, the digest, orphan resumes -
+        # deliberately don't read it: session-mgr's launcher starts them on the account Russell last
+        # selected (a resume on the account holding its transcript), since he works in them himself.
         "background_config_dir": scalar("background_config_dir", ""),
         # Reconcile grace: a dispatched item with no live worker session is treated as unfinished and
         # re-queued, but only once it's been launched at least this many minutes - so a just-dispatched
-        # tab whose session file isn't written yet isn't misread as dead.
+        # worker whose session file isn't written yet isn't misread as dead.
         "orphan_grace_minutes": int(scalar("orphan_grace_minutes", "15")),
         # Wall-clock time (HH:MM, 24h) the daily digest task fires; consumed by the installer.
         "digest_time": scalar("digest_time", "17:00"),

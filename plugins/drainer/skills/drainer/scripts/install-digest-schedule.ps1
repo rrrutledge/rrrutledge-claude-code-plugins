@@ -1,15 +1,16 @@
-# install-digest-schedule.ps1 - register (or remove) the once-a-day Scheduled Task that opens the
-# interactive drainer digest tab.
+# install-digest-schedule.ps1 - register (or remove) the once-a-day Scheduled Task that launches the
+# interactive drainer digest session.
 #
 # Run this BY HAND once (not from a Claude session), after the manual digest tryout is trusted. It
 # registers a Windows Scheduled Task that runs run-digest.py once a day at a fixed time; run-digest.py
-# opens ONE visible Claude tab that empties the fyi/junk queue, with Russell reviewing before anything
-# is cleared.
+# launches ONE background Claude session (reachable from claude.ai/code and the phone) that empties the
+# fyi/junk queue, with Russell reviewing before anything is cleared.
 #
 #   powershell -File install-digest-schedule.ps1 -RepoDir C:/Users/russe/Dev/personal-ai-pod [-At 17:00]
 #   powershell -File install-digest-schedule.ps1 -RepoDir C:/Users/russe/Dev/personal-ai-pod -Remove
 #
-# Runs in the interactive desktop session (LogonType Interactive) so the spawned digest tab appears.
+# Runs as your interactive logon (LogonType Interactive), so the digest launch runs under your own
+# user profile and credentials.
 # ASCII-only: Windows PowerShell 5.1 misparses UTF-8 punctuation (em-dashes, curly quotes).
 
 param(
@@ -47,12 +48,14 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $At
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -StartWhenAvailable -MultipleInstances IgnoreNew
 
-# Interactive desktop session - required so the spawned digest tab (wt.exe new-tab) appears on screen.
+# Russell's interactive logon. The background digest session needs no desktop; the interactive logon
+# is what runs the task under his user profile and credentials (his Claude login, plugin installs, and
+# user environment).
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
     -Principal $principal `
-    -Description "Drainer EOD digest - opens one interactive digest tab once a day at $At." `
+    -Description "Drainer EOD digest - launches one interactive digest session once a day at $At." `
     -Force | Out-Null
 
 Write-Host "Registered '$TaskName': python run-digest.py --repo $RepoDir daily at $At."

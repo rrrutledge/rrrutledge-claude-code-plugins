@@ -1,6 +1,6 @@
 """Regression test for spawn_worker: it writes the whole seed prompt (ending on the repo-tracked-config line)
 and the summary file, and hands the worker to spawn_bg as a headless `claude --bg` session, recording the
-returned short id in the per-item receipt, without raising. A stray leading `+` on the last `f.write(`
+session's id (the full guid when resolvable, else the short id) in the per-item receipt, without raising. A stray leading `+` on the last `f.write(`
 argument once made every worker spawn crash with a TypeError.
 
 Run directly:
@@ -33,16 +33,22 @@ def check(name, got, want):
         failures.append(name)
 
 
-def spawn(triage, config_repo, bg_id="abc123ef"):
-    """Run spawn_worker against a temp runtime dir with spawn_bg captured; return
+bg_session = sys.modules["bg_session"]  # session-mgr's launcher, loaded by provider_base
+GUID = "abc123ef-1111-2222-3333-444455556666"
+
+
+def spawn(triage, config_repo, bg_id="abc123ef", agents=()):
+    """Run spawn_worker against a temp runtime dir with spawn_bg captured and `claude agents` stubbed
+    to `agents` (so the receipt is deterministic and no real claude runs); return
     (error, prompt, summary_exists, calls, receipt)."""
     calls = []
 
-    def fake_spawn_bg(seed, model, cwd, name):
+    def fake_spawn_bg(seed, model, cwd, name, resume=None):
         calls.append({"seed": seed, "model": model, "cwd": cwd, "name": name})
         return bg_id
 
     poller.spawn_bg = fake_spawn_bg
+    bg_session.claude_agents = lambda: list(agents)
     with tempfile.TemporaryDirectory() as tmp:
         runtime = os.path.join(tmp, "runtime")
         local_dir = os.path.join(tmp, "config")
@@ -79,7 +85,13 @@ for triage in ("needs-you", "auto-handle"):
         check("seed points the worker at its prompt file",
               "open it and begin immediately without waiting for further input." in calls[0]["seed"], True)
         check("seed passes the worker model", calls[0]["model"], "sonnet")
-    check("receipt records the returned bg short id", receipt, "abc123ef")
+    check("receipt falls back to the short id when `claude agents` can't resolve it", receipt, "abc123ef")
+
+print("\nspawn_worker records the full guid when `claude agents` lists the new session")
+error, prompt, summary_exists, calls, receipt = spawn(
+    "needs-you", "C:/cfg/repo", agents=[{"kind": "background", "id": "abc123ef", "sessionId": GUID}])
+check("does not raise", error, None)
+check("receipt holds the full guid", receipt, GUID)
 
 print("\nspawn_worker leaves no receipt when the headless launch returns no id")
 error, prompt, summary_exists, calls, receipt = spawn("needs-you", "C:/cfg/repo", bg_id=None)

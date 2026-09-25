@@ -1,6 +1,6 @@
 """Per-command safety checkers for commands that need more than name-trust:
 git/gh write-protection, curl destination rules, sed -i, package managers,
-start/wt/cmd launchers, and CWD-scoped file operations (cp/mv/touch/ln/chmod).
+start/cmd launchers, and CWD-scoped file operations (cp/mv/touch/ln/chmod).
 """
 import os
 import re
@@ -64,7 +64,7 @@ def is_sed_command_safe(seg):
 # find the subcommand, check it against an allowlist, and (for most) fall back
 # to an AI judgment that is then remembered. They are expressed declaratively in
 # SUBCOMMAND_SPECS and evaluated by check_subcommand_tool(). Tools whose logic
-# doesn't fit (curl, sed, start, wt, .cmd files, cp/mv/...) stay bespoke below.
+# doesn't fit (curl, sed, start, .cmd files, cp/mv/...) stay bespoke below.
 #
 # A spec is a dict with:
 #   trusted       - set of always-allowed subcommand names
@@ -498,56 +498,6 @@ def is_taskkill_safe(seg):
     from . import procs
     host_pid = procs.self_tab_host_pid()
     return host_pid is not None and all(pid == host_pid for pid in pids)
-
-
-# ------------------------------------------------------------------ wt --------
-WT_SUBCOMMANDS = {
-    'new-tab', 'nt', 'split-pane', 'sp', 'focus-tab', 'ft', 'move-focus', 'mf',
-    'swap-pane', 'focus-pane', 'fp', 'move-pane', 'mp', 'new-window', 'nw',
-}
-WT_FLAGS_WITH_ARG = {
-    '-d', '--startingDirectory', '--title', '-p', '--profile', '--tabColor',
-    '--colorScheme', '-w', '--window', '--size', '--pos', '-s', '--startingDir',
-    '--appendCommandLine',
-}
-
-
-def is_wt_exe_path_safe(seg):
-    """Approve full-path wt.exe only when launching the Claude session script."""
-    seg_lower = seg.lower()
-    return 'launch-session.ps1' in seg_lower and 'claude' in seg_lower
-
-
-def is_wt_safe(seg, trusted):
-    """Approve `wt` if it launches the known-safe Claude session script, or if
-    the program it ultimately launches is trusted.
-
-    first_word() collapses any path (bare `wt` or a full `.../wt.exe` path)
-    down to `wt`, so the exe-path-specific check has to happen here rather
-    than as a separate dispatch branch in approve.py.
-    """
-    if is_wt_exe_path_safe(seg):
-        return True
-    tokens = shell_tokenize(seg)
-    if len(tokens) < 2:
-        return False
-    i = 1
-    while i < len(tokens):
-        t = tokens[i]
-        if t in WT_FLAGS_WITH_ARG:
-            i += 2
-            continue
-        if t.startswith('-'):
-            i += 1
-            continue
-        base = os.path.basename(t.strip('"\'').replace('\\', '/')).lower()
-        if base.endswith('.exe'):
-            base = base[:-4]
-        if base in WT_SUBCOMMANDS:
-            i += 1
-            continue
-        return base in trusted
-    return True
 
 
 # ----------------------------------------------------------- cmd files --------

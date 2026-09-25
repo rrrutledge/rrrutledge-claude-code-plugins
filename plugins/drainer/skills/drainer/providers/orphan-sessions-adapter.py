@@ -8,9 +8,9 @@ plugin's find-orphans.py (the same version-pinned resolver pattern the drainer's
 close-session.py already uses to reach session-mgr's end-session.py) rather than
 re-implementing any registry/liveness logic here.
 
-Unlike every other source, this one has no draft/reply/CLEAR cycle — resuming a session's
-own tab IS the whole action. See orphan-sessions-provider.md for the (empty) worker-facing
-contract, and run-poller.py for the dedicated spawn_resume_tab() dispatch path and the
+Unlike every other source, this one has no draft/reply/CLEAR cycle — resuming the session
+itself, in the background, IS the whole action. See orphan-sessions-provider.md for the (empty)
+worker-facing contract, and run-poller.py for the dedicated spawn_resume() dispatch path and the
 deterministic pre-triage bypass (this source never reaches the AI triage call).
 
 id scheme: `orphan-<session_id>-<slug(started_at)>` — see stable_id() for why started_at

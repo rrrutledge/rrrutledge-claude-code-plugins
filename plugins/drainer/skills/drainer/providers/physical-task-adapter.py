@@ -202,13 +202,12 @@ class Provider(ProviderBase):
         # instead of a date string.
         #
         # This id becomes part of the worker's prompt-file NAME (run-poller.py's spawn_worker), which
-        # has to survive as a path argument through the poller -> wt.exe -> PowerShell relay that opens
-        # the worker tab. Graph's event ids on this (consumer) tenant always end in "="/"==" base64
-        # padding, and that "=" reliably breaks that relay partway through — launch-session.ps1 then
-        # reports the resulting (silently truncated, extension-less) path as not found, every single
-        # time, for every physical task. Stripping to bare alphanumerics before taking the last 10
-        # characters keeps the id segment just as distinguishing (verified against a live batch of
-        # tasks) while never putting a relay-breaking character in the path.
+        # travels inside the background session's launch command line and its seed. Graph's event ids on
+        # this (consumer) tenant always end in "="/"==" base64 padding, and "=" is exactly the kind of
+        # character a command-line relay can split or truncate a path on (the earlier terminal-tab
+        # launcher did, for every physical task). Stripping to bare alphanumerics before taking the last
+        # 10 characters keeps the id segment just as distinguishing (verified against a live batch of
+        # tasks) while never putting a shell-sensitive character in the path.
         safe_tail = re.sub(r"[^A-Za-z0-9]", "", item["id"])[-10:]
         return f"{self.name}-{slug(item['subject'])}-{safe_tail}"
 

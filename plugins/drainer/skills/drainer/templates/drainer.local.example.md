@@ -56,8 +56,8 @@ triage_model: claude-sonnet-5              # the per-cycle batched triage call (
 # EOD digest (run-digest.py) - the once-a-day interactive slow loop.
 digest_model: claude-opus-5-5   # the digest session (summarize fyi, group junk)
 orphan_grace_minutes: 15        # the poller re-queues any item whose source object is still unhandled with
-                                # no live worker process on it - there is no time limit on an open tab.
-                                # This grace only stops a just-spawned tab (process not up yet) from being
+                                # no live worker session on it - there is no time limit on an open session.
+                                # This grace only stops a just-spawned worker (session not up yet) from being
                                 # misread as dead.
 digest_time: "17:00"            # wall-clock time (HH:MM, 24h) the daily digest task fires (used by the installer).
 ---

@@ -50,7 +50,7 @@ The stage command enforces this: your provider's `--reply` / `--draft-new` / `cr
 
 - The voice loop still applies: after the user sends, diff sent-vs-draft and append a concrete lesson to the document-authoring skill's Voice learning loop.
 - Write the body as an HTML file, then create the draft via your provider's CLI - **never sent** from inside the worker.
-  Show the draft text in the terminal so the user can review it.
+  Show the draft text in your reply so the user can review it.
 - The user edits + sends themselves.
   Never auto-send; sending is gated behind an explicit OK in the top-level interactive session.
 

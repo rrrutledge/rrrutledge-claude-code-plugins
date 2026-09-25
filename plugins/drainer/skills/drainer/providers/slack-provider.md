@@ -85,7 +85,7 @@ A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 
 When no reaction clearly fits, add none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
 
 ## AUTO-HANDLE
-Standing rules where Russell has decided the answer in advance, so the poller triages the item **`auto-handle`** (per `../engine/triage.md`) and the worker executes it autonomously - no tab, no wait - then records it in the digest's "Auto-handled" section.
+Standing rules where Russell has decided the answer in advance, so the poller triages the item **`auto-handle`** (per `../engine/triage.md`) and the worker executes it autonomously - no wait for Russell - then records it in the digest's "Auto-handled" section.
 Each rule below names its exact condition and action; act only when an item plainly matches one.
 Anything that doesn't match a rule here is NOT auto-handle - it falls back to the normal needs-you/fyi/junk triage.
 
@@ -116,7 +116,7 @@ There is no inbound-mail-style unsubscribe for Slack.
 Stage the reply through the **`message-draft`** skill's **`slack`** mode (browser, draft-only) - that skill owns the composer mechanics and the voice gate.
 It jumps to the conversation, confirms the header matches, and **types the reply into the Slack composer without sending** (Slack auto-saves it as a per-conversation draft).
 **Never press Enter / never send.**
-Show the draft text in the terminal and tell the user to edit + send it themselves in Slack.
+Show the draft text in your reply and tell the user to edit + send it themselves in Slack.
 (message-draft loads `document-authoring` for the voice and runs its stage-time voice gate; the voice loop still applies - diff sent-vs-draft after the user sends and append a lesson.)
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): point `message-draft` slack mode at that conversation.

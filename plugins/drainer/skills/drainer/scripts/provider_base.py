@@ -5,27 +5,18 @@ Each source the poller drives ships a `providers/<name>-adapter.py` next to its 
 `stable_id` + `capture`. `run-poller.py` loads these dynamically — no provider mechanics live in the
 poller itself. This module is the small shared surface (subprocess + slug helpers + the interface).
 """
-import ctypes
 import glob
 import importlib.util
 import json
 import os
 import re
 import subprocess
-import threading
-import time
+import sys
 from datetime import datetime, timezone
 
 # Suppress the brief console window each child process would otherwise flash when the poller runs
-# under pythonw (no parent console). 0 on non-Windows. The visible worker tabs are spawned via wt.exe
-# separately and are unaffected.
+# under pythonw (no parent console). 0 on non-Windows.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-# Windows Terminal's top-level window class. Used to tell "Russell is working in a terminal" (let the
-# new worker tab surface and take focus, so he sees it and starts on it) from "Russell is in something
-# else — a browser, slides" (keep the drainer window minimized so it never covers what he's doing).
-WT_WINDOW_CLASS = "CASCADIA_HOSTING_WINDOW_CLASS"
-SW_MINIMIZE = 6
 
 # The neutral priority band — the rank of any drained item carrying no priority label (all email/Slack,
 # and every Trello card the job-board poller didn't tag). The trello adapter assigns it to unlabeled
@@ -50,31 +41,17 @@ def band_rank(it):
             it.get("_referral_band", 0))
 
 
-def _window_class(hwnd):
-    """Win32 class name of a window handle, or '' if it can't be read."""
-    try:
-        buf = ctypes.create_unicode_buffer(256)
-        ctypes.windll.user32.GetClassNameW(hwnd, buf, 256)
-        return buf.value
-    except Exception:
-        return ""
-
-
 def spawn_silent(prompt_file, model, cwd):
-    """Run a Claude worker silently with no visible window or terminal tab.
+    """Run a Claude worker silently: a one-shot `claude --print` call, not a session, so nothing to
+    reach from the phone and no self-close needed.
 
-    Uses `claude --print` (single-turn non-interactive mode): Claude runs tools, completes the task,
-    and exits automatically. No WT tab is created, no self-close needed.
+    `--print` is single-turn non-interactive mode: Claude runs tools, completes the task, and exits.
     For background maintenance tasks (e.g. Teams mark-read) that need no human review.
     """
-    seed = (
-        f"Your task instructions are in '{prompt_file}' - "
-        "open it and begin immediately without waiting for further input."
-    )
     args = ["claude", "--print"]
     if model:
         args += ["--model", model]
-    args.append(seed)
+    args.append(prompt_seed(prompt_file))
     subprocess.Popen(
         args,
         cwd=cwd,
@@ -83,122 +60,6 @@ def spawn_silent(prompt_file, model, cwd):
         stderr=subprocess.DEVNULL,
         creationflags=NO_WINDOW | subprocess.DETACHED_PROCESS,
     )
-
-
-# The four tools a drainer worker never uses - their definitions would otherwise ride in every model
-# call's prompt for no purpose. Same list the headless triage/screen calls disallow (run-poller's
-# HEADLESS_CLAUDE_FLAGS); PowerShell is denied so the worker uses the Bash tool, per ~/.claude/CLAUDE.md.
-_BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
-# `claude --bg` prints:  Starting background service…\n backgrounded · <shortId> · <name>
-# Capture the short id (the sessionId's first hyphen-delimited segment) - the handle `claude
-# attach/logs/stop/rm` and `claude agents` all take. `[^0-9a-f]*` skips the middot/spaces after
-# "backgrounded" up to the id. Color codes are stripped first (_ANSI_RE): launched from inside a
-# session (a worker's handoff), FORCE_COLOR is set, so claude wraps the id in an escape like
-# `\x1b[36m` whose own digits would otherwise stop the skip short of the real id.
-_BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-# Vars a running Claude session sets for its own tool subprocesses. A launch from inside a session (a
-# worker's handoff) inherits them, so they are cleared to keep the new session a clean top-level one -
-# see spawn_bg's docstring. A launch from the poller never has them, so clearing is a no-op there.
-_SESSION_ENV = ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDE_HOST_PID",
-                "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_BRIDGE_SESSION_ID",
-                "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
-                "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_JOB_DIR", "CLAUDE_EFFORT")
-
-
-def spawn_bg(seed, model, cwd, name):
-    """Launch a headless background Claude worker with `claude --bg` - no window, no terminal tab, so no
-    focus steal (the whole point, and the single way a fresh worker spawns). Returns the short session id
-    claude prints (which the caller writes into the per-item receipt so liveness, reconcile, and peek all
-    read one receipt), or None when the launch fails or the id can't be parsed.
-
-    Four details are load-bearing:
-      - `--remote-control` is what actually gets the worker onto claude.ai/code and the phone app.
-        `remoteControlAtStartup` in settings.json (on by default) only auto-connects a normal
-        interactive launch - it does not extend to `--bg`, a wholly separate headless mode with no
-        interactive session to auto-connect in the first place. Without this flag a worker is a real,
-        live, running session that is nonetheless invisible everywhere except a terminal on this exact
-        machine, which is the whole reason "waiting for Russell" workers went unreachable from his phone.
-      - `--permission-mode manual` is the safety anchor: every action the safe-compounds hook does not
-        auto-approve pauses for Russell, so reaching a "send" becomes the blocked state rather than an
-        autonomous send. The hook still auto-approves safe commands, so day-to-day the worker feels like
-        a tab worker; only the final irreversible steps wait.
-      - `--` precedes the seed because `--disallowedTools` is variadic and would otherwise swallow the
-        seed as another tool name, leaving the session idle with no prompt (the same greedy-variadic
-        gotcha the headless triage/screen calls avoid by putting their prompt on stdin; a --bg seed is a
-        positional, so it needs the explicit separator).
-      - The launch env clears the inherited identity vars so the worker is a clean top-level session,
-        not a mis-tagged child of whatever launched the poller:
-          * CLAUDE_CODE_CHILD_SESSION / CLAUDE_CODE_SESSION_ID / CLAUDE_PID - so the worker establishes
-            its own session id and pid rather than inheriting the launcher's.
-          * CLAUDE_HOST_PID - so the worker's self-close (end-session.py) takes the headless branch
-            (`claude stop` its own session) and never the tab branch. Were the poller launched from a
-            profile-loaded tab, an inherited host pid would send the worker's close-up at the launcher's
-            PowerShell instead; cleared, the worker is unambiguously headless.
-          * the rest of _SESSION_ENV - the launching session's job dir, messaging socket, bridge id and
-            effort, which a handoff launched from inside a worker would otherwise carry over.
-        A browser tab the worker opens needs no owner env: browser-chauffeur owns it by the worker's own
-        claude process (CLAUDE_PID, which Claude Code injects into the worker's tool subprocesses and
-        which lives exactly as long as the worker), so it is released the moment the worker ends.
-    No focus logic: a background session never surfaces a window to steal focus from.
-    """
-    env = {k: v for k, v in os.environ.items() if k not in _SESSION_ENV}
-    args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual", "--name", name,
-            "--model", model, "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
-    try:
-        res = run_subprocess_bounded(args, timeout=120, cwd=cwd, env=env, creationflags=NO_WINDOW)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if res.returncode != 0:
-        return None
-    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
-    return m.group(1) if m else None
-
-
-def spawn_tab(args, cwd):
-    """Open a Windows Terminal worker tab (via spawn-tab.cmd) with focus-aware placement.
-
-    Adding a tab to the existing 'drainer' window always activates that window — wt.exe's --no-focus
-    governs only NEW-window creation, not a tab added to a window that already exists (verified on
-    WT 1.24). So we read the foreground window BEFORE the Popen and branch on it:
-
-      - foreground IS a terminal  -> Russell is working in the terminal; let the new tab surface and
-        take focus normally so he sees it and starts on it. Do nothing.
-      - foreground is anything else (browser, PowerPoint, ...) -> don't interrupt him: once WT grabs
-        focus, minimize the drainer window. Minimizing the grabber returns activation to whatever he
-        was using, and (unlike SetForegroundWindow from a headless process) is not blocked by the
-        Windows foreground lock.
-    """
-    try:
-        prev = ctypes.windll.user32.GetForegroundWindow()
-        prev_is_terminal = _window_class(prev) == WT_WINDOW_CLASS if prev else False
-    except AttributeError:
-        prev, prev_is_terminal = None, False
-    subprocess.Popen(["cmd", "/c", *args], cwd=cwd, creationflags=NO_WINDOW)
-    if prev and not prev_is_terminal:
-        threading.Thread(target=_minimize_terminal_on_grab, args=(prev,), daemon=True).start()
-
-
-def _minimize_terminal_on_grab(prev):
-    """Minimize the drainer window once it steals focus from `prev`. Runs in a daemon thread.
-
-    WT claims focus in stages, so we wait briefly, then watch the foreground: if it never leaves
-    `prev`, there is nothing to do; if a terminal window grabs it, minimize that window — which slides
-    it off-screen and hands activation back to `prev` without fighting the foreground lock.
-    """
-    user32 = ctypes.windll.user32
-    time.sleep(0.4)  # let WT finish its (staged) activation
-    for _ in range(15):
-        fg = user32.GetForegroundWindow()
-        if fg == prev:
-            return  # focus never left Russell's window
-        if _window_class(fg) == WT_WINDOW_CLASS:
-            try:
-                user32.ShowWindow(fg, SW_MINIMIZE)
-            except Exception:
-                pass
-            return
-        time.sleep(0.05)
 
 
 class ProviderError(Exception):
@@ -329,11 +190,13 @@ def slug(s, maxlen=18):
     return s[:maxlen].strip("-")
 
 
-def find_skill_script(start_file, skill, rel_path):
-    """Locate a sibling skill's script/module across the two layouts a plugin actually runs from.
+def find_skill_script(start_file, plugin, rel_path, skill=None):
+    """Locate a sibling plugin's script/module across the two layouts a plugin actually runs from.
 
-    Dev repo:   <plugins>/<skill>/skills/<skill>/<rel_path>                    (sibling of drainer)
-    Installed:  <plugins>/cache/<marketplace>/<skill>/<ver>/skills/<skill>/<rel_path>
+    Dev repo:   <plugins>/<plugin>/skills/<skill>/<rel_path>                   (sibling of drainer)
+    Installed:  <plugins>/cache/<marketplace>/<plugin>/<ver>/skills/<skill>/<rel_path>
+    `skill` defaults to `plugin`, the usual layout; pass it when they differ (session-mgr's skill is
+    `resume-sessions`).
     Walks up from `start_file` to the first ancestor directory literally named `plugins`, tries the
     dev-repo sibling path, and otherwise globs the installed-cache layout specifically, returning the
     highest real version (parsed as a digit tuple, so `1.10.1` correctly beats `1.9.0`) among the
@@ -348,14 +211,15 @@ def find_skill_script(start_file, skill, rel_path):
     Returns None if nothing resolves; the caller raises its own ProviderError with a source-specific
     message.
     """
+    skill = skill or plugin
     d = _plugins_root(start_file)
     if not d:
         return None
-    sibling = os.path.join(d, skill, "skills", skill, rel_path)
+    sibling = os.path.join(d, plugin, "skills", skill, rel_path)
     if os.path.exists(sibling):
         return sibling
     suffix = os.path.join("skills", skill, rel_path)
-    matches = glob.glob(os.path.join(d, "cache", "*", skill, "*", suffix))
+    matches = glob.glob(os.path.join(d, "cache", "*", plugin, "*", suffix))
     if not matches:
         return None
 
@@ -403,10 +267,51 @@ def resolve_skill_dirs(start_file):
     return dirs
 
 
+# ------------------------------------------------------------------------------ session launching
+#
+# Every Claude session the drainer starts - a worker, a diagnostic, the digest, a crash resume - is a
+# headless `claude --bg` background session launched by session-mgr's bg_session module, the one
+# launcher every plugin shares. It is resolved like any sibling skill script (dev-repo sibling first,
+# else the highest installed version) and loaded once under the module name `bg_session`, so the
+# drainer and its tests can stub its functions in one place. The names below are re-exported so the
+# poller, the digest, and the tests keep importing them from here.
+
+def session_mgr_script(name):
+    """Path to one of session-mgr's `resume-sessions/scripts/<name>` files, or None."""
+    return find_skill_script(__file__, "session-mgr", os.path.join("scripts", name), skill="resume-sessions")
+
+
+def _load_bg_session():
+    if "bg_session" in sys.modules:
+        return sys.modules["bg_session"]
+    path = session_mgr_script("bg_session.py")
+    if not path:
+        raise ImportError("drainer: session-mgr's bg_session.py was not found - install the session-mgr "
+                          "plugin, which launches every drainer session.")
+    spec = importlib.util.spec_from_file_location("bg_session", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["bg_session"] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop("bg_session", None)
+        raise
+    return module
+
+
+bg_session = _load_bg_session()
+spawn_bg = bg_session.spawn_bg
+launch = bg_session.launch
+write_receipt = bg_session.write_receipt
+prompt_seed = bg_session.prompt_seed
+session_name = bg_session.session_name
+claude_agents = bg_session.claude_agents
+
+
 # ---------------------------------------------------------------------------- correspondent identity
 #
 # The poller holds a second item from the same correspondent out of dispatch while an earlier one of
-# theirs is still being worked, so one tab reads both with full context instead of two racing. That
+# theirs is still being worked, so one worker reads both with full context instead of two racing. That
 # needs a stable answer to "who is this from" per item. For a DIRECT sender the envelope From address
 # is that answer. For a RELAY sender it is NOT: a shared no-reply address (Securus/JPay's
 # donotreply@jpay.com serves every incarcerated contact; LinkedIn notification mail comes from
@@ -462,7 +367,7 @@ def relay_correspondent(item, get_body):
         (e.g. Securus/JPay). Its identity has to be extracted from the subject/preview/body instead.
       - a SELF-NOTE (`fromMe` and `toMe` both set): every self-note shares the account owner's own
         address, so using that address as-is would collapse them all into one correspondent — one open
-        self-note tab would then silently hold every other self-note out of dispatch, indefinitely and
+        self-note worker would then silently hold every other self-note out of dispatch, indefinitely and
         without a trace, until it closed. Content extraction is the wrong tool here too (recurring or
         near-duplicate subjects, e.g. two "Research plane ticket prices" notes sent seconds apart, would
         collide and reintroduce the same bug) — a self-note is always exempt, full stop.
@@ -629,7 +534,7 @@ def load_seen(runtime_dir, source):
 
     An id is recorded here the moment the poller acts on the item - dispatches a worker for a needs-you or
     auto-handle item, or queues an fyi/junk item for the digest. An item the poller held (a correspondent
-    still being worked, or the open-tab budget was full) is left UNrecorded so it re-enumerates next cycle,
+    still being worked, or the open-worker budget was full) is left UNrecorded so it re-enumerates next cycle,
     so exactly the not-yet-started items are the ones absent from this map. `collect_new` in the poller
     reads it to drop already-seen items from a cycle; the digest reads it to count the not-yet-started
     backlog the same way, off persisted state rather than any live-process scan. Stdlib-only, so both the

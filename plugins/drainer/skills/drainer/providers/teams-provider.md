@@ -55,7 +55,7 @@ Classify as **needs-you (work)** and follow these steps in order:
 3. **Extract Russell's action items.**
    Regardless of who organized, scan the AI notes for action items assigned to Russell.
    Each action item becomes a separate needs-you item: write a new `items/<recording-id>-ai<N>.json` + `items/<recording-id>-ai<N>.msg.md` for each (using the meeting name + action-item text as subject/body, `source: "teams"`, `triage: "needs-you"`, `kind: "work"`).
-   The poller's next cycle picks these up and spawns worker tabs for them.
+   The poller's next cycle picks these up and spawns worker sessions for them.
 
 4. **No notes or no action items.**
    If AI notes don't exist or none are assigned to Russell (and Russell is not the organizer), the recording is **fyi** - route it to the digest queue and close up.

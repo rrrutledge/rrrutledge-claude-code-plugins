@@ -1,7 +1,7 @@
 {
   "name": "session-mgr",
-  "version": "1.7.2",
-  "description": "Session management utilities — find and resume Claude Code sessions that ended without an explicit exit command.",
+  "version": "1.8.0",
+  "description": "Session management utilities - launch every automated Claude session in the background, and find and resume sessions that ended without an explicit exit command.",
   "author": {
     "name": "Russell Rutledge"
   },

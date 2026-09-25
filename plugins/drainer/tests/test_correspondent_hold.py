@@ -129,6 +129,26 @@ check("guid not in the live set -> not held-open (the crashed-worker fail-safe)"
 check("no live scan (None) -> empty, so a cross-cycle hold fails open",
       poller.open_correspondents(rt, None), set())
 
+print("\nopen_correspondents against the real live scan: a full-guid receipt and a legacy short-id one")
+# Receipts now hold the full guid (write_receipt resolves it); older ones, or a launch whose guid
+# couldn't be resolved, hold the short id. live_session_ids must make both match.
+FULL = "6997ef2f-aaaa-bbbb-cccc-dddddddddddd"
+rt2 = workspace([("item-full", FULL, "jane@example.com"),
+                 ("item-short", "33ddd28a", "relay|securus|tyler cossey"),
+                 ("item-dead", "deadbeef", "bob@ex.com")])
+real_agents = poller.claude_agents
+poller.claude_agents = lambda: [
+    {"kind": "background", "id": "6997ef2f", "sessionId": FULL, "pid": 1},
+    {"kind": "background", "id": "33ddd28a", "sessionId": "33ddd28a-1111-2222-3333-444444444444", "pid": 2},
+    {"kind": "background", "id": "deadbeef", "sessionId": "deadbeef-1111-2222-3333-444444444444"},  # no pid
+]
+try:
+    live = poller.live_session_ids()
+finally:
+    poller.claude_agents = real_agents
+check("full-guid and short-id receipts both held; the pid-less session released",
+      poller.open_correspondents(rt2, live), {"jane@example.com", "relay|securus|tyler cossey"})
+
 print("\nin-cycle dedup: two duplicates in ONE cycle -> first dispatches, the rest wait")
 # Replays the needs-loop discipline from main: check held_for_correspondent, and register the
 # correspondent only on dispatch. Two items sharing a key must not both spawn.

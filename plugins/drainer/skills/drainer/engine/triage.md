@@ -8,7 +8,7 @@ This file ONLY classifies - what the loop DOES with each bucket (own worker vs d
 ## The question
 
 For every inbound item ask: **is there something for Russell to do?**
-If there is, now is the time - do it immediately, or kick it off in a tab.
+If there is, now is the time - do it immediately, or kick it off in a worker session.
 Everything Russell is going to do, he does right now.
 
 Answer it by **reading the item as Russell would** - the world-knowledge below tells you who he is, the people and organizations he's tied to, and the systems he acts in, so you can judge the item the way he would on reading it.
@@ -64,22 +64,22 @@ Whether a sign-in exists doesn't decide it here.
   - a **directive** - anything he's telling the pod (or a later Russell) to *do*: an imperative ("stop applying to lower-level jobs", "book the flight", "research plane ticket prices"), a decision to carry out, a standing preference to put into effect, any work to kick off - is **needs-you** (hint "work"), so a worker launches right away and acts on it.
     This is the point of a self-email: he dictated an instruction because he wants it done, so it surfaces now, not two days later in the digest.
   - a **pure memo** - a fact, a link, or a reminder he only wants to keep and re-read, with nothing to act on - is **fyi**.
-    When it's genuinely unclear whether the note asks for an action, lean **needs-you** (the standing "unsure → act" tie-breaker below): a false needs-you costs one worker tab, a false fyi leaves a directive sitting untouched until the digest.
+    When it's genuinely unclear whether the note asks for an action, lean **needs-you** (the standing "unsure → act" tie-breaker below): a false needs-you costs one worker session, a false fyi leaves a directive sitting untouched until the digest.
 
 **When there is something to do, it's one of two buckets:**
 
-- **needs-you** - Russell acts on it now, in its own worker tab.
+- **needs-you** - Russell acts on it now, in its own worker session.
   This is the default for anything he'd do.
   It's ONE bucket on purpose; don't split reply-vs-work here.
   Record a hint: **"reply" / "work" / "work-then-reply"**.
 - **auto-handle** - the narrow case where a **standing rule fully decides** the action: the same answer every time, no judgment left.
-  Claude does it autonomously and reports it in the digest instead of opening a tab.
+  Claude does it autonomously and reports it in the digest instead of waiting on Russell.
   These standing rules are defined per source, in `providers/<source>-provider.md` under its **AUTO-HANDLE** section (the poller surfaces them at triage time so the match can be made here); pick this bucket **only** when one of those rules plainly matches - it says exactly what to do and under what condition.
   Any judgment left - *should* this be approved, *how* to word a reply, *whether* it's the right move - keeps it **needs-you**.
 
 **When there's nothing to do, it's one of the other two:**
 
-- **fyi** - Russell may want to know, but there's nothing to act on; no tab opens and the digest surfaces it.
+- **fyi** - Russell may want to know, but there's nothing to act on; no worker opens and the digest surfaces it.
   Common cases that land here:
   - **Delivery-failure bounces** (MAILER-DAEMON / Postmaster) - **needs-you** when someone Russell was actually trying to reach didn't get it: a primary **To** recipient, especially a lone address (e.g. a Google Docs comment bounced from `comments-noreply@docs.google.com`), which he now has to deliver another way. fyi when the failed address wasn't the real target - a CC, or one of many on a mailing list - so the message still reached who it was for.
   - **Completed-event notices** - an automated notification that something already finished (a token regenerated, a password changed, a setting updated, a sign-in confirmed, a new device or app or passkey added, a payment method changed); reading it changes nothing Russell would do.

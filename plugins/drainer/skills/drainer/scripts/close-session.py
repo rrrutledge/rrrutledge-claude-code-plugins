@@ -1,10 +1,10 @@
 """Thin resolver/forwarder — NOT the close primitive itself.
 
 The real self-close primitive is session-mgr's end-session.py (it fires the
-SessionEnd hook event, then kills this tab's process tree — see that file).
+SessionEnd hook event, then ends this session — see that file).
 This resolver finds the NEWEST INSTALLED copy of it and forwards, so a worker
 always self-closes through the version-pinned plugin rather than a floating
-working-clone path — the same pattern as launch-session.ps1 in this directory.
+working-clone path — the same pattern as spawn-handoff.py in this directory.
 On a machine where the plugin isn't installed yet, it falls back to the
 working-clone copy.
 

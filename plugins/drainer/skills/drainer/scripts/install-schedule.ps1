@@ -7,7 +7,8 @@
 #   powershell -File install-schedule.ps1 -RepoDir C:/Users/russe/Dev/personal-ai-pod [-IntervalMinutes 5]
 #   powershell -File install-schedule.ps1 -RepoDir C:/Users/russe/Dev/personal-ai-pod -Remove
 #
-# Runs in your interactive desktop session (LogonType Interactive) so the spawned worker tabs work.
+# Runs as your interactive logon (LogonType Interactive), so the poller runs under your own user
+# profile and credentials.
 
 param(
     [Parameter(Mandatory = $true)][string]$RepoDir,
@@ -37,7 +38,7 @@ Copy-Item -Path (Join-Path $scriptDir 'launch-drainer.py') -Destination $launche
 $pythonw = & (Join-Path $scriptDir 'Find-Python.ps1') -Executable 'pythonw'
 
 # pythonw (no console) so the recurring cycle runs silently in the background -- no black window flash
-# every interval. The visible worker tabs come from wt.exe and are unaffected.
+# every interval. Workers launch as headless background sessions, so nothing needs a console.
 $action = New-ScheduledTaskAction -Execute $pythonw `
     -Argument ('"' + $launcher + '" --mode poller --repo "' + $RepoDir + '"')
 
@@ -47,8 +48,9 @@ $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -StartWhenAvailable -MultipleInstances IgnoreNew
 
-# Run in the logged-on interactive desktop session - required so the spawned worker tabs (wt.exe
-# new-tab) actually appear on screen.
+# Run as Russell's interactive logon. Background worker sessions need no desktop; the interactive
+# logon is what runs the task under his user profile and credentials (his Claude login, plugin
+# installs, and user environment).
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `

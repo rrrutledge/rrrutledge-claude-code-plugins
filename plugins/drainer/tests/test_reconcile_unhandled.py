@@ -169,10 +169,38 @@ rt = workspace(
 write_session(rt, "a", "11111111-2222-3333-4444-555555555555")
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})],
                   live=["11111111-2222-3333-4444-555555555555"])
-check("live tab is left alone however long it is up", requeued, [])
+check("live worker is left alone however long it is up", requeued, [])
 
 n, requeued = run(rt, [FakeProvider(GMAIL, {"msg-a"})], live=["99999999-0000-0000-0000-000000000000"])
 check("a dead session re-queues", requeued, [(GMAIL, "a")])
+
+
+def run_agents(rt, providers, agents):
+    """Drive the reconcile through the REAL live_session_ids, with `claude agents` stubbed to `agents`."""
+    requeued = []
+    real_agents, real_seen_state = poller.claude_agents, poller.seen_state
+    poller.claude_agents = lambda: agents
+    poller.seen_state = _recording_seen_state(rt, requeued, real_seen_state)
+    try:
+        poller.reconcile_unhandled(rt, CFG, providers)
+    finally:
+        poller.claude_agents, poller.seen_state = real_agents, real_seen_state
+    return requeued
+
+
+print("\nguard: a live session matches its receipt whether it holds the full guid or a legacy short id")
+FULL = "6997ef2f-aaaa-bbbb-cccc-dddddddddddd"
+AGENTS = [{"kind": "background", "id": "6997ef2f", "sessionId": FULL, "pid": 1},
+          {"kind": "background", "id": "33ddd28a", "sessionId": "33ddd28a-1111-2222-3333-444444444444", "pid": 2}]
+rt = workspace(seen={GMAIL: {"full": {"triage": "needs-you"}, "short": {"triage": "needs-you"},
+                             "gone": {"triage": "needs-you"}}},
+               items={"full": captured("msg-full"), "short": captured("msg-short"), "gone": captured("msg-gone")})
+write_session(rt, "full", FULL)
+write_session(rt, "short", "33ddd28a")
+write_session(rt, "gone", "deadbeef-1111-2222-3333-444444444444")
+requeued = run_agents(rt, [FakeProvider(GMAIL, {"msg-full", "msg-short", "msg-gone"})], AGENTS)
+check("full-guid and short-id receipts are live; only the unlisted session re-queues",
+      requeued, [(GMAIL, "gone")])
 
 print("\nguard: the launch grace covers a worker that has not written its session file yet")
 rt = workspace(
