@@ -6,6 +6,7 @@ Everything below is identical across sources.
 
 Throughout this file, `<skill>` means this drainer skill's root folder - the directory containing the `engine/` folder this file lives in.
 Your seed prompt pointed you at `<skill>/engine/worker-core.md` by absolute path, so you already have it; substitute it into the `<skill>/scripts/...` commands below.
+Every other plugin's skill folder is listed with its resolved path in your seed prompt; take a helper script's path from there.
 
 You are working ONE item to completion in your own context.
 **Draft-only outbound by default; never send/post without Russell's explicit say-so.**

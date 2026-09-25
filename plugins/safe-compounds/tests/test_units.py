@@ -24,7 +24,7 @@ from safe_compounds.mcp import classify_mcp_tool  # noqa: E402
 from safe_compounds.enforce import (  # noqa: E402
     detect_complex_bash, detect_simple_expansion, detect_cd_compound, detect_function_definition,
     detect_plugin_cache_reference, detect_gh_api_contents_write, detect_raw_trello_write,
-    enforce_bash,
+    detect_unbounded_wide_find, enforce_bash,
 )
 from safe_compounds.scripts import check_node_segment, get_block_reason, reset_block_reason  # noqa: E402
 from safe_compounds import ai  # noqa: E402
@@ -801,6 +801,28 @@ class TestAnyTmpDirDestination:
         monkeypatch.setattr(paths, "_ALLOWED_EDIT_DIRS", set())
         target = tmp_path / "other-repo" / ".tmp" / "marker.done"
         assert check_cwd_file_command(f'touch "{target}"', "touch") is True
+
+
+class TestUnboundedWideFind:
+    """A find rooted at /, a drive root, or home with no -maxdepth is blocked
+    (see detect_unbounded_wide_find for why)."""
+
+    def test_wide_roots_detected(self):
+        home = os.path.expanduser('~').replace('\\', '/')
+        for cmd in ['find / -iname "gmail.js"', 'find // -name x', 'find /c -name x',
+                    'find C:/ -name x', 'find ~ -name x', 'find ~/ -name x', 'find /proc -name x',
+                    f'find "{home}" -name x', 'find -L / -name x', 'find -O3 / -name x',
+                    'ls && find / -name x', 'find . / -name x']:
+            assert detect_unbounded_wide_find(cmd) is True, cmd
+
+    def test_bounded_finds_pass(self):
+        for cmd in ['find . -name "*.py"', 'find plugins -type f', 'find / -maxdepth 2 -name x',
+                    'find ~/Dev -name x', 'find /c/Users/x/Dev/repo -name x', 'find', 'git log --find-renames']:
+            assert detect_unbounded_wide_find(cmd) is False, cmd
+
+    def test_enforce_bash_blocks_with_redirect(self):
+        reason = enforce_bash('find / -iname "trello_utils.py" 2>/dev/null | head -5')
+        assert reason and 'skill-directory list' in reason
 
 
 class TestPluginCacheBlocking:

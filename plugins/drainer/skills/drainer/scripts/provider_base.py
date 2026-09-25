@@ -338,13 +338,7 @@ def find_skill_script(start_file, skill, rel_path):
     Returns None if nothing resolves; the caller raises its own ProviderError with a source-specific
     message.
     """
-    d = os.path.dirname(os.path.abspath(start_file))
-    while d and os.path.basename(d) != "plugins":
-        parent = os.path.dirname(d)
-        if parent == d:
-            d = None
-            break
-        d = parent
+    d = _plugins_root(start_file)
     if not d:
         return None
     sibling = os.path.join(d, skill, "skills", skill, rel_path)
@@ -360,6 +354,43 @@ def find_skill_script(start_file, skill, rel_path):
         return tuple(int(n) for n in re.findall(r"\d+", ver))
 
     return max(matches, key=version_tuple)
+
+
+def _plugins_root(start_file):
+    """The first ancestor of `start_file` literally named `plugins`, or None."""
+    d = os.path.dirname(os.path.abspath(start_file))
+    while os.path.basename(d) != "plugins":
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+    return d
+
+
+def resolve_skill_dirs(start_file):
+    """Map every sibling plugin's skill name to its resolved skill directory, using exactly the
+    dev-repo-sibling-then-highest-installed-version choice `find_skill_script` makes.
+
+    A worker session is told these up front because it otherwise has no way to turn a provider doc's
+    `<name-skill>/scripts/x.js` placeholder into a real path: the version segment of the installed layout
+    changes on every release, a SKILL.md names its scripts relative to its own directory, and the
+    worker's cwd is the drainer's repo. Left to guess, a worker falls back to a drive-wide `find /`,
+    which safe-compounds blocks (see its `detect_unbounded_wide_find` for why).
+
+    Candidate names come from both layouts (the dev-repo siblings and every installed-cache plugin);
+    a plugin whose skill isn't named after it (`<p>/skills/<p>/SKILL.md` missing) is simply omitted.
+    """
+    root = _plugins_root(start_file)
+    if not root:
+        return {}
+    names = {n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n))}
+    names.update(os.path.basename(p) for p in glob.glob(os.path.join(root, "cache", "*", "*")))
+    dirs = {}
+    for name in sorted(names):
+        skill_md = find_skill_script(start_file, name, "SKILL.md")
+        if skill_md:
+            dirs[name] = os.path.dirname(skill_md)
+    return dirs
 
 
 # ---------------------------------------------------------------------------- correspondent identity

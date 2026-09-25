@@ -43,7 +43,8 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_tab, spawn_bg, spawn_silent, band_rank, slug, self_directed,
-                           load_providers as base_load_providers, load_seen)  # subprocess helpers + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader
+                           load_providers as base_load_providers, load_seen,
+                           resolve_skill_dirs)  # subprocess helpers + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -1146,6 +1147,17 @@ def write_worker_context(item, local_dir, json_file):
     return path
 
 
+def _skill_dirs_block():
+    """The worker-seed lines naming each plugin skill's resolved directory, or "" when none resolve."""
+    dirs = resolve_skill_dirs(__file__)
+    if not dirs:
+        return ""
+    lines = "".join(f"- `<{name}-skill>` = `{path}`\n" for name, path in dirs.items())
+    return ("Plugin skill directories, already resolved - a script a doc names as "
+            "`<name-skill>/scripts/x.js` (or relative to its SKILL.md) is at the path below. "
+            "Run or import it from there; never search the filesystem for a plugin script:\n" + lines)
+
+
 def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item):
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
@@ -1171,6 +1183,8 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             "The item's `source` field names the provider — read its `<source>-provider.md` (in "
             f"`{PROVIDERS_DIR}`, or `{local_providers}` for a machine-local provider) for its "
             "CLEAR and DRAFT-MODE and use them. Draft-only: never send or post.\n"
+            # Every `<name-skill>` placeholder, pre-resolved (see provider_base.resolve_skill_dirs).
+            + _skill_dirs_block()
             # The shared brain (context.md) is pre-gated to THIS item and written beside its json, so the
             # worker loads only the sections this item's source/shape fires instead of the whole file on
             # every model call; worker-core §0 reads it in place of context.md. None when there is no
