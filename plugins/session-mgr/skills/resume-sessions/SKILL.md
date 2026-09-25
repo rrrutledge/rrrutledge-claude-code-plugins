@@ -33,7 +33,7 @@ instructions: |-
      `SessionEnd` with reason `"other"` - the hook keeps that entry in place rather than
      deregistering it, because the entry carries a `host_pid` marking it as a hand-started
      terminal session the user parked and wants back). A deliberate end -
-     `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive — deregisters the
+     `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive - deregisters the
      session, and a reason-`"other"` end with no `host_pid` (a background or scheduled `claude`
      run) deregisters too, so neither is ever resurrected.
 
@@ -56,9 +56,10 @@ instructions: |-
   Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan only,
   next section) — the registry already proved they were still open.
 
-  Registry entries are self-healing: resuming a session re-fires `SessionStart` (re-adding
-  it), and a later clean exit fires `SessionEnd` (removing it) — so nothing needs manual
-  pruning beyond what the script already does for self-closed sessions.
+  Registry entries are self-healing: a resume through `spawn-session.py` drops the old session
+  id from the registry, the resumed session registers its new id at `SessionStart`, and a later
+  clean exit fires `SessionEnd` (removing it) - so nothing needs manual pruning beyond what the
+  script already does for self-closed sessions.
 
   ## Step 2 — Fallback scan for sessions the registry doesn't cover
 
@@ -198,8 +199,8 @@ instructions: |-
   Tell the user how many sessions were resumed and list the titles with their short ids, noting how
   many came from the registry (confirmed) versus the fallback scan (heuristic). If any sessions were
   skipped because they were already open, mention that count too. The resumed sessions appear in
-  the Claude app and at claude.ai/code; `claude agents` lists them here, and
-  `claude attach <short id>` or `claude logs <short id>` opens one in this terminal.
+  the Claude app and at claude.ai/code; `claude agents` lists them here, `claude attach <short id>`
+  opens one in this terminal, and `claude logs <short id>` shows its output.
 
   ## Notes
 
@@ -208,11 +209,12 @@ instructions: |-
     (the command above points there), backed by `bg_session.py` beside it. It is the one launcher
     for every automated session: a fresh session seeded with `--brief <handoff doc>` or
     `--prompt-file <instructions file>`, or an existing one continued with `--resume <guid>`. Every
-    launch is a `claude --bg --remote-control` background session on whichever Claude account
-    `claude-account main|backup` last selected. The drainer plugin ships a thin forwarder of its own
+    launch is a `claude --bg --remote-control` background session: a fresh one runs on whichever
+    Claude account `claude-account main|backup` last selected, and a resume on the account that
+    holds its transcript. The drainer plugin ships a thin forwarder of its own
     (`spawn-handoff.py`) that finds this launcher, so drainer workers keep one stable path.
-  - `--resume <session_id>` continues an existing session by its UUID, picking up the full
-    conversation history.
+  - `--resume <session_id>` continues an existing session by its UUID under a new session id,
+    carrying the full conversation history.
   - There are ~1,300 JSONL session files total; the fallback scan reads all of them but only the
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what

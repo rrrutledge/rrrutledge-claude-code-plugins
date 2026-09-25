@@ -17,8 +17,8 @@ An orchestrator (the handoff launcher, a drainer worker delegating to another re
 
 ### 1. Launch - session-mgr's `spawn-session.py`
 
-The launcher lives in the session-mgr plugin, not here: `plugins/session-mgr/skills/resume-sessions/scripts/spawn-session.py`.
-It starts a background session (`claude --bg`) with Remote Control on, so the session is reachable from claude.ai/code and the phone and never opens a Windows Terminal tab.
+The launcher lives in the session-mgr plugin at `plugins/session-mgr/skills/resume-sessions/scripts/spawn-session.py`.
+It starts a background session (`claude --bg`) with Remote Control on, so the session is reachable from claude.ai/code and the phone.
 The drainer's `spawn-handoff.py` is a thin shim over the same launcher.
 
 ```
@@ -30,7 +30,7 @@ It seeds the session one of three ways:
 
 - `--brief <file>` points the session at a handoff doc.
 - `--prompt-file <file>` points it at a standing instructions file, optionally led by the one-line text in `--summary-file`.
-- `--resume <guid>` continues an existing session with its history, and takes a `--brief` or `--prompt-file` as a follow-up.
+- `--resume <guid>` continues an existing session with its history, optionally handed a `--brief` or `--prompt-file` as a follow-up.
 
 A fresh launch needs `--model` and a name (`--title` or `--summary-file`).
 It prints the new session's short id, the handle `claude attach`, `claude logs`, and `claude stop` take.
@@ -46,7 +46,7 @@ python wait-done.py <path>.done
 ```
 
 Blocks (polling every 20s) until either `<path>.done` or `<path>.skip` exists, then exits 0. Run it in
-the **foreground** in short cycles so the orchestrator's tab stays in the "working" state; between
+the **foreground** in short cycles so the orchestrator's session stays in the "working" state; between
 cycles, `peek` the spawned session to show live progress.
 
 ### 3. Peek — `peek.py`

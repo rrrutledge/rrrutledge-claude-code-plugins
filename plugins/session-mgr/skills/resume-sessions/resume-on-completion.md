@@ -3,9 +3,9 @@
 Use this when a session's remaining work is genuinely blocked on **another specific session finishing** - a fresh session this session spawns to do that work now, or a peer session already doing it - rather than on Russell answering in this session.
 The default when blocked is to launch a session to do the blocking work right away and set up the resume.
 The blocked session captures how to resume itself, hands the resume instruction to that other session, and closes now.
-When the other session's work is done, it launches the resume and the blocked session comes back in the background with its full history to finish the rest.
+When the other session's work is done, it runs the resume command and the blocked session comes back in the background with its full history to finish the rest.
 
-This frees the session immediately, and - for a drainer worker - the drain slot it was holding, so neither sits open in Russell's session list with nothing to do.
+Closing right away takes the blocked session off Russell's session list and, for a drainer worker, releases the drain slot it was holding, so neither sits idle while the blocking work runs.
 
 ## When this pattern applies (and when a tracker card is still right)
 
@@ -40,7 +40,7 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 4. **Close this session now** via the **`session-mgr:close`** skill (a drainer worker: `python <skill>/scripts/close-session.py`).
    This fires `SessionEnd` cleanly, so the session deregisters from the live-session registry rather than looking crash-interrupted.
 
-The resumed session re-fires `SessionStart` when it comes back, re-registering itself, and finishes the remaining work exactly where it stopped.
+The resumed session comes back under a new session id carrying the full history, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
 
 ## Why this is safe against a duplicate worker (drainer)
 

@@ -12,7 +12,7 @@ AND a start time landing EXACTLY on the overnight parking grid (`:00` at midnigh
 at 1 AM, `:00/:30` at 2 AM — see calendar.js's isQueuedSlot) — mirrors the old pre-drainer habit of
 staging a to-do in an overnight band and dragging it out once picked up. Exact-slot matching (not just
 "somewhere in that hour") matters because CLEAR's "started" step moves start to the moment the worker
-tab launched, which can itself fall inside 00:00-02:59 if Russell's up working late — a real timestamp
+session launched, which can itself fall inside 00:00-02:59 if Russell's up working late — a real timestamp
 essentially never lands exactly on a slot, so alignment is what actually distinguishes "still sitting
 untouched" from "just started." Nothing here ever moves a queued task on its own, so an undone one just
 keeps coming back until it's started — for as long as it stays within the scan's lookback window
@@ -69,7 +69,7 @@ class Provider(ProviderBase):
         commitment; short on purpose, since no task should ever be sized past an hour — see
         CAPTURE's duration note), `buffer_minutes` (default 20 — added on top of a task's own
         duration before it counts as eligible, covering the lag between a gap being detected and
-        Russell actually opening the worker tab), `lookback_days` (default 365 — how far back the
+        Russell actually opening the worker session), `lookback_days` (default 365 — how far back the
         queued scan reaches, so a task that has sat unstarted for months keeps re-surfacing rather
         than dropping out of view; raise it toward the Graph ceiling of 1825 to widen that margin),
         `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription),
@@ -171,7 +171,7 @@ class Provider(ProviderBase):
             return []
         gap = self._gap_minutes()
         # `buffer_minutes` covers the lag between a gap being detected here and Russell actually
-        # opening the worker tab (a tab budget it has to wait for, or just not being the tab he's
+        # opening the worker session (a worker-slot budget it has to wait for, or just not being the session he's
         # on right now) — a task only counts as fitting once its own duration PLUS that buffer is
         # covered, not just its bare duration.
         eligible = [t for t in due if t["minutes"] + self.buffer_minutes <= gap]
@@ -185,7 +185,7 @@ class Provider(ProviderBase):
 
     def still_in_inbox_ids(self):
         """Reconcile's analog of "still in the inbox": every currently-queued task's id, gap or no
-        gap. A task the poller dispatched whose tab later closed without being started (still sitting
+        gap. A task the poller dispatched whose worker session later closed without being started (still sitting
         exactly on the parking grid — see CLEAR) is still queued — dropping its seen key here lets it
         dispatch again next time a real gap opens, instead of being silently forgotten for good."""
         try:
@@ -214,10 +214,10 @@ class Provider(ProviderBase):
     def correspondent(self, item):
         # Every physical task shares ONE identity, not a per-item one: Russell can only physically do
         # one task at a time, so a second eligible task must wait behind whichever one already has an
-        # open worker tab — the same hold the poller uses to keep two messages from the same person out
+        # open worker session — the same hold the poller uses to keep two messages from the same person out
         # of dispatch together (see provider_base.ProviderBase.correspondent / run-poller.py's
         # held_for_correspondent). Returning a constant here reuses that existing mechanism instead of
-        # needing a bespoke single-flight lock: once the open task's tab closes (started, finished, or
+        # needing a bespoke single-flight lock: once the open task's worker session closes (started, finished, or
         # deferred — see CLEAR), the hold releases and the next-longest eligible task dispatches.
         return "physical-task"
 

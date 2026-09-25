@@ -30,6 +30,6 @@ Report the gate up to the one channel that reaches Russell without anyone watchi
    End your turn here instead of closing up.
 
 Russell resumes this the same way he'd continue any open session.
-The digest points him to this item and names its worker's session as the one waiting, so he opens this session in the Claude app or at claude.ai/code and tells it he's cleared the gate.
+The digest points him to this item and names its worker's session as the one waiting, so he opens this session in the Claude app or at [claude.ai/code](https://claude.ai/code) and tells it he's cleared the gate.
 From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate, and continue the flow from where you stopped.
 Then finish normally: complete the remaining work, draft any reply, clear the item per worker-core §6, and close up per §6's closing rules once your part and his are both done.

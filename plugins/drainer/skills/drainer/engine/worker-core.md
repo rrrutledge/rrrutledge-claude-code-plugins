@@ -178,7 +178,7 @@ Route each piece of work by where it belongs - which is also where Russell can r
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model id>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
-  The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on claude.ai/code, or in `claude agents`.
+  The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
