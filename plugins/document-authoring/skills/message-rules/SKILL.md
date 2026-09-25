@@ -211,6 +211,7 @@ A single clear sentence ending in a question is usually the whole message — re
   Don't append a confirm-or-next-step question ("sound right?", "OK to book it that way?") about work that's routinely theirs to carry out - that closing belongs to the domain-expert case where you're genuinely putting a decision to them, not to a plain answer that already stands.
   **Exception - the completed task changed how the recipient themselves is represented (their bio, quote, or wording):** close with a direct confirming question ("Looks good?") anyway. Its accuracy is inherently their call, the same domain-expert case as above, not a routine report being relayed to them.
   Give a plan as one plain line and a decision on your own side as a bare fact - the timing mechanics behind the plan and the parenthetical justifying the decision both come out.
+  When that plan hangs on an appointment of your own, name its timing roughly ("early next week"), since the exact date is detail the recipient doesn't need.
   **Exception - a plan slipped and the recipient is actively coordinating on it:** keep the concrete reason and where things actually stand, rather than compressing to the bare next step. They're depending on the outcome, so the snag and the current state are the orientation they need, not diagnostic play-by-play about work they're not part of.
   **Exception - a promised action finished later than expected:** name the one concrete thing that ate the time, right at the completion statement before any other content, not compressed to a bare "done." Pair it with a brief, genuine apology (see **Apologize genuinely and briefly** below).
   Don't itemize each individual action once a summary phrase already implies it.
@@ -383,6 +384,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Ellipses for softening** — "If you need to leave you can just say so ... especially if we're going over time."
 - **Apologize genuinely and briefly** — "Sorry this is taking so long.", "I'm sorry I have to move this again."
   Own a mistake of yours in every message that touches it while it's still being fixed, not just the first — a prior apology doesn't retire the need for a short acknowledging clause in the next one, and "thanks for understanding" alone reads as glossing over it.
+  When a step the recipient is waiting on caught you unprepared, own that candidly in one plain clause ahead of your plan, even with an arms-length contact, since it honestly explains the pace they're waiting on.
   Reply to mail that has sat for a week or more with a brief "Sorry for the delay in responding".
   A same-day gap counts too when it leaves a still-open scheduling ask unanswered - confirming a same-day proposed time hours after it was asked for still gets a brief apology naming the concrete reason ("Sorry to just respond now - I had a few meetings this morning."), since the other party can't act until you answer.
   When the reply delivers the result or answer they were waiting on, that apology opens the reply; otherwise it goes near the sign-off.
