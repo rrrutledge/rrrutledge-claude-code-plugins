@@ -18,7 +18,7 @@
 //   node seen-state.js queue-add   <runtimeDir> <source> <id> <json-file> -> append a captured fyi/junk item to the digest queue
 //   node seen-state.js queue-list  <runtimeDir>                          -> prints the queue as JSON
 //   node seen-state.js queue-clear <runtimeDir> <id>                     -> removes one item from the queue
-//   node seen-state.js requeue     <runtimeDir> <source> <id>            -> drop the seen key so the item re-enumerates and re-dispatches a fresh tab
+//   node seen-state.js requeue     <runtimeDir> <source> <id>            -> drop the seen key so the item re-enumerates and re-dispatches a fresh worker session
 
 const fs = require('fs');
 const path = require('path');

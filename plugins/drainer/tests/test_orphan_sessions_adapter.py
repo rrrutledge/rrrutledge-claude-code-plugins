@@ -56,6 +56,14 @@ def test_enumerate_returns_seeded_orphan():
     print("test: enumerate() surfaces a seeded registry entry via the real find-orphans.py")
     session_id = f"test-adapter-{uuid.uuid4()}"
     fire_event("SessionStart", session_id, cwd="C:/fake/repo/adapter-test")
+    # The hook records the nearest claude.exe ancestor's pid - the live session running this test,
+    # when there is one - which would make the seeded entry look alive. Clear it so the entry reads
+    # as a session whose process is gone.
+    with open(REGISTRY_PATH, encoding="utf-8") as f:
+        registry = json.load(f)
+    registry[session_id]["pid"] = None
+    with open(REGISTRY_PATH, "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=2)
     try:
         provider = adapter_mod.Provider()
         items = provider.enumerate(50)

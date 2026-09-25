@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,18 +38,19 @@ def registry_entry(session_id):
         return json.load(f).get(session_id)
 
 
-def fire_event(event, session_id, reason=None, host_pid=None):
+def fire_event(event, session_id, reason=None, host_pid=None, job_dir=None):
     payload = {"hook_event_name": event, "session_id": session_id, "cwd": os.getcwd()}
     if reason is not None:
         payload["reason"] = reason
-    # The hook reads CLAUDE_HOST_PID from its own environment at SessionStart. Control it per
-    # call so the test is deterministic regardless of whether the test runner itself was launched
-    # from an interactive tab (which would carry a real host pid).
+    # The hook reads CLAUDE_HOST_PID and CLAUDE_JOB_DIR (is this a background session?) from its own
+    # environment at SessionStart. Control both per call so the test is deterministic regardless of
+    # whether the test runner itself runs in a terminal tab or a background session.
     env = dict(os.environ)
-    if host_pid is not None:
-        env["CLAUDE_HOST_PID"] = host_pid
-    else:
-        env.pop("CLAUDE_HOST_PID", None)
+    for name, value in (("CLAUDE_HOST_PID", host_pid), ("CLAUDE_JOB_DIR", job_dir)):
+        if value is not None:
+            env[name] = value
+        else:
+            env.pop(name, None)
     subprocess.run([sys.executable, REGISTRY_HOOK], input=json.dumps(payload), text=True,
                    check=True, env=env)
 
@@ -150,6 +152,27 @@ def test_abrupt_close_without_host_pid_is_removed():
     check("removed", registry_entry(session_id) is None, f"got {registry_entry(session_id)}")
 
 
+def test_background_session_records_no_host_pid():
+    print("test: a background session records host_pid None even with an inherited CLAUDE_HOST_PID, "
+          "so its reason-'other' end deregisters it")
+    session_id = f"test-session-registry-{uuid.uuid4()}"
+    with tempfile.TemporaryDirectory() as job_dir:
+        with open(os.path.join(job_dir, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"backend": "daemon", "state": "working"}, f)
+        fire_event("SessionStart", session_id, host_pid="4242", job_dir=job_dir)
+        try:
+            entry = registry_entry(session_id)
+            check("entry written", entry is not None)
+            check("host_pid None for a background session", (entry or {}).get("host_pid") is None,
+                  f"got {entry}")
+            fire_event("SessionEnd", session_id, reason="other", host_pid="4242", job_dir=job_dir)
+            check("reason 'other' end removes it", registry_entry(session_id) is None,
+                  f"got {registry_entry(session_id)}")
+        finally:
+            if registry_entry(session_id) is not None:
+                fire_event("SessionEnd", session_id, reason="self_close")
+
+
 def test_deliberate_close_of_real_tab_is_removed():
     print("test: a deliberate end (self_close, /exit, /clear) deregisters even a real tab")
     for reason in ("self_close", "prompt_input_exit", "clear", "logout"):
@@ -169,6 +192,7 @@ if __name__ == "__main__":
     test_session_start_records_host_pid()
     test_abrupt_close_of_real_tab_is_kept()
     test_abrupt_close_without_host_pid_is_removed()
+    test_background_session_records_no_host_pid()
     test_deliberate_close_of_real_tab_is_removed()
     print()
     if failures:

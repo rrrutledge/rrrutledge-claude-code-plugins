@@ -69,7 +69,11 @@ def is_segment_trusted(seg, trusted):
     if word.lower() == 'taskkill':
         return commands.is_taskkill_safe(seg)
     if word == 'wt':
-        return commands.is_wt_safe(seg, trusted)
+        # Windows Terminal runs whatever command line follows it in a new tab,
+        # and nothing here validates that inner command's arguments, so it
+        # always goes to a manual prompt. Claude sessions launch in the
+        # background through session-mgr's spawn-session.py, not in a tab.
+        return False
     if word.lower().endswith('.cmd'):
         tokens = shell_tokenize(seg)
         filepath = tokens[0] if tokens else seg.strip()

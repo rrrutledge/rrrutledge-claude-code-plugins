@@ -2,8 +2,9 @@
 skill: resume-sessions
 description: Find and resume Claude Code sessions that ended abruptly (without an "exit" command). Use when the user asks to resume sessions after a computer restart, crash, or unplanned shutdown, or when they want to recover sessions that weren't properly closed.
 instructions: |-
-  Find all Claude Code sessions that ended without an explicit "exit" command and launch each one
-  in a new Windows Terminal tab for resumption. Skip sessions that are currently open.
+  Find all Claude Code sessions that ended without an explicit "exit" command and resume each one
+  as a background session (`claude --bg --remote-control`), reached from claude.ai/code and the
+  Claude phone app. Skip sessions that are currently open.
 
   ## Step 1 — Find confirmed orphans (shared script)
 
@@ -14,32 +15,30 @@ instructions: |-
   ```
 
   It works in two parts:
-  1. Scans running `claude.exe` processes for their session ID — from `--resume`/
-     `--session-id` on the command line, or (for a bare launch with neither flag)
-     `CLAUDE_CODE_SESSION_ID` in the process's own environment. In practice that env-var
-     fallback never matches: Claude Code only sets `CLAUDE_CODE_SESSION_ID` for the child
-     processes it spawns (hooks, the Bash tool), never on its own process.
+  1. Builds the active set: every session `claude agents --json` reports live, read across every
+     Claude account, plus the session ID on each running `claude.exe` command line
+     (`--resume`/`--session-id`).
   2. Reads the live-session registry (`~/.claude/session-mgr/live-sessions.json` — a dict of
      `{session_id: {cwd, started_at, pid, host_pid}}` for every session that has started but not
      cleanly ended, maintained by this plugin's `SessionStart`/`SessionEnd` hooks) and returns every
      entry whose session isn't in the active set from part 1 **and** whose recorded `pid`
      isn't a still-live `claude.exe` either. That `pid` — the launching `claude.exe`'s PID,
      found by walking the hook's own process ancestry at `SessionStart` — is what actually
-     covers a bare launch with no `--resume`/`--session-id`: since part 1 can't discover such a
-     session's id from either the command line or the (dead) env-var fallback, without the pid
-     check a still-open bare-launched tab would be misdetected as an orphan and get a
-     duplicate resume tab spawned on top of it. Two kinds of session survive both checks as a
+     covers a terminal session started bare, with no `--resume`/`--session-id`: without the pid
+     check a still-open bare-launched session would be misdetected as an orphan and get a
+     duplicate resume spawned on top of it. Two kinds of session survive both checks as a
      **confirmed** one to resume, needing no content heuristics: a hard crash or forced restart
-     (which never fires `SessionEnd`, so the entry is never removed), and a real user tab closed
-     abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"` — the hook
-     keeps that entry in place rather than deregistering it, because the tab carries a `host_pid`
-     marking it as a launched interactive tab the user parked and wants back). A deliberate end —
-     `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive — deregisters the
+     (which never fires `SessionEnd`, so the entry is never removed), and a session Russell
+     started by hand in a terminal whose tab closed abruptly with the window/tab X (which fires
+     `SessionEnd` with reason `"other"` - the hook keeps that entry in place rather than
+     deregistering it, because the entry carries a `host_pid` marking it as a hand-started
+     terminal session the user parked and wants back). A deliberate end -
+     `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive - deregisters the
      session, and a reason-`"other"` end with no `host_pid` (a background or scheduled `claude`
      run) deregisters too, so neither is ever resurrected.
 
   It also applies the self-close tail check before returning anything: a session that ends
-  itself by force-killing its own tab dies before the harness can fire `SessionEnd`, so its
+  itself by force-killing its own process dies before the harness can fire `SessionEnd`, so its
   registry entry survives even though the close was deliberate. The proper self-close
   primitive (`scripts/end-session.py`, next to the launcher) fires the SessionEnd hooks first
   and can't leave this residue, but entries written before a session's tooling adopted it —
@@ -57,9 +56,10 @@ instructions: |-
   Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan only,
   next section) — the registry already proved they were still open.
 
-  Registry entries are self-healing: resuming a session re-fires `SessionStart` (re-adding
-  it), and a later clean exit fires `SessionEnd` (removing it) — so nothing needs manual
-  pruning beyond what the script already does for self-closed sessions.
+  Registry entries are self-healing: a resume through `spawn-session.py` drops the old session
+  id from the registry, the resumed session registers its new id at `SessionStart`, and a later
+  clean exit fires `SessionEnd` (removing it) - so nothing needs manual pruning beyond what the
+  script already does for self-closed sessions.
 
   ## Step 2 — Fallback scan for sessions the registry doesn't cover
 
@@ -156,7 +156,7 @@ instructions: |-
   - Automated triage prompt: last_user_text starts with `You are the drainer poller's triage step`
     (a self-contained classification job that completes and ends on its own — never a live
     conversation to resume)
-  - Deliberate self-close: the transcript tail shows the session killing its own tab — the same
+  - Deliberate self-close: the transcript tail shows the session closing itself - the same
     self-close tail check Step 1's find-orphans.py applies to registry entries (a
     `taskkill /PID <pid> /T /F` or a `close-session.py` / `end-session.py` invocation among its
     final actions)
@@ -169,72 +169,75 @@ instructions: |-
   to the moment a restart killed its background browser action. A `<status>killed</status>`
   field inside the notification is an especially strong signal the restart is exactly what
   interrupted it. If the notification instead shows a passive timeout (e.g. "Monitor timed out —
-  re-arm if needed") and you want extra confidence before launching a whole tab for it, it's fine
+  re-arm if needed") and you want extra confidence before launching a whole session for it, it's fine
   to spot-check whether the underlying thing being watched (a PR, a deployment) is already resolved
   - but default to including it.
 
   Launch everything else — short replies, drainer seeds, mid-sentence messages, one-word answers,
   all of it. Do not guess whether the user considered a session finished.
 
-  ## Step 3 — Launch each session in a new WT tab
+  ## Step 3 - Resume each session in the background
 
   Merge Step 1 (registry-confirmed) and Step 2 (fallback, after exclusions) into one list,
   de-duplicated by session ID. For each session in that list, run:
 
   ```bash
-  "$HOME/AppData/Local/Microsoft/WindowsApps/wt.exe" -w 0 new-tab \
-    -d "<cwd_with_forward_slashes>" \
-    --title "<short title (≤30 chars)>" \
-    powershell -NoExit \
-    -File "$HOME/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/launch-session.ps1" \
-    -Resume "<session_id>"
+  python "$HOME/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/spawn-session.py" \
+    --resume "<session_id>" --cwd "<its cwd>"
   ```
 
-  Key rules for the wt.exe command:
-  - Top-level command is `wt.exe`, NOT `powershell`
-  - Use forward-slash drive paths for `-d` and `-File` (e.g. `C:/Users/...`)
-  - Backslash paths from `cwd` must be converted to forward slashes
-  - `-Resume` accepts only the UUID — no prose needed
-  - Keep `--title` short and quote-free (no `"` inside the title string)
+  Key rules for the command:
+  - `--resume` takes the full session UUID
+  - `--cwd` is the session's own original working directory, from Step 1 or Step 2
+  - The session keeps its own name and model; add `--title "<short title>"` only to rename it
 
-  Launch each tab sequentially (the Bash tool runs them one at a time naturally).
+  Resume each session sequentially (the Bash tool runs them one at a time naturally).
+  Each prints the resumed session's short id.
 
-  ## Step 4 — Confirm
+  ## Step 4 - Confirm
 
-  Tell the user how many sessions were opened and list the titles, noting how many came from the
-  registry (confirmed) versus the fallback scan (heuristic). If any sessions were skipped because
-  they were already open, mention that count too.
+  Tell the user how many sessions were resumed and list the titles with their short ids, noting how
+  many came from the registry (confirmed) versus the fallback scan (heuristic). If any sessions were
+  skipped because they were already open, mention that count too. The resumed sessions appear in
+  the Claude app and at claude.ai/code; `claude agents` lists them here, `claude attach <short id>`
+  opens one in this terminal, and `claude logs <short id>` shows its output.
 
   ## Notes
 
-  - `launch-session.ps1` lives inside this plugin at
-    `~/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/launch-session.ps1`
-    (the command above points there). Its `-Resume` flag runs `claude --resume <session_id>` in the
-    correct working directory. The drainer plugin ships a thin resolver of its own that finds the
-    newest *installed* copy of this launcher, so drainer workers aren't tied to a working-clone branch.
-  - `claude --resume <session_id>` resumes an existing session by its UUID, picking up the full
-    conversation history.
+  - `spawn-session.py` lives inside this plugin at
+    `~/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/spawn-session.py`
+    (the command above points there), backed by `bg_session.py` beside it. It is the one launcher
+    for every automated session: a fresh session seeded with `--brief <handoff doc>` or
+    `--prompt-file <instructions file>`, or an existing one continued with `--resume <guid>`. Every
+    launch is a `claude --bg --remote-control` background session: a fresh one runs on whichever
+    Claude account `claude-account main|backup` last selected, and a resume on the account that
+    holds its transcript. The drainer plugin ships a thin forwarder of its own
+    (`spawn-handoff.py`) that finds this launcher, so drainer workers keep one stable path.
+  - `--resume <session_id>` continues an existing session by its UUID under a new session id,
+    carrying the full conversation history.
   - There are ~1,300 JSONL session files total; the fallback scan reads all of them but only the
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what
     makes Step 1's find-orphans.py authoritative instead of another heuristic. It only reflects
     sessions started since the hook was installed — plan on the fallback scan doing more of the
     work until the registry has enough history built up.
-  - `scripts/end-session.py` (next to the launcher) is the correct way for a session to close its
-    own tab: it fires this plugin's SessionEnd hooks with the same payload the harness would send,
-    then taskkills the hosting process tree. Anything that instructs a session to self-close
-    should route through it (the drainer forwards via its own thin resolver,
-    `close-session.py`) — a raw `taskkill` of the host PID skips SessionEnd and strands a
-    registry entry.
-  - `/close` runs `scripts/end-session.py` on demand, for an interactive session that's done and
-    wants to close its own tab in one shot instead of typing `exit` twice (once for Claude Code,
-    once for the PowerShell host). Requires `CLAUDE_HOST_PID` to be set, which the user's
-    `$PROFILE` does automatically for any tab launched with a normal `powershell` host.
+  - `scripts/end-session.py` (next to the launcher) is the correct way for a session to close
+    itself: it fires this plugin's SessionEnd hooks with the same payload the harness would send,
+    then ends the session. A background session runs `claude stop` on itself, and its conversation
+    stays resumable; a session Russell started by hand in a terminal has its hosting tab's process
+    tree killed. Anything that instructs a session to self-close should route through it (the
+    drainer forwards via its own thin resolver, `close-session.py`), since a raw `taskkill` skips
+    SessionEnd and strands a registry entry.
+  - `/close` runs `scripts/end-session.py` on demand, for a session that's done and wants to close
+    in one shot. For a hand-started terminal session it closes the tab too, in place of typing
+    `exit` twice (once for Claude Code, once for the PowerShell host); that path reads
+    `CLAUDE_HOST_PID`, which the user's `$PROFILE` sets for any `powershell` host.
   - **Resume-on-completion** (`resume-on-completion.md`, with `scripts/schedule-resume.py`) is the
-    pattern for a session whose remaining work is blocked on another specific tab/session finishing -
-    a peer already doing that work, or a fresh tab it spawns. The blocked session runs
-    `schedule-resume.py` to capture the command that resumes it, hands that to the tab doing the
-    blocking work (a `SendMessage` to a peer, or a line in a spawned tab's handoff doc), and closes now
-    via `end-session.py`; the other tab runs the captured command when its work is done. Read that doc
-    when a session needs to pause on a specific in-flight session rather than on Russell in this tab.
+    pattern for a session whose remaining work is blocked on another specific session finishing -
+    a peer already doing that work, or a fresh session it spawns. The blocked session runs
+    `schedule-resume.py` to capture the `spawn-session.py --resume` command that brings it back,
+    hands that to the session doing the blocking work (a `SendMessage` to a peer, or a line in a
+    spawned session's handoff doc), and closes now via `end-session.py`; the other session runs the
+    captured command when its work is done. Read that doc when a session needs to pause on a
+    specific in-flight session rather than on Russell in this session.
 ---

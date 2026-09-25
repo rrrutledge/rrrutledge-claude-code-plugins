@@ -7,7 +7,7 @@ rather than deregistering, because the user parked it and wants it resumed). Reg
 resume-sessions skill's fallback scan (every session transcript's tail) — that stays
 exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
-psutil process scan).
+`claude agents` listing per account and the psutil process scan).
 
 Run directly, prints JSON to stdout:
     python find-orphans.py
@@ -26,10 +26,31 @@ import sys
 
 import psutil
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bg_session  # noqa: E402
+
 REGISTRY_PATH = os.path.expanduser("~/.claude/session-mgr/live-sessions.json")
-PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 SESSION_RE = re.compile(r"--(?:resume|session-id)\s+([0-9a-fA-F-]{36})")
-SELF_CLOSE_RE = re.compile(r"taskkill\s+/PID\s+\S+\s+/T\s+/F|close-session\.py|end-session\.py")
+SELF_CLOSE_RE = re.compile(
+    r"taskkill\s+/PID\s+\S+\s+/T\s+/F|close-session\.py|end-session\.py|claude\s+stop\b")
+
+# The one `claude agents` state that means a listed session is over. A blocked or parked background
+# session has no pid while it waits, yet the background service still holds it, so it is live.
+STOPPED_STATES = {"stopped"}
+
+
+def agent_session_ids(agents):
+    """Session guids `claude agents` reports as live in any account: running (a pid), or listed
+    with a status or state other than stopped."""
+    ids = set()
+    for agent in agents:
+        sid = agent.get("sessionId")
+        if not sid:
+            continue
+        marks = {m for m in (agent.get("status"), agent.get("state")) if m}
+        if agent.get("pid") or (marks and not marks & STOPPED_STATES):
+            ids.add(sid)
+    return ids
 
 
 def active_session_ids():
@@ -95,16 +116,20 @@ def save_registry(registry):
 
 
 def transcript_path(session_id):
-    """The session's own .jsonl transcript, wherever it lives under ~/.claude/projects/ (one
-    subfolder per project). None if it can't be found."""
-    matches = glob.glob(os.path.join(PROJECTS_DIR, "*", f"{session_id}.jsonl"))
-    return matches[0] if matches else None
+    """The session's own .jsonl transcript, in whichever Claude account's projects folder holds it
+    (one subfolder per project). None if no account has it."""
+    for config_dir in bg_session.account_config_dirs():
+        root = os.path.expanduser(config_dir or bg_session.DEFAULT_CONFIG_DIR)
+        matches = glob.glob(os.path.join(root, "projects", "*", f"{session_id}.jsonl"))
+        if matches:
+            return matches[0]
+    return None
 
 
 def _executed_self_close(record):
     """True if one transcript record is an assistant message that actually RAN a self-close: a
-    Bash tool_use whose command is a taskkill /T /F or a close-session.py / end-session.py
-    invocation, or a Skill tool_use invoking session-mgr:close. A plain-text mention of those
+    Bash tool_use whose command is a taskkill /T /F, a `claude stop`, or a close-session.py /
+    end-session.py invocation, or a Skill tool_use invoking session-mgr:close. A plain-text mention of those
     names — reading a doc that references them, discussing the drainer — is not a match, because
     only a command that actually executed closed the tab on purpose. Keying on the mention alone
     would wrongly prune a real tab that merely had that text in its recent context (e.g. a session
@@ -149,12 +174,20 @@ def closed_itself_on_purpose(session_id):
 
 def find_confirmed_orphans():
     """Registry entries whose session isn't currently running, minus any that closed
-    themselves on purpose. Self-closed entries are pruned from the registry in place (not
+    themselves on purpose. A session is running when `claude agents` lists it as live in any
+    account, when a claude.exe command line names it, or when its recorded pid is still a
+    claude.exe - any one of those is enough. When `claude agents` can't be read at all, nothing
+    is reported: a background session has no process of its own to find, so missing data would
+    otherwise resurrect every live one.
+    Self-closed entries are pruned from the registry in place (not
     just excluded from the return value) so a later run doesn't re-litigate them — same
     behavior the resume-sessions skill has always documented for this check. Pruning isn't
     wrapped in the retry-on-write-race loop session_registry.py's hook uses: a missed prune
     just means the same (harmless) exclusion happens again next run, never a lost orphan."""
-    active = active_session_ids()
+    agents = bg_session.claude_agents()
+    if agents is None:
+        return []
+    active = agent_session_ids(agents) | active_session_ids()
     registry = load_registry()
     orphans = []
     to_prune = []

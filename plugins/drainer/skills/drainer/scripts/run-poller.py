@@ -42,9 +42,10 @@ SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
-                           spawn_tab, spawn_bg, spawn_silent, band_rank, slug, self_directed,
+                           spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
+                           band_rank, slug, self_directed,
                            load_providers as base_load_providers, load_seen,
-                           resolve_skill_dirs)  # subprocess helpers + typed provider failure + headless-worker spawn + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
+                           resolve_skill_dirs)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -599,9 +600,9 @@ def _triage_one(item, brain, repo, model, providers_by_name, bg_config_dir=None)
     prompt = f"{brain}## New item to triage (JSON)\n{json.dumps(payload, indent=2)}\n"
     # Run this headless triage call under the background account when one is configured. The directory
     # is threaded in as an argument (not published to the process environment) on purpose: triage is the
-    # only Claude launch that should move accounts. Worker tabs and the digest are launched via
-    # subprocess spawns that inherit os.environ, and Russell interacts with those tabs (including from
-    # his phone), so they must stay on his main account — setting CLAUDE_CONFIG_DIR only on THIS
+    # only Claude launch that should move accounts. Worker sessions and the digest are launched on the
+    # account Russell last selected, and he interacts with those sessions (including from his phone),
+    # so they must stay on his account — setting CLAUDE_CONFIG_DIR only on THIS
     # subprocess's env, and nowhere process-wide, is what keeps that boundary. None -> inherit the
     # ambient environment, exactly as before.
     env = {**os.environ, "CLAUDE_CONFIG_DIR": bg_config_dir} if bg_config_dir else None
@@ -876,37 +877,33 @@ def _item_bits(json_file):
     return label, subject, who
 
 
-def _tab_title(text, fallback):
-    """Make item text safe to pass as a tab title through spawn-tab.cmd to `wt.exe --title`.
-    The characters `& < > | % " ^` break cmd, and a semicolon is Windows Terminal's command
-    separator, so each becomes a space. Whitespace is collapsed and the result is cut to 50
-    characters; `fallback` stands in when nothing is left."""
-    text = re.sub(r'[&<>|%"^;]', " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:50].strip() or fallback
+def _session_title(text, fallback):
+    """Make item text safe to pass as a session `--name`. The characters `& < > | % " ^ ;` become
+    spaces, so a name never carries shell metacharacters into the launch command line (a `claude`
+    installed as a .cmd shim runs its arguments through cmd). Then session_name collapses whitespace
+    and cuts the result to 50 characters; `fallback` stands in when nothing is left."""
+    return session_name(re.sub(r'[&<>|%"^;]', " ", text or ""), fallback)
 
 
 def _worker_title(iid, json_file):
-    """The INITIAL tab title (shown for the ~1s before the worker's Claude session renames the tab
-    itself). Short and human-readable; falls back to the id on any error."""
+    """The worker session's `--name`, shown in `claude agents` and the Claude app's session list.
+    Short and human-readable; falls back to the id on any error."""
     label, subject, who = _item_bits(json_file)
     if not label:
         return f"drain:{iid}"
     title = f"{label}: {subject}" if subject else label
     if who:
         title += f" - {who}"
-    return _tab_title(title, f"drain:{iid}")
+    return _session_title(title, f"drain:{iid}")
 
 
 def _worker_summary(json_file):
-    """A one-line item summary that LEADS the worker's seed prompt. Claude names the tab off its first
-    message, so leading with this makes the tab self-title descriptively while keeping its attention star
-    (no --suppressApplicationTitle needed). Lead with the CONTENT — the subject/card and who it's from —
-    since that's what matters at a glance; the source is incidental and is NOT forced into the title.
+    """A one-line item summary that LEADS the worker's seed prompt, so the first thing the session reads
+    says what the item is. Lead with the CONTENT — the subject/card and who it's from — since that's
+    what matters at a glance; the source is incidental and is NOT forced in.
 
-    launch-session.ps1 removes the characters that break PowerShell 5.1 native-arg passing (quotes,
-    semicolons) from the summary itself, so this function only collapses each part to one line. The subject
-    is NOT wrapped in quotes. '' when there's nothing to say."""
+    The seed travels as one argument to `claude --bg`, so this function only collapses each part to one
+    line. The subject is NOT wrapped in quotes. '' when there's nothing to say."""
     _label, subject, who = _item_bits(json_file)
 
     def safe(x):  # collapse whitespace to one line
@@ -915,8 +912,8 @@ def _worker_summary(json_file):
     subject, who = safe(subject), safe(who)
     if not subject and not who:
         return ""
-    # Produce a terse title-like string: Claude names the tab off its first message, so the
-    # shorter and more content-forward this is, the better the tab name. Skip `who` when it's
+    # Produce a terse title-like string: the shorter and more content-forward this is, the faster
+    # the lead reads. Skip `who` when it's
     # already in the subject (e.g. "DM from John" doesn't need "from John" appended again).
     if who and subject and who.lower() not in subject.lower():
         return f"{subject} from {who}"
@@ -950,7 +947,7 @@ def _precheck_newer_id(teamsjs, conv_id, first_unread_id, node_kw):
 
 
 def _spawn_teams_mark_read(items, teams_provider, repo, runtime_dir, worker_model):
-    """Spawn a single silent batch worker tab that marks all Teams fyi/junk items read.
+    """Spawn a single silent batch worker that marks all Teams fyi/junk items read.
 
     The boundary-check (REST fetch + compare against firstUnreadMessageId) is done here
     in Python before spawning, so the worker only has to open each conversation in Teams
@@ -997,16 +994,16 @@ def _spawn_teams_mark_read(items, teams_provider, repo, runtime_dir, worker_mode
 # --- shared diagnostic-alert machinery -------------------------------------------------------
 #
 # Every "something's broken, tell Russell now instead of waiting for the daily digest" alert (a
-# failed tab scan, a provider's broken deploy, ...) follows the same two-part shape: a per-cooldown
-# gate so a persistently-broken thing gets one tab, not a fresh one every cycle, and a diagnostic
-# worker-tab spawn (write a prompt seed + a summary seed, then spawn-tab.cmd). `_alert_due` and
-# `_spawn_diagnostic_tab` are that shared mechanism; each alert kind below just supplies its own
-# key/threshold/cooldown and its own explanation of what broke and how to fix it.
+# failed session scan, a provider's broken deploy, ...) follows the same two-part shape: a per-cooldown
+# gate so a persistently-broken thing gets one diagnostic session, not a fresh one every cycle, and a
+# diagnostic worker launch (write a prompt seed + a summary seed, then launch a background session).
+# `_alert_due` and `_spawn_diagnostic` are that shared mechanism; each alert kind below just supplies its
+# own key/threshold/cooldown and its own explanation of what broke and how to fix it.
 
 def _alert_due(health, key, ts_field, cooldown_seconds):
-    """Whether enough time has passed since the last diagnostic tab recorded at health[key][ts_field]
+    """Whether enough time has passed since the last diagnostic session recorded at health[key][ts_field]
     to spawn another. `key` is the health-dict entry (a provider name, or POLLER_KEY for a poller-wide
-    alert like the tab scan) and `ts_field` is that entry's own timestamp field, so alert kinds sharing
+    alert like the session scan) and `ts_field` is that entry's own timestamp field, so alert kinds sharing
     one entry (e.g. two different poller-wide alerts under POLLER_KEY) never share a cooldown."""
     last = health.get(key, {}).get(ts_field)
     if not last:
@@ -1018,11 +1015,12 @@ def _alert_due(health, key, ts_field, cooldown_seconds):
     return (datetime.now(timezone.utc) - last_dt).total_seconds() >= cooldown_seconds
 
 
-def _spawn_diagnostic_tab(slug_prefix, tab_title, summary_text, body, repo, runtime_dir, worker_model):
-    """Write a diagnostic worker's prompt + summary seed files and spawn its tab — the filesystem and
-    spawn-tab.cmd mechanics shared by every diagnostic alert. `body` is the prompt's full instruction
-    text (the caller already wrote the situation-specific explanation and fix); `slug_prefix` names the
-    seed files (paired with a timestamp so concurrent alerts of different kinds never collide)."""
+def _spawn_diagnostic(slug_prefix, title, summary_text, body, repo, runtime_dir, worker_model):
+    """Write a diagnostic worker's prompt + summary seed files and launch it as a background session —
+    the filesystem and launch mechanics shared by every diagnostic alert. `body` is the prompt's full
+    instruction text (the caller already wrote the situation-specific explanation and fix); `slug_prefix`
+    names the seed files (paired with a timestamp so concurrent alerts of different kinds never collide).
+    The session's id lands in `<prompt_file>.session`, the same receipt a worker's launch writes."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -1032,40 +1030,45 @@ def _spawn_diagnostic_tab(slug_prefix, tab_title, summary_text, body, repo, runt
     summary_file = os.path.join(seeds, f"{slug_prefix}-{ts}.summary.txt")
     with open(summary_file, "w", encoding="utf-8") as f:
         f.write(summary_text)
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-tab.cmd")
-    spawn_tab([spawn_cmd, tab_title, repo, prompt_file, worker_model, summary_file], cwd=repo)
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo,
+                     _session_title(title, slug_prefix))
+    if bg_id:
+        write_receipt(prompt_file, bg_id)
+    else:
+        print(f"diagnostic {slug_prefix}: headless `claude --bg` launch returned no id.")
 
 
-SCAN_FAILURE_ALERT_THRESHOLD = 3  # consecutive scan failures before the first diagnostic tab
+SCAN_FAILURE_ALERT_THRESHOLD = 3  # consecutive scan failures before the first diagnostic session
 SCAN_FAILURE_ALERT_COOLDOWN_SECONDS = 3600  # once past threshold, don't spawn another more than hourly
 
 
 def _scan_failure_alert_due(health):
-    """Whether enough time has passed since the last scan-failure diagnostic tab to spawn another.
-    A persistently failing scan would otherwise get a fresh diagnostic tab every 5-minute cycle."""
+    """Whether enough time has passed since the last scan-failure diagnostic session to spawn another.
+    A persistently failing scan would otherwise get a fresh diagnostic session every 5-minute cycle."""
     return _alert_due(health, POLLER_KEY, "last_scan_failure_alert_ts", SCAN_FAILURE_ALERT_COOLDOWN_SECONDS)
 
 
 def _record_scan_failure(health):
-    """Increment the tab-scan's own consecutive-failure streak (separate from any provider's) and
+    """Increment the session scan's own consecutive-failure streak (separate from any provider's) and
     return the new count. A single blip retries silently next cycle; only a real, sustained failure
-    (SCAN_FAILURE_ALERT_THRESHOLD in a row) is worth a diagnostic tab."""
+    (SCAN_FAILURE_ALERT_THRESHOLD in a row) is worth a diagnostic session. The health key keeps its
+    historical `tab_scan_` name so an existing provider-health.json carries over."""
     h = health.setdefault(POLLER_KEY, {})
     h["tab_scan_consecutive_failures"] = h.get("tab_scan_consecutive_failures", 0) + 1
     return h["tab_scan_consecutive_failures"]
 
 
 def _record_scan_ok(health):
-    """Reset the tab-scan failure streak once a scan succeeds again."""
+    """Reset the session-scan failure streak once a scan succeeds again."""
     health.setdefault(POLLER_KEY, {})["tab_scan_consecutive_failures"] = 0
 
 
 def _spawn_scan_diagnostic(repo, runtime_dir, worker_model):
-    """Spawn a single visible worker tab to diagnose why worker_counts() failed to scan/parse.
+    """Launch a single diagnostic worker session to find out why worker_counts() failed to scan/parse.
 
     A failed scan means the worker-buffer throttle can't see how many background workers are running or
     waiting, so dispatch now fail-CLOSES (holds every needs-you item this cycle) instead of dispatching
-    unbounded. This tab is Russell's (or the worker's) visible signal that it happened, and a chance to
+    unbounded. This session is Russell's visible signal that it happened, and a chance to
     find and fix the real cause rather than it recurring silently every cycle.
     """
     body = (
@@ -1080,29 +1083,29 @@ def _spawn_scan_diagnostic(repo, runtime_dir, worker_model):
         "fix, apply it. Either way, tell Russell plainly what you found and whether it's fixed or still "
         "needs his attention.\n"
     )
-    _spawn_diagnostic_tab("scan-failure-diagnostic", "drainer: session-scan failed - diagnose",
-                          "Diagnose: drainer session-count scan failed", body, repo, runtime_dir, worker_model)
+    _spawn_diagnostic("scan-failure-diagnostic", "drainer: session-scan failed - diagnose",
+                      "Diagnose: drainer session-count scan failed", body, repo, runtime_dir, worker_model)
 
 
 # A provider whose enumerate fails with kind="config" (a broken deploy — a missing helper .js or, most
 # often, a missing npm dependency in the skill's shared node_modules store) will fail identically every
 # cycle until a human fixes it, so the whole source stays dark. Left to the once-a-day digest, that is a
 # provider down for up to a day; a missing `imapflow` did exactly that. So a config failure gets the same
-# immediate visible-tab treatment a failed tab-scan does — one diagnostic tab to fix it now, not tomorrow.
-CONFIG_FAILURE_ALERT_THRESHOLD = 2       # consecutive config failures before the first diagnostic tab —
+# immediate treatment a failed session scan does — one diagnostic session to fix it now, not tomorrow.
+CONFIG_FAILURE_ALERT_THRESHOLD = 2       # consecutive config failures before the first diagnostic session —
                                          # a single blip mid-`claude plugin update` self-clears next cycle
 CONFIG_FAILURE_ALERT_COOLDOWN_SECONDS = 3600  # once alerted, don't spawn another for this provider hourly
 
 
 def _config_alert_due(health, name):
-    """Whether enough time has passed since this provider's last config-failure diagnostic tab to spawn
-    another. Keyed per provider (not the shared poller entry) so two providers breaking at once each get
-    their own tab, and a persistently-broken one doesn't get a fresh tab every 5-minute cycle."""
+    """Whether enough time has passed since this provider's last config-failure diagnostic session to
+    spawn another. Keyed per provider (not the shared poller entry) so two providers breaking at once each
+    get their own session, and a persistently-broken one doesn't get a fresh one every 5-minute cycle."""
     return _alert_due(health, name, "last_config_alert_ts", CONFIG_FAILURE_ALERT_COOLDOWN_SECONDS)
 
 
 def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_model):
-    """Spawn a single visible worker tab to fix a provider whose enumerate failed with a deploy/config
+    """Launch a single diagnostic worker session to fix a provider whose enumerate failed with a deploy/config
     error, so a dead source is repaired within a cycle instead of sitting dark until the daily digest."""
     body = (
         "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
@@ -1121,8 +1124,8 @@ def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_mod
         "dependency, find and fix it. Either way, tell Russell plainly what was wrong and whether "
         "it's fixed.\n"
     )
-    _spawn_diagnostic_tab(f"provider-config-failure-{slug(name)}", f"drainer: {name} deploy error - fix",
-                          f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
+    _spawn_diagnostic(f"provider-config-failure-{slug(name)}", f"drainer: {name} deploy error - fix",
+                      f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
 
 
 def write_worker_context(item, local_dir, json_file):
@@ -1208,68 +1211,47 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             f"Read repo-tracked drainer config (e.g. `initiatives/<slug>.md`) from the merged-main "
             f"config repo `{config_repo}`.\n"
         )
-    # A one-line summary leads the seed so the worker's Claude session self-titles descriptively while
-    # keeping its attention star (the same lead the tab launcher prepends; see launch-session.ps1
-    # -SummaryFile). Written to a sibling file too so anything reading the item's summary off disk still
-    # finds it.
+    # A one-line summary leads the seed so the first thing the worker reads says what the item is.
+    # Written to a sibling file too so anything reading the item's summary off disk still finds it.
     summary_file = os.path.join(seeds, f"{iid}.summary.txt")
     summary_text = _worker_summary(json_file)
     with open(summary_file, "w", encoding="utf-8") as f:
         f.write(summary_text)
-    # A fresh worker spawns headless: a `claude --bg` background session, no Windows Terminal tab, so a
-    # spawn never steals desktop focus. Build the SAME one-line seed the tab launcher builds - a
-    # descriptive lead so the session self-names, then the pointer at the on-disk instructions - and
-    # write the background session's short id into the SAME receipt file every other path reads
-    # (<prompt_file>.session), so open_correspondents, reconcile, and peek stay path-agnostic. A launch
-    # that returns no id leaves no receipt, so reconcile re-queues the item after the launch grace,
-    # exactly as it recovers a tab that never came up.
-    lead = re.sub(r"\s+", " ", summary_text).strip()
-    seed = ((lead + " ") if lead else "") + (
-        f"Your task instructions are in '{prompt_file}' - open it and begin immediately "
-        "without waiting for further input.")
-    bg_id = spawn_bg(seed, worker_model, repo, _worker_title(iid, json_file))
+    # A worker is a headless `claude --bg` background session launched through session-mgr's
+    # bg_session. Its id (the full guid when `claude agents` can resolve it, else the short id) goes into
+    # the receipt every reader uses (<prompt_file>.session), so open_correspondents, reconcile, and peek
+    # stay path-agnostic. A launch that returns no id leaves no receipt, so reconcile re-queues the item
+    # after the launch grace.
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file))
     if bg_id:
-        with open(prompt_file + ".session", "w", encoding="utf-8") as f:
-            f.write(bg_id)
+        write_receipt(prompt_file, bg_id)
     else:
         print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
               "left unrecorded to retry next cycle.")
 
 
-def spawn_resume_tab(session_id, cwd, repo):
-    """Dispatch an orphan-sessions item: reopen an existing session via `claude --resume
-    <session_id>`, in ITS OWN original `cwd` (not the drainer's repo) — unlike every other
+def spawn_resume(session_id, cwd, repo):
+    """Dispatch an orphan-sessions item: reopen an existing session in the background via `claude --bg
+    --resume <session_id>`, in ITS OWN original `cwd` (not the drainer's repo) — unlike every other
     source, there's no prompt seed to write; the session already has its full history."""
     base = os.path.basename((cwd or "").rstrip("/\\")) or session_id[:8]
-    title = _tab_title(f"Resume: {base}", f"resume:{session_id[:8]}")
-    spawn_cmd = os.path.join(SCRIPT_DIR, "spawn-resume-tab.cmd")
-    spawn_tab([spawn_cmd, title, cwd or repo, session_id], cwd=repo)
+    title = _session_title(f"Resume: {base}", f"resume:{session_id[:8]}")
+    if not spawn_bg(None, None, cwd or repo, title, resume=session_id):
+        print(f"spawn_resume {session_id}: headless `claude --bg --resume` launch returned no id.")
 
 
 # ---------------------------------------------------------------------------- the cycle
 
 def _claude_agents():
-    """The parsed `claude agents --json` list - every live interactive and background Claude session on
-    this machine (each carries `pid`, `id` (its short id), `sessionId`, `kind` (interactive/background),
-    `status`, and, for a background session, a `state` of working/blocked/idle) - or None if the call
-    can't be run or parsed.
+    """Every Claude session on this machine across every Claude account (bg_session.claude_agents: each
+    entry carries `pid`, `id` (a background session's short id), `sessionId` (the full guid), `kind`
+    (interactive/background), `status`, and, for a background session, a `state` of
+    working/blocked/idle) - or None if no account's list could be read.
 
-    This is the one machine-wide session signal the cycle reads: a background worker's short `id` here is
-    the same id spawn_bg writes to the per-item receipt, and a finished worker stays listed (parked, like
-    an open tab) until it self-terminates its own close-up. None flows through to the callers' fail-safe
+    This is the one machine-wide session signal the cycle reads, and a finished worker stays listed
+    (parked) until it self-terminates its own close-up. None flows through to the callers' fail-safe
     (skip the liveness fast-path / treat the cycle as at the concurrency cap)."""
-    claude = shutil.which("claude") or "claude"
-    try:
-        res = run_subprocess_bounded([claude, "agents", "--json"], timeout=30, creationflags=NO_WINDOW)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if res.returncode != 0:
-        return None
-    try:
-        data = json.loads(res.stdout or "[]")
-    except ValueError:
-        return None
-    return data if isinstance(data, list) else None
+    return claude_agents()
 
 
 def live_session_ids():
@@ -1277,10 +1259,11 @@ def live_session_ids():
     one still has a live worker is held, and reconcile can tell 'worker gone, never going to finish' from
     'parked, waiting for Russell'. One scan per cycle.
 
-    A fresh worker runs headless (`claude --bg`), so this is the set of short ids of the live BACKGROUND
-    sessions from `claude agents --json` - the same short id spawn_bg wrote to each receipt. A finished
-    worker stays listed until it self-terminates, the faithful analog of a tab left open and parked for
-    Russell. Returns None if the scan can't be run/parsed - the caller then SKIPS the liveness fast-path
+    A worker runs headless (`claude --bg`), so this holds, for every live BACKGROUND session, both its
+    short `id` and its full `sessionId`: a receipt written by write_receipt holds the full guid when it
+    could be resolved at launch, and the short id otherwise (or from before receipts carried the guid),
+    and readers test a receipt with a plain `in`. A finished worker stays listed until it
+    self-terminates, parked for Russell. Returns None if the scan can't be run/parsed - the caller then SKIPS the liveness fast-path
     this cycle (the time-based backstop still applies), so an inability to see sessions never reaps a
     live worker.
 
@@ -1292,22 +1275,26 @@ def live_session_ids():
     agents = _claude_agents()
     if agents is None:
         return None
-    return {a["id"] for a in agents if a.get("kind") == "background" and a.get("id") and a.get("pid")}
+    live = set()
+    for a in agents:
+        if a.get("kind") == "background" and a.get("pid"):
+            live.update(x for x in (a.get("id"), a.get("sessionId")) if x)
+    return live
 
 
 def open_correspondents(runtime_dir, live):
     """The correspondent identities that currently have a LIVE worker session on a captured item.
 
     A second item from one of these is held out of dispatch (see the needs loop in main) while an
-    earlier one of theirs is still being worked, so one tab reads both with full context instead of two
+    earlier one of theirs is still being worked, so one worker reads both with full context instead of two
     racing independently and possibly drafting two separate replies. Recomputed fresh every cycle from
     the same live-session signal `reconcile_unhandled` trusts — never a persisted "waiting" flag — so a
     worker that dies without clearing releases the hold within one cycle: reconcile re-queues that item,
     and on the same cycle this set no longer contains its correspondent, so anything behind it dispatches.
     Worst case is one poll cycle's delay, never indefinite starvation.
 
-    Keyed off `live` (the live background worker short ids): for each worker session file whose id is
-    live, read its captured item's persisted `correspondent`. Bounded by the number of session files,
+    Keyed off `live` (the live background sessions' short ids and full guids, so a receipt in either
+    form matches): for each worker session file whose id is live, read its captured item's persisted `correspondent`. Bounded by the number of session files,
     the same order of per-cycle work reconcile already does. A None/empty `live` (scan failed, or nothing
     open) yields the empty set, so a cross-cycle hold fails open — the in-cycle dedup in main still holds
     a same-cycle burst."""
@@ -1375,7 +1362,7 @@ def worker_counts():
     (fail CLOSED: open no new needs-you workers rather than dispatch unbounded), since a scan failure is
     exactly the condition — a bogged-down machine — most likely to coincide with a large eligible
     backlog. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD consecutive
-    failures spawns one visible diagnostic tab."""
+    failures launches one diagnostic session."""
     agents = _claude_agents()
     if agents is None:
         return None
@@ -1400,8 +1387,9 @@ def open_slots(waiting, total, auto_count, cfg):
 
 
 def _session_guid(runtime_dir, iid):
-    """(short id, mtime) from the worker's seeds/<id>.prompt.txt.session, or (None, None). mtime ~ launch
-    time, used to give a freshly-launched worker a grace period before liveness can reap it."""
+    """(session id, mtime) from the worker's seeds/<id>.prompt.txt.session, or (None, None). The id is
+    the full guid, or the short id when the launch couldn't resolve it (and in older receipts);
+    live_session_ids holds both forms. mtime ~ launch time, used to give a freshly-launched worker a grace period before liveness can reap it."""
     p = os.path.join(runtime_dir, "seeds", f"{iid}.prompt.txt.session")
     try:
         with open(p, encoding="utf-8") as f:
@@ -1480,7 +1468,7 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
 
     Under `dry_run` it counts and prints what it would requeue, touching no state.
 
-    `live` (the live background worker short ids) is normally scanned here, but the caller may pass the
+    `live` (the live background sessions' short ids and full guids) is normally scanned here, but the caller may pass the
     set it already scanned this cycle so the correspondent-hold below reuses it — keeping the whole cycle
     to one session scan."""
     if live is _LIVE_UNSET:
@@ -1636,7 +1624,7 @@ def main():
     # Each provider's enumerate is isolated: a failure (expired creds, network/API blip) is caught,
     # recorded to provider-health.json, and the loop continues so the OTHER providers still drain this
     # cycle. A transient auth failure waits for the daily digest to surface it; a config-kind failure (a
-    # broken deploy that won't self-heal, e.g. a missing dependency) gets an immediate diagnostic tab.
+    # broken deploy that won't self-heal, e.g. a missing dependency) gets an immediate diagnostic session.
     all_new, seen_by_source, totals = [], {}, {}
     for provider in providers:
         try:
@@ -1645,7 +1633,7 @@ def main():
             record_health_failure(health, provider.name, str(e), e.kind)
             print(f"{provider.name}: enumerate FAILED [{e.kind}] — {e}. Skipping; other providers continue.")
             # A config-kind failure (broken deploy, e.g. a missing npm dependency) will fail every cycle
-            # until a human fixes it, so surface it with an immediate diagnostic tab rather than leaving a
+            # until a human fixes it, so surface it with an immediate diagnostic session rather than leaving a
             # dark source for the once-a-day digest to notice. Gated by a small consecutive-failure
             # threshold (a single blip mid-update self-clears) and an hourly per-provider cooldown.
             if (e.kind == "config" and not args.dry_run
@@ -1774,7 +1762,7 @@ def main():
     needs_you_items = [it for it in needs_and_others if it["_bucket"] == "needs-you"]
     # orphan-sessions dispatches FIRST, ahead of every other source, explicitly — not via
     # priority-band/received-timestamp tie-breaking (a coincidentally-recent or high-priority
-    # Slack/Trello item could still slot ahead of that). As tab slots free up cycle over cycle,
+    # Slack/Trello item could still slot ahead of that). As worker slots free up cycle over cycle,
     # they go to the orphan-sessions backlog before any fresh Slack/Trello/mail item, until it's
     # drained.
     orphan_needs = sorted(
@@ -1797,7 +1785,7 @@ def main():
     others = [it for it in needs_and_others if it["_bucket"] not in ("needs-you", "auto-handle")]
 
     # Correspondents that already have an open worker this cycle — seed of the dispatch hold below. A
-    # second needs-you item from one of these waits, so one tab reads both with full context instead of
+    # second needs-you item from one of these waits, so one worker reads both with full context instead of
     # two racing. Grown as items dispatch (auto-handle and needs-you both register their correspondent),
     # so even two duplicates arriving in the SAME cycle don't both spawn — the first claims the identity
     # and the rest wait. Recomputed each cycle from live sessions, never a stored flag, so a dead worker
@@ -1835,7 +1823,7 @@ def main():
                     active_correspondents.add(corr)
             hold_label = "HOLD (same correspondent)" if corr_held else "HOLD (buffer full)"
             if it["_source"] == "orphan-sessions":
-                action = hold_label if held else "spawn resume tab"
+                action = hold_label if held else "resume in background"
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
                       f"        {it.get('received')} | cwd={it.get('cwd')} | session={it.get('session_id')}")
                 continue
@@ -1904,7 +1892,7 @@ def main():
         if stamp:
             _stamp_item_fields(json_file, **stamp)
         if it["_source"] == "orphan-sessions":
-            spawn_resume_tab(it["session_id"], it["cwd"], repo)
+            spawn_resume(it["session_id"], it["cwd"], repo)
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
             spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)

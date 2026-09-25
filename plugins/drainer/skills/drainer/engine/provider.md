@@ -9,7 +9,7 @@ A provider is **two files** that sit together, because two different consumers d
 - **`providers/<source>-adapter.py`** - the **poller-facing code**.
   The deterministic poller (`scripts/run-poller.py`) loads it dynamically and drives it; this is where the source's *reading* mechanics live.
 - **`providers/<source>-provider.md`** - the **worker-facing prose**.
-  The AI worker tab reads it to act on one item; this is where *acting* and *clearing* live.
+  The AI worker session reads it to act on one item; this is where *acting* and *clearing* live.
 
 ## Adapter (code) - what the poller drives
 

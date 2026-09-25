@@ -59,8 +59,8 @@ For each tool call the hook produces one of:
   `curl` to localhost / a configured domain / any GET, package-manager installs,
   CWD-scoped `cp`/`mv`/`touch`/`ln` (also trusting `~/Downloads` as a
   destination by default, plus any dirs in `trusted_destination_dirs`),
-  `start` on viewable file types, and `wt` only when it launches a trusted
-  program.
+  and `start` on viewable file types.
+  `wt` (Windows Terminal) always prompts, since the command line it runs in a new tab goes unchecked.
 - **Enforcement (BLOCK → rewrite)** — heredocs, output/input redirection, inline
   `python -c` / `node -e`, PowerShell cmdlets in bash, `cmd /c`, `sed -i`, `$VAR`
   expansion, `VAR=...` assignment, and complex bash (loops, `$()`, conditionals,
@@ -141,7 +141,7 @@ safe_compounds/
   learned.py             machine-local store of AI-approved commands
   scripts.py             node/python script safety analysis (deny-by-default)
   commands.py            subcommand engine (git/gh/npm/yarn/pip/pnpm/bun via a
-                         spec table) + bespoke checkers (curl/sed/start/wt/cmd/file ops/taskkill)
+                         spec table) + bespoke checkers (curl/sed/start/cmd/file ops/taskkill)
   procs.py               live Windows process-ancestry walk (ctypes, no deps) —
                          backs the taskkill self-close-my-own-tab checker
   enforce.py             the BLOCK rules ("rewrite into a validatable form")
@@ -155,8 +155,8 @@ tools/sync_learned.py    auto-sync (SessionEnd hook + on-demand): learnings -> P
 Subcommand-shaped tools (git, gh, the package managers) share one
 `check_subcommand_tool` engine driven by `SUBCOMMAND_SPECS` in `commands.py` —
 adding a new such tool is a table entry, not new code. Tools whose safety isn't
-subcommand-shaped (curl URLs, `sed -i`, `start` extensions, `wt` program
-resolution, `.cmd` parsing, CWD-scoped file ops, `taskkill` self-targeting) stay
+subcommand-shaped (curl URLs, `sed -i`, `start` extensions,
+`.cmd` parsing, CWD-scoped file ops, `taskkill` self-targeting) stay
 as small purpose-built checkers.
 
 One orchestrator (not two separate hook processes) preserves the block-then-

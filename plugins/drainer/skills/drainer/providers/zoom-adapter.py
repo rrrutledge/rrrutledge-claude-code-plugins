@@ -9,7 +9,7 @@ this source by filling in `providers.zoom` in their `.claude/drainer.local.md` a
 OAuth secret in the environment.
 
 **Fan-out without a ProviderBase change.** A Zoom meeting summary is naturally *1 meeting → N action items
-assigned to the user + 1 recap*. The poller loop is one candidate → one stable_id → one worker tab, so the
+assigned to the user + 1 recap*. The poller loop is one candidate → one stable_id → one worker session, so the
 fan-out happens in `enumerate`: one candidate per owner-assigned next step (recap folded into each for
 context) plus one recap candidate for the meeting. Same shape as the trello adapter turning one board into
 many card-items — `capture()` still writes exactly one `<iid>.json`, so no ProviderBase extension is needed.
@@ -351,10 +351,10 @@ class Provider(ProviderBase):
         """No zoom item ever holds another out of dispatch: every candidate returns None.
 
         The correspondent hold exists so a second message from one PERSON waits while an earlier one of
-        theirs is being worked, letting a single tab read both with full context. A meeting fans out into
+        theirs is being worked, letting a single worker session read both with full context. A meeting fans out into
         one independent item per owner-assigned next step, each worked in whatever channel that step
         implies (a different email, a different draft, a different board) - so there is no shared context
-        for one tab to gather across them, and each should dispatch on its own as tab slots allow rather
+        for one worker session to gather across them, and each should dispatch on its own as worker slots allow rather
         than one per cycle. The default identity keys on the item's `from`, which every candidate from a
         meeting sets to the same meeting topic; returning None instead keeps the fan-out fanned out."""
         return None

@@ -117,8 +117,8 @@ def main():
 
     # Reuse the interpreter the task launched us with (python vs pythonw), so the
     # poller stays console-less and the digest keeps its visible behavior.
-    # The poller and everything it spawns — worker tabs and the digest — run under
-    # Russell's main account, so a worker tab he opens (and drives from his phone's
+    # The poller and everything it spawns — worker sessions and the digest — run under
+    # Russell's main account, so a worker session he opens (and drives from his phone's
     # Remote Control) is on the same account his phone is signed into. Only the
     # headless triage call moves to a background account, and it does that itself
     # via the drainer.local.md `background_config_dir` knob (run-poller.py scopes

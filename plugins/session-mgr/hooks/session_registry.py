@@ -4,6 +4,10 @@ import sys
 import time
 import datetime
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "skills", "resume-sessions", "scripts"))
+from bg_session import is_background_session, remember_account  # noqa: E402
+
 REGISTRY_DIR = os.path.expanduser("~/.claude/session-mgr")
 REGISTRY_PATH = os.path.join(REGISTRY_DIR, "live-sessions.json")
 
@@ -73,13 +77,13 @@ def main():
 
     if event == "SessionStart":
         pid = find_claude_ancestor_pid()
-        # CLAUDE_HOST_PID is set by the PowerShell profile only for a tab launched through the
-        # interactive launcher (launch-session.ps1). A background or scheduled `claude` run — the
-        # poller's own launches, anything started from C:\Windows\system32 — never loads that
-        # profile and so has no host pid. Recording it marks which registry entries are real user
-        # tabs: the ones a resume should bring back after an abrupt close, as opposed to ephemeral
-        # runs that should stay closed.
-        host_pid = os.environ.get("CLAUDE_HOST_PID")
+        # CLAUDE_HOST_PID is set by the PowerShell profile for a session Russell starts by hand in
+        # a terminal tab. Recording it marks which registry entries are real user tabs: the ones a
+        # resume should bring back after an abrupt close, as opposed to runs that should stay
+        # closed. A background (`claude --bg`) session records None whatever its env holds - the
+        # background service, when started from a profile-loaded PowerShell, passes that terminal's
+        # host pid on to every session it runs, and keeping it would leave a stale entry behind.
+        host_pid = None if is_background_session() else os.environ.get("CLAUDE_HOST_PID") or None
 
         def add(registry):
             registry[session_id] = {
@@ -89,6 +93,9 @@ def main():
                 "host_pid": host_pid,
             }
         update_registry(add)
+        # Every session, on every account, runs this hook - so recording its account here is how
+        # the launcher and crash detection learn which accounts to read sessions from.
+        remember_account(os.environ.get("CLAUDE_CONFIG_DIR"))
     elif event == "SessionEnd":
         # How a session ends decides whether it stays resumable. A deliberate end — /exit, /clear,
         # logout, or the plugin's own self_close primitive (end-session.py) — deregisters the

@@ -16,7 +16,7 @@ Outlook / Teams / outreach are all the **same loop** with different **sources**.
 
 The drainer runs as a **continuous keeper**: a **poller** runs a short cycle every few minutes (a ~5-min cron) and holds each source at **zero un-started actionable items** all day.
 
-- **needs-you →** the poller immediately spawns a **headless worker** (a `claude --bg` background session, no terminal tab, so a spawn never steals focus) so the user starts acting right away.
+- **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away.
   Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.
@@ -34,8 +34,8 @@ The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss
 
-Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted cycle retries next time); workers are idempotent (a duplicate tab's situational-check resolves quietly).
-Completion follows the same principle - it is **observed on the source**, not reported by the worker: an item still unhandled in its source with no live worker session on it is re-queued for a fresh tab, while an open, live tab is left alone however long it's up, because it's either being worked or parked for the user.
+Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted cycle retries next time); workers are idempotent (a duplicate worker's situational-check resolves quietly).
+Completion follows the same principle - it is **observed on the source**, not reported by the worker: an item still unhandled in its source with no live worker session on it is re-queued for a fresh worker, while an open, live worker session is left alone however long it's up, because it's either being worked or parked for the user.
 
 ## Config comes from merged main, not the checked-out branch
 
@@ -46,7 +46,7 @@ Without this, config was read from whatever branch a human session left checked 
 Two things stay anchored to the **real** repo, on purpose:
 
 - **Runtime state** (`seen.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
-- **Worker/digest cwd** - worker tabs run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
+- **Worker/digest cwd** - worker sessions run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
   A worker that must commit branches into its own worktree (per the `git-workflow` skill), so it never disturbs the config worktree.
   Repo-tracked config a worker needs (above all `initiatives/<slug>.md`) is read from the config repo, whose path the worker seed carries.
 

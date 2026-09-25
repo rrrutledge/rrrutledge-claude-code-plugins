@@ -14,7 +14,7 @@ A task is **queued** while it sits on the dedicated calendar (default name **"Ph
 The grid's only job is distinguishing queued from started, not encoding task size.
 
 **Exact alignment, not just "sometime in that hour," is what makes this safe.**
-"Started" (see WORKER/CLEAR) moves a task's start to the moment its worker tab launched - and if Russell is up working past midnight, that launch time can itself fall inside 00:00-02:59.
+"Started" (see WORKER/CLEAR) moves a task's start to the moment its worker session launched - and if Russell is up working past midnight, that launch time can itself fall inside 00:00-02:59.
 A real timestamp essentially never lands exactly on a grid slot (down to zero seconds), so exact-slot matching is what actually tells "still sitting untouched since it was placed" from "just started a moment ago" - a same-hour-only check would wrongly read a task he just began at 12:04 AM as still queued.
 
 Nothing here ever moves a queued task to keep it visible; an undone one simply keeps coming back every cycle until it's moved off-grid (started - see WORKER/CLEAR), for as long as it stays within the scan's lookback window (`lookback_days`, default a year - see Config).
@@ -27,7 +27,7 @@ The event's own duration (end minus start, while still queued) is Russell's own 
 Outlook's recurrence engine expands every date the pattern ever produced between its start and today, so a daily or weekly task left unstarted for a while genuinely has several individually-queued occurrences sitting in Graph - but Russell only ever sees ONE drainable item for it (`enumerate` collapses them to the most recent queued occurrence, see the adapter), and starting it catches the backlog up rather than requiring one CLEAR per missed occurrence (see CLEAR).
 
 **The second gate, unique to this source:** even once a task is queued, the adapter's `enumerate` only returns it when a live free gap of at least that duration **plus a buffer** currently exists before Russell's next REAL commitment (any non-all-day event on any of his editable calendars, whether solo or not, organized by him or not - except an event on the Physical Tasks calendar itself, which the gap check always excludes, since that calendar is the to-do queue, not a commitment).
-The buffer covers the lag between the gap being detected and Russell actually opening the tab - waiting on tab budget, or just being deep in a different one when this one pops - so a task's own duration alone isn't the bar; duration + buffer is.
+The buffer covers the lag between the gap being detected and Russell actually opening the session - waiting on worker budget, or just being deep in a different one when this one pops - so a task's own duration alone isn't the bar; duration + buffer is.
 That gap is recomputed fresh every poll cycle, so a task becomes eligible the moment enough room opens up and simply waits, unenumerated, until then.
 
 **An opt-in third gate: the time of day.**
@@ -40,7 +40,7 @@ A task restricted to particular weekdays only enumerates on one of them, however
 When several tasks are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns eligible tasks sorted longest-duration-first, so the cross-source dispatch order (which otherwise ties on priority band and falls back to arrival order) picks the task that best uses the room available.
 
 **Only one physical task is ever open at a time.**
-Russell can only be doing one physical-world thing at once, so even when several tasks are simultaneously eligible, the adapter's `correspondent` returns the same constant identity for every one of them - the poller's ordinary same-correspondent hold (built for "don't dispatch two items from the same person at once") then keeps every task but the first-picked out of dispatch until that one's worker tab closes.
+Russell can only be doing one physical-world thing at once, so even when several tasks are simultaneously eligible, the adapter's `correspondent` returns the same constant identity for every one of them - the poller's ordinary same-correspondent hold (built for "don't dispatch two items from the same person at once") then keeps every task but the first-picked out of dispatch until that one's worker session closes.
 A held task simply re-enumerates next cycle, same as one still waiting on its gap.
 
 Every task is estimated at about an hour, even one that might genuinely take two or three, since Russell can always make an hour of progress on it and doesn't need to wait for a rarer multi-hour gap.
@@ -50,7 +50,7 @@ That's *why* `lookahead_hours` defaults short (see Config): the gap check never 
 - `calendar` - the dedicated calendar's name (default `Physical Tasks`).
 - `lookahead_hours` - how far ahead the gap check looks for the next real commitment (default `2`).
   Kept short on purpose (see "The model" above) - raise it only if a task genuinely needs more than about an hour plus its buffer, which shouldn't normally happen.
-- `buffer_minutes` - minutes added on top of a task's own duration before it counts as eligible (default `20`), covering the gap-detection-to-tab-opened lag described above.
+- `buffer_minutes` - minutes added on top of a task's own duration before it counts as eligible (default `20`), covering the gap-detection-to-session-opened lag described above.
 - `lookback_days` - how far back the queued scan reaches (default `365`, a year).
   A task keeps re-surfacing only while it falls inside this window (see "The model" above); raise it toward Graph's ceiling of `1825` (five years) to reach back further.
 - `default_window` - an `HH:MM-HH:MM` local time-of-day window applied to every task without a `Window:` marker of its own (unset by default, which leaves such tasks unrestricted - see TIME-OF-DAY-WINDOW).
@@ -100,18 +100,18 @@ Here it doesn't - the task is physical, so **Russell** does it, and your job is 
    If the item has a `repeatAfter`, say so as you close out ("this'll come back in about a week") - the Finished step queues that next one automatically (see REPEAT-AFTER-COMPLETION).
    If he says now isn't actually a good moment after all before step 3 ever ran (interrupted, the gap turned out to be needed for something else), leave the event exactly as it is, still queued, so it naturally comes back the next time a real gap opens.
    If step 3 already ran and then something interrupted him, still finish it (CLEAR "finished" now) rather than leaving a started-but-never-finished record sitting on the calendar.
-5. **Close out per the standard rules** (`../engine/worker-core.md` §6's close conditions) - this tab stays open exactly as long as any other needs-you tab would: until his part is genuinely done.
+5. **Close out per the standard rules** (`../engine/worker-core.md` §6's close conditions) - this session stays open exactly as long as any other needs-you session would: until his part is genuinely done.
 
 ## CLEAR
 Two ordinary-flow steps plus a recurring-only backlog sweep - everything acts on `eventId` from CAPTURE, and **nothing here ever deletes or archives the task itself**:
 
 - **Started** (step 3 above, the moment he confirms he's beginning): `node calendar.js --start-now=<eventId> --at=<ts from items/<id>.json>`.
-  Pass `--at` the item's `ts` - the instant this worker tab launched, which the poller stamps moments before spawning the tab.
-  That makes the recorded start the moment the task surfaced to Russell, not the moment he typed his "I'm starting" reply, so a task he glances at and finishes in one sitting still records a real span (start = tab launch, end = when he says done) instead of collapsing start and end onto that single reply.
+  Pass `--at` the item's `ts` - the instant this worker session launched, which the poller stamps moments before spawning the session.
+  That makes the recorded start the moment the task surfaced to Russell, not the moment he typed his "I'm starting" reply, so a task he glances at and finishes in one sitting still records a real span (start = session launch, end = when he says done) instead of collapsing start and end onto that single reply.
   Moves the event's start to that launch time and keeps its own duration - this is what takes it off the parking grid, so it stops being queued, permanently, with no further action needed.
   A recurring occurrence detaches from its series here (expected, same as the Outlook UI) - only this one instance was started, every future occurrence is untouched.
 - **Finished** (step 4, once he confirms done): `node calendar.js --finish-now=<eventId> --calendar=<calendar from the item>`.
-  Stamps just the end time to now, leaving start exactly where "started" put it - so the event's real elapsed span (start = when the tab launched, end = when he actually finished) sits on the calendar afterward as an accurate record.
+  Stamps just the end time to now, leaving start exactly where "started" put it - so the event's real elapsed span (start = when the session launched, end = when he actually finished) sits on the calendar afterward as an accurate record.
   Always pass `--calendar` (the item's `calendar`): it costs nothing on an ordinary task and is what lets a repeat-after-completion task (see below) place its successor - `--finish-now` on its own no-ops the repeat when the event has no marker.
 - **Recurring backlog cleanup** (only after Finished, only when `isRecurring` is true and the item's `date` in CAPTURE was well in the past): `node calendar.js --catch-up-series=<seriesMasterId> --except-id=<eventId>`.
   A series left unstarted for a while can rack up several individually-queued occurrences (Graph expands every date the pattern ever produced, not just the next one) - those older ones are just recurrence-expansion noise, not independently meaningful records, so this deletes all of them through today EXCEPT the one `eventId` just turned into a real started/finished record.
@@ -133,13 +133,13 @@ The mechanism and its edge cases live in `calendar-repeat.js` and `finishTaskNow
 A task opts into a time-of-day gate with one line in its event body: `Window: 09:00-20:00` (24-hour local wall-clock, start inclusive, end exclusive, wraps past midnight when the start is later than the end).
 `default_window` in Config applies the same restriction to every task with no marker of its own.
 Outside the window, enumerate skips the task for that poll cycle only - it stays queued and re-checks next cycle.
-An open worker tab runs to completion regardless, and a repeat-after-completion successor carries the `Window:` line forward.
+An open worker session runs to completion regardless, and a repeat-after-completion successor carries the `Window:` line forward.
 Parsing and clock math live in `calendar-window.js`.
 
 ## DAY-OF-WEEK-GATE
 A task opts into a day-of-week gate with one line in its event body: `Days: SA` (comma list for more than one: `Days: SA,SU`), using the same two-letter weekday codes as `--create-recurring`'s `--days` (`MO,TU,WE,TH,FR,SA,SU`).
 Outside those days, enumerate skips the task for that poll cycle only - it stays queued and re-checks next cycle.
-An open worker tab runs to completion regardless, and a repeat-after-completion successor carries the `Days:` line forward.
+An open worker session runs to completion regardless, and a repeat-after-completion successor carries the `Days:` line forward.
 Parsing lives in `calendar-days.js`.
 
 ## JUNK-LEARNING

@@ -1,10 +1,10 @@
-"""Regression test for the tab titles the poller hands to spawn-tab.cmd and spawn-resume-tab.cmd.
-Windows Terminal reads a semicolon on its command line as a command separator, and cmd chokes on
-`& < > | % " ^`, so a title built from an email subject, Trello card name, sender, or directory name
-must reach `wt.exe --title` with none of them.
+"""Regression test for the session names the poller hands to `claude --bg --name`: a worker's (built from
+an email subject, Trello card name, or sender) and an orphan resume's (built from a directory name).
+A name carries none of `& < > | % " ^ ;`, is cut to 50 characters, and falls back to an id when no text
+is left.
 
 Run directly:
-    python plugins/drainer/tests/test_tab_title.py
+    python plugins/drainer/tests/test_session_title.py
 """
 import importlib.util
 import json
@@ -43,11 +43,17 @@ def worker_title(rec):
         return poller._worker_title("item-x1", json_file)
 
 
-def resume_title(cwd):
-    spawned = []
-    poller.spawn_tab = lambda cmd, cwd=None: spawned.append(cmd)
-    poller.spawn_resume_tab("abcd1234-0000", cwd, "C:/repo")
-    return spawned[0][1]
+def resume_call(cwd):
+    """spawn_resume's one spawn_bg call, captured (never a real launch)."""
+    calls = []
+    real = poller.spawn_bg
+    poller.spawn_bg = lambda seed, model, cwd, name, resume=None: calls.append(
+        {"seed": seed, "model": model, "cwd": cwd, "name": name, "resume": resume}) or "r35u0000"
+    try:
+        poller.spawn_resume("abcd1234-0000", cwd, "C:/repo")
+    finally:
+        poller.spawn_bg = real
+    return calls[0]
 
 
 print("\n_worker_title removes a semicolon from the subject")
@@ -59,7 +65,7 @@ print("\n_worker_title removes a semicolon from the sender and from a Trello car
 check("no semicolon in sender", ";" in worker_title({"source": "slack", "subject": "hi", "from": "a;b"}), False)
 check("Trello card name", worker_title({"source": "trello", "name": "Fix; deploy"}), "Trello: Fix deploy")
 
-print("\n_worker_title still removes the cmd-breaking characters and keeps the length cap")
+print("\n_worker_title still removes the shell metacharacters and keeps the length cap")
 title = worker_title({"source": "gmail", "subject": '50% off & <more> | "now" ^ ; end'})
 check("no unsafe character", bool(UNSAFE.search(title)), False)
 title = worker_title({"source": "gmail", "subject": "x;" * 60})
@@ -71,13 +77,17 @@ check("only semicolons in the subject", worker_title({"source": "gmail", "subjec
 
 print("\nthe id stands in when no text is usable")
 check("unreadable item", poller._worker_title("item-x1", "no-such-file.json"), "drain:item-x1")
-check("only semicolons", poller._tab_title(" ; ;; ", "drain:item-x1"), "drain:item-x1")
+check("only semicolons", poller._session_title(" ; ;; ", "drain:item-x1"), "drain:item-x1")
 
-print("\nspawn_resume_tab removes a semicolon from the directory name")
-title = resume_title("C:/Users/me/proj;evil")
-check("no semicolon", ";" in title, False)
-check("directory words kept", title, "Resume: proj evil")
-check("directory of only semicolons", resume_title("C:/;;;"), "Resume:")
+print("\nspawn_resume reopens the session in the background under a sanitized name")
+call = resume_call("C:/Users/me/proj;evil")
+check("resumes the given session", call["resume"], "abcd1234-0000")
+check("no seed and no model override", (call["seed"], call["model"]), (None, None))
+check("runs in the session's own cwd", call["cwd"], "C:/Users/me/proj;evil")
+check("no semicolon in the name", ";" in call["name"], False)
+check("directory words kept", call["name"], "Resume: proj evil")
+check("directory of only semicolons", resume_call("C:/;;;")["name"], "Resume:")
+check("no cwd falls back to the repo", resume_call(None)["cwd"], "C:/repo")
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

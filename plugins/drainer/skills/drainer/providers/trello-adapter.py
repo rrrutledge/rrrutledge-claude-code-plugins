@@ -501,7 +501,7 @@ class Provider(ProviderBase):
         # here instead would share one board-local budget across only Trello's own boards: once the OTHER
         # boards' neutral-band cards alone outnumbered it, every job-search card (always ranked below
         # neutral — see _PRIORITY_BAND) would be cut before the poller's real throttle ever saw it,
-        # regardless of how many tabs were actually free.
+        # regardless of how many worker slots were actually free.
         return items
 
     def stable_id(self, item):
@@ -526,7 +526,7 @@ class Provider(ProviderBase):
         to the reconcile's "is this seen item still outstanding at the source?".
 
         Trello has no inbox, but it has an equivalent: a seen id that STILL names a startable card is one
-        whose worker never ran CLEAR (a crashed or closed tab). CLEAR bumps a card's Start, and the Start
+        whose worker never ran CLEAR (a crashed or closed worker session). CLEAR bumps a card's Start, and the Start
         is part of the stable_id, so a properly cleared card mints a NEW id and its old id is absent from
         this set — reconcile then leaves it alone, exactly as it leaves an archived email alone. The set
         is computed fresh from the boards, so a card CLEAR deferred into the future (its new Start not yet

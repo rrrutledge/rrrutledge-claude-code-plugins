@@ -12,7 +12,7 @@ That's the stall this file closes.
 
 Report the gate up to the one channel that reaches Russell without anyone watching live, the digest:
 
-1. **Leave the tab open** on the gate page.
+1. **Leave the browser tab open** on the gate page.
    Don't retry past it.
    If a subagent you spawned already returned `HELP_NEEDED` with a `findTab` locator, that locator is what re-finds the tab later, so record it rather than losing it.
 2. **Record the gate on the item.**
@@ -24,12 +24,12 @@ Report the gate up to the one channel that reaches Russell without anyone watchi
    The digest reads `triage: "help-needed"` as its own class (see `digest-core.md` §2a), distinct from fyi, junk, and auto-handled.
 4. **Leave the source item uncleared.**
    The task isn't done, and clearing it here would drop it the way worker-core §2d warns against.
-5. **Keep this session's tab open.**
-   A staged gate is squarely the "waiting on an answer from him" case worker-core §6's tab-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact tab and clearing the gate.
-   Closing the session tab now would also cost you the browser tab you just left open: a launched session like this one owns its tabs by its own PID (see browser-chauffeur's **Tying tab ownership to a session**), and the sweep reaps an owned tab the moment its owning session ends.
+5. **Keep this session open.**
+   A staged gate is squarely the "waiting on an answer from him" case worker-core §6's session-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact session and clearing the gate.
+   Closing the session now would also cost you the browser tab you just left open: a launched session like this one owns its tabs by its own PID (see browser-chauffeur's **Tying tab ownership to a session**), and the sweep reaps an owned tab the moment its owning session ends.
    End your turn here instead of closing up.
 
 Russell resumes this the same way he'd continue any open session.
-The digest points him to this item and names its worker's session as the one waiting, so he goes to this session's tab and tells it he's cleared the gate.
+The digest points him to this item and names its worker's session as the one waiting, so he opens this session in the Claude app or at [claude.ai/code](https://claude.ai/code) and tells it he's cleared the gate.
 From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate, and continue the flow from where you stopped.
 Then finish normally: complete the remaining work, draft any reply, clear the item per worker-core §6, and close up per §6's closing rules once your part and his are both done.

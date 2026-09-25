@@ -28,7 +28,7 @@ Attempt the fetch first every time; the hand-back is the fallback for a wall you
 
 **Exception: LinkedIn/Facebook "X just messaged you" pointers** - the stricter form of that fallback, where you must not even *attempt* the fetch.
 Never drive browser-chauffeur to linkedin.com or facebook.com for any reason - LinkedIn suspended Russell's account for automation in July 2026.
-Pull the deep link out of the notification and present it as a clickable link in the terminal, routed straight to **needs-you** - Russell clicks it and reads/replies himself; you never open it.
+Pull the deep link out of the notification and present it as a clickable link in your reply, routed straight to **needs-you** - Russell clicks it and reads/replies himself; you never open it.
 
 Give him the **direct destination link, not the Outlook item link**.
 The notification email's "View message" button routes through Microsoft's Safe Links wrapper (`safelinks.protection.outlook.com/ ?url=...`) with tracking params (`lipi`, `midToken`, `trk`, `trkEmail`, `eid`, `otpToken`, etc.) appended.
@@ -45,4 +45,4 @@ Then, for every other pointer, **triage what you find with `triage.md`** (the sa
   Route it to the digest queue so the daily digest handles it (junk also gets a source-stop proposal) instead of being lost: run
   `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
   - `<runtime_dir>` is the parent of the `items/` folder your `<id>.json` lives in, `<source>` is the item's `source` field, and the helper sits at `scripts/seen-state.js` under this skill.
-  Leave the source notification for the digest to clear, then **close this tab** (worker-core §2c step 4).
+  Leave the source notification for the digest to clear, then **close this session** (worker-core §2c step 4).

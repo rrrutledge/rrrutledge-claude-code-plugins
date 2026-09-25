@@ -118,7 +118,7 @@ Map the card's column onto the nearest phase by intent - boards name and sub-div
 
 Some boards insert their own steps between these (e.g. a reconciliation or review stage); treat such a column as the nearest generic phase and let the initiative doc say what that step requires.
 
-Always situation-check before acting: if they've already replied or the step already happened, the move is usually to **advance** the card (CLEAR) rather than send again; if it's simply not yet time to follow up, silently bump the Start date (CLEAR) and surface no tab.
+Always situation-check before acting: if they've already replied or the step already happened, the move is usually to **advance** the card (CLEAR) rather than send again; if it's simply not yet time to follow up, silently bump the Start date (CLEAR) and surface nothing to Russell.
 
 ## CLEAR (advance the card)
 Only **after** the user confirms they sent/handled the message, advance the card via the `trello` skill:
@@ -172,7 +172,7 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 When unsure, default to infrequent.
 When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
 
-If the situational check finds **nothing to do right now**, silently bump the Start date and finish - surface no tab.
+If the situational check finds **nothing to do right now**, silently bump the Start date and finish - surface nothing to Russell.
 "Not yet time to follow up" is decided by the **nudge cadence above**: it's nothing-to-do only while that interval hasn't elapsed since the last outbound message (or they replied and the user already answered).
 Once the card's Start has arrived, they still haven't replied, **and** the cadence interval has elapsed, it *is* time to follow up - **draft the nudge** (needs-you), don't bump the date again.
 (A started card whose cadence has run out is not "nothing to do" - that misread is what turns a card into one that gets bumped forever without a follow-up ever going out.)
