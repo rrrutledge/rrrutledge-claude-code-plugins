@@ -52,7 +52,9 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
         return subprocess.CompletedProcess(args, returncode, stdout, "")
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
-        "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "EXTRA_ACCOUNT_DIRS", "claude_agents")}
+        "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "EXTRA_ACCOUNT_DIRS", "claude_agents",
+        "REGISTRY_PATH")}
+    bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     saved_env = {k: os.environ.get(k) for k in (*bg_session._SESSION_ENV, "CLAUDE_CONFIG_DIR")}
     bg_session.run_bounded = fake_run
     bg_session._user_env = lambda name: (True, registry.get(name))
@@ -165,6 +167,21 @@ def test_resume_uses_transcript_account():
         check("follow-up seed after `--`", args[-2:] == ["--", "follow up"], args)
 
 
+def test_resume_forgets_old_registry_entry():
+    print("test: a successful resume drops the resumed guid from the live-session registry; a failed one keeps it")
+    other = "11111111-2222-3333-4444-555555555555"
+    for returncode, kept in ((0, False), (1, True)):
+        with sandbox(returncode=returncode) as s:
+            with open(bg_session.REGISTRY_PATH, "w", encoding="utf-8") as f:
+                json.dump({GUID: {"cwd": "C:/repo"}, other: {"cwd": "C:/other"}}, f)
+            bg_session.spawn_bg(None, None, s.tmp, None, resume=GUID)
+            with open(bg_session.REGISTRY_PATH, encoding="utf-8") as f:
+                registry = json.load(f)
+            label = "failed resume keeps it" if kept else "resumed guid removed"
+            check(label, (GUID in registry) == kept, registry)
+            check("other entries untouched", other in registry, registry)
+
+
 def test_short_id_parsing():
     print("test: the short id parses with and without ANSI color codes; failures give None")
     cases = {
@@ -274,6 +291,7 @@ if __name__ == "__main__":
     test_notify_sound_absent_when_unset()
     test_config_dir_follows_registry()
     test_resume_uses_transcript_account()
+    test_resume_forgets_old_registry_entry()
     test_short_id_parsing()
     test_write_receipt()
     test_claude_agents_merges_accounts()

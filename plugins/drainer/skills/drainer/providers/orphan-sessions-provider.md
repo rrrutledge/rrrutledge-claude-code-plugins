@@ -8,6 +8,7 @@ Implements `../engine/provider.md`'s adapter contract; classify by `../engine/tr
 
 Every other provider's needs-you item opens a **fresh** worker session that reads `../engine/worker-core.md` and drafts a reply.
 This source is different: resuming the session (via `run-poller.py`'s dedicated `spawn_resume()`, which reopens it as a background session with `claude --bg --resume <session_id>` in the session's own original `cwd`) IS the entire action.
+The resumed session carries the full history under a new session id, and the launcher drops the old id from session-mgr's live-session registry so it never reads as crashed again.
 Russell continues in his own resumed conversation from there - there is nothing for a worker to read, act on, or clear, because the "item" isn't a message waiting for a reply, it's Russell's own interrupted work.
 Because of this, the sections below that a normal provider's worker would use are N/A rather than omitted (per `../engine/provider.md`'s "MUST define" contract) - the sections still exist so it's clear they were considered, not forgotten.
 

@@ -221,6 +221,8 @@ def spawn_bg(seed, model, cwd, name, resume=None):
     `resume` takes an existing session's full guid: `claude --bg --resume <guid>` continues it in the
     background with its full history, on the account that holds its transcript. `seed` may then be
     None to reopen it with nothing queued, and `model`/`name` None to keep the ones it already has.
+    The continuation runs under a new session id, so the resumed guid leaves the live-session
+    registry (forget_session) - its history lives on in the new session, which registers itself.
     """
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual"]
     env = _launch_env()
@@ -243,7 +245,36 @@ def spawn_bg(seed, model, cwd, name, resume=None):
     if res.returncode != 0:
         return None
     m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
+    if m and resume:
+        forget_session(resume)
     return m.group(1) if m else None
+
+
+REGISTRY_PATH = os.path.expanduser("~/.claude/session-mgr/live-sessions.json")
+
+
+def forget_session(session_guid):
+    """Drop `session_guid` from session-mgr's live-session registry (hooks/session_registry.py), the
+    list find-orphans reads. A resumed session continues under a new id, so without this the old
+    entry would stay listed as a crashed session forever. Best effort: an unreadable registry is left
+    alone."""
+    for _ in range(5):
+        try:
+            with open(REGISTRY_PATH, encoding="utf-8") as f:
+                registry = json.load(f)
+        except (OSError, ValueError):
+            return
+        if not isinstance(registry, dict) or session_guid not in registry:
+            return
+        registry.pop(session_guid)
+        tmp_path = REGISTRY_PATH + f".tmp.{os.getpid()}"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(registry, f, indent=2)
+            os.replace(tmp_path, REGISTRY_PATH)
+            return
+        except OSError:
+            continue
 
 
 def prompt_seed(prompt_file, lead=""):
@@ -294,13 +325,14 @@ def launch(*, cwd, model=None, name=None, brief=None, prompt_file=None, lead="",
     """Seed and launch one session - the shared body of spawn-session.py and every in-process caller.
     Exactly one of `brief`/`prompt_file`, or `resume` alone, or `resume` with one of them as a
     follow-up. Returns `(short_id, receipt)`: `receipt` is what write_receipt wrote beside the brief
-    or prompt file, or the resumed guid when there is no file; `(None, None)` when nothing launched."""
+    or prompt file, or the new session's guid (short id if unlisted) when there is no file;
+    `(None, None)` when nothing launched."""
     anchor = brief or prompt_file
     seed = brief_seed(brief) if brief else prompt_seed(prompt_file, lead) if prompt_file else None
     short_id = spawn_bg(seed, model, cwd, name, resume=resume)
     if not short_id:
         return None, None
-    return short_id, (write_receipt(anchor, short_id) if anchor else resume or short_id)
+    return short_id, (write_receipt(anchor, short_id) if anchor else session_guid(short_id) or short_id)
 
 
 # ------------------------------------------------------------------------------------ self-knowledge
