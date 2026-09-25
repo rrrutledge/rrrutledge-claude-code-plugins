@@ -55,11 +55,12 @@ _SESSION_ENV = ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_P
 # the daemon can respawn the session, so anything passed this way lands on disk.
 FRESH_USER_ENV = ("CLAUDE_NOTIFY_SOUND",)
 
-# Config dirs of the Claude accounts `claude-account main|backup` (personal-ai-pod's
-# claude-switch-account.ps1) switches between, beyond the default ~/.claude. A dir that doesn't exist
-# on this machine is skipped.
-EXTRA_ACCOUNT_DIRS = ("~/.claude-backup",)
 DEFAULT_CONFIG_DIR = "~/.claude"
+# The config dir of every Claude account a session has run on, beyond the default one. session-mgr's
+# SessionStart hook and every launch add their own account's dir (remember_account), so the list
+# builds itself as accounts come into use - nothing names an account up front. It sits beside the
+# live-session registry, which every account's sessions share.
+ACCOUNTS_PATH = os.path.expanduser("~/.claude/session-mgr/accounts.json")
 
 
 def run_bounded(args, timeout, **kw):
@@ -111,12 +112,41 @@ def _norm(path):
     return os.path.normcase(os.path.abspath(os.path.expanduser(path)))
 
 
+def _known_accounts():
+    """The account dirs remember_account has recorded, or [] when there is no readable list."""
+    try:
+        with open(ACCOUNTS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [d for d in data if isinstance(d, str)] if isinstance(data, list) else []
+
+
+def remember_account(config_dir):
+    """Add `config_dir` (a CLAUDE_CONFIG_DIR value; None or the default dir is the main account, which
+    is always known) to the known-accounts list. Best effort: a list that can't be written only means
+    the account is found again at its next session start."""
+    if not config_dir or _norm(config_dir) == _norm(DEFAULT_CONFIG_DIR):
+        return
+    known = _known_accounts()
+    if any(_norm(d) == _norm(config_dir) for d in known):
+        return
+    try:
+        os.makedirs(os.path.dirname(ACCOUNTS_PATH), exist_ok=True)
+        tmp_path = ACCOUNTS_PATH + f".tmp.{os.getpid()}"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(known + [os.path.abspath(os.path.expanduser(config_dir))], f, indent=2)
+        os.replace(tmp_path, ACCOUNTS_PATH)
+    except OSError:
+        pass
+
+
 def account_config_dirs():
     """Every account's config dir to read sessions from, as the CLAUDE_CONFIG_DIR value to run under:
-    None for the main account first, then each other account's dir that exists here - the known extra
-    accounts plus whatever is current or inherited, so an account added later still counts."""
+    None for the main account first, then each other account's dir that exists here - every account
+    remember_account has recorded, plus whatever is current or inherited."""
     dirs, seen = [None], {_norm(DEFAULT_CONFIG_DIR)}
-    for d in (*EXTRA_ACCOUNT_DIRS, current_config_dir(), os.environ.get("CLAUDE_CONFIG_DIR")):
+    for d in (*_known_accounts(), current_config_dir(), os.environ.get("CLAUDE_CONFIG_DIR")):
         if d and os.path.isdir(os.path.expanduser(d)) and _norm(d) not in seen:
             seen.add(_norm(d))
             dirs.append(os.path.expanduser(d))
@@ -245,6 +275,8 @@ def spawn_bg(seed, model, cwd, name, resume=None):
     if res.returncode != 0:
         return None
     m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
+    if m:
+        remember_account(env.get("CLAUDE_CONFIG_DIR"))
     if m and resume:
         forget_session(resume)
     return m.group(1) if m else None

@@ -4,7 +4,8 @@ Usage:
   python peek.py <session-guid | short-id prefix | .session receipt | .jsonl path> [--tail N]
 
 Claude records every session as JSONL under <config dir>/projects/<proj>/<session-id>.jsonl.
-This searches every account's config dir (~/.claude, ~/.claude-backup, and CLAUDE_CONFIG_DIR) and
+This searches every account's config dir (~/.claude, each account in session-mgr's accounts.json,
+and CLAUDE_CONFIG_DIR) and
 accepts a short-id prefix; when several sessions match, it shows the newest and names the others.
 This prints a readable timeline (assistant text, tool calls + short results), skipping the
 big base64 image blobs, so an orchestrator can monitor how a launched session is doing.
@@ -19,11 +20,22 @@ try:
 except Exception:
     pass
 
+def known_accounts():
+    """The account config dirs session-mgr has seen sessions run on (its accounts.json), or []."""
+    try:
+        with open(os.path.expanduser("~/.claude/session-mgr/accounts.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [d for d in data if isinstance(d, str)] if isinstance(data, list) else []
+
+
 def projects_dirs():
-    """Every Claude account's projects dir on this machine: the main ~/.claude, the backup account,
-    and whatever CLAUDE_CONFIG_DIR points at, each only when it exists."""
+    """Every Claude account's projects dir on this machine: the main ~/.claude, every account
+    session-mgr has seen a session run on, and whatever CLAUDE_CONFIG_DIR points at, each only
+    when it exists."""
     dirs, seen = [], set()
-    for d in ("~/.claude", "~/.claude-backup", os.environ.get("CLAUDE_CONFIG_DIR")):
+    for d in ("~/.claude", *known_accounts(), os.environ.get("CLAUDE_CONFIG_DIR")):
         if not d:
             continue
         p = os.path.abspath(os.path.join(os.path.expanduser(d), "projects"))

@@ -57,7 +57,7 @@ python peek.py <short id> --tail 8
 ```
 
 It takes a `.session` receipt, a full session guid, the short-id prefix `spawn-session.py` prints, or a `.jsonl` path.
-It finds the transcript under every account's `projects` dir: `~/.claude`, `~/.claude-backup`, and the current `CLAUDE_CONFIG_DIR`, each when it exists.
+It finds the transcript under every account's `projects` dir: `~/.claude`, each account session-mgr has seen a session run on, and the current `CLAUDE_CONFIG_DIR`, each when it exists.
 When a prefix matches several sessions, it shows the newest and names the others.
 It prints a compact timeline of assistant text, tool calls, and short tool results, skipping base64 image blobs, so you can see what the spawned session is doing.
 

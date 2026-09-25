@@ -52,14 +52,16 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
         return subprocess.CompletedProcess(args, returncode, stdout, "")
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
-        "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "EXTRA_ACCOUNT_DIRS", "claude_agents",
+        "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
         "REGISTRY_PATH")}
     bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
+    bg_session.ACCOUNTS_PATH = os.path.join(tmp, "accounts.json")
+    with open(bg_session.ACCOUNTS_PATH, "w", encoding="utf-8") as f:
+        json.dump([backup_dir], f)
     saved_env = {k: os.environ.get(k) for k in (*bg_session._SESSION_ENV, "CLAUDE_CONFIG_DIR")}
     bg_session.run_bounded = fake_run
     bg_session._user_env = lambda name: (True, registry.get(name))
     bg_session.DEFAULT_CONFIG_DIR = main_dir
-    bg_session.EXTRA_ACCOUNT_DIRS = (backup_dir,)
     bg_session.claude_agents = lambda: agents
     # A launch from inside a session inherits these; the launcher must clear every one.
     for k in bg_session._SESSION_ENV:
@@ -165,6 +167,29 @@ def test_resume_uses_transcript_account():
         check("main account's transcript -> CLAUDE_CONFIG_DIR removed despite the registry",
               "CLAUDE_CONFIG_DIR" not in kw["env"], kw["env"].get("CLAUDE_CONFIG_DIR"))
         check("follow-up seed after `--`", args[-2:] == ["--", "follow up"], args)
+
+
+def test_accounts_discovered_not_named():
+    print("test: accounts come from the known-accounts list, which launches and remember_account fill in")
+    with sandbox() as s:
+        os.remove(bg_session.ACCOUNTS_PATH)
+        check("no list -> main account only", bg_session.account_config_dirs() == [None],
+              bg_session.account_config_dirs())
+        bg_session.remember_account(None)
+        bg_session.remember_account(s.main)
+        check("main account is never recorded", not os.path.exists(bg_session.ACCOUNTS_PATH))
+        s.registry["CLAUDE_CONFIG_DIR"] = s.backup
+        bg_session.spawn_bg("x", "m", s.tmp, "n")
+        s.registry.pop("CLAUDE_CONFIG_DIR")
+        check("a launch on an account records it",
+              bg_session.account_config_dirs() == [None, os.path.abspath(s.backup)],
+              bg_session.account_config_dirs())
+        bg_session.remember_account(s.backup)
+        with open(bg_session.ACCOUNTS_PATH, encoding="utf-8") as f:
+            check("recorded once", len(json.load(f)) == 1)
+        shutil.rmtree(s.backup)
+        check("a recorded dir that no longer exists is skipped", bg_session.account_config_dirs() == [None],
+              bg_session.account_config_dirs())
 
 
 def test_resume_forgets_old_registry_entry():
@@ -292,6 +317,7 @@ if __name__ == "__main__":
     test_config_dir_follows_registry()
     test_resume_uses_transcript_account()
     test_resume_forgets_old_registry_entry()
+    test_accounts_discovered_not_named()
     test_short_id_parsing()
     test_write_receipt()
     test_claude_agents_merges_accounts()
