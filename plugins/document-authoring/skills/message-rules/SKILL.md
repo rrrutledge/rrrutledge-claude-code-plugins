@@ -187,6 +187,8 @@ A single clear sentence ending in a question is usually the whole message — re
 - **When someone else owns a topic, loop them into the thread rather than answering on Russell's own authority — even when he's confident of the answer.**
   Bringing in the real owner means they field the follow-up questions from then on, not Russell — less work for him over time than staying the sole point of contact on something that isn't his to own.
   This extends past the answer to the action itself: when the next step (rescheduling something, making a call) isn't Russell's to take, give only his own position as a bare confirmation and leave the actual step to the owner, rather than adding a directive ("go ahead and move it") that presumes he's the one steering it.
+  **Handing an outside contact off to new main contacts keeps Russell's own door open: name the new owners and, in the same sentence, offer his help to everyone on the thread.**
+  That offer is an in-voice exception to the helper-tail rule, the same as the warm-partner offer under **Energizing close**, and it stays even though the new owners now handle the day-to-day.
 - **Keep asks open and tentative — don't pre-commit.**
   Write as though the outcome is still open and give room to say no: hedge with "may"/"wondering", include alternatives, and avoid pinning the person to a specific action.
   When the primary ask is a harder commitment (money, sponsorship), pair it with an explicit lower-commitment fallback framed as a floor — "at the very least, X" — so declining the main ask still leaves an easy yes on the table.
