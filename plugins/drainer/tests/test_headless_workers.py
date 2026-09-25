@@ -85,6 +85,16 @@ for var in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
     check(f"clears {var}", var in env, False)
 check("keeps unrelated env (PATH)", env.get("PATH"), "keepme")
 
+print("\nspawn_bg launched from inside a session (a worker's handoff)")
+base = {"CLAUDECODE": "1", "CLAUDE_JOB_DIR": "j", "CLAUDE_CODE_MESSAGING_SOCKET": "s", "CLAUDE_EFFORT": "high",
+        "CLAUDE_CONFIG_DIR": "keepme"}
+rid, args, env = _run_spawn_bg(base_env=base)
+for var in ("CLAUDECODE", "CLAUDE_JOB_DIR", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_EFFORT"):
+    check(f"clears {var}", var in env, False)
+check("keeps the account dir (CLAUDE_CONFIG_DIR)", env.get("CLAUDE_CONFIG_DIR"), "keepme")
+rid, _, _ = _run_spawn_bg(stdout="backgrounded · \x1b[36m33ddd28a\x1b[39m · a worker\n")
+check("parses the id through FORCE_COLOR escapes", rid, "33ddd28a")
+
 print("\nspawn_bg fails soft")
 check("None on a non-zero exit", _run_spawn_bg(returncode=1)[0], None)
 check("None when no id is in the output", _run_spawn_bg(stdout="Starting background service…\n")[0], None)

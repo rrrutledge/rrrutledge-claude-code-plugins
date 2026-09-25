@@ -174,9 +174,11 @@ Route each piece of work by where it belongs - which is also where Russell can r
   A screenshot is a large image and a PDF can be several megabytes; read inline, it lands in the prefix and is re-read on every later model call, so the subagent boundary is where the costliest content stays out.
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this tab.
-  Emit it via the drainer's own tab-spawn (no new launcher) and let this tab stay on its own item:
-  `<skill>/scripts/spawn-tab.cmd "<title>" "<repo dir>" "<.tmp/handoff-*.md>" "<model id>" "<.tmp/summary.txt>"`
-  Write the full brief to the `.tmp/` prompt file (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
+  Launch it the way the poller launched you - a headless background session, never a Windows Terminal tab - and let this tab stay on its own item:
+  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --repo "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model id>`
+  The launcher in `~/OneDrive/Claude/handoffs.md` is for interactive sessions; a worker uses this script so its handoff stays in the background.
+  Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
+  The script prints the new session's short id; name it in your reply so Russell can find the session in `claude agents` or on claude.ai/code.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**

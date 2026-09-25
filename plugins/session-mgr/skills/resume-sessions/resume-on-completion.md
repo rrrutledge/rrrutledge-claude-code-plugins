@@ -11,7 +11,7 @@ This frees the terminal tab immediately, and - for a drainer worker - the drain 
 
 Reach for resume-on-completion only when a **specific, identifiable tab or session** is doing the blocking work, so there is an exact session to resume against:
 
-- **A fresh tab this session spawns** to do the blocking work now (a drainer worker spawns via `<skill>/scripts/spawn-tab.cmd`; a plain session via the handoff launcher).
+- **A fresh session this session spawns** to do the blocking work now (a drainer worker launches a background session via `<skill>/scripts/spawn-handoff.py`, per `worker-core.md` step 3; a plain session opens a tab via the handoff launcher).
 - **An existing peer session** already doing the blocking work is the variant (find it with `ListAgents`): Russell redirects a worker to let that pre-existing tab finish first, then it comes back.
   It gets the same resume instruction.
 

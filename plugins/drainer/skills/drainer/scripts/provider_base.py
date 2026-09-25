@@ -92,8 +92,18 @@ _BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
 # `claude --bg` prints:  Starting background service…\n backgrounded · <shortId> · <name>
 # Capture the short id (the sessionId's first hyphen-delimited segment) - the handle `claude
 # attach/logs/stop/rm` and `claude agents` all take. `[^0-9a-f]*` skips the middot/spaces after
-# "backgrounded" up to the id.
+# "backgrounded" up to the id. Color codes are stripped first (_ANSI_RE): launched from inside a
+# session (a worker's handoff), FORCE_COLOR is set, so claude wraps the id in an escape like
+# `\x1b[36m` whose own digits would otherwise stop the skip short of the real id.
 _BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Vars a running Claude session sets for its own tool subprocesses. A launch from inside a session (a
+# worker's handoff) inherits them, so they are cleared to keep the new session a clean top-level one -
+# see spawn_bg's docstring. A launch from the poller never has them, so clearing is a no-op there.
+_SESSION_ENV = ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDE_HOST_PID",
+                "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_BRIDGE_SESSION_ID",
+                "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
+                "CLAUDE_CODE_SESSION_ATTENDED", "CLAUDE_JOB_DIR", "CLAUDE_EFFORT")
 
 
 def spawn_bg(seed, model, cwd, name):
@@ -125,14 +135,14 @@ def spawn_bg(seed, model, cwd, name):
             (`claude stop` its own session) and never the tab branch. Were the poller launched from a
             profile-loaded tab, an inherited host pid would send the worker's close-up at the launcher's
             PowerShell instead; cleared, the worker is unambiguously headless.
+          * the rest of _SESSION_ENV - the launching session's job dir, messaging socket, bridge id and
+            effort, which a handoff launched from inside a worker would otherwise carry over.
         A browser tab the worker opens needs no owner env: browser-chauffeur owns it by the worker's own
         claude process (CLAUDE_PID, which Claude Code injects into the worker's tool subprocesses and
         which lives exactly as long as the worker), so it is released the moment the worker ends.
     No focus logic: a background session never surfaces a window to steal focus from.
     """
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID",
-                        "CLAUDE_HOST_PID")}
+    env = {k: v for k, v in os.environ.items() if k not in _SESSION_ENV}
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual", "--name", name,
             "--model", model, "--disallowedTools", _BG_DISALLOWED_TOOLS, "--", seed]
     try:
@@ -141,7 +151,7 @@ def spawn_bg(seed, model, cwd, name):
         return None
     if res.returncode != 0:
         return None
-    m = _BG_ID_RE.search(res.stdout or "")
+    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
     return m.group(1) if m else None
 
 
