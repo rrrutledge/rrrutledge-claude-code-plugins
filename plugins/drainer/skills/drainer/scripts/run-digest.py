@@ -170,6 +170,18 @@ def format_backlog(backlog):
     return "\n".join(lines)
 
 
+def measure_backlog(runtime_dir, cfg):
+    """The one place the `show_backlog_depth` toggle is read: the rendered barometer when it's on, None
+    (with no measurement at all) when it's off. A measurement failure renders as an unavailable line,
+    since a backlog problem must never keep the digest from launching."""
+    if not cfg.get("show_backlog_depth", True):
+        return None
+    try:
+        return format_backlog(compute_backlog(runtime_dir, cfg))
+    except Exception as e:
+        return f"Backlog depth: unavailable this run ({e})."
+
+
 def _print_heartbeat(hb):
     """Show the poller's own liveness (`_poller` heartbeat) so a run of empty cycles is legible: the
     poller stamps this every live cycle, so a stale `last_drained_ts` reads as 'not running' instead of
@@ -210,10 +222,7 @@ def print_brief(runtime_dir, cfg):
         it = e.get("item") or {}
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
-    if cfg.get("show_backlog_depth", True):
-        print(format_backlog(compute_backlog(runtime_dir, cfg)))
-    else:
-        print("Backlog depth: turned off (show_backlog_depth: false).")
+    print(measure_backlog(runtime_dir, cfg) or "Backlog depth: turned off (show_backlog_depth: false).")
     print("Nothing cleared (dry-run).")
 
 
@@ -235,13 +244,7 @@ def main():
         print_brief(runtime_dir, cfg)
         return
 
-    backlog_block = None  # toggled off: no measurement, and the seed tells the session to skip step 1b
-    if cfg.get("show_backlog_depth", True):
-        try:
-            backlog_block = format_backlog(compute_backlog(runtime_dir, cfg))
-        except Exception as e:  # a backlog failure must never keep the digest session from launching
-            backlog_block = f"Backlog depth: unavailable this run ({e})."
-    prompt_file = write_seed(runtime_dir, repo, cfg, backlog_block)
+    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg))
     # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
     # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
     # kept in a sibling summary file, the way a worker's is.

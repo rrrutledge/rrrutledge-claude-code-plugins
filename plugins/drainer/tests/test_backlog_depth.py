@@ -180,6 +180,16 @@ check("false turns it off", cfg_with("show_backlog_depth: false\n")["show_backlo
 check("a trailing comment doesn't flip it", cfg_with("show_backlog_depth: false  # quiet\n")["show_backlog_depth"],
       False)
 
+check("off: measure_backlog returns None without measuring",
+      digest.measure_backlog("rt", {"show_backlog_depth": False, "providers": None}), None)
+orig_compute = digest.compute_backlog
+digest.compute_backlog = lambda rt, cfg: (_ for _ in ()).throw(RuntimeError("listing blew up"))
+try:
+    check("on: a measurement failure renders as unavailable",
+          digest.measure_backlog("rt", {}), "Backlog depth: unavailable this run (listing blew up).")
+finally:
+    digest.compute_backlog = orig_compute
+
 with tempfile.TemporaryDirectory() as rt:
     seed_cfg = {"local_dir": rt}
     with open(digest.write_seed(rt, "repo", seed_cfg, rendered), encoding="utf-8") as f:
