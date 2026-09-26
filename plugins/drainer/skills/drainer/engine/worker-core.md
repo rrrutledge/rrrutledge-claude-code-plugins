@@ -269,6 +269,8 @@ If the situational check finds nothing to do right now - a thread where they rep
 For an outreach card, "not yet time to follow up" means exactly that cadence window, and the interval is defined in the trello provider's CLEAR → Nudge cadence - read it there rather than guessing.
 A card whose Start has arrived, still unanswered, and past its cadence has crossed into "time to follow up": that is a nudge to draft, so keep it needs-you and present it normally, never a silent bump.
 Bumping such a card's Start again instead of drafting the nudge is what turns it into one that gets pushed forever without a follow-up ever going out.
+The quiet resolve is for an outside party holding the next step, never for a due task whose next step is Russell's own.
+"Not done yet" on a task card is the reason it came due, not a reason to wait: present what he needs to do now, per the trello provider's DUE-TASK.
 
 **Waiting on someone else → tracker card.**
 The delegation case from the framing above.
@@ -319,6 +321,7 @@ Self-close here only when ALL of these are unambiguously true:
 - nothing produced awaits Russell's review, edit, or send - no draft was staged for him (if step 4 staged one, this rule doesn't apply; go present it as usual)
 - no decision remains that only he could make (which option to pursue, whether to escalate, how to word something delicate, whether an ambiguous match is good enough)
 - nothing outbound-to-others or irreversible is pending his OK
+- no next step waits on Russell himself (per the trello provider's DUE-TASK)
 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
