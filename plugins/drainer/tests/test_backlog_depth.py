@@ -161,6 +161,37 @@ check("render shows the how-far-back barometer, oldest across all sources",
 check("render marks the dark source unavailable", "slack: unavailable this run" in rendered, True)
 
 
+# --- show_backlog_depth toggle: config parse + the seed's step-1b fact -------------------------------
+print("\nshow_backlog_depth toggle")
+import drainer_config  # noqa: E402
+
+
+def cfg_with(frontmatter):
+    d = tempfile.mkdtemp()
+    os.makedirs(os.path.join(d, ".claude"))
+    with open(os.path.join(d, ".claude", "drainer.local.md"), "w", encoding="utf-8") as f:
+        f.write(f"---\n{frontmatter}---\n")
+    return drainer_config.read_config(d)
+
+
+check("defaults on when the key is absent", cfg_with("digest_model: x\n")["show_backlog_depth"], True)
+check("explicit true stays on", cfg_with("show_backlog_depth: true\n")["show_backlog_depth"], True)
+check("false turns it off", cfg_with("show_backlog_depth: false\n")["show_backlog_depth"], False)
+check("a trailing comment doesn't flip it", cfg_with("show_backlog_depth: false  # quiet\n")["show_backlog_depth"],
+      False)
+
+with tempfile.TemporaryDirectory() as rt:
+    seed_cfg = {"local_dir": rt}
+    with open(digest.write_seed(rt, "repo", seed_cfg, rendered), encoding="utf-8") as f:
+        on_seed = f.read()
+    with open(digest.write_seed(rt, "repo", seed_cfg, None), encoding="utf-8") as f:
+        off_seed = f.read()
+check("on: the seed carries the measured block", "Grand total: 3 pending" in on_seed, True)
+check("off: the seed carries no counts", "pending" in off_seed, False)
+check("off: the seed tells the session to skip step 1b", "skip digest-core step 1b" in off_seed, True)
+check("off: provider health still seeded", "provider-health file" in off_seed, True)
+
+
 print()
 if failures:
     print(f"{len(failures)} check(s) FAILED: {failures}")
