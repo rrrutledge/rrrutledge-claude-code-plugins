@@ -159,6 +159,20 @@ def is_path_within_claude_drainer(path):
     return path_under(path, os.path.expanduser('~/.claude/drainer'))
 
 
+def is_within_claude_jobs_dir(path):
+    """True if `.claude/jobs` appears as consecutive path segments, anywhere --
+    ~/.claude/jobs/<job-id>/tmp/... is the harness's own disposable scratch
+    directory for background-agent jobs, the same Claude-owned role as the
+    session `scratchpad` dir already in TRUSTED_SCRIPT_DIRS, just for
+    background jobs rather than the interactive session. Segment-matched
+    rather than anchored to expanduser('~') so it still matches regardless of
+    whose home directory the job lives under, mirroring the "anywhere" scope
+    is_within_any_tmp_dir() already gives `.tmp`."""
+    resolved = _abs_against_cwd(path)
+    segs = normalize_path_cross_platform(resolved).split('/')
+    return any(segs[i] == '.claude' and segs[i + 1] == 'jobs' for i in range(len(segs) - 1))
+
+
 def is_within_any_tmp_dir(path):
     """True if `.tmp` appears as its own path segment, anywhere -- not just
     under the current repo's CWD. `.tmp/` is the user's universal scratch

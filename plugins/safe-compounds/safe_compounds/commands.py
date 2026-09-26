@@ -11,7 +11,7 @@ from .log import log_debug
 from .paths import (
     is_in_trusted_script_dir, is_path_within_allowed_edits, is_path_within_claude_plugins,
     is_path_within_cwd, is_path_within_git_worktree, is_path_within_trusted_destination,
-    is_safe_read_location, is_within_any_tmp_dir, read_script_file,
+    is_safe_read_location, is_within_any_tmp_dir, is_within_claude_jobs_dir, read_script_file,
 )
 from .shell import ASSIGNMENT_ONLY, get_subcommands, shell_tokenize
 
@@ -562,7 +562,7 @@ def _dest_allowed(path):
         return True
     return (is_path_within_cwd(path) or is_path_within_git_worktree(path)
             or is_path_within_allowed_edits(path) or is_path_within_claude_plugins(path)
-            or is_within_any_tmp_dir(path))
+            or is_within_claude_jobs_dir(path) or is_within_any_tmp_dir(path))
 
 
 def _source_allowed(path):
