@@ -119,6 +119,26 @@ Map the card's column onto the nearest phase by intent - boards name and sub-div
 Some boards insert their own steps between these (e.g. a reconciliation or review stage); treat such a column as the nearest generic phase and let the initiative doc say what that step requires.
 
 Always situation-check before acting: if they've already replied or the step already happened, the move is usually to **advance** the card (CLEAR) rather than send again; if it's simply not yet time to follow up, silently bump the Start date (CLEAR) and surface nothing to Russell.
+That silent bump never reaches a task card whose next step is Russell's, and an arrived Start on a card waiting on someone else usually means it's time to ping them (see DUE-TASK below).
+
+## DUE-TASK (a card whose next step is Russell's gets worked, never bumped)
+A card that surfaces has come due, and a due card exists to get worked on.
+Finding it unfinished is expected - that is why the card exists - so "not done yet" is never a reason to wait.
+The only way the task gets done is you and Russell doing it, and Russell acts on what you put in front of him.
+
+Classify the card by **who holds the next step**:
+- **An outside party holds it** - an outreach contact who hasn't replied, a ⏳ Waiting card, or a business inside its own stated turnaround.
+  Waiting on them still doesn't mean bump: the Start was set to the day to ping them again, so an arrived Start usually means draft the ping (needs-you) to see how it's going.
+  A silent bump fits only when the thread shows activity since that Start was set - they replied, or Russell already answered - so a ping now would be premature (CLEAR, below).
+- **Russell or you hold it** - everything else: a PR to review or merge, an institution login or MFA only he can do, a decision, a purchase, a call to make, or the task itself.
+  This is a **needs-you** item: do every part you can do alone first (worker-core step 3), then present what Russell needs to do now, in order ("review and merge PR #417, then let's do the bank logins together").
+  Never bump its Start, and never self-close it through worker-core §6a.
+
+A card whose own description names a hold condition ("deferred until after the job") that is still plainly unmet has nothing to do yet, so bump its Start to a sensible re-check date and say why in the dated comment.
+Hold that bar strictly: the condition must be written on the card and clearly unmet, not inferred from the task looking hard or inconvenient.
+
+A **`Recurs:`** card follows the same rule (see Recurring tasks below for when it bumps).
+When the recurring task has fallen behind - its own records show the last completed occurrence is well past one cadence ago - say so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
 ## CLEAR (advance the card)
 Only **after** the user confirms they sent/handled the message, advance the card via the `trello` skill:
@@ -137,6 +157,7 @@ The digest then lists an abandoned or advanced card under its Auto-handled "stat
 A card reaches the digest as `nudged` only on the **silent-bump** path: the situational check found recent activity since the Start date was last set - the contact replied, or Russell already answered on the thread - so a follow-up right now would be premature, and the card's Start is bumped out with nothing sent.
 A follow-up Russell actually sends is a needs-you item he already saw, never an auto-handled nudge.
 So a `nudged` card in the digest is always "checked, activity in flight, too early to act," never an unanswered card pushed without a follow-up going out.
+A task card waiting on Russell himself is never `nudged`; it is a needs-you tab per DUE-TASK.
 
 A ⏳ Waiting card nudges the same way - bump its **Start** (ping-back date) out.
 Whenever a card is **finished** (moved to a terminal/skip list), fire `trello_utils.cascade_unblock(board_id, finished_card_id, session)` so any ⛔ Blocked cards waiting on it are freed on the spot, as the STARTABLE-TASK MODEL's unblock section describes.
@@ -145,7 +166,7 @@ Whenever a card is **finished** (moved to a terminal/skip list), fire `trello_ut
 A card whose description carries a **`Recurs: <cadence>`** line (e.g. `Recurs: weekly`, `Recurs: monthly`, `Recurs: every Thursday`) is a standing task, not a one-off - it resurfaces under a fresh Start date each cadence rather than ever reaching a terminal list.
 This applies to any board, not just outreach: a personal to-do that repeats ("call the bank every Thursday," "back up photos monthly") gets exactly the same treatment.
 
-On CLEAR, once the work for this occurrence is done, **do not** move a `Recurs:` card to Abandoned or Finished.
+On CLEAR, once the work for this occurrence is done - or launched and running on its own, as a spawned session that IS the occurrence's work - **do not** move a `Recurs:` card to Abandoned or Finished.
 Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the usual dated comment.
 The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
 
@@ -172,7 +193,8 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 When unsure, default to infrequent.
 When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
 
-If the situational check finds **nothing to do right now**, silently bump the Start date and finish - surface nothing to Russell.
+If the situational check on an outreach card finds **nothing to do right now**, silently bump the Start date and finish - surface nothing to Russell.
+"Nothing to do" means only that an outside party holds the next step; a step waiting on Russell is something to do, per DUE-TASK.
 "Not yet time to follow up" is decided by the **nudge cadence above**: it's nothing-to-do only while that interval hasn't elapsed since the last outbound message (or they replied and the user already answered).
 Once the card's Start has arrived, they still haven't replied, **and** the cadence interval has elapsed, it *is* time to follow up - **draft the nudge** (needs-you), don't bump the date again.
 (A started card whose cadence has run out is not "nothing to do" - that misread is what turns a card into one that gets bumped forever without a follow-up ever going out.)

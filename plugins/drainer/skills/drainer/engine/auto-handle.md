@@ -25,6 +25,7 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
         Worth a glance.
       - `nudged` - checked, nothing to do right now, and no state change: the situational check found the item already in hand (the action was already taken, or the conversation has recent activity that makes acting premature), so nothing was sent or moved and the item's ping-back date was bumped out.
         Routine.
+        An item whose next step waits on Russell himself is never `nudged` - it is needs-you (the trello provider's DUE-TASK).
         See the trello provider's CLEAR for the exact recent-activity case a card nudges on.
 
       Pick the value that matches what you actually did, per your source's AUTO-HANDLE / CLEAR mapping, and set `dispositionReason` to the same one-liner you recorded on the source (the dated Trello comment, e.g.): "req closed - posting expired", "moved to Interested - they replied yes", "they replied and I already answered - too early to follow up".
