@@ -170,6 +170,9 @@ def read_config(repo, runtime_root=None):
         "orphan_grace_minutes": int(scalar("orphan_grace_minutes", "15")),
         # Wall-clock time (HH:MM, 24h) the daily digest task fires; consumed by the installer.
         "digest_time": scalar("digest_time", "17:00"),
+        # Whether the digest leads with the backlog-depth barometer - see drainer.local.example.md.
+        "show_backlog_depth": scalar("show_backlog_depth", "true").split("#")[0].strip().strip('"\'').lower()
+                              not in ("false", "no", "off", "0"),
     }
 
 

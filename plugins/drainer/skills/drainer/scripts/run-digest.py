@@ -36,11 +36,18 @@ def write_seed(runtime_dir, repo, cfg, backlog_block):
     """Write the digest session's prompt file: a pointer to digest-core.md plus the few runtime
     facts it can't infer (where the queue/state live, the providers dir), and the pre-computed
     backlog-depth barometer the launcher measured for this run (so the session presents real numbers
-    rather than recomputing them)."""
+    rather than recomputing them). A None `backlog_block` means the barometer is toggled off, and the
+    seed says so instead."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, "digest.prompt.txt")
     digest_core = os.path.join(SKILL_DIR, "engine", "digest-core.md")
+    if backlog_block is None:
+        backlog_fact = ("- Backlog depth: turned off on this machine (`show_backlog_depth: false`) - skip "
+                        "digest-core step 1b and leave the section out of the digest.\n\n")
+    else:
+        backlog_fact = ("- Backlog depth measured by the launcher for this run (digest-core step 1b - present "
+                        f"it verbatim as the read-only barometer, do not recompute):\n{backlog_block}\n\n")
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are the drainer EOD digest session. Read `~/.claude/CLAUDE.md`, then follow the "
@@ -54,8 +61,7 @@ def write_seed(runtime_dir, repo, cfg, backlog_block):
             "these (read it for CLEAR and JUNK-LEARNING).\n"
             f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` — read it FIRST "
             "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
-            "- Backlog depth measured by the launcher for this run (digest-core step 1b - present it "
-            f"verbatim as the read-only barometer, do not recompute):\n{backlog_block}\n\n"
+            + backlog_fact +
             "Present the digest to Russell and clear NOTHING until he approves. Draft-only: never send "
             "or post. When the queue is emptied (or Russell defers) and you are done, stop.\n"
         )
@@ -164,6 +170,18 @@ def format_backlog(backlog):
     return "\n".join(lines)
 
 
+def measure_backlog(runtime_dir, cfg):
+    """The one place the `show_backlog_depth` toggle is read: the rendered barometer when it's on, None
+    (with no measurement at all) when it's off. A measurement failure renders as an unavailable line,
+    since a backlog problem must never keep the digest from launching."""
+    if not cfg.get("show_backlog_depth", True):
+        return None
+    try:
+        return format_backlog(compute_backlog(runtime_dir, cfg))
+    except Exception as e:
+        return f"Backlog depth: unavailable this run ({e})."
+
+
 def _print_heartbeat(hb):
     """Show the poller's own liveness (`_poller` heartbeat) so a run of empty cycles is legible: the
     poller stamps this every live cycle, so a stale `last_drained_ts` reads as 'not running' instead of
@@ -204,7 +222,7 @@ def print_brief(runtime_dir, cfg):
         it = e.get("item") or {}
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
-    print(format_backlog(compute_backlog(runtime_dir, cfg)))
+    print(measure_backlog(runtime_dir, cfg) or "Backlog depth: turned off (show_backlog_depth: false).")
     print("Nothing cleared (dry-run).")
 
 
@@ -226,11 +244,7 @@ def main():
         print_brief(runtime_dir, cfg)
         return
 
-    try:
-        backlog_block = format_backlog(compute_backlog(runtime_dir, cfg))
-    except Exception as e:  # a backlog failure must never keep the digest session from launching
-        backlog_block = f"Backlog depth: unavailable this run ({e})."
-    prompt_file = write_seed(runtime_dir, repo, cfg, backlog_block)
+    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg))
     # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
     # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
     # kept in a sibling summary file, the way a worker's is.

@@ -66,6 +66,10 @@ Present the block verbatim from the runtime facts, at the spot step 4 places it 
 Surface the numbers only; the pending items behind them are the poller's, per the note at the top of this file.
 When a source reads "unavailable this run", say so plainly and move on - a listing that failed to load is a gap in the barometer, not a zero.
 
+The barometer is a per-machine toggle (`show_backlog_depth` in `drainer.local.md`, on by default).
+When the runtime facts say it's turned off, skip this step and leave the section out of the digest entirely - no heading, no placeholder.
+Stuck-provider health (step 0) is separate and always runs.
+
 ## 2a. Needs your sign-in - a browser gate only Russell can clear
 
 A worker that hits a browser gate only Russell can clear reports it here instead of stalling silently - see `worker-core.md` §2e for what counts as a gate and what it records.
@@ -153,7 +157,7 @@ When the chosen stop is a mail rule, creating or appending it always routes thro
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b), **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), **Needs your sign-in** (step 2a), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 

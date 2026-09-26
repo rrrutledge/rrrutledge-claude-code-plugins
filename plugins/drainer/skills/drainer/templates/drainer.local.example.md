@@ -60,6 +60,9 @@ orphan_grace_minutes: 15        # the poller re-queues any item whose source obj
                                 # This grace only stops a just-spawned worker (session not up yet) from being
                                 # misread as dead.
 digest_time: "17:00"            # wall-clock time (HH:MM, 24h) the daily digest task fires (used by the installer).
+show_backlog_depth: true        # lead the digest with the per-source "N pending" backlog barometer. Set false
+                                # once the queues are under control - the launcher then skips measuring it and
+                                # the digest omits the section. Flip it back on if the backlog grows again.
 ---
 
 # drainer.local
