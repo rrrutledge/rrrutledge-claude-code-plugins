@@ -69,7 +69,7 @@
 //                (move-to takes a well-known folder id: 'archive' or 'deleteditems'.
 //                 --except-from is the personal-domain fence. Multi-value flags split on `||`.
 //                 Rules stop-processing by default; --no-stop disables that.)
-// Append phrase: node mail.js --append-rule="Corporate Subjects" --subject-contains="D||E"
+// Append phrase: node mail.js --append-rule="Corporate Subjects" --subject-contains="D||E" [--body-contains=..] [--from-contains=..]
 //                (adds phrases to an existing rule by id or display name — the "add to bucket" op)
 // Delete rule:   node mail.js --delete-rule="<ruleId or name>"
 
@@ -533,18 +533,20 @@ async function findRule(client, idOrName) {
   return (data.value || []).find(r => r.id === idOrName || r.displayName === idOrName);
 }
 
-// Append subject/body phrases to an existing rule's conditions — the "add a phrase to the bucket" op.
+// Append subject/body/sender phrases to an existing rule's conditions - the "add a phrase to the bucket" op.
 async function appendRule(client) {
   const rule = await findRule(client, args['append-rule']);
   if (!rule) throw new Error(`rule not found (by id or name): ${args['append-rule']}`);
   const conditions = rule.conditions || {};
   const addSubj = splitList(args['subject-contains']);
   const addBody = splitList(args['body-contains']);
-  if (!addSubj && !addBody) throw new Error('--append-rule needs --subject-contains and/or --body-contains');
+  const addFrom = splitList(args['from-contains']);
+  if (!addSubj && !addBody && !addFrom) throw new Error('--append-rule needs --subject-contains, --body-contains, and/or --from-contains');
   if (addSubj) conditions.subjectContains = [...(conditions.subjectContains || []), ...addSubj];
   if (addBody) conditions.bodyContains = [...(conditions.bodyContains || []), ...addBody];
+  if (addFrom) conditions.senderContains = [...(conditions.senderContains || []), ...addFrom];
   await client.api(`/me/mailFolders/inbox/messageRules/${rule.id}`).patch({ conditions });
-  console.log(`Appended to "${rule.displayName}": subjectContains=${(conditions.subjectContains || []).length}, bodyContains=${(conditions.bodyContains || []).length}.`);
+  console.log(`Appended to "${rule.displayName}": subjectContains=${(conditions.subjectContains || []).length}, bodyContains=${(conditions.bodyContains || []).length}, senderContains=${(conditions.senderContains || []).length}.`);
 }
 
 async function deleteRule(client) {
