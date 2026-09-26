@@ -265,6 +265,16 @@ CASES = [
     # destination under a `.tmp` dir in an unrelated directory is still safe.
     {"id": "cp_to_unrelated_repo_tmp_dir", "tool": "Bash",
      "command": 'cp a.txt "{HOME}/Dev/some-other-repo/.tmp/b.txt"', "files": {"a.txt": "x"}, "expect": "ALLOW"},
+    # ~/.claude/jobs/<job-id>/tmp/... is the harness's own scratch dir for
+    # background-agent jobs -- disposable, Claude-owned, same role as the
+    # session scratchpad dir.
+    {"id": "cp_to_claude_jobs_tmp", "tool": "Bash",
+     "command": 'cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"', "files": {".tmp/stuff": "x"},
+     "expect": "ALLOW"},
+    {"id": "cp_du_to_claude_jobs_tmp", "tool": "Bash",
+     "command": ('cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi" '
+                 '&& du -sh "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"'),
+     "files": {".tmp/stuff": "x"}, "expect": "ALLOW"},
 
     # --- scripts (deny-by-default; trusted dir vs elsewhere) ----------------
     {"id": "pyfile_tmp", "tool": "Bash", "command": "python .tmp/run.py",
