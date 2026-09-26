@@ -19,7 +19,7 @@ import os
 import re
 
 from .log import log_debug
-from .paths import read_script_file
+from .paths import PLUGIN_CACHE_PATTERN, read_script_file
 from .scripts import extract_script_filename
 from .shell import ShellTokenizer, first_word, shell_tokenize, split_segments, strip_var_assignment
 
@@ -361,8 +361,6 @@ def _subprocess_in_tmp_python(seg, word):
             return filename
     return None
 
-
-PLUGIN_CACHE_PATTERN = re.compile(r'\.claude[/\\]plugins[/\\]cache[/\\]', re.IGNORECASE)
 
 # Commands that legitimately run a plugin's own script straight from the
 # cache -- the normal, supported way an installed plugin invokes its tooling.

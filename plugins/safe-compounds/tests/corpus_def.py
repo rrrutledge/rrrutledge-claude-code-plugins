@@ -314,6 +314,18 @@ CASES = [
     {"id": "write_in_gitrepo", "tool": "Write", "file_path": "{CWD}/src/file.py", "cwd": "git", "expect": "ALLOW"},
     {"id": "write_skill", "tool": "Write", "file_path": "{HOME}/.claude/skills/foo/SKILL.md", "expect": "ALLOW"},
     {"id": "edit_in_gitrepo", "tool": "Edit", "file_path": "{CWD}/src/file.py", "cwd": "git", "expect": "ALLOW"},
+    # ~/.claude/drainer/ (including main-worktree/.tmp/...) is blocked even though it matches the
+    # .tmp/-anywhere allow rule -- Claude Code's own sensitive-path prompt for ~/.claude/ can't be
+    # suppressed by any hook decision, so this redirects the worker to its own repo's .tmp/ instead.
+    {"id": "write_drainer_worktree_tmp", "tool": "Write",
+     "file_path": "{HOME}/.claude/drainer/main-worktree/.tmp/summit-promo-scan.py", "expect": "BLOCK"},
+    {"id": "write_drainer_runtime", "tool": "Write",
+     "file_path": "{HOME}/.claude/drainer/runtime/seeds/item.prompt.txt", "expect": "BLOCK"},
+    # Same reasoning, same fix, for the other path Claude Code always re-prompts on regardless of
+    # this hook's decision: the installed plugin cache.
+    {"id": "write_plugin_cache", "tool": "Write",
+     "file_path": "{HOME}/.claude/plugins/cache/rrrutledge-claude-code-plugins/safe-compounds/1.10.0/hook.py",
+     "expect": "BLOCK"},
 
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},

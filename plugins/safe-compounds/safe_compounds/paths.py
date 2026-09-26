@@ -139,6 +139,26 @@ def is_path_within_claude_plugins(path):
     return path_under(path, os.path.expanduser('~/.claude/plugins'))
 
 
+# Shared with enforce.py's Bash-side detect_plugin_cache_reference() and
+# writes.py's Write/Edit block: a path under the installed plugin cache
+# (~/.claude/plugins/cache/...) hits Claude Code's own "sensitive file"
+# confirmation no matter what this hook decides, for any tool. Matched as a
+# raw substring/regex (not home-anchored) since callers pass whole command
+# strings, not just isolated paths.
+PLUGIN_CACHE_PATTERN = re.compile(r'\.claude[/\\]plugins[/\\]cache[/\\]', re.IGNORECASE)
+
+
+def is_path_within_claude_drainer(path):
+    """True if `path` is within ~/.claude/drainer/ (the drainer's own runtime
+    state, including main-worktree, a git worktree it keeps pinned to
+    origin/main purely for config reads -- never a place to write). Like
+    ~/.claude/plugins/cache, this sits under Claude Code's own sensitive
+    config root, so a write there always hits Claude Code's native
+    confirmation regardless of what this hook decides -- see writes.py's
+    block message for the redirect."""
+    return path_under(path, os.path.expanduser('~/.claude/drainer'))
+
+
 def is_within_any_tmp_dir(path):
     """True if `.tmp` appears as its own path segment, anywhere -- not just
     under the current repo's CWD. `.tmp/` is the user's universal scratch

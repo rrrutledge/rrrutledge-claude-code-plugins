@@ -21,13 +21,18 @@ HOOK = os.path.join(PLUGIN_DIR, "hook.py")
 FIX = os.path.join(TESTS_DIR, "fixtures")
 
 
-def run_hook(payload, cwd_path, learned_path, trusted_path):
+def run_hook(payload, cwd_path, learned_path, trusted_path, home_path):
     env = dict(os.environ)
     env["CLAUDE_CWD"] = cwd_path
     env["SAFE_COMPOUNDS_DISABLE_AI"] = "1"
     env["SAFE_COMPOUNDS_TRUSTED_JSON"] = trusted_path
     env["SAFE_COMPOUNDS_CONFIG_JSON"] = os.path.join(FIX, "config.json")
     env["SAFE_COMPOUNDS_LEARNED_JSON"] = learned_path
+    # os.path.expanduser('~') must resolve to the case's {HOME} fixture dir
+    # (not this machine's real home), or checks like is_path_within_claude_drainer
+    # compare a {HOME}-rooted case path against the wrong base and never match.
+    env["HOME"] = home_path
+    env["USERPROFILE"] = home_path
     proc = subprocess.run(
         [sys.executable, HOOK],
         input=json.dumps(payload),
@@ -40,7 +45,8 @@ def run_hook(payload, cwd_path, learned_path, trusted_path):
 def test_decision(case, tmp_path, trusted_json):
     cwd_path, payload = setup_case(str(tmp_path), case)
     learned = os.path.join(str(tmp_path), "learned.json")
-    decision = run_hook(payload, cwd_path, learned, trusted_json)
+    home_path = os.path.join(str(tmp_path), "home")
+    decision = run_hook(payload, cwd_path, learned, trusted_json, home_path)
     assert decision == case["expect"], f"{case['id']}: got {decision}, expected {case['expect']}"
 
 
