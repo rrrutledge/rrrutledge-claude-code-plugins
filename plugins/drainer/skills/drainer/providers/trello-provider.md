@@ -119,7 +119,7 @@ Map the card's column onto the nearest phase by intent - boards name and sub-div
 Some boards insert their own steps between these (e.g. a reconciliation or review stage); treat such a column as the nearest generic phase and let the initiative doc say what that step requires.
 
 Always situation-check before acting: if they've already replied or the step already happened, the move is usually to **advance** the card (CLEAR) rather than send again; if it's simply not yet time to follow up, silently bump the Start date (CLEAR) and surface nothing to Russell.
-That silent bump belongs to outreach alone - waiting on the other person's reply - and never reaches a task card whose next step is Russell's (see DUE-TASK below).
+That silent bump never reaches a task card whose next step is Russell's, and an arrived Start on a card waiting on someone else usually means it's time to ping them (see DUE-TASK below).
 
 ## DUE-TASK (a card whose next step is Russell's gets worked, never bumped)
 A card that surfaces has come due, and a due card exists to get worked on.
@@ -127,16 +127,15 @@ Finding it unfinished is expected - that is why the card exists - so "not done y
 The only way the task gets done is you and Russell doing it, and Russell acts on what you put in front of him.
 
 Classify the card by **who holds the next step**:
-- **An outside party holds it** - an outreach contact who hasn't replied (inside the nudge cadence), a ⏳ Waiting card, or a business still inside its own stated turnaround.
-  This is the one case a silent bump fits.
+- **An outside party holds it** - an outreach contact who hasn't replied, a ⏳ Waiting card, or a business inside its own stated turnaround.
+  Waiting on them still doesn't mean bump: the Start was set to the day to ping them again, so an arrived Start usually means draft the ping (needs-you) to see how it's going.
+  A silent bump fits only when the thread shows activity since that Start was set - they replied, or Russell already answered - so a ping now would be premature (CLEAR, below).
 - **Russell or you hold it** - everything else: a PR to review or merge, an institution login or MFA only he can do, a decision, a purchase, a call to make, or the task itself.
   This is a **needs-you** item: do every part you can do alone first (worker-core step 3), then present what Russell needs to do now, in order ("review and merge PR #417, then let's do the bank logins together").
   Never bump its Start, and never self-close it through worker-core §6a.
 
-A card's own prose never overrides an arrived Start.
-Description text like "deferred until after the job" was a hold-back, and a hold-back lives in the Start date alone (STARTABLE-TASK MODEL); a Start that has arrived means the hold is over.
-When the text names a condition that still seems unmet, surface the card and let Russell choose: do it now, or give a new Start date.
-Either way, the decision is his, so the date stays put until he makes it.
+A card whose own description names a hold condition ("deferred until after the job") that is still plainly unmet has nothing to do yet, so bump its Start to a sensible re-check date and say why in the dated comment.
+Hold that bar strictly: the condition must be written on the card and clearly unmet, not inferred from the task looking hard or inconvenient.
 
 A **`Recurs:`** card follows the same rule (see Recurring tasks below for when it bumps).
 When the recurring task has fallen behind - its own records show the last completed occurrence is well past one cadence ago - say so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
