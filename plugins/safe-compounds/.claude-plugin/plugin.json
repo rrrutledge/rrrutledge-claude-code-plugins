@@ -1,6 +1,6 @@
 {
   "name": "safe-compounds",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "PreToolUse hook that auto-approves compound bash commands whose every segment is already trusted, enforces CLAUDE.md style rules (no heredocs, redirection, inline scripts, etc.), and classifies MCP and Write/Edit calls \u00e2\u20ac\u201d keeping long Claude Code sessions prompt-free without --dangerously-skip-permissions.",
   "author": {
     "name": "Russell Rutledge"
