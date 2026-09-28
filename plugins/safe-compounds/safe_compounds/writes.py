@@ -1,19 +1,25 @@
 """Write/Edit tool handling: approve project & temp files, redirect stray temp
 files into .tmp/, and otherwise fall through to a prompt.
 
-Precedence matters: ~/.claude/drainer/ and the installed plugin cache are
-blocked *before* the .tmp/-anywhere check, since a path can match both (e.g.
-main-worktree/.tmp/scan.py) and no allow decision there can actually
-suppress Claude Code's own prompt anyway. Below that, a file inside .tmp/ or
-a .claude config dir is approved *before* the temp-name check, so e.g.
-".tmp/commit_tmp.txt" is allowed rather than redirected.
+Precedence matters: ~/.claude/drainer/, ~/.claude/browser-chauffeur/, and the
+installed plugin cache are blocked *before* the .tmp/-anywhere check, since a
+path can match both (e.g. main-worktree/.tmp/scan.py) and no allow decision
+there can actually suppress Claude Code's own prompt anyway. Below that, a
+file inside .tmp/ or a .claude config dir is approved *before* the temp-name
+check, so e.g. ".tmp/commit_tmp.txt" is allowed rather than redirected.
 """
 import os
 import re
 
 from . import ai
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_claude_drainer, is_path_within_cwd
+from .paths import (
+    PLUGIN_CACHE_PATTERN,
+    is_in_git_repo,
+    is_path_within_claude_browser_chauffeur,
+    is_path_within_claude_drainer,
+    is_path_within_cwd,
+)
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -69,6 +75,18 @@ def _drainer_redirect_reason(file_path):
     )
 
 
+def _browser_chauffeur_redirect_reason(file_path):
+    base = os.path.basename(file_path.replace('\\', '/'))
+    return (
+        f'BLOCKED: "{base}" targets ~/.claude/browser-chauffeur/. That\'s the shared '
+        'playwright-core install + helpers shim that setup.js manages, not a place for '
+        'ad-hoc automation scripts -- and like ~/.claude/drainer, it sits under Claude '
+        'Code\'s own sensitive config root, so a write there always hits Claude Code\'s '
+        'native confirmation no matter what this hook decides. Per the browser-chauffeur '
+        'skill, ad-hoc scripts belong in .tmp/ in your own working repo instead.'
+    )
+
+
 def _plugin_cache_redirect_reason(file_path):
     base = os.path.basename(file_path.replace('\\', '/'))
     return (
@@ -84,6 +102,9 @@ def decide_write_edit(file_path):
     """Return ('allow'|'block'|'prompt', reason_or_None) for a Write/Edit path."""
     if is_path_within_claude_drainer(file_path):
         return 'block', _drainer_redirect_reason(file_path)
+
+    if is_path_within_claude_browser_chauffeur(file_path):
+        return 'block', _browser_chauffeur_redirect_reason(file_path)
 
     if PLUGIN_CACHE_PATTERN.search(file_path):
         return 'block', _plugin_cache_redirect_reason(file_path)

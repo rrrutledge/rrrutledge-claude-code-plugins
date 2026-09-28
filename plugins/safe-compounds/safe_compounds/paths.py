@@ -159,6 +159,20 @@ def is_path_within_claude_drainer(path):
     return path_under(path, os.path.expanduser('~/.claude/drainer'))
 
 
+def is_path_within_claude_browser_chauffeur(path):
+    """True if `path` is within ~/.claude/browser-chauffeur/ (the shared
+    playwright-core install + browser-chauffeur-helpers shim that setup.js
+    manages). Every legitimate write there happens inside setup.js itself
+    (fs.writeFileSync / npm install, run as a Bash command) -- never through
+    Claude's Write/Edit tool. The skill's own SKILL.md already says ad-hoc
+    scripts belong in .tmp/, so a Write/Edit here is always a script that
+    should have been generated in .tmp/ instead. Like ~/.claude/drainer, this
+    sits under Claude Code's own sensitive config root, so a write there
+    always hits Claude Code's native confirmation regardless of what this
+    hook decides -- see writes.py's block message for the redirect."""
+    return path_under(path, os.path.expanduser('~/.claude/browser-chauffeur'))
+
+
 def is_within_claude_jobs_dir(path):
     """True if `.claude/jobs` appears as consecutive path segments, anywhere --
     ~/.claude/jobs/<job-id>/tmp/... is the harness's own disposable scratch

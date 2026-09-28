@@ -336,6 +336,14 @@ CASES = [
     {"id": "write_plugin_cache", "tool": "Write",
      "file_path": "{HOME}/.claude/plugins/cache/rrrutledge-claude-code-plugins/safe-compounds/1.10.0/hook.py",
      "expect": "BLOCK"},
+    # ~/.claude/browser-chauffeur/ is the shared playwright-core install + helpers shim that
+    # setup.js manages -- ad-hoc scripts belong in .tmp/ per the browser-chauffeur skill, so a
+    # Write/Edit here is always redirected the same way as drainer/plugin-cache.
+    {"id": "write_browser_chauffeur", "tool": "Write",
+     "file_path": "{HOME}/.claude/browser-chauffeur/slack-open-browser.js", "expect": "BLOCK"},
+    {"id": "write_browser_chauffeur_nested", "tool": "Write",
+     "file_path": "{HOME}/.claude/browser-chauffeur/node_modules/browser-chauffeur-helpers/index.js",
+     "expect": "BLOCK"},
 
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},
