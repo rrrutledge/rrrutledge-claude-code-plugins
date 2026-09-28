@@ -285,6 +285,31 @@ def test_outcome_discarded(tmp_path):
     assert result["dispatch"] is None
 
 
+def test_outcome_moot_discard_skips_flagging(tmp_path):
+    draft_id = _seed_scored("d-test-moot", "Original draft that never got sent through this channel.",
+                             {"familiarity": 90, "phrasing_complexity": 100, "task_ambiguity": 90,
+                              "input_completeness": 100, "stylometric": 90}, score=94)
+    result = sc.record_outcome(draft_id, None, discarded=True, edit_nature=[],
+                                reason="replied directly in the portal instead", moot=True)
+    assert result["disposition"] == "discarded"
+    assert result["direction"] is None
+    assert result["implicated"] == []
+    assert result["miscalibrated"] is False
+    assert result["dispatch"] is None
+    assert not os.path.isfile(os.path.join(sc.briefs_dir(), f"{draft_id}.md"))
+
+
+def test_cli_outcome_moot_flag_suppresses_dispatch(tmp_path):
+    draft_id = _seed_scored("d-test-moot-cli", "Original draft that never got sent through this channel.",
+                             {"familiarity": 90, "phrasing_complexity": 100, "task_ambiguity": 90,
+                              "input_completeness": 100, "stylometric": 90}, score=94)
+    r = run_cli(["outcome", "--draft-id", draft_id, "--discarded", "--moot",
+                 "--reason", "handled in the portal directly"])
+    assert r.returncode == 0
+    assert "discarded" in r.stdout
+    assert "miscalibrated" not in r.stdout
+
+
 def test_outcome_under_confidence_recorded_without_brief(tmp_path):
     draft_id = _seed_scored("d-test-under", "Body text used for the under-confidence test today.",
                              {"familiarity": 20, "phrasing_complexity": 90, "task_ambiguity": 90,

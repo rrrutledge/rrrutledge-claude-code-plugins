@@ -50,7 +50,7 @@ After Russell sends the draft (edited or as-is) or discards it outright, record 
 
 ```
 python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --sent-file <file> --edit-nature <a,b>
-python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --discarded --reason "<text>"
+python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --discarded --reason "<text>" [--moot]
 ```
 
 If the session no longer has the draft id handy, `--body-file <staged body>` finds it by rehashing that file against the log.
@@ -67,6 +67,9 @@ If the session no longer has the draft id handy, `--body-file <staged body>` fin
 **Skip `--discarded` when you're about to score a replacement for the same thread and recipient - the facts moved, not the draft.**
 Just build context and mint the replacement: scoring it auto-supersedes the still-pending original, which correctly leaves the original not flagged as over-confident.
 Calling `--discarded` on the stale draft first flags it as over-confident by the same mechanical rule that catches a genuinely bad draft, triggering a calibration session for a phrasing or ambiguity lesson that doesn't exist.
+
+**Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
+There's no replacement to score here, so the supersede path above doesn't apply and `--discarded` is still the right call; `--moot` tells the outcome command to skip the factor/composite check that would otherwise flag a well-scored draft as over-confident just because it never got the chance to go out.
 
 ## Run the calibration dispatch
 
