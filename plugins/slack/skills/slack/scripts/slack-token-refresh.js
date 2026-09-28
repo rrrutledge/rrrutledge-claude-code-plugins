@@ -13,8 +13,9 @@
 // there is no session left to read a fresh token out of, and this reports `not_logged_in` rather than
 // guessing or hanging.
 //
-// Driven by slack-adapter.py's `attempt_recovery()` via provider_base.run_node. Output is one JSON object
-// on stdout, mirroring the roost-discord-read.js convention:
+// Driven by slack.js's own `refreshCreds()` (a plain `child_process` spawn — see its `call()`), so any
+// command that hits invalid_auth self-heals uniformly, not just the drainer's own enumerate. Output is
+// one JSON object on stdout, mirroring the roost-discord-read.js convention:
 //   { "status": "ok", "token": "xoxc-...", "cookie": "..." }             — fresh creds extracted
 //   { "status": "not_logged_in" }                                       — needs a human to sign in
 // A genuinely unexpected failure (bad CDP connection, Slack's client markup changing shape) throws and
