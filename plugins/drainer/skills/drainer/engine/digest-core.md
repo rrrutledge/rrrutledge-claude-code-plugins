@@ -194,3 +194,4 @@ An item dropped from the queue while its source object is still sitting in the i
 - **Clear nothing without Russell's review** - this is the whole point of the digest being interactive.
 - **Reversible-only without asking** - every provider's CLEAR is reversible by design; never a permanent purge.
 - **Link to descriptive text, never a bare URL** - route any composed prose through the `document-authoring` voice.
+- **Link PRs and issues from their repo** - per the `git-workflow` skill's PR-link rules.
