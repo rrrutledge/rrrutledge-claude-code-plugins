@@ -66,6 +66,11 @@
       "description": "Append rows to a Google Sheet, or read a range's values, via the Sheets API — no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API."
     },
     {
+      "name": "google-drive",
+      "source": "./plugins/google-drive",
+      "description": "Search, copy, share, and upload Google Drive files, and read or edit Google Slides decks (insert photos, set text), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token."
+    },
+    {
       "name": "google-forms",
       "source": "./plugins/google-forms",
       "description": "Create a Google Form via the Forms API - no browser. Create the form, lay out instruction sections, and add short-answer questions programmatically. Reuses the gmail plugin's OAuth client with a separate token scoped to the forms.body API. A file-upload question is the one item the Forms API can't create; the skill guides the single manual step to add it."
