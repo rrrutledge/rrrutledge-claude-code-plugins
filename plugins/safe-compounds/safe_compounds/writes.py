@@ -58,42 +58,34 @@ def _temp_redirect_reason(file_path):
     )
 
 
-# Every entry here sits under Claude Code's own sensitive config root, so a
-# Write/Edit there always hits Claude Code's own native confirmation
-# regardless of what this hook decides -- the block exists only to redirect
-# to the right alternative before the user has to answer that native prompt.
-# Add a new entry here for any other ~/.claude/<tool>/ runtime dir that
-# should never receive an ad-hoc script/write; only give it its own
-# path_under()/regex check (like plugin_cache's) if something outside
-# writes.py needs that same matcher too.
+DEFAULT_BLOCKED_DIR_ALTERNATIVE = 'Write scratch/staging files to .tmp/ in your own working repo instead.'
+
+# Plain ~/.claude/<tool>/ runtime dirs that should never receive a Write/Edit
+# -- every legitimate write there happens some other way (a setup script, a
+# config read), never through this tool. Add a new dir here for the common
+# case; give it a full BLOCKED_CLAUDE_DIRS entry below instead only if it
+# needs a non-.tmp/ alternative or a matcher other than path_under() (e.g.
+# because something outside writes.py needs to reuse that same matcher, the
+# way enforce.py reuses PLUGIN_CACHE_PATTERN against raw Bash command
+# strings, not just Write/Edit paths).
+BLOCKED_CLAUDE_SUBDIRS = [
+    '~/.claude/drainer',
+    '~/.claude/browser-chauffeur',
+]
+
+
+def _subdir_matcher(subdir):
+    base = os.path.expanduser(subdir)
+    return lambda p: path_under(p, base)
+
+
 BLOCKED_CLAUDE_DIRS = [
+    {'matcher': _subdir_matcher(subdir), 'target': f'{subdir}/'}
+    for subdir in BLOCKED_CLAUDE_SUBDIRS
+] + [
     {
-        'matcher': lambda p: path_under(p, os.path.expanduser('~/.claude/drainer')),
-        'target': '~/.claude/drainer/',
-        'what': (
-            "That includes main-worktree, which is config to read (drainer_config.py's "
-            "ensure_main_worktree), not a place to write"
-        ),
-        'alternative': 'Write scratch/staging files to .tmp/ in your own working repo instead.',
-    },
-    {
-        'matcher': lambda p: path_under(p, os.path.expanduser('~/.claude/browser-chauffeur')),
-        'target': '~/.claude/browser-chauffeur/',
-        'what': (
-            "That's the shared playwright-core install + helpers shim that setup.js manages, "
-            "not a place for ad-hoc automation scripts"
-        ),
-        'alternative': (
-            'Per the browser-chauffeur skill, ad-hoc scripts belong in .tmp/ in your own '
-            'working repo instead.'
-        ),
-    },
-    {
-        # Shared matcher: enforce.py's detect_plugin_cache_reference() uses the same
-        # PLUGIN_CACHE_PATTERN against raw Bash command strings, not just Write/Edit paths.
         'matcher': lambda p: bool(PLUGIN_CACHE_PATTERN.search(p)),
         'target': 'the installed plugin cache (~/.claude/plugins/cache/...)',
-        'what': "That's installed content, not the checked-out repo source",
         'alternative': (
             "Point the plugin's checked-out repo source instead, or write scratch/staging "
             'files to .tmp/ in your own working repo.'
@@ -104,10 +96,11 @@ BLOCKED_CLAUDE_DIRS = [
 
 def _blocked_dir_reason(file_path, entry):
     base = os.path.basename(file_path.replace('\\', '/'))
+    alternative = entry.get('alternative', DEFAULT_BLOCKED_DIR_ALTERNATIVE)
     return (
-        f'BLOCKED: "{base}" targets {entry["target"]}. {entry["what"]}, and it sits under '
-        "Claude Code's own sensitive config root, so a write there always hits Claude Code's "
-        f'native confirmation no matter what this hook decides. {entry["alternative"]}'
+        f'BLOCKED: "{base}" targets {entry["target"]}. That sits under Claude Code\'s own '
+        "sensitive config root, so a write there always hits Claude Code's native confirmation "
+        f'no matter what this hook decides. {alternative}'
     )
 
 
