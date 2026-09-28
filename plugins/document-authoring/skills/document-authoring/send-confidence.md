@@ -24,9 +24,9 @@ Before minting, write a JSON context file next to the staged body (for example `
 }
 ```
 
-- `channel` is one of `gmail`, `outlook-personal`, `outlook-work`, `slack`, `teams`, `linkedin`, `other`.
-- `turns_before_draft` counts Russell's turns between the ask and this mint - every human turn so far in a drainer worker, or the turns since he gave this particular ask in a live session.
-- `sent_count` is the familiarity proxy below, or `null` where the channel has no count source.
+- **`channel`** is one of `gmail`, `outlook-personal`, `outlook-work`, `slack`, `teams`, `linkedin`, `other`.
+- **`turns_before_draft`** counts Russell's turns between the ask and this mint - every human turn so far in a drainer worker, or the turns since he gave this particular ask in a live session.
+- **`sent_count`** is the familiarity proxy below, or `null` where the channel has no count source.
 
 ## Get the familiarity count
 
@@ -44,7 +44,9 @@ Mint the review receipt exactly as `writing-review` describes, adding the contex
 python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <body-file> --score-context <ctx.json>
 ```
 
-(run the newest cached copy if several exist). This writes the receipt and, in the same step, scores and logs the draft. It prints the draft id, never the score.
+(run the newest cached copy if several exist).
+This writes the receipt and, in the same step, scores and logs the draft.
+It prints the draft id, never the score.
 
 ## Record the outcome
 
@@ -57,17 +59,17 @@ python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confi
 
 If the session no longer has the draft id handy, `--body-file <staged body>` finds it by rehashing that file against the log.
 
-**Use the same edit-nature categories the Voice learning loop already classifies against**, so recording an outcome adds no new judgment call:
+**Classify the edit into exactly one of these four categories** - a finer breakdown of the Voice learning loop's own Information fix / Voice change split:
 
-- `factual-correction` - an information fix (a corrected fact, name, link, date, number, or scope detail).
-- `tone-voice` - a voice change in phrasing, filler, or altitude, with the sentence structure otherwise intact.
-- `structural-rewrite` - a voice change that reordered or reshaped the message.
-- `scope-recipient` - the edit changed who the message is to or what it's about, not just how it's worded.
+- **`factual-correction`** - the Voice loop's Information fix: a corrected fact, name, link, date, number, or scope detail.
+- **`tone-voice`** - the Voice loop's Voice change, where phrasing, filler, or altitude shifted but the sentence structure stayed intact.
+- **`structural-rewrite`** - the Voice loop's Voice change, where wording was reordered or reshaped.
+- **`scope-recipient`** - the edit changed who the entire message is addressed to, or swapped out the entire subject it's about, rather than correcting one detail inside an otherwise-unchanged message; this sits outside the Voice loop's two buckets, since it redirects the message as a whole rather than fixing content within it.
 
 **Record `--discarded` when Russell decides not to send a staged draft at all**, with `--reason` naming why in one phrase.
 
 ## Run the calibration dispatch
 
-The outcome command prints a spawn command as its last line whenever the draft turns out to have been over-confident - the case a Stage 2 auto-send lane would need to avoid.
+The outcome command prints a spawn command as its last line whenever the recorded outcome shows the draft was over-confident - the case a Stage 2 auto-send lane would need to avoid.
 Run that command as printed, and name the new session's short id in your reply so Russell can find it.
 No printed command means no dispatch is needed for this outcome.
