@@ -1,14 +1,15 @@
 # outlook-graph-junk provider - personal Junk Email folder (Microsoft Graph API)
 
 A provider for a **personal** Outlook.com mailbox's **Junk Email folder**, read entirely through the **Microsoft Graph API** via the **`ms-graph`** skill's `mail.js`.
-The poller enumerates Junk, triages each item, and surfaces misfiled mail (anything that's actually `fyi` or `needs-you`) into the normal worker/digest flow.
-Genuinely junk mail found in Junk is silently recorded as seen (matches Russell's framing: "already in the right spot").
+The poller enumerates Junk, triages and security-screens each item, and un-junks misfiled mail (anything that's actually `fyi`, `auto-handle`, or `needs-you`) into the Inbox.
+It never launches a worker for a Junk item: once the message is back in the Inbox, the `outlook-graph` provider enumerates it as an ordinary new message and its normal worker/digest flow takes over, so one email is never worked from two providers at once.
+Genuinely junk mail found in Junk, and anything the security screen flagged, is silently recorded as seen and left in Junk (matches Russell's framing: "already in the right spot").
 
 Implements `../engine/provider.md`; classify by `../engine/triage.md`. id prefix: `outlook-graph-junk-`; body file: `<id>.email.md`.
 
 > **Sibling to `outlook-graph-provider.md`** - same mailbox, same `mail.js`, same message ids and capture shape.
-> This file covers only the Junk-specific mechanics: CLEAR (the `--not-junk` action that un-junks + retrains), and notes on shared mechanics (AUTH-GLANCE, SITUATIONAL-CHECK, DRAFT-MODE all reuse the Inbox provider's docs - no need to restate).
-> JUNK-LEARNING is N/A for items triaged `junk` from this provider, since they never reach a worker or the digest.
+> This file covers only the Junk-specific mechanics: RESCUE (the `--not-junk` action that un-junks + retrains), run by the poller in plain code.
+> No worker ever holds a Junk item, so SITUATIONAL-CHECK, DRAFT-MODE, and JUNK-LEARNING are the Inbox provider's, applied after the rescue.
 
 **Shared email rules:** See `email-base.md` for CAPTURE shape, SITUATIONAL-CHECK, DRAFT-MODE voice rules, and JUNK-LEARNING priority order.
 This file covers only the Junk-specific bits.
@@ -26,40 +27,29 @@ The `ms-graph` `mail.js` lives at `<ms-graph-skill>/scripts/mail.js` - run it wi
 Run `node mail.js --list-unread --top=1`.
 If it prints messages (or "No unread messages."), you're signed in.
 
-## SITUATIONAL-CHECK
+## SITUATIONAL-CHECK, CAPTURE
 
-**Same as `outlook-graph-provider.md`** - search all three folders (Inbox, Archive, Deleted Items) using `node mail.js --search="<subject>"`.
-A captured message in Junk may have moved or been handled since capture (the user's own reply might already be sitting in Inbox, or a second message from the same sender arrived and landed in Junk).
-Pull the full thread via search - don't stop at the first page.
+**N/A - no worker holds a Junk item.**
+The rescued message is captured and situationally checked by the `outlook-graph` provider, from the Inbox.
+The message id is the same opaque Graph id in either folder, but the two providers keep separate seen-state, so the Inbox provider sees the rescued message as new.
 
-## CAPTURE
+## RESCUE
 
-**Same shape as `outlook-graph-provider.md`:** `items/<id>.email.md` (header + full body) and `items/<id>.json` (metadata record).
-Graph-specific: `messageId` is the opaque Graph message id (works identically regardless of which folder the message sits in).
-
-## CLEAR
-
-`node mail.js --not-junk=<messageId>` - un-junks a message by reporting it "not junk" to Microsoft's filter and moving it to **Inbox**.
+The poller runs `node mail.js --not-junk=<messageId>` in plain code, after triage and the security screen, for every Junk item that is not `junk` and not screen-flagged.
+It un-junks a message by reporting it "not junk" to Microsoft's filter and moving it to **Inbox**.
 This is a **single atomic step** that both rescues the misfiled message *and* retrains the junk filter so future mail from that sender is less likely to be misfiled.
+
+A screen-flagged item stays in Junk: the report would teach Microsoft's filter to pass it.
+The item is recorded seen only after the un-junk succeeds; a failure leaves it unrecorded, so the next cycle retries.
 
 **Mechanism:** Uses the **beta** Graph action `POST /me/messages/{id}/reportMessage` with `IsMessageMoveRequested: true` and `ReportAction: "notJunk"`.
 The old stable `markAsNotJunk` was retired in Dec 2025; Microsoft's replacement is this beta endpoint.
 If the beta call fails (should be rare), `mail.js` falls back to a plain move-to-Inbox (`POST /me/messages/{id}/move`), so the message is still rescued even if filter retraining doesn't happen.
 
-**Narrate:** Mention both the un-junking (moved to Inbox, no longer junk) and the filter retraining ("future messages from this sender are less likely to be misfiled").
-On fallback, note that the message was un-junked but the filter wasn't retrained.
-
-## JUNK-LEARNING
+## JUNK-LEARNING, DRAFT-MODE
 
 **N/A for this provider.**
-The poller filters out items triaged `junk` from `outlook-graph-junk` **before** they reach the worker or the digest queue - they're silently recorded as seen with zero noise.
-So there is no worker, no digest entry, and no worker asking the user "how do we stop this?" because the item is already in the right place.
+Genuinely junk items are recorded seen with zero noise, so no worker or digest entry ever asks the user "how do we stop this?" because the item is already in the right place.
+A rescued message is the Inbox provider's from then on, including any reply drafting (`outlook-graph-provider.md`, `email-base.md`).
 
-**Why:** `outlook-graph-junk`'s whole point is to *ignore* genuine junk (leave it alone - it's correctly filed) while surfacing misfiled mail (which will be `fyi` or `needs-you`).
-A genuinely junk item never reaches JUNK-LEARNING because it never reaches the user.
-
-## DRAFT-MODE
-
-**Same as `outlook-graph-provider.md`** - the voice rules and reply mechanics are identical, since this is the same mailbox.
-Use the same `mail.js --reply` / `--draft-new` commands.
-See `email-base.md` and `outlook-graph-provider.md` for the full DRAFT-MODE mechanics.
+**Why:** `outlook-graph-junk`'s whole point is to *ignore* genuine junk (leave it alone - it's correctly filed) while returning misfiled mail to the Inbox, without a second worker racing the Inbox provider's own.

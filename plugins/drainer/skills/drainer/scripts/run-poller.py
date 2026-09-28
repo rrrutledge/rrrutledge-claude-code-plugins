@@ -838,6 +838,24 @@ def _apply_screen(it, screen_verdict):
     return True
 
 
+def split_junk_items(all_new):
+    """Split the cycle's triaged items into (correctly_junked, to_rescue, rest).
+
+    Junk-folder items never dispatch a worker: the inbox provider handles a misfiled message once it is
+    back in the Inbox, so one message is never worked by two providers at once.
+    An item triaged junk, or flagged by the security screen, stays in Junk (un-junking would also report
+    it to Microsoft as not-junk, teaching the filter to pass it). Everything else is rescued."""
+    correctly_junked, to_rescue, rest = [], [], []
+    for it in all_new:
+        if it["_source"] != "outlook-graph-junk":
+            rest.append(it)
+        elif it["_bucket"] == "junk" or it.get("_screen"):
+            correctly_junked.append(it)
+        else:
+            to_rescue.append(it)
+    return correctly_junked, to_rescue, rest
+
+
 def _stamp_item_fields(json_file, **fields):
     """Persist extra top-level fields onto a captured item's json after the adapter wrote its fixed record:
     `screen` (the flag the worker leads with) and/or `selfAuthenticated` (an owner-issued command the
@@ -1791,10 +1809,10 @@ def main():
     if pre_triaged:
         print(f"  {len(pre_triaged)} trello card(s) -> needs-you (deterministic, skipped AI)")
 
-    # Split off correctly-junked items AFTER triage: outlook-graph-junk items triaged as junk are
-    # already in the right place, so record them as seen with zero noise (no capture, no queue-add).
-    correctly_junked = [it for it in all_new if it["_source"] == "outlook-graph-junk" and it["_bucket"] == "junk"]
-    needs_and_others = [it for it in all_new if not (it["_source"] == "outlook-graph-junk" and it["_bucket"] == "junk")]
+    # Split off the Junk-folder items AFTER triage and screening: they never dispatch. Genuine junk (and
+    # anything the screen flagged) stays put, recorded seen with zero noise (no capture, no queue-add);
+    # misfiled mail is un-junked below and the inbox provider works it from there.
+    correctly_junked, to_rescue, needs_and_others = split_junk_items(all_new)
 
     # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
     # fail closed: open no new needs-you workers this cycle) ---
@@ -1874,6 +1892,11 @@ def main():
                 model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  spawn auto-worker [{it['_complexity']} -> {model}]\n"
                       f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
+        if to_rescue:
+            print("  misfiled in Junk -> un-junk to the Inbox (no worker; the inbox provider takes it from there):")
+            for it in to_rescue:
+                print(f"    [{it['_bucket']:9}] {it['_id']}\n"
+                      f"        {it.get('from')} | {it.get('subject')}")
         print("  needs-you (orphan-sessions first, then priority band, then level band, then referral band, then newest-first):")
         slots = open_slots(waiting, total, len(auto), cfg)
         for it in needs:
@@ -1991,6 +2014,17 @@ def main():
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "junk")
         correctly_junked_count += 1
 
+    # Misfiled Junk items: un-junk into the Inbox, where the outlook-graph provider enumerates them as
+    # ordinary new messages. Recorded seen only once the un-junk succeeded, so a failure leaves the item
+    # in Junk and unrecorded, and the next cycle retries it (its verdicts read back from the cache).
+    rescued_count = 0
+    for it in to_rescue:
+        if prov[it["_source"]].rescue(it):
+            seen_state("record", cfg["runtime_dir"], it["_source"], it["_id"], "rescued")
+            rescued_count += 1
+        else:
+            print(f"{it['_id']}: un-junk FAILED; left in Junk, retrying next cycle.")
+
     teams_others = [it for it in others if it["_source"] == "teams"]
     if teams_others and prov.get("teams"):
         _spawn_teams_mark_read(teams_others, prov["teams"], repo, cfg["runtime_dir"], cfg["worker_model"])
@@ -2000,6 +2034,7 @@ def main():
     print(f"dispatched {dispatched} worker(s), {auto_dispatched} auto-handle worker(s), "
           f"queued {queued} for digest ({poll_cleared} archived at triage), "
           f"{correctly_junked_count} correctly-filed junk (no action), "
+          f"{rescued_count} un-junked to the Inbox, "
           f"held {held} (of which {held_corr} behind an open item from the same correspondent) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
 

@@ -3,6 +3,8 @@
 Sibling of outlook-graph-adapter.py: same mailbox, same mail.js, same id scheme and captured item
 shape — the only difference is which folder gets enumerated (Junk Email instead of Inbox), so
 `name` alone drives the id prefix and body-file naming inherited by stable_id()/capture()'s shape.
+It never dispatches a worker: misfiled mail is un-junked (rescue) and the outlook-graph provider
+handles it from the Inbox, so one message is never worked from both providers.
 Kept as its own adapter file (not a subclass) per the provider pattern in engine/provider.md: each
 source's mechanics live in one self-contained two-file provider.
 """
@@ -46,6 +48,11 @@ class Provider(ProviderBase):
         sender = slug((item.get("fromAddress") or item.get("from") or "").split("@")[0])
         subj3 = slug("-".join((item.get("subject") or "").split()[:3]))
         return f"{self.name}-{recv}-{sender}-{subj3}".strip("-")[:72]
+
+    def rescue(self, item):
+        # Un-junk into the Inbox and retrain Microsoft's filter (one atomic mail.js action). The inbox
+        # provider enumerates it from there as an ordinary new message.
+        return run_node([self.mailjs, f"--not-junk={item['id']}"]).returncode == 0
 
     def capture(self, item, iid, runtime_dir):
         items_dir = os.path.join(runtime_dir, "items")

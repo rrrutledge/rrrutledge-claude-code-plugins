@@ -708,6 +708,15 @@ class ProviderBase:
         the inbox until the digest, which still clears it on Russell's review."""
         return None
 
+    def rescue(self, item):
+        """Move a misfiled item out of a holding folder into the folder another provider enumerates, so that
+        provider's normal path (triage, worker or digest) handles it. Only a provider whose folder is a
+        holding area, not a work queue (the Junk folder), overrides this; it is the only thing such a
+        provider does with a non-junk item, so an item is never worked from two providers at once. Return
+        True on success, False on failure (the poller leaves a failed item unrecorded and retries next
+        cycle). The default returns None: this provider dispatches its own items."""
+        return None
+
     def still_in_inbox_ids(self):
         """Optional: the set of this provider's message ids currently sitting in the live Inbox. This
         is what the poller's reconcile reads completion off - an item whose message is gone from the
