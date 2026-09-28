@@ -41,6 +41,18 @@ from provider_base import ProviderBase, ProviderError, run_node, find_skill_scri
 _UNRECOVERABLE_MARKER = "auto-refresh did not fix it"
 
 
+def _attachment_lines(files):
+    """Render slack.js's per-message `files` metadata (name/mimetype/permalink) as body lines so a
+    worker always knows a message carried an image/file, and where to look - see the handoff this
+    closes: a text-only capture silently dropped a screenshot the sender's message depended on."""
+    if not files:
+        return ""
+    return "\n" + "\n".join(
+        f"[Attachment: {f.get('name', '(unnamed)')} ({f.get('mimetype', '')})] {f.get('permalink', '')}"
+        for f in files
+    )
+
+
 class Provider(ProviderBase):
     name = "slack"
 
@@ -105,12 +117,13 @@ class Provider(ProviderBase):
         if thread_ts:
             show_cmd.append(f"--thread-ts={thread_ts}")
         show = run_node(show_cmd)
-        text, permalink = item.get("preview", ""), ""
+        text, permalink, shown_files = item.get("preview", ""), "", []
         if show.returncode == 0:
             try:
                 shown = json.loads(show.stdout or "{}")
                 text = shown.get("text") or text
                 permalink = shown.get("permalink") or ""
+                shown_files = shown.get("files") or []
             except ValueError:
                 pass
         # Write the FULL unread span into the body, not only the newest message. One DM/channel/thread can
@@ -122,6 +135,7 @@ class Provider(ProviderBase):
         if len(unread) > 1:
             parts = [f"**{m.get('from') or item.get('from') or '?'}** "
                      f"({(m.get('received') or '')[:16].replace('T', ' ')}):\n{m.get('text', '')}"
+                     f"{_attachment_lines(m.get('files'))}"
                      for m in unread]
             body = (f"{len(unread)} unread messages since your last read, oldest first. Group them into "
                     "distinct asks first - several rapid-fire messages on one topic are one ask; different "
@@ -131,12 +145,18 @@ class Provider(ProviderBase):
                     "every group is completed, staged as a draft, or tracked on a follow-up card.\n\n"
                     + "\n\n".join(parts))
         else:
-            body = text
+            body = text + _attachment_lines(shown_files)
         with open(body_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\n"
                     f"Channel: {item.get('channelName')} ({channel})\nReceived: {item.get('received')}\n"
                     f"Unread messages: {item.get('unreadCount')}\n"
                     f"Link: {permalink}\nMessageRef: {channel}:{ts}\n\n---\n\n{body}\n")
+        # Every attachment across the captured span, flattened - shown_files for the single-message case,
+        # each unread message's own files for the multi-message case. Kept on the record for other tooling;
+        # the body lines above are what a worker actually reads.
+        all_files = list(shown_files) if len(unread) <= 1 else [
+            f for m in unread for f in (m.get("files") or [])
+        ]
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
@@ -148,6 +168,8 @@ class Provider(ProviderBase):
             "bodyFile": body_file,
             "ts_captured": datetime.now(timezone.utc).isoformat(),
         }
+        if all_files:
+            record["files"] = all_files
         json_file = os.path.join(items_dir, f"{iid}.json")
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)

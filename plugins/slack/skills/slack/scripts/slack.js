@@ -142,6 +142,16 @@ const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
 const tsToIso = (ts) => new Date(parseFloat(ts) * 1000).toISOString();
 const newer = (a, b) => parseFloat(a) > parseFloat(b || '0');
 
+// Slack drops an image/file's metadata into a `files` array on the message object — a screenshot or
+// document attached alongside (or instead of) text. Surface just enough that a caller knows one exists
+// and where to look: name, a mime/file type, and the permalink a human can open. Never fetch the bytes
+// here — that's a deliberate non-goal (see the handoff this closes).
+const fileMeta = (files) => (files || []).map(f => ({
+  name: f.name || f.title || '(unnamed)',
+  mimetype: f.mimetype || f.filetype || '',
+  permalink: f.permalink || '',
+}));
+
 // ---- name/info resolution (cached within one run) ----
 const userCache = new Map();
 async function userName(id) {
@@ -204,7 +214,9 @@ async function previewText(msgs) {
 async function unreadSpan(msgs) {
   const out = [];
   for (const m of msgs.slice().reverse()) {
-    out.push({ ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await renderText(m.text) });
+    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await renderText(m.text) };
+    if (m.files && m.files.length) entry.files = fileMeta(m.files);
+    out.push(entry);
   }
   return out;
 }
@@ -265,12 +277,14 @@ async function listUnread() {
       for (const m of mentions) {
         const from = await userName(m.user);
         const rendered = await renderText(m.text);
+        const unreadEntry = { ts: m.ts, from, received: tsToIso(m.ts), text: rendered };
+        if (m.files && m.files.length) unreadEntry.files = fileMeta(m.files);
         items.push({
           id: `${c.id}:${m.ts}`, channel: c.id, channelType: 'channel',
           ts: m.ts, threadTs: '', from, fromId: m.user, subject: `@mention in ${chName}`, channelName: chName,
           received: tsToIso(m.ts), isRead: false, unreadCount: 1,
           preview: rendered.slice(0, 600),
-          unread: [{ ts: m.ts, from, received: tsToIso(m.ts), text: rendered }],
+          unread: [unreadEntry],
         });
       }
     } else {
@@ -350,18 +364,21 @@ async function show() {
   if (!m) { console.log('Message not found.'); return; }
   const from = await userName(m.user);
   const text = await renderText(m.text);
+  const files = fileMeta(m.files);
   let permalink = '';
   try { permalink = (await call('chat.getPermalink', { channel: args.channel, message_ts: args.ts })).permalink || ''; }
   catch { /* permalink optional */ }
   if (args.json) {
     console.log(JSON.stringify({ channel: args.channel, ts: args.ts, threadTs: args['thread-ts'] || '',
-      from, fromId: m.user, received: tsToIso(args.ts), text, permalink }, null, 2));
+      from, fromId: m.user, received: tsToIso(args.ts), text, permalink,
+      ...(files.length ? { files } : {}) }, null, 2));
     return;
   }
   console.log(`From: ${from}`);
   console.log(`When: ${tsToIso(args.ts)}`);
   if (permalink) console.log(`Link: ${permalink}`);
   console.log(`\n${text || '(no text)'}`);
+  for (const f of files) console.log(`\n[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
 }
 
 // Recent messages, oldest first: a whole thread (conversations.replies) when --thread-ts is given,
@@ -381,11 +398,13 @@ async function history() {
   }
   const out = [];
   for (const m of msgs) {
-    out.push({
+    const entry = {
       ts: m.ts, threadTs: m.thread_ts || '', replyCount: m.reply_count || 0,
       from: await userName(m.user), fromId: m.user,
       received: tsToIso(m.ts), text: await renderText(m.text),
-    });
+    };
+    if (m.files && m.files.length) entry.files = fileMeta(m.files);
+    out.push(entry);
   }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log('No messages.'); return; }
@@ -394,6 +413,7 @@ async function history() {
     console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from} (ts=${m.ts}` +
       `${m.threadTs ? `, thread=${m.threadTs}` : ''}${m.replyCount ? `, replies=${m.replyCount}` : ''})`);
     console.log(m.text || '(no text)');
+    for (const f of m.files || []) console.log(`[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
   }
 }
 
