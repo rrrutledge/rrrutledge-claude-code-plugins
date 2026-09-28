@@ -8,6 +8,7 @@ description: Search, copy, share, and upload Google Drive files, and read or edi
 `scripts/google-drive.js` drives Google Drive and Google Slides through Google's official Node client (`googleapis`).
 It reuses the Google Cloud OAuth "Desktop app" clients the `gmail` plugin registered - one OAuth client, many scopes - with its own token per account under `~/.claude/google-drive/`.
 The token carries two scopes:
+
 - **`drive`** - search, copy, share, and upload any file the account can reach (the narrower `drive.file` sees only files this app created, so it can't open an existing template or folder).
 - **`presentations`** - read and edit Slides decks.
 
@@ -47,6 +48,7 @@ Every command takes `--account=<name>` for a named account; the listing commands
 - **Link sharing:** `--share-link --file=<id> --role=reader|commenter|writer` grants "anyone with the link" access and prints the link.
   Link sharing names no person, so Google sends no notification email.
 - **Upload:** `--upload --path=<local file> [--folder=<id>] [--title=<name>]`.
+- **Trash:** `--trash --file=<id>` moves the file to Drive's trash, where it stays restorable for 30 days.
 
 ### Slides
 
@@ -61,9 +63,10 @@ A title matches the slide whose title placeholder (or, lacking one, first text b
   The Slides API fetches an image only from an anonymously reachable URL, so the command grants the Drive image link access for the insert and removes it right after (Slides keeps its own copy); an image that was already link-shared stays that way.
 - **Set text:** `--slides-set-text --deck=<id> <slide> (--shape=<element id> | --placeholder=BODY|TITLE|SUBTITLE) (--text=<t> | --text-file=<path>) [--append]`.
   Replaces the shape's text, or with `--append` adds the text as a new paragraph after what's there.
+  `--placeholder` matches only layout placeholders; a plain text box carries no placeholder type, so it's addressed by `--shape`.
 
 ## Auth-error handling
 
 A "Not signed in" error, `invalid_grant`, or the account guard tripping each means that account's sign-in must be re-run; the error message carries the exact command.
-If Google declines to return a refresh token, revoke prior access at `https://myaccount.google.com/permissions`, then re-run.
+If Google declines to return a refresh token, revoke prior access on the [Google Account permissions page](https://myaccount.google.com/permissions), then re-run.
 An "API has not been used in project" error means step 1 of Setup is still open for that client's project.

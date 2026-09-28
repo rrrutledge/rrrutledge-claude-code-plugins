@@ -1,9 +1,8 @@
 // Shared OAuth2 client for the Google Drive and Slides APIs. Reuses the same Google Cloud OAuth "Desktop
 // app" clients the `gmail` plugin already registered - one OAuth client, many scopes; each token cache only
-// holds the scopes it was consented for. This path requests `drive` (search, copy, share, upload any file
-// the account can reach - the narrower `drive.file` only sees files this app created, so it can't reach an
-// existing template or folder) plus `presentations` (read and edit Slides decks). It keeps its own token
-// cache under ~/.claude/google-drive/, separate from gmail's and google-docs'.
+// holds the scopes it was consented for. This path requests `drive` plus `presentations` (SKILL.md explains
+// the scope choice) and keeps its own token cache under ~/.claude/google-drive/, separate from gmail's and
+// google-docs'.
 //
 // Prerequisite: the Google Drive API and Google Slides API must both be enabled on the Cloud project each
 // OAuth client belongs to - a one-time, per-project toggle, unrelated to any single token.
@@ -14,8 +13,7 @@
 // GMAIL_OAUTH_CLIENT_ID_<NAME> / _SECRET_<NAME> when set - needed when the default client is Internal to
 // one Workspace org and refuses a consumer @gmail.com account - falling back to the shared pair.
 //
-// Wrong-account guard. A token minted with --expect-email records the address it was authorized for
-// (account_email); assertAccountEmail() re-checks it on every run against Drive's about.get, so an
+// Wrong-account guard. Every token records the address it was authorized for (account_email); assertAccountEmail() re-checks it on every run against Drive's about.get, so an
 // operation can never land in the wrong Drive whatever account name was passed.
 //
 //   const { getAuthedClient, assertAccountEmail } = require('./google-drive-oauth');

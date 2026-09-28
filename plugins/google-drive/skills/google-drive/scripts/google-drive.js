@@ -2,28 +2,7 @@
 // google-drive-oauth.js). Every command accepts --account=<name> to act on a named account instead of the
 // default one, and --json for machine-readable output where it prints a listing.
 //
-// Drive
-//   --whoami                                       the signed-in address (auth check)
-//   --list [--folder=<id>] [--name=<text>] [--top=50]
-//                                                  files in a folder, or matching a name, or (neither) the
-//                                                  most recently modified files
-//   --info --file=<id>                             name, type, parent folders, link
-//   --copy --file=<id> --title=<t> [--folder=<id>] copy a file (default: into the source's own folder)
-//   --share-link --file=<id> --role=reader|writer  "anyone with the link" access; link sharing sends no email
-//   --upload --path=<local file> [--folder=<id>] [--title=<t>]
-//
-// Slides (--deck=<presentation id>; a slide is picked by --slide-title=<text> or --slide-index=<n>)
-//   --slides-read --deck=<id>                      every slide with its title and elements (id, kind,
-//                                                  placeholder type, text, box in points)
-//   --slides-insert-image --deck=<id> <slide> (--image-path=<local> | --image-file=<drive id>)
-//                        [--box-shape=<element id> | --x= --y= --width= --height=]
-//                                                  insert a photo, fitted inside the box (points) with its
-//                                                  aspect ratio kept; default box is centered at 40% of
-//                                                  the page. A local path is uploaded first, into
-//                                                  --folder or else the deck's own folder.
-//   --slides-set-text --deck=<id> <slide> (--shape=<element id> | --placeholder=BODY|TITLE|...)
-//                    (--text=<t> | --text-file=<path>) [--append]
-//                                                  replace a shape's text, or add it as a new paragraph
+// Usage: see ../SKILL.md "Commands".
 
 const fs = require('fs');
 const path = require('path');
@@ -272,6 +251,9 @@ async function setText(slidesApi, deckId) {
   } else if (args.upload) {
     const f = await upload(drive, need('path'), args.folder, args.title);
     console.log(args.json ? JSON.stringify(f, null, 2) : `Uploaded -> ${f.id}  ${f.name}`);
+  } else if (args.trash) {
+    const f = (await drive.files.update({ fileId: need('file'), requestBody: { trashed: true }, fields: 'id, name', ...ALL_DRIVES })).data;
+    console.log(`Trashed ${f.id}  ${f.name}`);
   } else if (args['slides-read']) {
     const pres = await readDeck(slidesApi, need('deck'));
     const out = (pres.slides || []).map((s, i) => ({ index: i, objectId: s.objectId, title: slideTitle(s), elements: (s.pageElements || []).map(describeElement) }));
