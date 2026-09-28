@@ -40,7 +40,7 @@ from provider_base import ProviderBase, ProviderError, run_node, find_skill_scri
 # The specific, narrow symptom attempt_recovery targets — slack.js's exact wording (see its `call()`)
 # when the Slack API rejects the current token+cookie pair. Deliberately NOT triggered on every kind="auth"
 # failure: a plain network blip should just retry next cycle on its own, not spin up a browser tab.
-_INVALID_AUTH_RE = re.compile(r"invalid_auth", re.IGNORECASE)
+_INVALID_AUTH = "invalid_auth"
 
 
 class Provider(ProviderBase):
@@ -66,7 +66,7 @@ class Provider(ProviderBase):
         reads its environment from the registry at launch, not from sourcing $PROFILE — sees it too,
         without waiting for anyone to open a new terminal). Never logs or returns either value; only a
         status string ever leaves this method's own process boundary in the caller's direction."""
-        if not _INVALID_AUTH_RE.search(error_message or ""):
+        if _INVALID_AUTH not in (error_message or "").lower():
             return False  # not the specific symptom this recovery targets — e.g. a network blip
         team_id = os.environ.get("SLACK_TEAM_ID")
         if not team_id:
