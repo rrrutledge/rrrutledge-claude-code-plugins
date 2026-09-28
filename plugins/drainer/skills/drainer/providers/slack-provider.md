@@ -47,15 +47,18 @@ A Slack item's body carries the **full unread span** (every unread message since
 The adapter writes these two files for each dispatched item (`slack-adapter.py` → `capture`); this is the shape the worker can rely on:
 - `items/<id>.slack.md` - header block (From, Channel, Received, Unread messages, Link, MessageRef) + the **full unread span**: every unread message since Russell's last read, oldest first, each labelled with its author and time (from the `unread` array `slack.js --list-unread --json` attaches to each item).
   A single-message item falls back to that one message's text.
+  A message carrying an image/file shows an `[Attachment: <name> (<mimetype>)] <permalink>` line right after its text.
+  **Always open that permalink and look before concluding on the item** - the same "read it yourself before acting" principle as `../engine/pointers.md`, which also covers reading a screenshot only inside a subagent, per worker-core step 3.
 - `items/<id>.json` - `{ "id","source":"slack","triage","kind","from","subject","received","snippet",`
   `"url":"<permalink>","messageId":"<channel>:<ts>","channel","ts","threadTs","channelType",`
-  `"channelName","teamId","bodyFile","ts_captured" }`.
+  `"channelName","teamId","bodyFile","ts_captured","files"(optional) }`.
 
 `channel` + `ts` (also joined as `messageId`) are the load-bearing fields - the worker needs them for SITUATIONAL-CHECK (`--show`) and CLEAR (`--mark`).
 For a **thread** item, `threadTs` is also set and is required for both `--show` and `--mark`.
 `channelType` is `im` / `mpim` / `channel` / `thread`.
 `url` is the message permalink, openable in Slack.
 `teamId` is the workspace's `SLACK_TEAM_ID`, captured for workspace-identity use (e.g. differentiating workspaces if a second is ever added).
+`files`, when present, flattens every attachment across the captured span (`name`, `mimetype`, `permalink` each) - the `.slack.md` attachment lines above are what the worker actually reads; this is for other tooling.
 
 ## CLEAR
 Advance the read cursor (the Slack "gone") - reversible and non-destructive (nothing is deleted; re-reading or a newer message re-surfaces it).
