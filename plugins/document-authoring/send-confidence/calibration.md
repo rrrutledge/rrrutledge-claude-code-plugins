@@ -8,6 +8,10 @@ The judge prompt reads only the first three sections; the last two collect obser
 
 Patterns in what makes a message read simpler, or more delicate, than it actually turned out to be.
 
+- **Financial confirmations outrank their word count.**
+  Rate a message confirming a financial or accounting root cause to an outside party above the "plain informational reply" band, even when it's a single plain acknowledgment and fact, stated directly.
+  Putting a specific financial explanation in writing to an external party is itself the sensitive content, independent of how few words it takes to say.
+
 ## Task ambiguity
 
 Patterns in what makes an ask read more settled, or more open-ended, than it actually turned out to be.
