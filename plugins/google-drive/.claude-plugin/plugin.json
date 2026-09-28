@@ -1,0 +1,9 @@
+{
+  "name": "google-drive",
+  "version": "1.0.0",
+  "description": "Search, copy, share, and upload Google Drive files, and read or edit Google Slides decks (insert photos, set text), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
