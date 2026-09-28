@@ -1,8 +1,8 @@
 """Write/Edit tool handling: approve project & temp files, redirect stray temp
 files into .tmp/, and otherwise fall through to a prompt.
 
-Precedence matters: ~/.claude/drainer/ and the installed plugin cache are
-blocked *before* the .tmp/-anywhere check, since a path can match both (e.g.
+Precedence matters: the dirs in BLOCKED_CLAUDE_DIRS are checked *before* the
+.tmp/-anywhere check, since a path can match both (e.g.
 main-worktree/.tmp/scan.py) and no allow decision there can actually
 suppress Claude Code's own prompt anyway. Below that, a file inside .tmp/ or
 a .claude config dir is approved *before* the temp-name check, so e.g.
@@ -13,7 +13,7 @@ import re
 
 from . import ai
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_claude_drainer, is_path_within_cwd
+from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -58,35 +58,52 @@ def _temp_redirect_reason(file_path):
     )
 
 
-def _drainer_redirect_reason(file_path):
-    base = os.path.basename(file_path.replace('\\', '/'))
-    return (
-        f'BLOCKED: "{base}" targets ~/.claude/drainer/. That includes main-worktree, which is '
-        'config to read (drainer_config.py\'s ensure_main_worktree), not a place to write -- and '
-        'like ~/.claude/plugins/cache, it sits under Claude Code\'s own sensitive config root, so '
-        'a write there always hits Claude Code\'s native confirmation no matter what this hook '
-        'decides. Write scratch/staging files to .tmp/ in your own working repo instead.'
-    )
+DEFAULT_BLOCKED_DIR_ALTERNATIVE = 'Write scratch/staging files to .tmp/ in your own working repo instead.'
+
+# Every entry's pattern is unanchored -- like PLUGIN_CACHE_PATTERN, it just
+# has to appear somewhere in the path, so it needs no home-expansion or
+# cross-platform normalization to catch both C:\...\.claude\drainer\... and
+# /c/.../.claude/drainer/... forms. Add a new dir here for any other
+# ~/.claude/<tool>/ runtime dir that should never receive a Write/Edit --
+# every legitimate write there happens some other way (a setup script, a
+# config read), never through this tool.
+BLOCKED_CLAUDE_DIRS = [
+    {
+        'pattern': re.compile(r'\.claude[/\\]drainer[/\\]', re.IGNORECASE),
+        'target': '~/.claude/drainer/',
+    },
+    {
+        'pattern': re.compile(r'\.claude[/\\]browser-chauffeur[/\\]', re.IGNORECASE),
+        'target': '~/.claude/browser-chauffeur/',
+    },
+    {
+        # Shared with enforce.py's detect_plugin_cache_reference(), which scans whole raw
+        # Bash command strings for this same pattern, not just Write/Edit paths.
+        'pattern': PLUGIN_CACHE_PATTERN,
+        'target': 'the installed plugin cache (~/.claude/plugins/cache/...)',
+        'alternative': (
+            "Point the plugin's checked-out repo source instead, or write scratch/staging "
+            'files to .tmp/ in your own working repo.'
+        ),
+    },
+]
 
 
-def _plugin_cache_redirect_reason(file_path):
+def _blocked_dir_reason(file_path, entry):
     base = os.path.basename(file_path.replace('\\', '/'))
+    alternative = entry.get('alternative', DEFAULT_BLOCKED_DIR_ALTERNATIVE)
     return (
-        f'BLOCKED: "{base}" targets the installed plugin cache (~/.claude/plugins/cache/...). '
-        'That\'s installed content, not the checked-out repo source, and it sits under Claude '
-        'Code\'s own sensitive config root, so a write there always hits Claude Code\'s native '
-        'confirmation no matter what this hook decides. Point the plugin\'s checked-out repo '
-        'source instead, or write scratch/staging files to .tmp/ in your own working repo.'
+        f'BLOCKED: "{base}" targets {entry["target"]}. That sits under Claude Code\'s own '
+        "sensitive config root, so a write there always hits Claude Code's native confirmation "
+        f'no matter what this hook decides. {alternative}'
     )
 
 
 def decide_write_edit(file_path):
     """Return ('allow'|'block'|'prompt', reason_or_None) for a Write/Edit path."""
-    if is_path_within_claude_drainer(file_path):
-        return 'block', _drainer_redirect_reason(file_path)
-
-    if PLUGIN_CACHE_PATTERN.search(file_path):
-        return 'block', _plugin_cache_redirect_reason(file_path)
+    for entry in BLOCKED_CLAUDE_DIRS:
+        if entry['pattern'].search(file_path):
+            return 'block', _blocked_dir_reason(file_path, entry)
 
     cwd = os.environ.get('CLAUDE_CWD', os.getcwd()).replace('\\', '/')
     if not cwd.endswith('/'):
