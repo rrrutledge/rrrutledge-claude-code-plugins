@@ -93,6 +93,9 @@ Don't present a menu of options or stack a numbered list of questions.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
   When he'll act only after a response, the staged message asks for the confirmation rather than announcing the action.
   Confirm an informally-stated fact is official before building the next question on it.
+- **When confirming a root cause or closing out a financial/accounting discrepancy with an outside party, don't assert the specific finding until it's verified on Russell's own side.**
+  This holds even when the other party's math or theory already points to one clean answer.
+  Acknowledge what they found and say it'll be looked into.
 
 ---
 
