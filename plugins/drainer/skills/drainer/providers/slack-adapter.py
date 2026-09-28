@@ -9,16 +9,19 @@ This is the API sibling of `gmail-adapter.py` / `outlook-graph-adapter.py`: same
 different transport. slack.js talks the Slack Web API with a personal xoxc token + xoxd `d` cookie from
 the environment (SLACK_BOT_TOKEN / SLACK_COOKIE_D / SLACK_TEAM_ID).
 
-**Self-heal on `invalid_auth`** (`attempt_recovery`, below): that xoxc/cookie pair rotates periodically —
-usually just the `d` session cookie, not the token — and slack.js then fails every call until someone
-re-derives it. Rather than waiting for a human to notice and sniff a fresh one out of DevTools, this
-adapter re-derives it itself from the persistent, already-logged-in browser-chauffeur browser via the
-slack skill's `slack-token-refresh.js` (a plain, deterministic script — no AI in the loop). It only ever
-reads a value Slack's own client already keeps for an authenticated session; it cannot manufacture a
-session that was never there. When that browser's OWN Slack session has fully logged out, there is
-nothing to read, `attempt_recovery` returns False, and the poller's normal auth-failure escalation takes
-over (see run-poller.py's AUTH_FAILURE_ALERT_THRESHOLD) — so a genuinely expired browser session still
-reaches Russell instead of failing silently, it just takes one more unattended step to get there.
+**Self-heal on `invalid_auth` lives in slack.js itself, not here.** That xoxc/cookie pair rotates
+periodically (usually just the `d` session cookie, not the token); `slack.js`'s `call()` now retries
+ONCE on `invalid_auth` by re-deriving a fresh pair from the persistent, already-logged-in
+browser-chauffeur browser (the sibling `slack-token-refresh.js` - a plain, deterministic script, no AI
+involved) before giving up, and persists the fresh pair to the Windows registry so the next process
+(this poller's next 5-minute cycle, a worker session, a manual run) picks it up too. This adapter never
+drives that recovery itself - putting it in `slack.js`'s own call layer means EVERY command that funnels
+through it (list-unread, show, mark, react, send, ...) self-heals, not just this adapter's `enumerate`.
+
+What this adapter DOES do is tell "already tried and failed" apart from an ordinary transient auth blip,
+so only the former earns an immediate diagnostic session instead of waiting for the once-a-day digest -
+see `_UNRECOVERABLE_MARKER` and the `kind="auth-unrecoverable"` it raises below, and
+run-poller.py's `AUTH_UNRECOVERABLE_ALERT_THRESHOLD`.
 """
 import json
 import os
@@ -26,21 +29,16 @@ import re
 import sys
 from datetime import datetime, timezone
 
-try:
-    import winreg
-except ImportError:  # pragma: no cover - this adapter only ever runs on Russell's Windows machine
-    winreg = None
-
 # scripts/ is on sys.path (the poller inserts it); fall back to a relative add when run standalone.
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import ProviderBase, ProviderError, run_node, find_skill_script  # noqa: E402
 
-# The specific, narrow symptom attempt_recovery targets — slack.js's exact wording (see its `call()`)
-# when the Slack API rejects the current token+cookie pair. Deliberately NOT triggered on every kind="auth"
-# failure: a plain network blip should just retry next cycle on its own, not spin up a browser tab.
-_INVALID_AUTH = "invalid_auth"
+# slack.js's exact wording (see its `call()`) when ITS OWN internal auto-refresh already ran and still
+# didn't clear invalid_auth - the strong signal that a human is needed now, not just another cycle's
+# ordinary auth retry. Keep this string and slack.js's in sync if either changes.
+_UNRECOVERABLE_MARKER = "auto-refresh did not fix it"
 
 
 class Provider(ProviderBase):
@@ -57,65 +55,15 @@ class Provider(ProviderBase):
                                 kind="config")
         return path
 
-    def attempt_recovery(self, error_message):
-        """Self-heal an `invalid_auth` failure by re-deriving the xoxc token + `d` cookie from the
-        persistent browser-chauffeur browser's own (already-authenticated) Slack session — see the module
-        docstring. Returns True only once the fresh pair is both applied to THIS process's environment (so
-        the poller's immediate retry this cycle sees it) and persisted to the Windows User-scope registry
-        (so the next 5-minute poller cycle — a fresh `pythonw` process launched by Task Scheduler, which
-        reads its environment from the registry at launch, not from sourcing $PROFILE — sees it too,
-        without waiting for anyone to open a new terminal). Never logs or returns either value; only a
-        status string ever leaves this method's own process boundary in the caller's direction."""
-        if _INVALID_AUTH not in (error_message or "").lower():
-            return False  # not the specific symptom this recovery targets — e.g. a network blip
-        team_id = os.environ.get("SLACK_TEAM_ID")
-        if not team_id:
-            return False
-        refresh_js = find_skill_script(__file__, "slack", os.path.join("scripts", "slack-token-refresh.js"))
-        if not refresh_js:
-            return False  # a missing helper is a config problem, not something recovery can fix
-        res = run_node([refresh_js, f"--team={team_id}"])
-        if res.returncode != 0:
-            return False
-        try:
-            result = json.loads(res.stdout or "{}")
-        except ValueError:
-            return False
-        if result.get("status") != "ok":
-            return False  # most commonly "not_logged_in" — the browser's own session has expired too
-        token, cookie = result.get("token"), result.get("cookie")
-        if not token or not cookie:
-            return False
-        os.environ["SLACK_BOT_TOKEN"] = token
-        os.environ["SLACK_COOKIE_D"] = cookie
-        self._persist_to_registry(SLACK_BOT_TOKEN=token, SLACK_COOKIE_D=cookie)
-        return True
-
-    @staticmethod
-    def _persist_to_registry(**values):
-        """Write `values` into `HKEY_CURRENT_USER\\Environment` (Windows User-scope env vars), matching
-        each name's existing registry value type when it already has one. A no-op when `winreg` isn't
-        available (any non-Windows run) — this adapter only ever runs on Russell's Windows machine, so
-        that path exists purely as a defensive fallback, not a supported target."""
-        if winreg is None:
-            return
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
-                              winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
-        try:
-            for name, value in values.items():
-                try:
-                    _, existing_type = winreg.QueryValueEx(key, name)
-                except FileNotFoundError:
-                    existing_type = winreg.REG_SZ
-                winreg.SetValueEx(key, name, 0, existing_type, value)
-        finally:
-            key.Close()
-
     def enumerate(self, limit):
         res = run_node([self.slackjs, "--list-unread", "--json", f"--top={limit}"])
         if res.returncode != 0:
-            raise ProviderError(
-                f"slack enumerate failed (auth/token+cookie?): {res.stderr.strip()[:300]}", kind="auth")
+            stderr = res.stderr.strip()[:300]
+            # slack.js already tried its own internal auto-refresh and it still didn't clear invalid_auth
+            # (see the module docstring) - a stronger signal than an ordinary transient auth blip, worth
+            # escalating to Russell immediately rather than waiting for the once-a-day digest.
+            kind = "auth-unrecoverable" if _UNRECOVERABLE_MARKER in stderr else "auth"
+            raise ProviderError(f"slack enumerate failed (auth/token+cookie?): {stderr}", kind=kind)
         return json.loads(res.stdout or "[]")
 
     def clear(self, item):

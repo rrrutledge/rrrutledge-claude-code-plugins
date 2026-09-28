@@ -694,23 +694,6 @@ class ProviderBase:
         """Write the item's files under <runtime_dir>/items/ and return the path to <id>.json."""
         raise NotImplementedError
 
-    def attempt_recovery(self, error_message):
-        """Optional hook: called once when `enumerate` raises a `ProviderError` with `kind="auth"`, before
-        the poller records the failure and moves on. Return True when the provider believes it has fixed
-        the underlying credential itself, so the poller retries `enumerate` once more in the SAME cycle;
-        return False (the default - never overridden here) when there was nothing to try or the attempt
-        didn't work, so the poller falls through to its normal auth-failure handling for this cycle.
-
-        Most adapters have no self-heal mechanism and never override this. The sanctioned use is a
-        credential that can be re-derived from a session that's authenticated somewhere ELSE the poller
-        can reach headlessly (e.g. the slack adapter re-deriving its xoxc token + session cookie from the
-        persistent, already-logged-in browser-chauffeur browser) - never a mechanism that guesses,
-        prompts, or silently grants anything. `error_message` is the just-raised ProviderError's text, for
-        an adapter that wants to branch on it (e.g. only attempt recovery when it names the specific
-        symptom the recovery targets, not every failure this adapter's enumerate can raise as kind="auth").
-        """
-        return False
-
     def clear(self, item):
         """Archive this item's source object at triage time, for an fyi/junk item being queued for the
         daily digest. An inbox provider whose CLEAR is a reversible archive overrides this so a message
