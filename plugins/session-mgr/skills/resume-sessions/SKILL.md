@@ -51,7 +51,7 @@ instructions: |-
   AND deletes its entry from `live-sessions.json` (so a later run doesn't re-litigate it) — you
   don't need to re-check this by hand.
 
-  Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`. Everything in
+  Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at", "title"}, ...]`. Everything in
   this list is confirmed — go straight to the launch list (Step 3) for these; do not apply
   Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan only,
   next section) — the registry already proved they were still open.

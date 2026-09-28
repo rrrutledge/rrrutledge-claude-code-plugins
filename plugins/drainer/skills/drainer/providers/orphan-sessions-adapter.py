@@ -88,6 +88,9 @@ class Provider(ProviderBase):
                 "session_id": o.get("session_id"),
                 "cwd": o.get("cwd"),
                 "started_at": o.get("started_at"),
+                # The name the session last ran under, so the resume keeps it (None from an older
+                # session-mgr, or a transcript with no name - spawn_resume then falls back).
+                "title": o.get("title"),
                 # Orders MULTIPLE simultaneous orphans against each other (newest crash
                 # first) within run-poller.py's dedicated orphan-dispatch pass —
                 # cross-source priority is enforced structurally there (orphans dispatch

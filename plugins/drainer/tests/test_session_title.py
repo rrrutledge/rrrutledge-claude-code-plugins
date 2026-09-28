@@ -43,14 +43,14 @@ def worker_title(rec):
         return poller._worker_title("item-x1", json_file)
 
 
-def resume_call(cwd):
+def resume_call(cwd, prior_title=None):
     """spawn_resume's one spawn_bg call, captured (never a real launch)."""
     calls = []
     real = poller.spawn_bg
     poller.spawn_bg = lambda seed, model, cwd, name, resume=None: calls.append(
         {"seed": seed, "model": model, "cwd": cwd, "name": name, "resume": resume}) or "r35u0000"
     try:
-        poller.spawn_resume("abcd1234-0000", cwd, "C:/repo")
+        poller.spawn_resume("abcd1234-0000", cwd, "C:/repo", prior_title)
     finally:
         poller.spawn_bg = real
     return calls[0]
@@ -88,6 +88,14 @@ check("no semicolon in the name", ";" in call["name"], False)
 check("directory words kept", call["name"], "Resume: proj evil")
 check("directory of only semicolons", resume_call("C:/;;;")["name"], "Resume:")
 check("no cwd falls back to the repo", resume_call(None)["cwd"], "C:/repo")
+
+print("\nspawn_resume keeps the name the session last ran under")
+check("prior name kept", resume_call("C:/Users/me/proj", "Gmail: Sallie Mae loan")["name"],
+      "Gmail: Sallie Mae loan")
+check("prior name sanitized", resume_call("C:/Users/me/proj", "Fix; deploy")["name"], "Fix deploy")
+check("prior name of only semicolons falls back", resume_call("C:/Users/me/proj", ";;")["name"],
+      "Resume: proj")
+check("empty prior name falls back", resume_call("C:/Users/me/proj", "")["name"], "Resume: proj")
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)
