@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "weights": {
+    "familiarity": 0.2,
+    "phrasing_complexity": 0.2,
+    "task_ambiguity": 0.2,
+    "input_completeness": 0.2,
+    "stylometric": 0.2
+  },
+  "thresholds": {
+    "factor_high": 70,
+    "factor_low": 40,
+    "composite_high": 75,
+    "sent_as_is_max_distance": 0.01
+  }
+}

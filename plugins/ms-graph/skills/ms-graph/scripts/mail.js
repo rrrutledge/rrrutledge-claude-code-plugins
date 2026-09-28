@@ -9,9 +9,12 @@
 //                (Junk Email folder, read+unread, newest-first; same shape as --list-inbox)
 // List drafts:   node mail.js --list-drafts [--top=30]
 //                (drafts folder, most-recently-edited first; same block format with id)
-// Search:        node mail.js --search="Griffiths" [--top=10]
+// Search:        node mail.js --search="Griffiths" [--top=10] [--folder=sent]
 //                (flags any result still sitting in Drafts with a "[DRAFT — NOT SENT]" tag,
-//                 so a drafted-but-unsent reply is never mistaken for a sent message)
+//                 so a drafted-but-unsent reply is never mistaken for a sent message. Without
+//                 --folder, searches the whole mailbox; --folder=sent scopes to Sent Items -
+//                 the send-confidence familiarity count reads a recipient's prior-sent count
+//                 this way, e.g. --search="to:name@example.com" --folder=sent.)
 // Show one:      node mail.js --show=<messageId> [--html]
 //                (default emits the body as plain text. --html emits the raw HTML body.content instead
 //                 — the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
@@ -309,8 +312,14 @@ async function getAttachments(client) {
   return saved;
 }
 
+// Well-known folder ids --folder accepts (only the ones a caller has needed so far).
+const SEARCH_FOLDERS = { sent: 'sentitems', inbox: 'inbox', drafts: 'drafts', junk: 'junkemail' };
+
 async function search(client) {
-  const data = await client.api('/me/messages')
+  const folder = args.folder ? SEARCH_FOLDERS[args.folder] : null;
+  if (args.folder && !folder) throw new Error(`--search --folder must be one of: ${Object.keys(SEARCH_FOLDERS).join(', ')}`);
+  const base = folder ? `/me/mailFolders/${folder}/messages` : '/me/messages';
+  const data = await client.api(base)
     .search(`"${args.search}"`)
     .top(parseInt(args.top || '10', 10))
     .select('id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,bodyPreview,isDraft')

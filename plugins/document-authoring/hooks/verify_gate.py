@@ -25,10 +25,20 @@ minting side and the gating side can never drift apart):
   * hook mode  - no args, reads a PreToolUse payload on stdin. Vetoes (deny) a stage
                  command whose body file has no fresh receipt, or a PR-open whose changed
                  prose files have no fresh receipt; defers otherwise.
-  * mint <f>   - the review flow's final step: hash file <f>, write its receipt.
+  * mint <f>   - the review flow's final step: hash file <f>, write its receipt. An
+                 optional `--score-context <ctx.json>` also logs the draft to send-confidence
+                 (see below); scoring never affects the receipt.
   * check <f>  - exit 0 if <f> has a fresh receipt (or is a pure reaction), else exit 1.
                  For surfaces the hook can't see (Teams/Slack composers), where the flow
                  asserts the receipt itself rather than a stage command triggering the gate.
+
+Mint's optional `--score-context <ctx.json>` hands the just-reviewed body to send-confidence
+(`plugins/document-authoring/send-confidence/send_confidence.py`), which estimates whether
+this draft will go out untouched and appends a row to its own log for the weekly rollup.
+This runs after the receipt is written, so a scoring failure never blocks the receipt, and it
+prints only the draft id - the score itself never surfaces in a per-draft reply, only in the
+weekly trend. A mint with no `--score-context` (PR prose, this plugin's own SKILL.md edits)
+writes no log row, exactly as before this feature existed.
 
 Why the binding is exact: the reviewer reviews a file, the flow mints on that file, and the
 gate rehashes that same file - the message body the stage command consumes, or the
@@ -485,7 +495,7 @@ def run_hook():
 
 # --- mint / check subcommands ---
 
-def cmd_mint(path, verdict):
+def cmd_mint(path, verdict, score_context=None):
     if not path or not os.path.isfile(path):
         print(f"mint: body file not found: {path}", file=sys.stderr)
         return 2
@@ -502,6 +512,16 @@ def cmd_mint(path, verdict):
     with open(receipt_path(h), "w", encoding="utf-8") as fh:
         json.dump(receipt, fh, indent=2)
     print(f"writing-review receipt minted: {h[:12]}... for {path}")
+
+    if score_context:
+        try:
+            sys.path.insert(0, os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "send-confidence"))
+            import send_confidence
+            draft_id = send_confidence.score_and_log(text, h, score_context)
+            print(f"send-confidence: logged {draft_id}")
+        except Exception as e:
+            print(f"send-confidence: not logged ({e})", file=sys.stderr)
     return 0
 
 
@@ -529,12 +549,17 @@ def main():
     argv = sys.argv[1:]
     if argv and argv[0] == "mint":
         verdict = None
+        score_context = None
         rest = argv[1:]
         if "--verdict" in rest:
             i = rest.index("--verdict")
             verdict = rest[i + 1] if i + 1 < len(rest) else None
             rest = rest[:i] + rest[i + 2:]
-        sys.exit(cmd_mint(rest[0] if rest else None, verdict))
+        if "--score-context" in rest:
+            i = rest.index("--score-context")
+            score_context = rest[i + 1] if i + 1 < len(rest) else None
+            rest = rest[:i] + rest[i + 2:]
+        sys.exit(cmd_mint(rest[0] if rest else None, verdict, score_context))
     if argv and argv[0] == "check":
         sys.exit(cmd_check(argv[1] if len(argv) > 1 else None))
     run_hook()

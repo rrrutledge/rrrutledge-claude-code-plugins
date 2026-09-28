@@ -501,6 +501,86 @@ def test_pr_create_base_uses_remote_not_stale_local(tmp_path):
     assert decision(r2.stdout) == "DEFER"
 
 
+# --- mint --score-context (send-confidence) ---
+
+def write_ctx(tmp_path, **overrides):
+    ctx = {
+        "channel": "gmail", "account": "isc", "recipient": "person@example.org",
+        "thread_ref": "thread-1", "iid": None, "session_kind": "live",
+        "ask": "Reply confirming the meeting.", "inputs": "Meeting is Tuesday at 2pm.",
+        "turns_before_draft": 0, "sent_count": 5,
+    }
+    ctx.update(overrides)
+    p = tmp_path / "score-ctx.json"
+    p.write_text(json.dumps(ctx), encoding="utf-8")
+    return str(p)
+
+
+def test_mint_with_score_context_writes_receipt_and_log_row(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    data_dir = str(tmp_path / "send-confidence-data")
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm, looking forward to it.")
+    ctx_path = write_ctx(tmp_path)
+    env = dict(os.environ)
+    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
+    env["SEND_CONFIDENCE_DIR"] = data_dir
+    env["SEND_CONFIDENCE_JUDGE"] = "off"
+    r = subprocess.run(
+        [sys.executable, HOOK, "mint", str(body), "--score-context", ctx_path],
+        env=env, capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert "writing-review receipt minted" in r.stdout
+    assert "send-confidence: logged" in r.stdout
+    log_files = list((tmp_path / "send-confidence-data").glob("log-*.jsonl"))
+    assert len(log_files) == 1
+    assert "\"event\": \"scored\"" in log_files[0].read_text(encoding="utf-8")
+
+
+def test_mint_without_score_context_writes_no_log_row(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    data_dir = str(tmp_path / "send-confidence-data")
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    env = dict(os.environ)
+    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
+    env["SEND_CONFIDENCE_DIR"] = data_dir
+    r = subprocess.run([sys.executable, HOOK, "mint", str(body)], env=env, capture_output=True, text=True)
+    assert r.returncode == 0
+    assert "send-confidence" not in r.stdout
+    assert not os.path.isdir(data_dir)
+
+
+def test_mint_score_context_exception_still_exits_0_with_receipt(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    env = dict(os.environ)
+    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
+    # A nonexistent context file makes send_confidence.score_and_log raise - mint must still
+    # succeed and the receipt must still exist.
+    r = subprocess.run(
+        [sys.executable, HOOK, "mint", str(body), "--score-context", str(tmp_path / "missing-ctx.json")],
+        env=env, capture_output=True, text=True,
+    )
+    assert r.returncode == 0
+    assert "writing-review receipt minted" in r.stdout
+    assert "send-confidence: not logged" in r.stderr
+    text = normalized_text_for_test(body)
+    h = content_hash_for_test(text)
+    assert os.path.isfile(os.path.join(receipts, h + ".json"))
+
+
+def normalized_text_for_test(path):
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    text = raw.decode("utf-8", errors="replace")
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def content_hash_for_test(text):
+    import hashlib
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def test_pr_create_after_compound_command_gated(tmp_path):
     receipts = str(tmp_path / "receipts")
     repo = make_repo(tmp_path)
