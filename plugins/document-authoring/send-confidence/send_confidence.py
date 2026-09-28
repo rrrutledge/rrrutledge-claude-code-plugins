@@ -26,7 +26,7 @@ CLI:
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --sent-file <file> [--edit-nature a,b]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
-        --discarded [--reason "<text>"]
+        --discarded [--reason "<text>"] [--moot]
     python send_confidence.py weights-suggest
     python send_confidence.py show <draft_id>
 
@@ -542,10 +542,12 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
     return brief_path
 
 
-def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason):
+def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False):
     """Compute disposition + edit_distance, detect miscalibration, append the outcome event,
     and when miscalibrated write the calibration brief. Returns the outcome event plus
-    "dispatch" (the spawn command string, or None)."""
+    "dispatch" (the spawn command string, or None).
+
+    `moot` (discards only - what it does and when to pass it live in send-confidence.md)."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
         raise ValueError(f"no scored draft found for {draft_id}")
@@ -574,7 +576,9 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason):
     direction = None
     under_factors = []
 
-    if disposition in ("edited", "discarded"):
+    if discarded and moot:
+        pass
+    elif disposition in ("edited", "discarded"):
         for nature in edit_nature:
             for f in NATURE_TO_FACTORS.get(nature, []):
                 sub = factors.get(f)
@@ -759,6 +763,7 @@ def cmd_outcome(argv):
         return 2
 
     discarded = "--discarded" in argv
+    moot = "--moot" in argv
     reason = _flag_value(argv, "--reason")
     sent_file = _flag_value(argv, "--sent-file")
     edit_nature_raw = _flag_value(argv, "--edit-nature")
@@ -774,7 +779,7 @@ def cmd_outcome(argv):
 
     try:
         result = record_outcome(draft_id, sent_text, discarded=discarded,
-                                 edit_nature=edit_nature, reason=reason)
+                                 edit_nature=edit_nature, reason=reason, moot=moot)
     except Exception as e:
         print(f"outcome: {e}", file=sys.stderr)
         return 2
