@@ -303,6 +303,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **When the original message is auto-quoted in full below the reply (a threaded email) and it holds more than one ask, point at it generically** ("what did you think about the below?") **rather than restating each ask as its own question.** The quote already carries every specific, so this overrides the "nudge on all of them" pattern below once the quote itself makes every ask visible.
 - **Put the actual question in the first sentence.**
   Lead a follow-up with the direct ask ("can you suggest any contacts at X or Y?"), not a status/context line that delays it to a later sentence.
+  **Exception — the nudge also swaps in a corrected version of something already sent** (an attachment, a graphic): lead with the one-line swap ("attaching an updated version; it replaces the one I sent on the 21st") ahead of the question, and don't explain what the earlier version got wrong — the replacement note is enough.
 - **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener.**
   Lead with the plain fact that prompted the check, not a credit or appreciative line, since this isn't a reply to something the other person just said or did.
   This differs from a task already confirmed stuck in the recipient's own process, where a bare acknowledgment carries the first touch and a direct status question only comes due on the second.
