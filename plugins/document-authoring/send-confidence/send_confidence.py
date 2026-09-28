@@ -19,12 +19,22 @@ is ever rewritten in place, which is what keeps concurrent per-machine appends o
 folder safe; a reader folds each draft's `scored` event with its newest `outcome` event.
 
 CLI:
+    python send_confidence.py context --channel <c> --recipient <r> --session-kind <k> \
+        (--ask <text> | --ask-file <file>) (--inputs <text> | --inputs-file <file>) \
+        [--account <a>] [--thread-ref <t>] [--iid <i>] [--turns-before-draft <n>] \
+        [--sent-count <n>]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --sent-file <file> [--edit-nature a,b]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --discarded [--reason "<text>"]
     python send_confidence.py weights-suggest
     python send_confidence.py show <draft_id>
+
+`context` is the deterministic half of staging a scored draft: it builds the context JSON
+`score_and_log` expects, writes it to a scratch file, and prints the exact `verify_gate.py
+mint --score-context` command to run next - the drafting session only ever supplies judgment
+(the ask, the inputs, which channel and recipient, the familiarity count it looked up), never
+hand-authors the JSON or recalls the mint invocation from memory.
 """
 
 import os
@@ -36,6 +46,7 @@ import math
 import socket
 import difflib
 import hashlib
+import tempfile
 import datetime
 import statistics
 from urllib.request import Request, urlopen
@@ -44,6 +55,11 @@ from urllib.error import HTTPError, URLError
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_PATH = os.path.join(SCRIPT_DIR, "weights.json")
 CALIBRATION_PATH = os.path.join(SCRIPT_DIR, "calibration.md")
+# send-confidence/ and hooks/ are always siblings under the same plugin checkout, whether
+# that's a dev clone or an installed plugin cache snapshot, so this resolves correctly either way.
+VERIFY_GATE_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "hooks", "verify_gate.py")
+
+INPUTS_CHAR_CAP = 12000
 
 JUDGE_MODEL = "claude-haiku-4-5"
 
@@ -226,7 +242,7 @@ def run_judge(ctx, body, calibration_notes, api_key):
     system = JUDGE_SYSTEM.format(calibration_notes=calibration_notes or "")
     user = json.dumps({
         "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
-        "inputs": (ctx.get("inputs") or "")[:12000], "draft": body,
+        "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
     })
     payload = json.dumps({
         "model": JUDGE_MODEL, "max_tokens": 2048, "temperature": 0,
@@ -679,6 +695,60 @@ def _flag_value(argv, name):
     return None
 
 
+def build_context(*, channel, recipient, session_kind, ask, inputs, account=None,
+                   thread_ref=None, iid=None, turns_before_draft=0, sent_count=None):
+    return {
+        "channel": channel, "account": account, "recipient": recipient,
+        "thread_ref": thread_ref, "iid": iid, "session_kind": session_kind,
+        "ask": ask, "inputs": (inputs or "")[:INPUTS_CHAR_CAP],
+        "turns_before_draft": turns_before_draft, "sent_count": sent_count,
+    }
+
+
+def cmd_context(argv):
+    """The deterministic half of staging: build the context JSON from the caller's judgment
+    fields (the ask, the inputs, which channel/recipient, the familiarity count it already
+    looked up), write it to a scratch file, and print the exact mint command to run next."""
+    channel = _flag_value(argv, "--channel")
+    recipient = _flag_value(argv, "--recipient")
+    session_kind = _flag_value(argv, "--session-kind")
+    if not channel or not recipient or not session_kind:
+        print("context: --channel, --recipient, and --session-kind are required", file=sys.stderr)
+        return 2
+
+    ask = _flag_value(argv, "--ask")
+    ask_file = _flag_value(argv, "--ask-file")
+    if ask_file:
+        with open(ask_file, "r", encoding="utf-8") as fh:
+            ask = fh.read()
+    inputs = _flag_value(argv, "--inputs")
+    inputs_file = _flag_value(argv, "--inputs-file")
+    if inputs_file:
+        with open(inputs_file, "r", encoding="utf-8") as fh:
+            inputs = fh.read()
+    if ask is None or inputs is None:
+        print("context: --ask/--ask-file and --inputs/--inputs-file are required", file=sys.stderr)
+        return 2
+
+    turns_raw = _flag_value(argv, "--turns-before-draft")
+    sent_count_raw = _flag_value(argv, "--sent-count")
+
+    ctx = build_context(
+        channel=channel, recipient=recipient, session_kind=session_kind, ask=ask, inputs=inputs,
+        account=_flag_value(argv, "--account"), thread_ref=_flag_value(argv, "--thread-ref"),
+        iid=_flag_value(argv, "--iid"),
+        turns_before_draft=int(turns_raw) if turns_raw is not None else 0,
+        sent_count=int(sent_count_raw) if sent_count_raw is not None else None,
+    )
+
+    fd, path = tempfile.mkstemp(prefix="send-confidence-ctx-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(ctx, fh)
+    print(f"context written: {path}")
+    print(f"mint: python {VERIFY_GATE_PATH} mint <body-file> --score-context {path}")
+    return 0
+
+
 def cmd_outcome(argv):
     draft_id = _flag_value(argv, "--draft-id")
     body_file = _flag_value(argv, "--body-file")
@@ -730,9 +800,11 @@ def cmd_show(draft_id):
 def main():
     argv = sys.argv[1:]
     if not argv:
-        print("usage: send_confidence.py outcome|weights-suggest|show ...", file=sys.stderr)
+        print("usage: send_confidence.py context|outcome|weights-suggest|show ...", file=sys.stderr)
         return 2
     verb, rest = argv[0], argv[1:]
+    if verb == "context":
+        return cmd_context(rest)
     if verb == "outcome":
         return cmd_outcome(rest)
     if verb == "weights-suggest":

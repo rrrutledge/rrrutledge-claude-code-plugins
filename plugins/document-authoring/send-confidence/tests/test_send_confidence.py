@@ -331,6 +331,71 @@ def test_cli_outcome_body_file_lookup(tmp_path):
     assert draft_id in r.stdout
 
 
+# --- context ---
+
+def test_build_context_truncates_inputs():
+    ctx = sc.build_context(channel="gmail", recipient="a@b.com", session_kind="live",
+                            ask="do the thing", inputs="x" * 20000)
+    assert len(ctx["inputs"]) == sc.INPUTS_CHAR_CAP
+    assert ctx["account"] is None
+    assert ctx["sent_count"] is None
+    assert ctx["turns_before_draft"] == 0
+
+
+def test_cli_context_inline_writes_usable_ctx_file(tmp_path):
+    r = run_cli([
+        "context", "--channel", "gmail", "--recipient", "person@example.org",
+        "--session-kind", "live", "--ask", "Reply confirming the meeting.",
+        "--inputs", "Meeting is Tuesday at 2pm.", "--account", "isc",
+        "--thread-ref", "thread-1", "--turns-before-draft", "2", "--sent-count", "5",
+    ])
+    assert r.returncode == 0
+    lines = r.stdout.strip().splitlines()
+    ctx_path = lines[0].split("context written: ", 1)[1].strip()
+    assert os.path.isfile(ctx_path)
+    with open(ctx_path, encoding="utf-8") as fh:
+        ctx = json.load(fh)
+    assert ctx["channel"] == "gmail"
+    assert ctx["account"] == "isc"
+    assert ctx["turns_before_draft"] == 2
+    assert ctx["sent_count"] == 5
+
+    assert f"mint: python {sc.VERIFY_GATE_PATH} mint" in lines[1]
+    assert os.path.isfile(sc.VERIFY_GATE_PATH)
+
+    # The written ctx file is exactly what score_and_log expects.
+    body = "Confirmed - see you Tuesday at 2pm, looking forward to it."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    draft_id = sc.score_and_log(body, sha, ctx_path)
+    scored = sc.fold_drafts()[draft_id]["scored"]
+    assert scored["channel"] == "gmail"
+
+
+def test_cli_context_reads_ask_and_inputs_from_files(tmp_path):
+    ask_file = tmp_path / "ask.txt"
+    ask_file.write_text("Reply confirming the meeting.", encoding="utf-8")
+    inputs_file = tmp_path / "inputs.txt"
+    inputs_file.write_text("Meeting is Tuesday at 2pm.", encoding="utf-8")
+
+    r = run_cli([
+        "context", "--channel", "slack", "--recipient", "U123", "--session-kind", "drainer-worker",
+        "--ask-file", str(ask_file), "--inputs-file", str(inputs_file),
+    ])
+    assert r.returncode == 0
+    ctx_path = r.stdout.strip().splitlines()[0].split("context written: ", 1)[1].strip()
+    with open(ctx_path, encoding="utf-8") as fh:
+        ctx = json.load(fh)
+    assert ctx["ask"] == "Reply confirming the meeting."
+    assert ctx["inputs"] == "Meeting is Tuesday at 2pm."
+    assert ctx["sent_count"] is None
+
+
+def test_cli_context_missing_required_fields_errors():
+    r = run_cli(["context", "--channel", "gmail", "--ask", "x", "--inputs", "y"])
+    assert r.returncode == 2
+    assert "required" in r.stderr
+
+
 # --- weights-suggest ---
 
 def test_weights_suggest_below_min_n_proposes_nothing():

@@ -5,46 +5,42 @@ The scorer estimates whether a draft will go out untouched, across five factors 
 Stage 1 only measures: no draft is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
 Everything here is fail-open: a missing baseline, a failed judge call, or a scorer exception never blocks staging or the review receipt.
 
-## Write the context file
-
-Before minting, write a JSON context file next to the staged body (for example `.tmp/<slug>-score-ctx.json`):
-
-```json
-{
-  "channel": "gmail",
-  "account": "isc",
-  "recipient": "someone@example.org",
-  "thread_ref": "<Message-ID or Slack ts or Teams chat id>",
-  "iid": "<drainer item id, or null in a live session>",
-  "session_kind": "drainer-worker",
-  "ask": "<the originating ask, verbatim: the seed item's content, or Russell's own instruction in a live session>",
-  "inputs": "<facts the draft may draw on: the thread, Russell's supplied facts, lookup results; capped at 12,000 chars>",
-  "turns_before_draft": 0,
-  "sent_count": 5
-}
-```
-
-- **`channel`** is one of `gmail`, `outlook-personal`, `outlook-work`, `slack`, `teams`, `linkedin`, `other`.
-- **`turns_before_draft`** counts Russell's turns between the ask and this mint - every human turn so far in a drainer worker, or the turns since he gave this particular ask in a live session.
-- **`sent_count`** is the familiarity proxy below, or `null` where the channel has no count source.
-
 ## Get the familiarity count
 
-`sent_count` comes from a prior-sent count to this exact recipient, read before writing the context file:
+`sent_count` is a prior-sent count to this exact recipient, read before building the context below:
 
 - **gmail**: `node gmail.js --search="to:<addr>" --folder=sent --top=20 --json` (add `--account=` for a non-default account), counting the results.
 - **outlook-personal**: `node mail.js --search="to:<addr>" --folder=sent --top=20`, counting the results.
-- **outlook-work, slack, teams, linkedin, other**: `null` - Stage 1 has no count source for these channels.
+- **outlook-work, slack, teams, linkedin, other**: no count source in Stage 1 - omit `--sent-count` below.
 
-## Mint with `--score-context`
+This lookup is the one manual step: because it calls another plugin's tool, the session runs it by hand.
 
-Mint the review receipt exactly as `writing-review` describes, adding the context file:
+## Build the context and mint
+
+One command builds the context file and prints the exact mint command to run next - it also enforces the 12,000-character cap on `inputs`:
+
+```
+python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py context \
+  --channel <c> --recipient <r> --session-kind <k> \
+  (--ask "<text>" | --ask-file <file>) (--inputs "<text>" | --inputs-file <file>) \
+  [--account <a>] [--thread-ref <t>] [--iid <i>] [--turns-before-draft <n>] [--sent-count <n>]
+```
+
+(run the newest cached copy if several exist).
+
+- **`--channel`** is one of `gmail`, `outlook-personal`, `outlook-work`, `slack`, `teams`, `linkedin`, `other`.
+- **`--ask`** is the originating ask, verbatim: the seed item's content, or Russell's own instruction in a live session.
+- **`--inputs`** is the facts the draft may draw on: the thread, Russell's supplied facts, lookup results.
+- **`--turns-before-draft`** counts Russell's turns between the ask and this mint - every human turn so far in a drainer worker, or the turns since he gave this particular ask in a live session. Defaults to `0`.
+- **`--thread-ref`** is the Message-ID, Slack ts, or Teams chat id; **`--iid`** is the drainer item id, when one exists.
+- Prefer `--ask-file`/`--inputs-file` (write them with the Write tool first) over the inline `--ask`/`--inputs` forms for anything beyond a short one-liner, the same way a staged body already goes through a file rather than a shell argument.
+
+Run the mint command exactly as printed:
 
 ```
 python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <body-file> --score-context <ctx.json>
 ```
 
-(run the newest cached copy if several exist).
 This writes the receipt and, in the same step, scores and logs the draft.
 It prints the draft id, never the score.
 
