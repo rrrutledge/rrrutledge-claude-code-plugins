@@ -56,7 +56,7 @@ A deck is `--deck=<presentation id>`; a slide is picked by `--slide-title=<text>
 A title matches the slide whose title placeholder (or, lacking one, first text box) equals the text, case-insensitively, and falls back to a slide with any text box containing it; a title matching more than one slide is an error.
 
 - **Read a deck:** `--slides-read --deck=<id>` lists every slide with its index, id, and title, and each element's id, kind, placeholder type, text, and box (position and size in points).
-  Read it first to learn the element ids the other two commands take.
+  Read it first to learn the element ids that `--box-shape` and `--shape` take.
 - **Insert a photo:** `--slides-insert-image --deck=<id> <slide> (--image-path=<local file> | --image-file=<drive id>) [--box-shape=<element id> | --x= --y= --width= --height=]`.
   The photo is fitted inside the box with its aspect ratio kept: `--box-shape` borrows an existing element's box, explicit points set one directly, and the default is centered at 40% of the page.
   A local path is uploaded first, into `--folder` or else the deck's own folder.
