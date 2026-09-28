@@ -1128,6 +1128,56 @@ def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_mod
                       f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
 
 
+# A provider's OWN transport can attempt its own self-heal on an auth failure (e.g. slack.js's `call()`
+# re-deriving its token from an already-authenticated browser session — see slack-adapter.py) and, when
+# that attempt itself fails, raise a distinguishable `kind="auth-unrecoverable"` instead of the ordinary
+# `kind="auth"`. That is a strictly stronger signal than a plain auth failure: an active fix was already
+# tried and didn't work, so this earns the same immediate-diagnostic treatment a config failure gets,
+# instead of sitting dark until the once-a-day digest notices. Gated the same way — a small
+# consecutive-failure threshold (a single blip self-clears) and an hourly per-provider cooldown — so a
+# persistently broken provider gets one diagnostic session, not a fresh one every 5-minute cycle. Most
+# providers never raise this kind at all, so this whole path is dormant for them.
+AUTH_FAILURE_ALERT_THRESHOLD = 2
+AUTH_FAILURE_ALERT_COOLDOWN_SECONDS = 3600
+
+
+def _auth_alert_due(health, name):
+    """Whether enough time has passed since this provider's last auth-unrecoverable diagnostic session to
+    spawn another. Keyed per provider, mirroring `_config_alert_due`."""
+    return _alert_due(health, name, "last_auth_alert_ts", AUTH_FAILURE_ALERT_COOLDOWN_SECONDS)
+
+
+def _spawn_provider_auth_diagnostic(name, error, repo, runtime_dir, worker_model):
+    """Launch a single diagnostic worker session because a provider's own transport already tried to
+    self-heal an auth failure (kind="auth-unrecoverable") and it didn't work — so this needs Russell, not
+    another silent retry next cycle."""
+    body = (
+        "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
+        f"The drainer poller's `{name}` provider raised kind=\"auth-unrecoverable\" — its own transport "
+        "already attempted an internal self-heal on an auth failure and it still didn't clear, so this is "
+        "not a transient blip that will clear on its own next cycle.\n\n"
+        f"The recorded error was:\n{(error or '').strip()[:600]}\n\n"
+        f"Read `{name}-adapter.py` (in this plugin's `providers/` directory) and its transport's own retry "
+        "logic to see exactly what was tried and why it failed — for the `slack` provider specifically, "
+        "the self-heal lives in the `slack` skill's `slack.js` (`call()`, and the sibling "
+        "`slack-token-refresh.js` it shells out to), and this failure means the persistent "
+        "browser-chauffeur browser's OWN Slack session has logged out (not just the derived xoxc "
+        "token/cookie rotating, which that retry already handles on its own), so there is no session left "
+        "to re-derive fresh credentials from.\n\n"
+        "Confirm the diagnosis: use the browser-chauffeur skill to check the persistent browser's current "
+        "state on the relevant site (for slack, `https://app.slack.com` — take a screenshot). If it's "
+        "sitting on a login wall, tell Russell plainly that he needs to sign back in there himself (never "
+        "attempt to log in on his behalf) — once he does, the next failing cycle's self-heal will pick the "
+        "fresh session up automatically, no further action needed. If the real cause is something else "
+        "entirely, diagnose and fix it, or tell Russell plainly what you found and what's still needed "
+        "from him.\n"
+    )
+    _spawn_diagnostic(f"provider-auth-recovery-failed-{slug(name)}",
+                      f"drainer: {name} auth self-heal failed - needs you",
+                      f"Needs you: drainer {name} auth self-heal failed", body, repo, runtime_dir,
+                      worker_model)
+
+
 def write_worker_context(item, local_dir, json_file):
     """Pre-gate `context.md` to this one item and write the slice the worker reads at step 0.
 
@@ -1624,7 +1674,9 @@ def main():
     # Each provider's enumerate is isolated: a failure (expired creds, network/API blip) is caught,
     # recorded to provider-health.json, and the loop continues so the OTHER providers still drain this
     # cycle. A transient auth failure waits for the daily digest to surface it; a config-kind failure (a
-    # broken deploy that won't self-heal, e.g. a missing dependency) gets an immediate diagnostic session.
+    # broken deploy that won't self-heal, e.g. a missing dependency), or an auth failure a provider's OWN
+    # transport already tried and failed to self-heal (kind="auth-unrecoverable" — see slack-adapter.py),
+    # gets an immediate diagnostic session instead.
     all_new, seen_by_source, totals = [], {}, {}
     for provider in providers:
         try:
@@ -1642,6 +1694,17 @@ def main():
                 _spawn_provider_config_diagnostic(provider.name, str(e), repo,
                                                   cfg["runtime_dir"], cfg["worker_model"])
                 health[provider.name]["last_config_alert_ts"] = datetime.now(timezone.utc).isoformat()
+            # kind="auth-unrecoverable" means the PROVIDER'S OWN transport already attempted its own
+            # self-heal (e.g. slack.js re-deriving its token from an authenticated browser session) and it
+            # still didn't clear the failure — a stronger signal than an ordinary auth blip, since an
+            # active fix was already tried. Most providers never raise this kind at all (their auth
+            # failures behave exactly as before this existed); same threshold/cooldown shape as config.
+            elif (e.kind == "auth-unrecoverable" and not args.dry_run
+                    and health[provider.name]["consecutive_failures"] >= AUTH_FAILURE_ALERT_THRESHOLD
+                    and _auth_alert_due(health, provider.name)):
+                _spawn_provider_auth_diagnostic(provider.name, str(e), repo,
+                                                cfg["runtime_dir"], cfg["worker_model"])
+                health[provider.name]["last_auth_alert_ts"] = datetime.now(timezone.utc).isoformat()
             continue
         except Exception as e:  # unexpected adapter fault — still isolate it, never abort the cycle
             record_health_failure(health, provider.name, str(e), "unknown")

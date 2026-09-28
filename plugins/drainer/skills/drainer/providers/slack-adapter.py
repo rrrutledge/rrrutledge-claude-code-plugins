@@ -8,6 +8,20 @@ interface — it contains no Slack specifics.
 This is the API sibling of `gmail-adapter.py` / `outlook-graph-adapter.py`: same operations, a
 different transport. slack.js talks the Slack Web API with a personal xoxc token + xoxd `d` cookie from
 the environment (SLACK_BOT_TOKEN / SLACK_COOKIE_D / SLACK_TEAM_ID).
+
+**Self-heal on `invalid_auth` lives in slack.js itself, not here.** That xoxc/cookie pair rotates
+periodically (usually just the `d` session cookie, not the token); `slack.js`'s `call()` now retries
+ONCE on `invalid_auth` by re-deriving a fresh pair from the persistent, already-logged-in
+browser-chauffeur browser (the sibling `slack-token-refresh.js` - a plain, deterministic script, no AI
+involved) before giving up, and persists the fresh pair to the Windows registry so the next process
+(this poller's next 5-minute cycle, a worker session, a manual run) picks it up too. This adapter never
+drives that recovery itself - putting it in `slack.js`'s own call layer means EVERY command that funnels
+through it (list-unread, show, mark, react, send, ...) self-heals, not just this adapter's `enumerate`.
+
+What this adapter DOES do is tell "already tried and failed" apart from an ordinary transient auth blip,
+so only the former earns an immediate diagnostic session instead of waiting for the once-a-day digest -
+see `_UNRECOVERABLE_MARKER` and the `kind="auth-unrecoverable"` it raises below, and
+run-poller.py's `AUTH_UNRECOVERABLE_ALERT_THRESHOLD`.
 """
 import json
 import os
@@ -20,6 +34,11 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import ProviderBase, ProviderError, run_node, find_skill_script  # noqa: E402
+
+# slack.js's exact wording (see its `call()`) when ITS OWN internal auto-refresh already ran and still
+# didn't clear invalid_auth - the strong signal that a human is needed now, not just another cycle's
+# ordinary auth retry. Keep this string and slack.js's in sync if either changes.
+_UNRECOVERABLE_MARKER = "auto-refresh did not fix it"
 
 
 class Provider(ProviderBase):
@@ -39,8 +58,12 @@ class Provider(ProviderBase):
     def enumerate(self, limit):
         res = run_node([self.slackjs, "--list-unread", "--json", f"--top={limit}"])
         if res.returncode != 0:
-            raise ProviderError(
-                f"slack enumerate failed (auth/token+cookie?): {res.stderr.strip()[:300]}", kind="auth")
+            stderr = res.stderr.strip()[:300]
+            # slack.js already tried its own internal auto-refresh and it still didn't clear invalid_auth
+            # (see the module docstring) - a stronger signal than an ordinary transient auth blip, worth
+            # escalating to Russell immediately rather than waiting for the once-a-day digest.
+            kind = "auth-unrecoverable" if _UNRECOVERABLE_MARKER in stderr else "auth"
+            raise ProviderError(f"slack enumerate failed (auth/token+cookie?): {stderr}", kind=kind)
         return json.loads(res.stdout or "[]")
 
     def clear(self, item):

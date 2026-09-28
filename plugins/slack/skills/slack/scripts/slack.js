@@ -3,7 +3,9 @@
 // Auth: set SLACK_BOT_TOKEN to a Slack API token, SLACK_COOKIE_D to the companion `d` session cookie
 // (required when the token type needs it — e.g. a browser `xoxc` token is invalid_auth without it; a
 // bot/app token that doesn't need a cookie can set it to any non-empty value), and SLACK_TEAM_ID to the
-// workspace's team id. No npm deps — uses Node's built-in fetch (Node 18+).
+// workspace's team id. No npm deps of its own — uses Node's built-in fetch (Node 18+) — though on
+// invalid_auth it shells out to the sibling `slack-token-refresh.js` to self-heal (see `call()`), and
+// THAT script needs `playwright-core`; steady-state calls never take that path and never load it.
 //
 // Auth glance:   node slack.js --check
 //                (calls auth.test; prints the signed-in user/team; non-zero exit on auth failure)
@@ -45,8 +47,10 @@
 //                 member who already works at a company, a warm path into a cold outreach target
 //                 instead of a generic company inbox)
 
-const TOKEN = process.env.SLACK_BOT_TOKEN;
-const COOKIE = process.env.SLACK_COOKIE_D;
+// TOKEN/COOKIE are `let`, not `const` — refreshCreds() below reassigns them in place after a successful
+// auto-refresh, so every call after the first retry (in THIS process) uses the fresh pair too.
+let TOKEN = process.env.SLACK_BOT_TOKEN;
+let COOKIE = process.env.SLACK_COOKIE_D;
 const TEAM = process.env.SLACK_TEAM_ID;
 
 const args = Object.fromEntries(
@@ -62,9 +66,53 @@ function requireAuth() {
   }
 }
 
+// The xoxc token + `d` cookie pair rotates periodically (usually just the cookie, not the token) and
+// every call then fails with invalid_auth until someone re-derives a fresh pair. Rather than surfacing
+// that to every caller, ONE retry is built into the call layer itself: on invalid_auth, re-derive a fresh
+// pair from the persistent, already-logged-in browser-chauffeur browser (the sibling `slack-token-refresh.js`
+// - a plain, deterministic script, no AI involved) and retry once. This fixes every command that funnels
+// through `call()` - list-unread, show, mark, react, send, everything - not just whichever one happened
+// to trip over the rotation first. It can only ever READ a session that's already authenticated there; if
+// that browser's OWN Slack session has also logged out, there's nothing to re-derive, and the error below
+// says so plainly rather than retrying forever.
+function refreshCreds() {
+  if (!TEAM) return false;
+  const { execFileSync } = require('child_process');
+  const path = require('path');
+  try {
+    const out = execFileSync(
+      'node', [path.join(__dirname, 'slack-token-refresh.js'), `--team=${TEAM}`],
+      { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
+    const result = JSON.parse(out.trim());
+    if (result.status !== 'ok' || !result.token || !result.cookie) return false;
+    TOKEN = result.token;
+    COOKIE = result.cookie;
+    persistToRegistry({ SLACK_BOT_TOKEN: TOKEN, SLACK_COOKIE_D: COOKIE });
+    return true;
+  } catch {
+    return false;  // a crashed/timed-out refresh attempt is still just a failed one
+  }
+}
+
+// Push the fresh pair into HKCU\Environment (Windows User-scope env vars) so the NEXT process to run
+// this script - a fresh `pythonw` the drainer's scheduled task launches every 5 minutes, a worker
+// session, a manual run - picks it up too, without waiting for a human to open a new terminal. Built-in
+// `reg.exe`, not an npm package, so this script's own "no npm deps" story stays true even after this.
+// Windows-only by design (this only ever runs on Russell's personal machine); a no-op elsewhere. Never
+// logs either value - `stdio: 'ignore'` on the child, nothing printed here either way.
+function persistToRegistry(values) {
+  if (process.platform !== 'win32') return;
+  const { execFileSync } = require('child_process');
+  for (const [name, value] of Object.entries(values)) {
+    try {
+      execFileSync('reg', ['add', 'HKCU\\Environment', '/v', name, '/d', value, '/f'], { stdio: 'ignore' });
+    } catch { /* best-effort - the in-process value above still applies for the rest of this run */ }
+  }
+}
+
 // One Slack Web API call. The token goes in the Authorization header; the companion `d` cookie rides
 // along in the Cookie header (most api/ paths and all client.* paths reject a browser xoxc token alone).
-async function call(method, params = {}) {
+async function call(method, params = {}, _isRetry = false) {
   const body = new URLSearchParams(params).toString();
   const res = await fetch(`https://slack.com/api/${method}`, {
     method: 'POST',
@@ -76,7 +124,17 @@ async function call(method, params = {}) {
     body,
   });
   const json = await res.json();
-  if (!json.ok) throw new Error(`${method} failed: ${json.error || 'unknown'}`);
+  if (!json.ok) {
+    if (json.error === 'invalid_auth' && !_isRetry) {
+      if (refreshCreds()) return call(method, params, true);
+      // The exact wording here is a load-bearing signal - the drainer's slack-adapter.py greps for
+      // "auto-refresh did not fix it" to tell "already tried and failed, escalate to Russell now" apart
+      // from an ordinary transient auth blip. Keep this string and that match in sync if either changes.
+      throw new Error(`${method} failed: invalid_auth - auto-refresh did not fix it (check the `
+        + `persistent browser's own Slack sign-in, or SLACK_TEAM_ID if unset)`);
+    }
+    throw new Error(`${method} failed: ${json.error || 'unknown'}`);
+  }
   return json;
 }
 
