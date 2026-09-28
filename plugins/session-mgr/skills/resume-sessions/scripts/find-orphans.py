@@ -11,7 +11,8 @@ deliberately fast enough to run every drainer poll cycle (a few seconds' work, m
 
 Run directly, prints JSON to stdout:
     python find-orphans.py
-    [{"session_id": "...", "cwd": "...", "started_at": "2026-07-20T13:04:11.123456"}, ...]
+    [{"session_id": "...", "cwd": "...", "started_at": "2026-07-20T13:04:11.123456",
+      "title": "<the name it last ran under, or null>"}, ...]
 
 Shared by two callers:
   - the resume-sessions skill, from its Step 1
@@ -172,6 +173,38 @@ def closed_itself_on_purpose(session_id):
     return False
 
 
+def session_title(session_id):
+    """The name the session last ran under - the newest `custom-title` (or `agent-name`) record in its
+    transcript - so a resume reopens it under that same name. A name the drainer's own resume fallback
+    gave it (`Resume: <directory>`) is skipped in favor of the real name before it, since that fallback
+    is what every resumed session in one directory shares. A session that never had a name gets
+    `Resume: <its last prompt>` instead, which still tells two resumed sessions apart. None when the
+    transcript has neither."""
+    path = transcript_path(session_id)
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+    last_prompt = None
+    for line in reversed(lines):
+        if not any(t in line for t in ('"custom-title"', '"agent-name"', '"last-prompt"')):
+            continue
+        try:
+            record = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if record.get("type") == "last-prompt":
+            last_prompt = last_prompt or (record.get("lastPrompt") or "").strip()
+            continue
+        title = (record.get("customTitle") or record.get("agentName") or "").strip()
+        if title and not title.startswith("Resume:"):
+            return title
+    return f"Resume: {last_prompt}" if last_prompt else None
+
+
 def find_confirmed_orphans():
     """Registry entries whose session isn't currently running, minus any that closed
     themselves on purpose. A session is running when `claude agents` lists it as live in any
@@ -203,6 +236,7 @@ def find_confirmed_orphans():
             "session_id": session_id,
             "cwd": info.get("cwd"),
             "started_at": info.get("started_at"),
+            "title": session_title(session_id),
         })
     if to_prune:
         registry = load_registry()
