@@ -16,10 +16,6 @@ Patterns in what makes a message read simpler, or more delicate, than it actuall
 
 Patterns in what makes an ask read more settled, or more open-ended, than it actually turned out to be.
 
-- **Asserting someone else's math is Russell's call.**
-  When the ask would have the draft confirm an internal root cause or close out an inquiry based on someone else's math or theory - even math that checks out - whether to commit to that specific finding in writing, versus a noncommittal "we'll look into it" until it's verified on his own side, is itself the open decision.
-  Treat any draft that asserts an unverified internal conclusion or declares a financial/accounting matter closed as carrying real ambiguity, regardless of how settled the supporting evidence looks.
-
 ## Input completeness
 
 Patterns in what makes a draft's supporting facts look sufficient when a claim was actually inferred or invented.
