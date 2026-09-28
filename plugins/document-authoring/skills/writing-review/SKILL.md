@@ -47,7 +47,7 @@ Which mode each case collects - diff or whole-document - is "How to run it" step
 5. Repeat from step 3 until the reviewer returns clean, a finding stands that you genuinely disagree with, or you have run three rounds.
 6. Mint the review receipt on the exact file the gate will check, so it lets the work through:
    `python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <file>` (run the newest if several are cached).
-   For an outward message, mint the body file the stage command passes as `--body-file` / `--json`.
+   For an outward message, mint the body file the stage command passes as `--body-file` / `--json`, adding `--score-context <ctx.json>` per `document-authoring`'s `send-confidence.md`.
    For shipped prose, mint each changed markdown file the PR will carry, so `gh pr create` passes.
    Mint after the loop above has converged on the text you're keeping; any later edit to that file needs a fresh review and a fresh mint, since the receipt binds to the file's content.
 
