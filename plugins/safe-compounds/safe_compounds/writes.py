@@ -13,7 +13,7 @@ import re
 
 from . import ai
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd, path_under
+from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -60,31 +60,26 @@ def _temp_redirect_reason(file_path):
 
 DEFAULT_BLOCKED_DIR_ALTERNATIVE = 'Write scratch/staging files to .tmp/ in your own working repo instead.'
 
-# Plain ~/.claude/<tool>/ runtime dirs that should never receive a Write/Edit
-# -- every legitimate write there happens some other way (a setup script, a
-# config read), never through this tool. Add a new dir here for the common
-# case; give it a full BLOCKED_CLAUDE_DIRS entry below instead only if it
-# needs a non-.tmp/ alternative or a matcher other than path_under() (e.g.
-# because something outside writes.py needs to reuse that same matcher, the
-# way enforce.py reuses PLUGIN_CACHE_PATTERN against raw Bash command
-# strings, not just Write/Edit paths).
-BLOCKED_CLAUDE_SUBDIRS = [
-    '~/.claude/drainer',
-    '~/.claude/browser-chauffeur',
-]
-
-
-def _subdir_matcher(subdir):
-    base = os.path.expanduser(subdir)
-    return lambda p: path_under(p, base)
-
-
+# Every entry's pattern is unanchored -- like PLUGIN_CACHE_PATTERN, it just
+# has to appear somewhere in the path, so it needs no home-expansion or
+# cross-platform normalization to catch both C:\...\.claude\drainer\... and
+# /c/.../.claude/drainer/... forms. Add a new dir here for any other
+# ~/.claude/<tool>/ runtime dir that should never receive a Write/Edit --
+# every legitimate write there happens some other way (a setup script, a
+# config read), never through this tool.
 BLOCKED_CLAUDE_DIRS = [
-    {'matcher': _subdir_matcher(subdir), 'target': f'{subdir}/'}
-    for subdir in BLOCKED_CLAUDE_SUBDIRS
-] + [
     {
-        'matcher': lambda p: bool(PLUGIN_CACHE_PATTERN.search(p)),
+        'pattern': re.compile(r'\.claude[/\\]drainer[/\\]', re.IGNORECASE),
+        'target': '~/.claude/drainer/',
+    },
+    {
+        'pattern': re.compile(r'\.claude[/\\]browser-chauffeur[/\\]', re.IGNORECASE),
+        'target': '~/.claude/browser-chauffeur/',
+    },
+    {
+        # Shared with enforce.py's detect_plugin_cache_reference(), which scans whole raw
+        # Bash command strings for this same pattern, not just Write/Edit paths.
+        'pattern': PLUGIN_CACHE_PATTERN,
         'target': 'the installed plugin cache (~/.claude/plugins/cache/...)',
         'alternative': (
             "Point the plugin's checked-out repo source instead, or write scratch/staging "
@@ -107,7 +102,7 @@ def _blocked_dir_reason(file_path, entry):
 def decide_write_edit(file_path):
     """Return ('allow'|'block'|'prompt', reason_or_None) for a Write/Edit path."""
     for entry in BLOCKED_CLAUDE_DIRS:
-        if entry['matcher'](file_path):
+        if entry['pattern'].search(file_path):
             return 'block', _blocked_dir_reason(file_path, entry)
 
     cwd = os.environ.get('CLAUDE_CWD', os.getcwd()).replace('\\', '/')
