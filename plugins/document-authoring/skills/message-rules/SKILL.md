@@ -247,7 +247,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
   This covers confirming a completed institutional-onboarding action too - "we made you a new email address" reads as the org processing someone into it, not Russell personally handling it; contrast the next bullet's personal "I'll", which is for work that's Russell's own to do, not the org's standing process.
-  Processing a vendor payment out of the org's own accounts is its standing financial process too, so it stays "we'll" - "we'll send that over" - even though Russell personally executes the transfer.
+  Paying a vendor invoice is action taken on the org's behalf too, so it stays "we'll" - "we'll send that over" - regardless of whether Russell personally executes the transfer or fronts it himself for reimbursement; the recipient only needs to know the org is paying, not who personally sends it.
 - **Disclosing a gap in the org's own records that predates Russell's tenure: attribute it to the time before he led it, not a flat statement of the gap.**
   Frame it as inherited context from before he took the role, even while speaking for the org's current position in the same breath.
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
