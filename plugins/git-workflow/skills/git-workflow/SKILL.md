@@ -88,7 +88,7 @@ git worktree add .claude/worktrees/<name> -b <branch-name> main
 - **PR links point to the Files Changed tab**: When sharing a PR URL, always append `/changes` (e.g., `https://github.com/owner/repo/pull/123/changes`).
 - **PR links use the PR's own owner/repo.**
   That repo is often not the session's own: a triage session routinely discusses PRs from other orgs' repos, so the working directory is no guide to where a PR lives.
-  Paste the `url` that `gh pr create` or `gh pr view <n> -R <owner/repo> --json url` returns, or take the owner/repo from a notification's `[Owner/Repo]` subject tag.
+  Take the `url` that `gh pr create` or `gh pr view <n> -R <owner/repo> --json url` returns and append `/changes`, or take the owner/repo from a notification's `[Owner/Repo]` subject tag.
 - **Link PR and issue references descriptively.**
   Claude Code's terminal renders a bare `#N` as a clickable link to PR N of the session's own repo, so a bare `#N` naming another repo's PR opens the wrong page.
-  Write every reference as `[<what the PR does>](https://github.com/<owner>/<repo>/pull/<n>/changes)`, built from the PR's real owner/repo.
+  Write every reference as `[<what the PR does>](https://github.com/<owner>/<repo>/pull/<n>/changes)` (`/issues/<n>` for an issue), built from the PR's real owner/repo.
