@@ -1128,6 +1128,54 @@ def _spawn_provider_config_diagnostic(name, error, repo, runtime_dir, worker_mod
                       f"Fix: drainer {name} provider deploy error", body, repo, runtime_dir, worker_model)
 
 
+# A provider's `attempt_recovery()` (ProviderBase, default a no-op) gets one shot per failing cycle to
+# self-heal an auth-kind failure before the poller gives up on it — see slack-adapter.py for the sanctioned
+# example (re-deriving its token from an already-authenticated browser session). When recovery itself
+# reports it couldn't do anything (there was nothing to try, or the session it depends on has ALSO
+# expired), that is a strictly stronger signal than an ordinary auth failure: an active fix was already
+# attempted and failed, so this earns the same immediate-diagnostic treatment a config failure gets,
+# instead of sitting dark until the once-a-day digest notices. Gated the same way — a small
+# consecutive-failure threshold (a single blip self-clears) and an hourly per-provider cooldown — so a
+# persistently broken provider gets one diagnostic session, not a fresh one every 5-minute cycle.
+AUTH_FAILURE_ALERT_THRESHOLD = 2
+AUTH_FAILURE_ALERT_COOLDOWN_SECONDS = 3600
+
+
+def _auth_alert_due(health, name):
+    """Whether enough time has passed since this provider's last auth-recovery-failure diagnostic session
+    to spawn another. Keyed per provider, mirroring `_config_alert_due`."""
+    return _alert_due(health, name, "last_auth_alert_ts", AUTH_FAILURE_ALERT_COOLDOWN_SECONDS)
+
+
+def _spawn_provider_auth_diagnostic(name, error, repo, runtime_dir, worker_model):
+    """Launch a single diagnostic worker session because a provider's own `attempt_recovery()` already
+    tried to self-heal an auth failure and it didn't work — so this needs Russell, not another silent
+    retry next cycle."""
+    body = (
+        "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
+        f"The drainer poller's `{name}` provider has been failing to enumerate with an auth error, AND "
+        "its own `attempt_recovery()` self-heal already tried to fix it automatically and failed — so "
+        "this is not a transient blip that will clear on its own next cycle.\n\n"
+        f"The recorded error was:\n{(error or '').strip()[:600]}\n\n"
+        f"Read `{name}-adapter.py`'s `attempt_recovery` (in this plugin's `providers/` directory) to see "
+        "exactly what it tried and why it reports failure — for the `slack` provider specifically, this "
+        "means the persistent browser-chauffeur browser's OWN Slack session has logged out (not just the "
+        "derived xoxc token/cookie rotating, which recovery handles on its own), so there is no session "
+        "left to re-derive fresh credentials from.\n\n"
+        "Confirm the diagnosis: use the browser-chauffeur skill to check the persistent browser's current "
+        "state on the relevant site (for slack, `https://app.slack.com` — take a screenshot). If it's "
+        "sitting on a login wall, tell Russell plainly that he needs to sign back in there himself (never "
+        "attempt to log in on his behalf) — once he does, this provider's `attempt_recovery` will pick "
+        "the fresh session up automatically on its very next failing cycle, no further action needed. If "
+        "the real cause is something else entirely, diagnose and fix it, or tell Russell plainly what you "
+        "found and what's still needed from him.\n"
+    )
+    _spawn_diagnostic(f"provider-auth-recovery-failed-{slug(name)}",
+                      f"drainer: {name} auth self-heal failed - needs you",
+                      f"Needs you: drainer {name} auth self-heal failed", body, repo, runtime_dir,
+                      worker_model)
+
+
 def write_worker_context(item, local_dir, json_file):
     """Pre-gate `context.md` to this one item and write the slice the worker reads at step 0.
 
@@ -1630,6 +1678,38 @@ def main():
         try:
             new, total, seen = collect_new(provider, cfg)
         except ProviderError as e:
+            # An auth-kind failure from a provider that actually HAS a self-heal mechanism gets one
+            # attempt before it's treated as an ordinary failure — see ProviderBase.attempt_recovery. Most
+            # adapters never override it, so `has_recovery` is False for them and this whole block (the
+            # attempt AND the stronger escalation below) is skipped entirely: their auth failures behave
+            # exactly as before this feature existed. Only a provider with a real mechanism (currently
+            # just slack-adapter.py's browser-based token refresh) opts into either half of this.
+            has_recovery = type(provider).attempt_recovery is not ProviderBase.attempt_recovery
+            recovered = False
+            if e.kind == "auth" and has_recovery and not args.dry_run:
+                try:
+                    recovered = provider.attempt_recovery(str(e))
+                except Exception as rec_err:  # a broken recovery attempt is still just a failed one
+                    print(f"{provider.name}: attempt_recovery raised {rec_err!r}; treating as not recovered.")
+                if recovered:
+                    try:
+                        new, total, seen = collect_new(provider, cfg)
+                    except ProviderError as e2:
+                        e, recovered = e2, False  # retry failed too — fall through to normal handling
+                    except Exception as e2:
+                        record_health_failure(health, provider.name, str(e2), "unknown")
+                        print(f"{provider.name}: enumerate FAILED [unknown] after self-heal — {e2}. "
+                              "Skipping; other providers continue.")
+                        continue
+            if recovered:
+                record_health_ok(health, provider.name)
+                health[provider.name]["last_auth_recovery_ts"] = datetime.now(timezone.utc).isoformat()
+                seen_by_source[provider.name] = seen
+                totals[provider.name] = total
+                all_new.extend(new)
+                print(f"{provider.name}: enumerate FAILED [auth] but self-healed via attempt_recovery — "
+                      f"{total} enumerated, {len(new)} new.")
+                continue
             record_health_failure(health, provider.name, str(e), e.kind)
             print(f"{provider.name}: enumerate FAILED [{e.kind}] — {e}. Skipping; other providers continue.")
             # A config-kind failure (broken deploy, e.g. a missing npm dependency) will fail every cycle
@@ -1642,6 +1722,19 @@ def main():
                 _spawn_provider_config_diagnostic(provider.name, str(e), repo,
                                                   cfg["runtime_dir"], cfg["worker_model"])
                 health[provider.name]["last_config_alert_ts"] = datetime.now(timezone.utc).isoformat()
+            # An auth-kind failure that just went through a FAILED self-heal attempt is a stronger signal
+            # than an ordinary auth blip: an active fix was already tried and didn't work, most likely
+            # because the session it depends on (e.g. the persistent browser's own Slack login) has itself
+            # expired and now needs a human. Surface that immediately too, same threshold/cooldown shape.
+            # `has_recovery` scopes this to providers that actually attempted a fix this cycle — a
+            # provider with no self-heal mechanism keeps its pre-existing behavior (wait for the digest)
+            # unchanged, so this never turns into blanket new alerting for every provider's auth blips.
+            elif (e.kind == "auth" and has_recovery and not args.dry_run
+                    and health[provider.name]["consecutive_failures"] >= AUTH_FAILURE_ALERT_THRESHOLD
+                    and _auth_alert_due(health, provider.name)):
+                _spawn_provider_auth_diagnostic(provider.name, str(e), repo,
+                                                cfg["runtime_dir"], cfg["worker_model"])
+                health[provider.name]["last_auth_alert_ts"] = datetime.now(timezone.utc).isoformat()
             continue
         except Exception as e:  # unexpected adapter fault — still isolate it, never abort the cycle
             record_health_failure(health, provider.name, str(e), "unknown")
