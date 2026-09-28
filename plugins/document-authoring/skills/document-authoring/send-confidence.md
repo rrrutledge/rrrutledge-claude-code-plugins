@@ -46,7 +46,7 @@ It prints the draft id, never the score.
 
 ## Record the outcome
 
-After Russell sends the draft (edited or as-is) or decides not to send it, record the outcome:
+After Russell sends the draft (edited or as-is) or discards it outright, record the outcome (the one exception is below):
 
 ```
 python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --sent-file <file> --edit-nature <a,b>
@@ -62,7 +62,11 @@ If the session no longer has the draft id handy, `--body-file <staged body>` fin
 - **`structural-rewrite`** - the Voice loop's Voice change, where wording was reordered or reshaped.
 - **`scope-recipient`** - the edit changed who the entire message is addressed to, or swapped out the entire subject it's about, rather than correcting one detail inside an otherwise-unchanged message; this sits outside the Voice loop's two buckets, since it redirects the message as a whole rather than fixing content within it.
 
-**Record `--discarded` when Russell decides not to send a staged draft at all**, with `--reason` naming why in one phrase.
+**Record `--discarded` when Russell discards a staged draft outright** (unless a replacement for the same thread and recipient is about to be scored - see below), with `--reason` naming why in one phrase.
+
+**Skip `--discarded` when you're about to score a replacement for the same thread and recipient - the facts moved, not the draft.**
+Just build context and mint the replacement: scoring it auto-supersedes the still-pending original, which correctly leaves the original not flagged as over-confident.
+Calling `--discarded` on the stale draft first flags it as over-confident by the same mechanical rule that catches a genuinely bad draft, triggering a calibration session for a phrasing or ambiguity lesson that doesn't exist.
 
 ## Run the calibration dispatch
 
