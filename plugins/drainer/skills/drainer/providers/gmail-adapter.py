@@ -185,6 +185,7 @@ class Provider(ProviderBase):
                     f"Link: {web_link}\nMessageId: {message_id}\n\n---\n\n{body}\n")
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
+            "triageReason": item.get("_triageReason"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": web_link, "messageId": message_id,
             "correspondent": item.get("_correspondent"), "emailFile": email_file,

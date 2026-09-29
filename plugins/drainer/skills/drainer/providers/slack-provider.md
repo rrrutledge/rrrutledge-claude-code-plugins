@@ -26,6 +26,15 @@ The `slack` `slack.js` lives at `<slack-skill>/scripts/slack.js` - run it with `
 A **subscribed thread** is different: it only exists because Russell replied to it or was mentioned in it, so it still surfaces even when the parent channel is muted - the same distinction Slack's own Threads panel makes.
 A new message/reply produces a new `ts`, so the conversation re-surfaces next cycle.
 
+**A known contact is never junk.**
+`slack.js --list-unread` stamps each DM/group-DM/thread item with `knownContact`: true when the conversation already has a message from Russell in it.
+`run-poller.py`'s `_apply_slack_overrides` enforces this deterministically after triage - a `knownContact` item triage bucketed `junk` is forced to `needs-you`/`reply` (not `fyi`, which also poll-time-clears silently).
+A first-ever message from a stranger can still be triaged junk normally.
+
+**No REPORT-PHISHING action here.**
+The phishing rubric in `../engine/triage.md` is email-shaped; Slack has no report-phishing capability to route to, so `_apply_slack_overrides` also clears any `phishing` kind on a Slack item to `null` after triage.
+Judge the content the same way triage always does - the marker itself just has no effect on this provider.
+
 ## AUTH-GLANCE
 Run `node slack.js --check`.
 If it prints "Signed in as …" you're connected.
@@ -49,9 +58,9 @@ The adapter writes these two files for each dispatched item (`slack-adapter.py` 
   A single-message item falls back to that one message's text.
   A message carrying an image/file shows an `[Attachment: <name> (<mimetype>)] <permalink>` line right after its text.
   **Always open that permalink and look before concluding on the item** - the same "read it yourself before acting" principle as `../engine/pointers.md`, which also covers reading a screenshot only inside a subagent, per worker-core step 3.
-- `items/<id>.json` - `{ "id","source":"slack","triage","kind","from","subject","received","snippet",`
+- `items/<id>.json` - `{ "id","source":"slack","triage","kind","triageReason","from","subject","received","snippet",`
   `"url":"<permalink>","messageId":"<channel>:<ts>","channel","ts","threadTs","channelType",`
-  `"channelName","teamId","bodyFile","ts_captured","files"(optional) }`.
+  `"channelName","knownContact","teamId","bodyFile","ts_captured","files"(optional) }`.
 
 `channel` + `ts` (also joined as `messageId`) are the load-bearing fields - the worker needs them for SITUATIONAL-CHECK (`--show`) and CLEAR (`--mark`).
 For a **thread** item, `threadTs` is also set and is required for both `--show` and `--mark`.

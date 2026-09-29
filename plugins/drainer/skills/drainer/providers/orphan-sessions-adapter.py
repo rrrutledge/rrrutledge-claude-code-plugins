@@ -113,6 +113,7 @@ class Provider(ProviderBase):
             "source": self.name,
             "triage": item.get("_bucket", "needs-you"),
             "kind": item.get("_kind", "resume"),
+            "triageReason": item.get("_triageReason"),
             "session_id": item.get("session_id"),
             "cwd": item.get("cwd"),
             "started_at": item.get("started_at"),

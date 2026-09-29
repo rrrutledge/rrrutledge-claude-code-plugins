@@ -18,7 +18,9 @@
 //                 you're personally on; --json emits a structured array. Each item also carries `unread`:
 //                 the FULL span of unread messages since the last read cursor, oldest-first, each with
 //                 from/received/text — so a conversation that accreted several distinct asks between
-//                 reads exposes every one, not only its newest message)
+//                 reads exposes every one, not only its newest message. Each item also carries
+//                 `knownContact`: true when the DM/group DM/thread's history already has a message from
+//                 you — channel items always get false, since a per-sender lookup there is too costly)
 // Show one:      node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]
 //                (the message text + a chat.getPermalink url; pass --thread-ts for a threaded reply)
 // History:       node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]
@@ -233,6 +235,22 @@ async function unreadMessages(channel, lastRead, myId, limit = 30) {
     .sort((a, b) => parseFloat(b.ts) - parseFloat(a.ts));
 }
 
+// Whether Russell has ever posted in this conversation/thread before — a signal the junk gate
+// downstream uses, since a message from a known contact is never junk (a first-ever message from
+// a stranger still can be). Checked with its own history fetch, separate from the unread window,
+// so it still finds an old exchange the 30-message unread window wouldn't reach. Fails closed
+// (false = treat as a stranger) on any API error, since that's already the safe default here.
+async function hasMeMessage(channel, me, threadTs) {
+  try {
+    const r = threadTs
+      ? await call('conversations.replies', { channel, ts: threadTs, limit: '100' })
+      : await call('conversations.history', { channel, limit: '100' });
+    return (r.messages || []).some(m => m.user === me);
+  } catch {
+    return false;
+  }
+}
+
 async function listUnread() {
   const me = (await call('auth.test')).user_id;
   const muted = await mutedSet();
@@ -255,6 +273,7 @@ async function listUnread() {
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject, channelName,
         received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
         preview: await previewText(msgs), unread: await unreadSpan(msgs),
+        knownContact: await hasMeMessage(c.id, me),
       });
     }
   }
@@ -285,6 +304,7 @@ async function listUnread() {
           received: tsToIso(m.ts), isRead: false, unreadCount: 1,
           preview: rendered.slice(0, 600),
           unread: [unreadEntry],
+          knownContact: false,
         });
       }
     } else {
@@ -295,6 +315,7 @@ async function listUnread() {
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
         preview: await previewText(msgs), unread: await unreadSpan(msgs),
+        knownContact: false,
       });
     }
   }
@@ -321,12 +342,14 @@ async function listUnread() {
       const chName = info.name ? `#${info.name}` : channel;
       const from = await userName(latest.user);
       const mentioned = unread.some(m => (m.text || '').includes(`<@${me}>`));
+      const threadTs = root.thread_ts || root.ts;
       items.push({
         id: `${channel}:${latest.ts}`, channel, channelType: 'thread',
-        ts: latest.ts, threadTs: root.thread_ts || root.ts, from, fromId: latest.user,
+        ts: latest.ts, threadTs, from, fromId: latest.user,
         subject: mentioned ? `@mention in thread in ${chName}` : `Thread reply in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: unread.length,
         preview: await previewText(unread), unread: await unreadSpan(unread),
+        knownContact: await hasMeMessage(channel, me, threadTs),
       });
     }
   } catch { /* threads view unavailable — DMs/mentions still enumerate */ }
@@ -424,15 +447,23 @@ async function react() {
   console.log(`Reacted :${name}: on message ${args.ts} in ${args.channel}.`);
 }
 
+// Advance the read cursor to `ts` — subscriptions.thread.mark for a threaded reply, else
+// conversations.mark. Shared by --mark and the post-send auto-mark below.
+async function markRead(channel, ts, threadTs) {
+  if (threadTs) {
+    await call('subscriptions.thread.mark', { channel, thread_ts: threadTs, ts, read: '1' });
+    return;
+  }
+  await call('conversations.mark', { channel, ts });
+}
+
 async function mark() {
   if (!args.channel || !args.ts) throw new Error('--mark requires --channel and --ts');
+  await markRead(args.channel, args.ts, args['thread-ts']);
   if (args['thread-ts']) {
-    await call('subscriptions.thread.mark',
-      { channel: args.channel, thread_ts: args['thread-ts'], ts: args.ts, read: '1' });
     console.log(`Marked thread ${args['thread-ts']} in ${args.channel} read up to ${args.ts}. Reversible.`);
     return;
   }
-  await call('conversations.mark', { channel: args.channel, ts: args.ts });
   console.log(`Marked ${args.channel} read up to ${args.ts}. Reversible — re-reading the conversation re-surfaces it.`);
 }
 
@@ -461,6 +492,14 @@ async function send() {
   const params = { channel: args.channel, text };
   if (args['thread-ts']) params.thread_ts = args['thread-ts'];
   const r = await call('chat.postMessage', params);
+  // A post doesn't advance the read cursor the way the Slack client does, so the conversation
+  // stays bold forever with our own reply as the only "unread" message. Mark it ourselves —
+  // best-effort: the send already succeeded, so a mark failure is a warning, never a retry/fail.
+  try {
+    await markRead(r.channel, r.ts, params.thread_ts);
+  } catch (e) {
+    console.error(`Warning: sent, but failed to mark read: ${e.message}`);
+  }
   let permalink = '';
   try {
     permalink = (await call('chat.getPermalink', { channel: r.channel, message_ts: r.ts })).permalink || '';

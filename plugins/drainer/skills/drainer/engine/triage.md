@@ -119,6 +119,9 @@ The phishing tells are the domain and link checks above.
 
 The provider capability and the digest's report-on-approval handling live in `providers/<source>-provider.md` → REPORT-PHISHING and `engine/digest-core.md` step 3.
 
+**Slack is a partial exception to the provider-capability rule above, and separately overrides junk classification for known contacts.**
+See `providers/slack-provider.md` for both.
+
 ## Tie-breakers
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).
