@@ -838,6 +838,27 @@ def _apply_screen(it, screen_verdict):
     return True
 
 
+def _apply_slack_overrides(it):
+    """Two deterministic post-triage rules for Slack items, per Russell's rule that a message from
+    someone he's already talked to is never junk (see providers/slack-provider.md).
+
+    A `junk` verdict on a `knownContact` item (the DM/thread already has a message from Russell in
+    it) becomes `needs-you`/`reply`/`simple` — `fyi` also poll-time-clears silently, so only
+    `needs-you` actually surfaces it instead of vanishing with the rest of the junk bucket.
+    A first-ever message from a stranger can still be junk; this only overrides items triage
+    already knows are from someone Russell has an ongoing conversation with.
+
+    Independently, any Slack item's `phishing` kind is cleared to None: the rubric that produces it
+    is email-shaped (report-phishing is a mail-only action Slack has no equivalent for), so a Slack
+    item carrying it would hand a worker a kind it can't act on."""
+    if it.get("_source") != "slack":
+        return
+    if it.get("_bucket") == "junk" and it.get("knownContact"):
+        it["_bucket"], it["_kind"], it["_complexity"] = "needs-you", "reply", "simple"
+    if it.get("_kind") == "phishing":
+        it["_kind"] = None
+
+
 def split_junk_items(all_new):
     """Split the cycle's triaged items into (correctly_junked, to_rescue, rest).
 
@@ -1800,7 +1821,9 @@ def main():
         v = verdicts.get(it["_id"], {"bucket": "needs-you", "kind": "reply"})  # unjudged triage -> act (fail-safe)
         it["_bucket"], it["_kind"] = v.get("bucket", "needs-you"), v.get("kind")
         it["_complexity"] = v.get("complexity", "simple")
+        it["_triageReason"] = (v.get("reason") or "").strip() or None
         _apply_screen(it, screen_verdicts.get(it["_id"]))  # a flag forces needs-you (strips autonomy)
+        _apply_slack_overrides(it)  # known-contact junk -> needs-you; phishing kind cleared (Slack-only)
     if unjudged:
         all_new = [it for it in all_new if it["_id"] not in unjudged]
         n_screen_only = len(screen_unavailable_ids - triage_unavailable_ids)

@@ -394,7 +394,7 @@ class Provider(ProviderBase):
 
         record = {
             "id": iid, "source": self.name, "triage": item.get("_bucket", "needs-you"),
-            "kind": item.get("_kind"), "zoomKind": item.get("kind"),
+            "kind": item.get("_kind"), "triageReason": item.get("_triageReason"), "zoomKind": item.get("kind"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": url,
             "meetingId": item.get("meetingId"), "meetingTopic": item.get("topic"),

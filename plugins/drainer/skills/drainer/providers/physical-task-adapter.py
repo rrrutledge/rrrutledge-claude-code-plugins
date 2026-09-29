@@ -226,6 +226,7 @@ class Provider(ProviderBase):
         os.makedirs(items_dir, exist_ok=True)
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
+            "triageReason": item.get("_triageReason"),
             "subject": item["subject"], "date": item["date"], "minutes": item["minutes"],
             "isRecurring": item["isRecurring"], "calendar": self.calendar,
             "eventId": item["id"], "seriesMasterId": item.get("seriesMasterId"),

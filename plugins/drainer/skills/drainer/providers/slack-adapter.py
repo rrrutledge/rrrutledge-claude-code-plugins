@@ -67,6 +67,16 @@ class Provider(ProviderBase):
                                 kind="config")
         return path
 
+    def triage_signal(self, item):
+        """Merge the base self-email signal with Slack's own `knownContact` flag, so the model's own
+        reasoning (and the one-line `reason` it returns) already reflects that Russell has messaged
+        this person/thread before - not just the deterministic post-triage override in run-poller.py
+        that guarantees the outcome either way (see `_apply_slack_overrides`)."""
+        base = super().triage_signal(item)
+        if item.get("knownContact"):
+            return {**(base or {}), "knownContact": True}
+        return base
+
     def enumerate(self, limit):
         res = run_node([self.slackjs, "--list-unread", "--json", f"--top={limit}"])
         if res.returncode != 0:
@@ -159,11 +169,13 @@ class Provider(ProviderBase):
         ]
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
+            "triageReason": item.get("_triageReason"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": permalink, "messageId": f"{channel}:{ts}",
             "channel": channel, "ts": ts, "threadTs": thread_ts,
             "unreadCount": item.get("unreadCount"),
             "channelType": item.get("channelType"), "channelName": item.get("channelName"),
+            "knownContact": bool(item.get("knownContact")),
             "teamId": os.environ.get("SLACK_TEAM_ID"),
             "bodyFile": body_file,
             "ts_captured": datetime.now(timezone.utc).isoformat(),

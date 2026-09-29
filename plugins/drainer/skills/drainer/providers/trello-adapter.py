@@ -573,7 +573,8 @@ class Provider(ProviderBase):
             # new id, so this old one drops out of that set and reconcile leaves it alone; a crashed
             # worker's card keeps this id, stays in the set, and is re-queued.
             "messageId": iid,
-            "kind": item.get("_kind"), "cardId": item["cardId"], "board": item.get("board"),
+            "kind": item.get("_kind"), "triageReason": item.get("_triageReason"),
+            "cardId": item["cardId"], "board": item.get("board"),
             "list": item.get("list"), "name": item.get("name"),
             "start": item.get("start"),
             "url": item.get("url"), "contacts": item.get("contacts") or [],

@@ -197,6 +197,7 @@ class Provider(ProviderBase):
         first_unread_id = next((m["id"] for m in reversed(msgs) if m.get("unread")), None)
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
+            "triageReason": item.get("_triageReason"),
             "from": lm.get("from") or item.get("label"), "subject": item.get("label"),
             "chatType": item.get("type"), "received": lm.get("time"),
             "snippet": lm.get("preview"), "url": item.get("deepLink"),
