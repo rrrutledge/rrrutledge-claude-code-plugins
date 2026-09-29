@@ -1,6 +1,6 @@
 {
   "name": "ms-rest",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Read, delete, and compose Outlook mail and calendar events for a WORK Microsoft account via the Outlook REST API — no browser needed after a one-time sign-in (token sniffed from the live Outlook web session).",
   "author": { "name": "Russell Rutledge" },
   "license": "MIT"
