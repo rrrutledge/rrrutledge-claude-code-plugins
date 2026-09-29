@@ -82,5 +82,9 @@ No printed command means no dispatch is needed for this outcome.
 The spawned session works from the brief `_write_brief` wrote - the judge rationales, the claims, the implicated factors, and the draft-to-sent diff.
 Fold the generalized pattern into `calibration.md` per that file's own header instructions, run `weights-suggest`, and run the `writing-review` loop against `authoring-rules` before opening the PR.
 
+**A calibration session also runs the Voice learning loop when the edit warrants it.**
+The brief's `edit_nature` line carries the same Information-fix/Voice-change classification `document-authoring`'s Voice learning loop's own classify step assigns: `tone-voice` and `structural-rewrite` are a Voice change and warrant the loop below.
+A Voice change label triggers the loop's step 3 on the same draft-to-sent diff, then step 4 to open the PR - in this same PR, alongside the `calibration.md` diagnosis.
+
 **Quote the original draft and the sent text verbatim in the PR body.**
 Russell runs many sessions in parallel and can lose track of which item a PR came from within minutes, and the local brief and draft files that made the diagnosis live outside the repo - they won't be there when he looks, so the PR is the only surviving record of what actually happened.
