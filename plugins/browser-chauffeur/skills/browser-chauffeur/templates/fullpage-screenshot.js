@@ -87,6 +87,25 @@ async function settle(page) {
   await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
+// On a content-heavy real page, a style change (like hiding a fixed header)
+// can still be a screenshot or two away from actually reaching the
+// compositor even after settle()'s double rAF — confirmed by capturing a
+// duplicated header sliver on a live page despite the computed style already
+// reading "hidden". Takes screenshots until two consecutive captures are
+// byte-identical (mirrors the same screenshot-diff stability pattern used in
+// snapshot-target.js), and returns the last one — reused as the chunk's
+// actual screenshot instead of taking a fresh one afterward.
+async function waitForPaintStable(page, { maxAttempts = 5, pollMs = 150 } = {}) {
+  let previous = await page.screenshot();
+  for (let attempt = 1; attempt < maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, pollMs));
+    const current = await page.screenshot();
+    if (Buffer.compare(current, previous) === 0) return current;
+    previous = current;
+  }
+  return previous;
+}
+
 async function captureFullPageScreenshot(page, outPath, opts = {}) {
   const { threshold = 14000, chunkHeight = 2000 } = opts;
 
@@ -123,9 +142,11 @@ async function captureFullPageScreenshot(page, outPath, opts = {}) {
       // chunk's screenshot — otherwise the header/nav (still pinned to the
       // same on-screen position) gets captured again at every scroll
       // position and appears repeated down the composite.
+      let justHid = false;
       if (y > 0 && !restoreFixed) {
         restoreFixed = await hideFixedAndStickyElements(page);
         await settle(page);
+        justHid = true;
       }
 
       // The browser clamps scrollTo to the max scrollable position, so the
@@ -134,7 +155,9 @@ async function captureFullPageScreenshot(page, outPath, opts = {}) {
       // rather than assuming the request was honored, or the last chunk's
       // content gets stitched in at the wrong offset.
       const actualScrollY = await page.evaluate(() => window.scrollY);
-      const chunkBuffer = await page.screenshot();
+      // Only the chunk right after hiding needs the extra paint-stability
+      // check — every other chunk already reflects settled page state.
+      const chunkBuffer = justHid ? await waitForPaintStable(page) : await page.screenshot();
       const chunkPng = PNG.sync.read(chunkBuffer);
 
       const srcY = y - actualScrollY;
