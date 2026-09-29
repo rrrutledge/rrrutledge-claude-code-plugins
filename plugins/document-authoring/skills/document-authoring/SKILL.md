@@ -29,6 +29,7 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
 2. **Write** — draft the message.
    When it's on the same topic as a prior message or email thread — even if it isn't a direct response, and even when the most recent message is one Russell sent himself — anchor it there rather than composing fresh, so the follow-up answers where the conversation actually stands and the history stays together.
    In Teams, use Reply on a message in that topic; in email, reply into the existing thread on that subject.
+   **When the message reports on work you're doing yourself, finish that work first.** Draft the status update only once every action it describes is actually done, including a step only moments from finishing, since a draft written in parallel ends up describing something as upcoming that should already be done by the time the message goes out.
 3. **Verify** — dispatch the `writing-review` skill on your actual draft text, marked as an outward message so the reviewer checks it against both `authoring-rules` and `message-rules`.
    This step is a cold, independent check, not a self-walk - for why a separate dispatched reviewer is required rather than a re-read of the rules, see `writing-review`.
    Revise against what it finds, then dispatch a **fresh** reviewer on the revised text; repeat until it returns clean, a finding stands that you genuinely disagree with, or you've run three rounds — see `writing-review` for the disagreement and convergence rules.

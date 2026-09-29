@@ -267,6 +267,9 @@ The specifics that most often separate a message that reads as Russell's from on
   Answer yes/no, then the reason; don't walk through steps they didn't request.
 - **Offer visibility, not a future action.**
   "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step he hasn't decided to take.
+  The same already-implied logic as **Close with "let me know"** below covers a promised step too: when it's already decided and obvious once a missing input arrives, naming it ("I'll build theirs once those come in") is the same redundant spelling-out, so leave it unsaid and name just what's missing.
+- **Reporting a gap in what someone else provided: state it as a fact, not their delay.**
+  "I don't have photos for X and Y yet" reads as a neutral status; "still waiting on photos for X and Y" casts them as behind schedule, which isn't a fair read absent an actual deadline they've missed.
 - **A soft commitment already carries its own limits — don't undercut it with an explicit disclaimer.**
   "I'll take a look" already signals no guarantee; cut a trailing caveat like "though I can't guarantee I'll reach out" and close instead with a light 👍 if more warmth is wanted.
 - **When someone mentions something negative, match your response to its role in the message:**
