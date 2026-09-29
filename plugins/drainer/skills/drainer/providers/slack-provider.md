@@ -120,7 +120,7 @@ Stage the reply through the **`message-draft`** skill's **`slack`** mode (browse
 It jumps to the conversation, confirms the header matches, and **types the reply into the Slack composer without sending** (Slack auto-saves it as a per-conversation draft).
 **Never press Enter / never send.**
 Show the draft text in your reply and tell the user to edit + send it themselves in Slack.
-(message-draft loads `document-authoring` for the voice and runs its stage-time voice gate; the voice loop still applies - diff sent-vs-draft after the user sends and append a lesson.)
+(message-draft loads `document-authoring` for the voice and runs its stage-time voice gate; learning from the send still applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.)
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): point `message-draft` slack mode at that conversation.
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.

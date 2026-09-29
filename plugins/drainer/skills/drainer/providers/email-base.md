@@ -48,7 +48,7 @@ The stage command enforces this: your provider's `--reply` / `--draft-new` / `cr
 
 ### After composing
 
-- The voice loop still applies: after the user sends, diff sent-vs-draft and append a concrete lesson to the document-authoring skill's Voice learning loop.
+- Learning from the send still applies: after the user sends, run the document-authoring skill's Learn step (`learn-from-send.md`).
 - Write the body as an HTML file, then create the draft via your provider's CLI - **never sent** from inside the worker.
   Show the draft text in your reply so the user can review it.
 - The user edits + sends themselves.

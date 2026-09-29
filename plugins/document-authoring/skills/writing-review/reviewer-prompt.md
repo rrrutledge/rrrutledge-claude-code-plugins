@@ -73,6 +73,18 @@ Subagent (general-purpose):
 
     **Verdict:** Clean | [N] findings
 
+    If the text is an outward message, also rate how well the rules cover
+    it, on the scale in the Rule coverage section of [ASPECTS_PATH]. Rate
+    what the rules settle, not whether the text complies - a broken rule is
+    a finding above, not low coverage. Then list each choice the rules left
+    unsettled, one line each:
+
+    **Rule coverage:** [1-5]
+    **Uncertain spots:**
+    - `file:line` - the choice, and why the rules don't settle it
+
+    Write "none" under Uncertain spots when every choice is settled.
+
     Begin directly with the first finding or the clean verdict. No preamble, no
     process narration, no closing summary.
 ```
@@ -80,5 +92,6 @@ Subagent (general-purpose):
 **Placeholders:**
 - `[RUBRIC_PATH]` - REQUIRED: absolute path to `authoring-rules/SKILL.md`
 - `[MESSAGE_RULES_PATH]` - only when reviewing an outward message: absolute path to `message-rules/SKILL.md`
+- `[ASPECTS_PATH]` - only when reviewing an outward message: absolute path to `send-confidence/uncertainty-aspects.md`
 - `[TEXT_OR_DIFF_PATH]` - REQUIRED: the file or diff under review
 - `[MODEL]` - the reviewer model

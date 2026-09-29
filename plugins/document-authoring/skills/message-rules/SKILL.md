@@ -12,7 +12,7 @@ Like that file, every rule here is an **artifact rule** - checkable from the fin
 Everything in it applies to an outward message too; this file adds only what is specific to a message: register, warmth, asks, links, personas, emoji, sign-offs, and nudges.
 Where a rule here builds on a medium-independent one, it points back rather than restating it.
 
-**How you compose toward these rules - the drafting loop, staging, and the voice-learning loop - lives in `document-authoring`.**
+**How you compose toward these rules - the drafting loop, staging, and learning from the send - lives in `document-authoring`.**
 Those are process rules: how you get to a finished message, not what the finished message must be.
 A reviewer holding only the message can't evaluate them, so they stay out of this rubric.
 

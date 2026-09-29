@@ -50,7 +50,7 @@ An `auto-handle` item runs autonomously instead and follows `engine/auto-handle.
   This is machine config, not part of the engine (see `templates/context.example.md`).
   Your seed prompt names a **pre-gated copy** of it: the engine has already dropped the sections whose `**Trigger:**` this item doesn't match, so read the file the seed points you at rather than the full `context.md` - it carries every always-loaded rule plus the sections this item fires, and nothing you'd have to skip. (If your seed names no such file, read the full `context.md` from the merged-main config repo it names instead.)
   Read every other repo-tracked drainer config (`trello-boards.yaml`, `initiatives/<slug>.md`) from that same merged-main config repo, not the working directory - the config repo is a worktree the poller keeps pinned to origin/main, so you always act on merged config even when the working tree is on a feature branch.
-- the **Voice learning loop** lives in the **document-authoring skill** - append lessons there after each send (step 5).
+- learning from each send lives in the **document-authoring skill**'s `learn-from-send.md` (step 5).
 - your item's data (source-specific - the captured email/message, or the card data + comments).
 
 ## 1. Lead with context - especially in the FINAL message
@@ -243,8 +243,8 @@ You can ask the user what they'd like to say and offer your read if it helps, bu
 Logistical or transactional personal notes (scheduling, a quick info request, a thanks) still get a draft as usual.
 
 ## 5. Learn from the send
-When the user says they sent it: fetch the sent version, diff it against your draft, and append a concrete, actionable lesson to the **document-authoring skill's Voice learning loop**.
-Briefly tell them what you learned.
+When the user says they sent it (or discarded it), do the drafting session's part of the **document-authoring skill's `learn-from-send.md`**: fetch the sent version, record the outcome, and run the spawn command it prints.
+Name the spawned learning session's id in your reply, or say there was nothing to learn.
 
 ## 6. Advance the item (source-specific)
 If §2d already cleared this item, there's nothing left to do here - skip straight to presenting your result below once the work and any draft are finished.
