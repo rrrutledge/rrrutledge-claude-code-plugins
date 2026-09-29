@@ -246,6 +246,8 @@ Logistical or transactional personal notes (scheduling, a quick info request, a 
 When the user says they sent it (or discarded it), do the drafting session's part of the **document-authoring skill's `learn-from-send.md`**: fetch the sent version, record the outcome, and run the spawn command it prints.
 Name the spawned learning session's id in your reply, or say there was nothing to learn.
 
+**Finishing this step is not the finish line - step 6's CLEAR still has to run before you close.**
+
 ## 6. Advance the item (source-specific)
 If §2d already cleared this item, there's nothing left to do here - skip straight to presenting your result below once the work and any draft are finished.
 
@@ -348,6 +350,9 @@ A delay is only safe to walk away from when something *other than this session* 
 
 **The close condition is symmetric: your part done, and his part done - not just yours.**
 Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
+**"Advancing the source item" means naming step 6's CLEAR command for this item's source and pointing to its actual output from this session - not that sending the reply already did it, and not that step 6 said so.**
+Two independent Slack workers sent their reply, heard Russell confirm it, and closed without ever calling `slack.js --mark`; the conversation sat flagged unread indefinitely even though the work was fully done.
+If you can't point to the CLEAR command's output, run it now, before invoking `session-mgr:close`.
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
 But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
 
