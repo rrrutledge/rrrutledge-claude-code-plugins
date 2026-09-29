@@ -87,8 +87,8 @@ node ~/.claude/plugins/cache/*/ms-rest/*/skills/ms-rest/outlook-calendar.js <com
 ## DRAFT-ONLY default (never auto-send)
 `create-draft` and `create-reply` only ever produce **drafts** — they never send. Sending is a
 separate, gated step (`send-draft --yes`) reserved for an explicit OK from Russell. Drafting lands the
-message in **Drafts** for him to review, edit, and send himself — which also preserves the voice
-learning loop (the sent-vs-draft diff feeds `document-authoring`'s voice SSOT).
+message in **Drafts** for him to review, edit, and send himself — which also preserves learning
+from the send (`document-authoring`'s `learn-from-send.md`).
 
 ## AUTH-GLANCE (is a token available?)
 Run `node ~/.claude/plugins/cache/*/ms-rest/*/skills/ms-rest/outlook-mail.js token`. `Token OK ✅` means a valid token is cached

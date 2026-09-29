@@ -47,7 +47,7 @@ Which mode each case collects - diff or whole-document - is "How to run it" step
 5. Repeat from step 3 until the reviewer returns clean, a finding stands that you genuinely disagree with, or you have run three rounds.
 6. Mint the review receipt on the exact file the gate will check, so it lets the work through:
    `python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <file>` (run the newest if several are cached).
-   For an outward message, mint the body file the stage command passes as `--body-file` / `--json`, adding `--score-context <ctx.json>` per `document-authoring`'s `send-confidence.md`.
+   For an outward message, mint the body file the stage command passes as `--body-file` / `--json`, adding `--score-context <ctx.json>` per `document-authoring`'s `send-confidence.md`, and pass the final round's rule coverage rating and uncertain spots into that context.
    For shipped prose, mint each changed markdown file the PR will carry, so `gh pr create` passes.
    Mint after the loop above has converged on the text you're keeping; any later edit to that file needs a fresh review and a fresh mint, since the receipt binds to the file's content.
 
@@ -77,7 +77,7 @@ It does not fire on `gh pr ready` or `gh pr merge`, which act on an already-open
 The hook computes the PR diff itself and blocks unless every changed markdown file that ships has a fresh receipt for its current content.
 The receipt is a freshness check on the file's current content: the review itself stays diff-scoped per "How to run it" above, and the mint targets the whole file, per step 6.
 Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts - and a code-only PR passes straight through.
-Mint each changed prose file after its review, so `gh pr create` lets the PR through; the voice-learning loop's independent-reviewer step already runs the review, and mints there so it composes with this gate rather than fighting it.
+Mint each changed prose file after its review, so `gh pr create` lets the PR through; a learning session's PR step already runs the review, and mints there so it composes with this gate rather than fighting it.
 
 When a stage or PR is blocked, the block message names the exact file(s) and the mint command to run, so the path through the gate is always one command away.
 
@@ -102,7 +102,7 @@ Both are worth folding back into the rule, but the two sources carry different w
 
 **The writer rejects one** - weak signal on its own, because the writer is the party being criticized and has an interest in the finding being wrong. Worth acting on when the same rejection recurs across independent sessions, which no single session can see. Note it in the PR that carries the work, so the pattern is visible later.
 
-`document-authoring`'s voice-learning loop covers outward messages, where a draft-versus-sent diff exists.
+`document-authoring`'s `learn-from-send.md` covers outward messages, where a draft-versus-sent diff exists.
 Shipped artifacts have no such diff, so a rejected finding is the only correction signal they get.
 
 The goal is convergence, and the success signal is the same shape: over time, the loop should end clean on the first round.

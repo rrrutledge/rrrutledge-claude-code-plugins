@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Send-confidence scoring - estimates whether a drafted message will go out untouched.
+"""Send-confidence scoring - estimates how likely a drafted message is to need a change
+before Russell sends it, and decides when a sent draft has something to teach.
 
 Stage 1 is score-and-measure only: nothing here gates or auto-sends a message, and no score
 is shown per draft. `verify_gate.py mint --score-context` calls `score_and_log` right after
 the review receipt is minted; scoring is fail-open (a scorer exception never blocks the
 receipt), so this module must never raise past its own CLI entry points.
 
-Five factors, each 0-100 where higher means "more likely to go out untouched": familiarity
-(a Sent-folder count proxy), phrasing complexity and task ambiguity (one cold Haiku call per
-draft), input completeness (the same call's claim audit), and stylometric fidelity (plain
-code over the draft body against a baseline corpus). The composite is the weighted mean over
-whichever factors came back non-null - see `weights.json` for the weights and thresholds,
-and `calibration.md` for the judge's anchored-scale notes.
+Five factors, each 0-100 where higher means "more likely to go out untouched", one per aspect
+of uncertainty described in `uncertainty-aspects.md`: rule coverage (the writing reviewer's
+rating, passed in through the context), content latitude and stakes (one cold Haiku call per
+draft, which reads that file whole), fact support (the same call's claim audit), and
+familiarity (a Sent-folder count proxy). The composite is the weighted mean over whichever
+factors came back non-null - see `weights.json` for the weights and thresholds.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
 (`~/OneDrive/Claude/send-confidence` by default - see the module-level path helpers). Nothing
@@ -22,7 +23,7 @@ CLI:
     python send_confidence.py context --channel <c> --recipient <r> --session-kind <k> \
         (--ask <text> | --ask-file <file>) (--inputs <text> | --inputs-file <file>) \
         [--account <a>] [--thread-ref <t>] [--iid <i>] [--turns-before-draft <n>] \
-        [--sent-count <n>]
+        [--sent-count <n>] [--rule-coverage <1-5>] [--uncertain-spots-file <file>]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --sent-file <file> [--edit-nature a,b]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
@@ -33,8 +34,13 @@ CLI:
 `context` is the deterministic half of staging a scored draft: it builds the context JSON
 `score_and_log` expects, writes it to a scratch file, and prints the exact `verify_gate.py
 mint --score-context` command to run next - the drafting session only ever supplies judgment
-(the ask, the inputs, which channel and recipient, the familiarity count it looked up), never
-hand-authors the JSON or recalls the mint invocation from memory.
+(the ask, the inputs, which channel and recipient, the familiarity count it looked up, the
+reviewer's rule coverage), never hand-authors the JSON or recalls the mint invocation from memory.
+
+`outcome` is the whole of the drafting session's part in learning from a send: it labels the
+edits (one Haiku call, unless `--edit-nature` overrides), records the outcome, and prints a
+spawn command for a learning session whenever the send has something to teach - see
+`learn-from-send.md` for what that session does.
 """
 
 import os
@@ -48,39 +54,48 @@ import difflib
 import hashlib
 import tempfile
 import datetime
-import statistics
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WEIGHTS_PATH = os.path.join(SCRIPT_DIR, "weights.json")
-CALIBRATION_PATH = os.path.join(SCRIPT_DIR, "calibration.md")
+ASPECTS_PATH = os.path.join(SCRIPT_DIR, "uncertainty-aspects.md")
 # send-confidence/ and hooks/ are always siblings under the same plugin checkout, whether
 # that's a dev clone or an installed plugin cache snapshot, so this resolves correctly either way.
 VERIFY_GATE_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "hooks", "verify_gate.py")
+# Repo-relative, because the learning session runs rooted in the plugins repo clone.
+PROCEDURE_PATH = "plugins/document-authoring/skills/document-authoring/learn-from-send.md"
 
 INPUTS_CHAR_CAP = 12000
+DIFF_CHAR_CAP = 20000
 
 JUDGE_MODEL = "claude-haiku-4-5"
 
-EMAIL_CHANNELS = {"gmail", "outlook-personal", "outlook-work"}
 RESOLVED_DISPOSITIONS = {"sent-as-is", "edited", "discarded"}
-FACTOR_NAMES = ["familiarity", "phrasing_complexity", "task_ambiguity",
-                "input_completeness", "stylometric"]
+FACTOR_NAMES = ["familiarity", "stakes", "content_latitude", "fact_support", "rule_coverage"]
+
+# Log entries written before the factor set was reshaped still fold under the new names.
+LEGACY_FACTOR_NAMES = {
+    "phrasing_complexity": "stakes",
+    "task_ambiguity": "content_latitude",
+    "input_completeness": "fact_support",
+}
+DROPPED_FACTORS = {"stylometric"}
+
+EDIT_LABELS = ["factual-correction", "tone-voice", "structural-rewrite"]
+VOICE_LABELS = {"tone-voice", "structural-rewrite"}
 
 NATURE_TO_FACTORS = {
-    "factual-correction": ["input_completeness"],
-    "tone-voice": ["stylometric", "familiarity"],
-    "structural-rewrite": ["task_ambiguity", "phrasing_complexity"],
-    "scope-recipient": ["task_ambiguity"],
+    "factual-correction": ["fact_support", "content_latitude"],
+    "tone-voice": ["rule_coverage", "familiarity"],
+    "structural-rewrite": ["rule_coverage"],
 }
 
 DEFAULT_WEIGHTS = {
-    "version": 1,
-    "weights": {"familiarity": 0.2, "phrasing_complexity": 0.2, "task_ambiguity": 0.2,
-                "input_completeness": 0.2, "stylometric": 0.2},
+    "version": 2,
+    "weights": {f: 0.2 for f in FACTOR_NAMES},
     "thresholds": {"factor_high": 70, "factor_low": 40, "composite_high": 75,
-                   "sent_as_is_max_distance": 0.01},
+                   "composite_low": 40, "sent_as_is_max_distance": 0.01},
 }
 
 
@@ -102,10 +117,6 @@ def briefs_dir():
     return os.path.join(data_dir(), "briefs")
 
 
-def baseline_path():
-    return os.path.join(data_dir(), "voice-baseline.json")
-
-
 def _load_weights():
     try:
         with open(WEIGHTS_PATH, "r", encoding="utf-8") as fh:
@@ -114,138 +125,29 @@ def _load_weights():
         return json.loads(json.dumps(DEFAULT_WEIGHTS))
 
 
-def _load_baseline():
+def _load_aspects():
     try:
-        with open(baseline_path(), "r", encoding="utf-8") as fh:
-            return json.load(fh)
+        with open(ASPECTS_PATH, "r", encoding="utf-8") as fh:
+            text = fh.read()
     except Exception:
-        return None
-
-
-_JUDGMENT_SECTIONS = {"phrasing complexity", "task ambiguity", "input completeness"}
-
-
-def _judgment_sections(markdown_text):
-    """The judge prompt reads only the three judgment-factor sections of calibration.md -
-    Familiarity and Stylometric fidelity collect code-formula observations instead."""
-    parts = re.split(r"(?m)^(## .+)$", markdown_text or "")
-    kept = []
-    for i in range(1, len(parts), 2):
-        header = parts[i].strip()
-        title = header[3:].strip().lower()
-        body = parts[i + 1] if i + 1 < len(parts) else ""
-        if title in _JUDGMENT_SECTIONS:
-            kept.append(header + body)
-    return "\n".join(kept).strip()
-
-
-def _load_calibration():
-    try:
-        with open(CALIBRATION_PATH, "r", encoding="utf-8") as fh:
-            full = fh.read()
-    except Exception:
-        full = ""
-    sha = hashlib.sha256(full.encode("utf-8")).hexdigest()[:12]
-    return _judgment_sections(full), sha
+        text = ""
+    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
 def _anthropic_api_key():
     return os.environ.get("ANTHROPIC_HOOK_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
 
 
-# --- stylometric features (imported by the baseline builder, so this is the shared source) ---
+# --- the Haiku calls ---
 
-WORD_RE = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
-CONTRACTION_RE = re.compile(r"^[A-Za-z]+'[A-Za-z]+$")
-SENTENCE_SPLIT_RE = re.compile(r"[.!?]+(?:\s+|$)")
-FIRST_PERSON_WORDS = {"i", "me", "my", "mine", "i'm", "i've", "i'd", "i'll"}
-MATTR_WINDOW = 50
-
-
-def stylometric_features(text):
-    """Return {"words", "em_dash", "contraction_rate", "first_person_rate", "sent_len_sd", "mattr"}
-    for a body of text, with None for any feature the text is too short to support."""
-    text = text or ""
-    em_dash = text.count("—")
-    tokens = WORD_RE.findall(text)
-    words = len(tokens)
-    if words == 0:
-        return {"words": 0, "em_dash": em_dash, "contraction_rate": None,
-                "first_person_rate": None, "sent_len_sd": None, "mattr": None}
-
-    contractions = sum(1 for t in tokens if CONTRACTION_RE.match(t))
-    contraction_rate = round(100 * contractions / words, 1)
-
-    first_person = sum(1 for t in tokens if t.lower() in FIRST_PERSON_WORDS)
-    first_person_rate = round(100 * first_person / words, 1)
-
-    sentences = [s for s in SENTENCE_SPLIT_RE.split(text) if s.strip()]
-    sent_lengths = [n for n in (len(WORD_RE.findall(s)) for s in sentences) if n > 0]
-    sent_len_sd = round(statistics.stdev(sent_lengths), 1) if len(sent_lengths) >= 3 else None
-
-    lower_tokens = [t.lower() for t in tokens]
-    if words < MATTR_WINDOW:
-        mattr = round(len(set(lower_tokens)) / words, 2)
-    else:
-        ratios = [
-            len(set(lower_tokens[i:i + MATTR_WINDOW])) / MATTR_WINDOW
-            for i in range(0, words - MATTR_WINDOW + 1)
-        ]
-        mattr = round(sum(ratios) / len(ratios), 2)
-
-    return {"words": words, "em_dash": em_dash, "contraction_rate": contraction_rate,
-            "first_person_rate": first_person_rate, "sent_len_sd": sent_len_sd, "mattr": mattr}
-
-
-# --- the judge call ---
-
-JUDGE_SYSTEM = """You are scoring one drafted message for Russell's send-confidence system - \
-estimating whether he will send it unedited. Rate two things about the ASK (what he was asked \
-to do or say) and list every factual claim in the DRAFT.
-
-## Phrasing complexity
-Rate the ask plus the draft on a 1-5 anchored scale:
-1 - routine logistics, an acknowledgement, a yes/no.
-2 - a plain informational reply with one or two points.
-3 - several points to sequence, or light tact needed.
-4 - persuasion, a sensitive ask, or pushing back.
-5 - delicate: declining, bad news, money, conflict, or anything emotionally loaded.
-
-## Task ambiguity
-Rate the ask alone on a 1-5 anchored scale:
-1 - Russell said what to say.
-2 - the intent and the key content are explicit; only wording is open.
-3 - the intent is clear, but the content has to be worked out.
-4 - a goal with several plausible approaches.
-5 - open-ended ("handle this").
-
-## Claims
-List every factual claim in the draft (a name, date, number, link, commitment, or statement of \
-fact). Mark each supported when the ask or the inputs state it, or unsupported when the draft \
-inferred or invented it.
-
-{calibration_notes}
-
-Respond with ONLY this JSON, no other text:
-{{"phrasing_complexity": {{"rating": 1-5, "rationale": "..."}}, "task_ambiguity": {{"rating": 1-5, \
-"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}]}}"""
-
-
-def run_judge(ctx, body, calibration_notes, api_key):
-    """One Haiku call scoring phrasing complexity, task ambiguity, and claim support.
-    Returns (result_dict, error) - result is None and error is set on any failure, so the
-    three judgment factors fall out as null and scoring continues on the other two."""
+def _call_model(system, user, api_key, max_tokens):
+    """One JSON-answering Haiku call. Returns (parsed_dict, error)."""
     if os.environ.get("SEND_CONFIDENCE_JUDGE") == "off":
         return None, "judge disabled (SEND_CONFIDENCE_JUDGE=off)"
     if not api_key:
         return None, "no API key"
-    system = JUDGE_SYSTEM.format(calibration_notes=calibration_notes or "")
-    user = json.dumps({
-        "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
-        "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
-    })
     payload = json.dumps({
-        "model": JUDGE_MODEL, "max_tokens": 2048, "temperature": 0,
+        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": 0,
         "system": system, "messages": [{"role": "user", "content": user}],
     }).encode("utf-8")
     req = Request(
@@ -257,18 +159,76 @@ def run_judge(ctx, body, calibration_notes, api_key):
         with urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except (HTTPError, URLError, TimeoutError, OSError) as e:
-        return None, f"judge call failed: {e}"
+        return None, f"model call failed: {e}"
     text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     m = re.search(r"\{[\s\S]*\}", text)
     if not m:
-        return None, "judge returned unparseable output"
+        return None, "model returned unparseable output"
     try:
-        parsed = json.loads(m.group(0))
+        return json.loads(m.group(0)), None
     except Exception:
-        return None, "judge returned invalid JSON"
-    if not all(k in parsed for k in ("phrasing_complexity", "task_ambiguity", "claims")):
+        return None, "model returned invalid JSON"
+
+
+JUDGE_SYSTEM = """You are estimating, for Russell's send-confidence system, how likely it is \
+that he will change a drafted message before sending it. You never judge whether the draft \
+follows a writing rule - a separate reviewer does that. You rate the situation the draft is in.
+
+The aspects of uncertainty, with their rating scales:
+
+{aspects}
+
+Rate Content latitude and Stakes on their 1-5 scales, and list every factual claim in the \
+draft for Fact support. The other aspects are measured elsewhere; ignore them.
+
+Respond with ONLY this JSON, no other text:
+{{"content_latitude": {{"rating": 1-5, "rationale": "..."}}, "stakes": {{"rating": 1-5, \
+"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}]}}"""
+
+
+def run_judge(ctx, body, aspects, api_key):
+    """One Haiku call rating content latitude and stakes and auditing claim support.
+    Returns (result_dict, error) - result is None and error is set on any failure, so the
+    three judged factors fall out as null and scoring continues on the others."""
+    user = json.dumps({
+        "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
+        "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
+    })
+    parsed, error = _call_model(JUDGE_SYSTEM.format(aspects=aspects or ""), user, api_key, 2048)
+    if error:
+        return None, error
+    if not all(k in parsed for k in ("content_latitude", "stakes", "claims")):
         return None, "judge response missing expected fields"
     return parsed, None
+
+
+LABEL_SYSTEM = """You compare a draft message with the version Russell actually sent, and \
+label every change he made. Use only these labels:
+- factual-correction: a corrected fact, name, link, date, number, or detail, or a decision \
+the draft made on his behalf that he changed.
+- tone-voice: phrasing, filler, warmth, or altitude changed while the sentence structure \
+stayed intact.
+- structural-rewrite: sentences reordered, reshaped, merged, split, or cut.
+Ignore pure whitespace and formatting.
+
+Respond with ONLY this JSON, no other text:
+{"changes": [{"label": "...", "summary": "one short phrase naming what changed"}]}"""
+
+
+def label_edits(draft_text, sent_text, api_key):
+    """One Haiku call labelling each draft-to-sent change. Returns (labels, changes, error),
+    labels being the distinct labels in first-seen order."""
+    user = json.dumps({"draft": draft_text, "sent": sent_text})
+    parsed, error = _call_model(LABEL_SYSTEM, user, api_key, 1024)
+    if error:
+        return [], [], error
+    changes = [c for c in (parsed.get("changes") or [])
+               if isinstance(c, dict) and c.get("label") in EDIT_LABELS]
+    labels = []
+    for c in changes:
+        if c["label"] not in labels:
+            labels.append(c["label"])
+    return labels, changes, None
 
 
 def _judge_log_shape(judge):
@@ -277,8 +237,8 @@ def _judge_log_shape(judge):
     return {
         "model": JUDGE_MODEL,
         "rationales": {
-            "phrasing_complexity": (judge.get("phrasing_complexity") or {}).get("rationale"),
-            "task_ambiguity": (judge.get("task_ambiguity") or {}).get("rationale"),
+            "content_latitude": (judge.get("content_latitude") or {}).get("rationale"),
+            "stakes": (judge.get("stakes") or {}).get("rationale"),
         },
         "claims": judge.get("claims") or [],
     }
@@ -286,7 +246,7 @@ def _judge_log_shape(judge):
 
 # --- scoring ---
 
-def score_draft(body, ctx, *, weights, baseline, calibration_notes, api_key):
+def score_draft(body, ctx, *, weights, aspects, api_key):
     """Pure scoring: returns {"score", "factors", "features", "judge", "errors"}. No I/O
     besides the judge call."""
     errors = []
@@ -301,55 +261,39 @@ def score_draft(body, ctx, *, weights, baseline, calibration_notes, api_key):
         n = min(sent_count, 20)
         factors["familiarity"] = round(100 * math.log2(1 + n) / math.log2(21))
 
-    judge, judge_error = run_judge(ctx, body, calibration_notes, api_key)
+    coverage = ctx.get("rule_coverage")
+    if isinstance(coverage, int) and 1 <= coverage <= 5:
+        factors["rule_coverage"] = round(100 * (coverage - 1) / 4)
+        features["rule_coverage_rating"] = coverage
+    else:
+        factors["rule_coverage"] = None
+
+    judge, judge_error = run_judge(ctx, body, aspects, api_key)
     if judge_error:
         errors.append(judge_error)
 
     if judge:
-        rating_p = judge["phrasing_complexity"]["rating"]
-        factors["phrasing_complexity"] = round(100 * (5 - rating_p) / 4)
-        features["complexity_rating"] = rating_p
+        rating_s = judge["stakes"]["rating"]
+        factors["stakes"] = round(100 * (5 - rating_s) / 4)
+        features["stakes_rating"] = rating_s
 
-        rating_a = judge["task_ambiguity"]["rating"]
+        rating_c = judge["content_latitude"]["rating"]
         turns = ctx.get("turns_before_draft") or 0
         penalty = min(20, 5 * turns)
-        factors["task_ambiguity"] = max(0, round(100 * (5 - rating_a) / 4) - penalty)
-        features["ambiguity_rating"] = rating_a
-        features["ambiguity_turn_penalty"] = penalty
+        factors["content_latitude"] = max(0, round(100 * (5 - rating_c) / 4) - penalty)
+        features["latitude_rating"] = rating_c
+        features["latitude_turn_penalty"] = penalty
 
         claims = judge.get("claims") or []
         total = len(claims)
         supported = sum(1 for c in claims if c.get("supported"))
-        factors["input_completeness"] = 100 if total == 0 else round(100 * supported / total)
+        factors["fact_support"] = 100 if total == 0 else round(100 * supported / total)
         features["claims_total"] = total
         features["claims_unsupported"] = total - supported
     else:
-        factors["phrasing_complexity"] = None
-        factors["task_ambiguity"] = None
-        factors["input_completeness"] = None
-
-    style = stylometric_features(body)
-    features.update(style)
-    words = style["words"]
-    if words < 25:
-        factors["stylometric"] = None
-    else:
-        sub_scores = [100 if style["em_dash"] == 0 else 0]
-        # Stage 1's baseline corpus is email-only, so every channel scores against the
-        # "email" group; a chat draft just skips the two length-sensitive features below.
-        channel_group = "email" if ctx.get("channel") in EMAIL_CHANNELS else "chat"
-        group_stats = ((baseline or {}).get("groups") or {}).get("email", {}).get("features", {})
-        zscored = ["contraction_rate", "first_person_rate"]
-        if channel_group == "email":
-            zscored += ["sent_len_sd", "mattr"]
-        for name in zscored:
-            x = style.get(name)
-            stats = group_stats.get(name)
-            if x is None or not stats or not stats.get("sd"):
-                continue
-            z = (x - stats["mean"]) / stats["sd"]
-            sub_scores.append(round(100 * max(0, 1 - abs(z) / 3)))
-        factors["stylometric"] = round(sum(sub_scores) / len(sub_scores))
+        factors["stakes"] = None
+        factors["content_latitude"] = None
+        factors["fact_support"] = None
 
     w = (weights or {}).get("weights", {})
     available = {f: s for f, s in factors.items() if s is not None}
@@ -395,9 +339,18 @@ def load_events():
     return events
 
 
+def _normalize_factors(factors):
+    out = {}
+    for name, value in (factors or {}).items():
+        if name in DROPPED_FACTORS:
+            continue
+        out[LEGACY_FACTOR_NAMES.get(name, name)] = value
+    return out
+
+
 def fold_drafts(events=None):
     """{draft_id: {"scored": event, "outcome": event_or_None}}, each draft's scored event
-    folded with its newest outcome event."""
+    folded with its newest outcome event, its factors under their current names."""
     events = events if events is not None else load_events()
     drafts = {}
     for e in events:
@@ -407,7 +360,7 @@ def fold_drafts(events=None):
             continue
         d = drafts.setdefault(did, {"scored": None, "outcome": None})
         if kind == "scored":
-            d["scored"] = e
+            d["scored"] = {**e, "factors": _normalize_factors(e.get("factors"))}
         elif d["outcome"] is None or e.get("ts", "") >= d["outcome"].get("ts", ""):
             d["outcome"] = e
     return drafts
@@ -431,24 +384,22 @@ def _supersede_pending(thread_ref, recipient):
                 "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
                 "disposition": "superseded", "edit_distance": None, "edit_nature": [],
                 "reason": None, "miscalibrated": False, "direction": None,
-                "implicated": [], "under_factors": [],
+                "implicated": [], "under_factors": [], "learn_reasons": [],
             })
 
 
 def score_and_log(body, sha256, ctx_path):
-    """Load ctx, weights.json, calibration.md, the baseline; call score_draft; snapshot the
-    body to drafts/<draft_id>.txt; append a superseded outcome for any earlier pending draft
-    with the same thread_ref + recipient; append the scored event; return the draft_id."""
+    """Load ctx, weights.json, uncertainty-aspects.md; call score_draft; snapshot the body to
+    drafts/<draft_id>.txt; append a superseded outcome for any earlier pending draft with the
+    same thread_ref + recipient; append the scored event; return the draft_id."""
     with open(ctx_path, "r", encoding="utf-8") as fh:
         ctx = json.load(fh)
 
     weights = _load_weights()
-    baseline = _load_baseline()
-    calibration_notes, calibration_sha = _load_calibration()
+    aspects, aspects_sha = _load_aspects()
     api_key = _anthropic_api_key()
 
-    result = score_draft(body, ctx, weights=weights, baseline=baseline,
-                          calibration_notes=calibration_notes, api_key=api_key)
+    result = score_draft(body, ctx, weights=weights, aspects=aspects, api_key=api_key)
 
     ts = datetime.datetime.now().astimezone()
     draft_id = f"d-{sha256[:12]}-{ts.strftime('%Y%m%d%H%M%S')}"
@@ -460,16 +411,17 @@ def score_and_log(body, sha256, ctx_path):
     _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 1, "draft_id": draft_id,
+        "event": "scored", "v": 2, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
         "channel": ctx.get("channel"), "account": ctx.get("account"),
         "recipient": ctx.get("recipient"), "thread_ref": ctx.get("thread_ref"),
         "iid": ctx.get("iid"), "session_kind": ctx.get("session_kind"),
         "turns_before_draft": ctx.get("turns_before_draft"),
         "score": result["score"], "weights_version": weights.get("version"),
-        "calibration_sha": calibration_sha,
+        "aspects_sha": aspects_sha,
         "factors": result["factors"], "features": result["features"],
         "judge": _judge_log_shape(result["judge"]),
+        "uncertain_spots": ctx.get("uncertain_spots"),
         "errors": result["errors"],
     }
     _append_event(event)
@@ -483,43 +435,87 @@ def _edit_distance(draft_text, sent_text):
     return round(1 - ratio, 4)
 
 
+# --- the learning-session brief ---
+
+def _spawn_title(scored):
+    who = f"{scored.get('channel') or 'message'} to {scored.get('recipient') or 'unknown'}"
+    return "Learn from send: " + who.replace('"', "'")
+
+
+def _reason_lines(outcome_event, scored):
+    lines = []
+    reasons = outcome_event["learn_reasons"]
+    if "over" in reasons:
+        lines.append(f"- **Over-confident:** the estimate ({scored.get('score')}) expected the draft to go "
+                     f"out untouched, and it was {outcome_event['disposition']}. "
+                     f"Implicated: {', '.join(outcome_event['implicated'])}.")
+    if "under" in reasons:
+        lines.append(f"- **Under-confident:** the estimate ({scored.get('score')}) expected an edit, and "
+                     "Russell sent the draft as-is.")
+    if "voice" in reasons:
+        lines.append("- **Voice edit:** Russell changed the wording, tone, or structure, so a rule may "
+                     "have left that choice unsettled.")
+    return lines
+
+
 def _write_brief(draft_id, scored, outcome_event, sent_text):
     os.makedirs(briefs_dir(), exist_ok=True)
     draft_text = _read_draft_text(draft_id)
     if sent_text is not None:
         diff = "\n".join(difflib.unified_diff(
             draft_text.splitlines(), sent_text.splitlines(), fromfile="draft", tofile="sent", lineterm="",
-        ))
+        ))[:DIFF_CHAR_CAP]
     else:
         diff = "(discarded - no sent text)"
 
     judge = scored.get("judge") or {}
+    features = scored.get("features") or {}
     lines = [
-        f"# Calibrate send-confidence: {', '.join(outcome_event['implicated'])}",
+        f"# {_spawn_title(scored)}",
         "",
+        f"Follow `{PROCEDURE_PATH}` in this repo - it is the whole procedure for this session.",
+        "",
+        "## Why this session spawned",
+        *_reason_lines(outcome_event, scored),
+        "",
+        "## The send",
         f"- draft_id: {draft_id}",
         f"- channel: {scored.get('channel')}",
         f"- turns_before_draft: {scored.get('turns_before_draft')}",
-        f"- composite score: {scored.get('score')}",
-        f"- factors: {json.dumps(scored.get('factors', {}))}",
         f"- disposition: {outcome_event['disposition']}",
-        f"- edit_nature: {outcome_event['edit_nature']}",
+        f"- edit_distance: {outcome_event['edit_distance']}",
+        f"- edit labels: {', '.join(outcome_event['edit_nature']) or '(none)'}",
     ]
     if outcome_event.get("reason"):
         lines.append(f"- discard reason: {outcome_event['reason']}")
+    if outcome_event.get("changes"):
+        lines += ["", "## Changes Russell made"]
+        lines += [f"- [{c['label']}] {c.get('summary', '')}" for c in outcome_event["changes"]]
+
+    lines += [
+        "",
+        "## What the estimate thought",
+        f"- composite score: {scored.get('score')}",
+        f"- factors (0-100, higher = more likely untouched): {json.dumps(scored.get('factors', {}))}",
+    ]
+    if features.get("rule_coverage_rating") is not None:
+        lines.append(f"- reviewer's rule coverage: {features['rule_coverage_rating']} of 5")
+    if scored.get("uncertain_spots"):
+        lines += ["", "### Spots the reviewer found the rules didn't settle", scored["uncertain_spots"].strip()]
     if judge.get("rationales"):
-        lines += ["", "## Judge rationales"]
+        lines += ["", "### Judge rationales"]
         lines += [f"- {k}: {v}" for k, v in judge["rationales"].items()]
     if judge.get("claims"):
-        lines += ["", "## Claims"]
+        lines += ["", "### Claims"]
         lines += [
             f"- [{'supported' if c.get('supported') else 'UNSUPPORTED'}] ({c.get('source')}) {c.get('text')}"
             for c in judge["claims"]
         ]
+
+    lines += ["", "## Draft (as staged)", "```text", draft_text.rstrip(), "```"]
+    if sent_text is not None:
+        lines += ["", "## Sent", "```text", sent_text.rstrip(), "```"]
     lines += [
-        "",
-        "## Implicated factors",
-        f"{outcome_event['implicated']}",
         "",
         "## Diff (draft -> sent)",
         "```diff",
@@ -527,13 +523,14 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
         "```",
         "",
         "## Files you may change",
-        "- send-confidence/calibration.md",
-        "- send-confidence/weights.json",
-        "- skills/message-rules/SKILL.md",
-        "- skills/document-authoring/SKILL.md",
+        "- plugins/document-authoring/skills/message-rules/SKILL.md",
+        "- plugins/document-authoring/skills/authoring-rules/SKILL.md",
+        "- plugins/document-authoring/skills/document-authoring/SKILL.md",
+        "- plugins/document-authoring/send-confidence/uncertainty-aspects.md",
+        "- plugins/document-authoring/send-confidence/weights.json",
         "",
         "## Commands",
-        "- `python send_confidence.py weights-suggest`",
+        "- `python plugins/document-authoring/send-confidence/send_confidence.py weights-suggest`",
         f"- log directory: `{data_dir()}`",
     ]
     brief_path = os.path.join(briefs_dir(), f"{draft_id}.md")
@@ -543,23 +540,29 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
 
 
 def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False):
-    """Compute disposition + edit_distance, detect miscalibration, append the outcome event,
-    and when miscalibrated write the calibration brief. Returns the outcome event plus
-    "dispatch" (the spawn command string, or None).
+    """Compute disposition + edit_distance, label the edits (unless `edit_nature` overrides),
+    decide whether the send has something to teach, append the outcome event, and when it
+    does, write the learning-session brief. Returns the outcome event plus "dispatch" (the
+    spawn command string, or None) and "label_error".
 
-    `moot` (discards only - what it does and when to pass it live in send-confidence.md)."""
+    A learning session spawns when the estimate was wrong in either direction (confident and
+    then edited or discarded, or expecting an edit and then sent as-is) and on any voice edit.
+    `moot` (discards only - what it does and when to pass it live in learn-from-send.md)."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
         raise ValueError(f"no scored draft found for {draft_id}")
     scored = d["scored"]
 
-    thresholds = _load_weights().get("thresholds", DEFAULT_WEIGHTS["thresholds"])
-    factor_high = thresholds.get("factor_high", 70)
-    factor_low = thresholds.get("factor_low", 40)
-    composite_high = thresholds.get("composite_high", 75)
-    sent_as_is_max = thresholds.get("sent_as_is_max_distance", 0.01)
+    thresholds = {**DEFAULT_WEIGHTS["thresholds"], **_load_weights().get("thresholds", {})}
+    factor_high = thresholds["factor_high"]
+    factor_low = thresholds["factor_low"]
+    composite_high = thresholds["composite_high"]
+    composite_low = thresholds["composite_low"]
+    sent_as_is_max = thresholds["sent_as_is_max_distance"]
 
-    edit_nature = edit_nature or []
+    edit_nature = list(edit_nature or [])
+    changes = []
+    label_error = None
     if discarded:
         disposition = "discarded"
         edit_distance = None
@@ -570,11 +573,15 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         os.makedirs(drafts_dir(), exist_ok=True)
         with open(os.path.join(drafts_dir(), f"{draft_id}.sent.txt"), "w", encoding="utf-8") as fh:
             fh.write(sent_text or "")
+        if disposition == "edited" and not edit_nature:
+            edit_nature, changes, label_error = label_edits(draft_text, sent_text, _anthropic_api_key())
 
     factors = scored.get("factors", {})
+    score = scored.get("score")
     implicated = []
     direction = None
     under_factors = []
+    learn_reasons = []
 
     if discarded and moot:
         pass
@@ -586,33 +593,41 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
                     implicated.append(f)
         if implicated:
             direction = "over"
-        elif scored.get("score") is not None and scored["score"] >= composite_high:
+        elif score is not None and score >= composite_high:
             implicated = ["composite"]
             direction = "over"
+        if disposition == "edited" and VOICE_LABELS & set(edit_nature):
+            learn_reasons.append("voice")
     elif disposition == "sent-as-is":
         under_factors = [f for f, s in factors.items() if s is not None and s < factor_low]
+        if score is not None and score < composite_low:
+            direction = "under"
+
+    if direction:
+        learn_reasons.insert(0, direction)
 
     event = {
-        "event": "outcome", "v": 1, "draft_id": draft_id,
+        "event": "outcome", "v": 2, "draft_id": draft_id,
         "ts": datetime.datetime.now().astimezone().isoformat(),
         "disposition": disposition, "edit_distance": edit_distance,
-        "edit_nature": edit_nature, "reason": reason,
-        "miscalibrated": direction == "over", "direction": direction,
+        "edit_nature": edit_nature, "changes": changes, "reason": reason,
+        "miscalibrated": direction is not None, "direction": direction,
         "implicated": implicated, "under_factors": under_factors,
+        "learn_reasons": learn_reasons,
     }
     _append_event(event)
 
     dispatch = None
-    if direction == "over":
+    if learn_reasons:
         brief_path = _write_brief(draft_id, scored, event, sent_text)
         dispatch = (
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
-            f'--title "Calibrate send-confidence: {", ".join(implicated)}" '
+            f'--title "{_spawn_title(scored)}" '
             '--cwd "<plugins repo clone>" '
             f'--brief "{brief_path}" --model claude-sonnet-5'
         )
 
-    return {**event, "dispatch": dispatch}
+    return {**event, "dispatch": dispatch, "label_error": label_error}
 
 
 def _find_draft_id_by_body_file(path):
@@ -645,42 +660,46 @@ def _point_biserial(xs, ys):
 
 def suggest_weights(min_n=20):
     """Fit proposed weights from every resolved draft in the log (deterministic plain code;
-    see calibration.md's Weights section for how a session applies the result)."""
+    see learn-from-send.md for how a learning session applies the result).
+
+    Each factor is fitted over the drafts where it came back non-null, and only once it has
+    `min_n` of them; a factor short of that keeps its current share, so a newly added factor
+    never resets the fit for the others."""
     resolved = []
     for d in fold_drafts().values():
         scored, outcome = d["scored"], d["outcome"]
         if not scored or not outcome or outcome["disposition"] not in RESOLVED_DISPOSITIONS:
             continue
-        factors = scored.get("factors", {})
-        if any(factors.get(f) is None for f in FACTOR_NAMES):
-            continue
-        resolved.append((factors, outcome["disposition"] == "sent-as-is"))
+        resolved.append((scored.get("factors", {}), outcome["disposition"] == "sent-as-is"))
 
     current_doc = _load_weights()
-    current = dict(current_doc.get("weights", {}))
+    current = {f: current_doc.get("weights", {}).get(f, 0.2) for f in FACTOR_NAMES}
+
+    correlations = {}
+    for f in FACTOR_NAMES:
+        pairs = [(factors[f], untouched) for factors, untouched in resolved if factors.get(f) is not None]
+        if len(pairs) >= min_n:
+            correlations[f] = round(_point_biserial([x for x, _ in pairs],
+                                                    [1 if u else 0 for _, u in pairs]), 4)
+
     n = len(resolved)
-    if n < min_n:
+    if not correlations:
         return {"n": n, "correlations": {}, "current": current, "proposed": None}
 
-    ys = [1 if untouched else 0 for _, untouched in resolved]
-    correlations = {
-        f: round(_point_biserial([factors[f] for factors, _ in resolved], ys), 4)
-        for f in FACTOR_NAMES
-    }
-
-    targets_raw = {f: max(correlations[f], 0.02) for f in FACTOR_NAMES}
+    fitted_share = sum(current[f] for f in correlations)
+    targets_raw = {f: max(c, 0.02) for f, c in correlations.items()}
     total_target = sum(targets_raw.values())
-    targets = {f: v / total_target for f, v in targets_raw.items()}
+    targets = {f: current[f] for f in FACTOR_NAMES}
+    targets.update({f: fitted_share * v / total_target for f, v in targets_raw.items()})
 
     proposed = {}
     for f in FACTOR_NAMES:
-        cur = current.get(f, 0.2)
-        step = max(-0.05, min(0.05, targets[f] - cur))
-        proposed[f] = max(0.05, min(0.40, cur + step))
+        step = max(-0.05, min(0.05, targets[f] - current[f]))
+        proposed[f] = max(0.05, min(0.40, current[f] + step))
     total_proposed = sum(proposed.values())
     proposed = {f: round(v / total_proposed, 4) for f, v in proposed.items()}
 
-    moved = any(abs(proposed[f] - current.get(f, 0.2)) >= 0.02 for f in FACTOR_NAMES)
+    moved = any(abs(proposed[f] - current[f]) >= 0.02 for f in FACTOR_NAMES)
     result_proposed = {"version": current_doc.get("version", 1) + 1, "weights": proposed} if moved else None
 
     return {"n": n, "correlations": correlations, "current": current, "proposed": result_proposed}
@@ -700,19 +719,22 @@ def _flag_value(argv, name):
 
 
 def build_context(*, channel, recipient, session_kind, ask, inputs, account=None,
-                   thread_ref=None, iid=None, turns_before_draft=0, sent_count=None):
+                   thread_ref=None, iid=None, turns_before_draft=0, sent_count=None,
+                   rule_coverage=None, uncertain_spots=None):
     return {
         "channel": channel, "account": account, "recipient": recipient,
         "thread_ref": thread_ref, "iid": iid, "session_kind": session_kind,
         "ask": ask, "inputs": (inputs or "")[:INPUTS_CHAR_CAP],
         "turns_before_draft": turns_before_draft, "sent_count": sent_count,
+        "rule_coverage": rule_coverage, "uncertain_spots": uncertain_spots,
     }
 
 
 def cmd_context(argv):
     """The deterministic half of staging: build the context JSON from the caller's judgment
     fields (the ask, the inputs, which channel/recipient, the familiarity count it already
-    looked up), write it to a scratch file, and print the exact mint command to run next."""
+    looked up, the reviewer's rule coverage), write it to a scratch file, and print the exact
+    mint command to run next."""
     channel = _flag_value(argv, "--channel")
     recipient = _flag_value(argv, "--recipient")
     session_kind = _flag_value(argv, "--session-kind")
@@ -734,6 +756,19 @@ def cmd_context(argv):
         print("context: --ask/--ask-file and --inputs/--inputs-file are required", file=sys.stderr)
         return 2
 
+    coverage_raw = _flag_value(argv, "--rule-coverage")
+    rule_coverage = None
+    if coverage_raw is not None:
+        if coverage_raw not in {"1", "2", "3", "4", "5"}:
+            print("context: --rule-coverage must be 1-5", file=sys.stderr)
+            return 2
+        rule_coverage = int(coverage_raw)
+    spots_file = _flag_value(argv, "--uncertain-spots-file")
+    uncertain_spots = None
+    if spots_file:
+        with open(spots_file, "r", encoding="utf-8") as fh:
+            uncertain_spots = fh.read()
+
     turns_raw = _flag_value(argv, "--turns-before-draft")
     sent_count_raw = _flag_value(argv, "--sent-count")
 
@@ -743,6 +778,7 @@ def cmd_context(argv):
         iid=_flag_value(argv, "--iid"),
         turns_before_draft=int(turns_raw) if turns_raw is not None else 0,
         sent_count=int(sent_count_raw) if sent_count_raw is not None else None,
+        rule_coverage=rule_coverage, uncertain_spots=uncertain_spots,
     )
 
     fd, path = tempfile.mkstemp(prefix="send-confidence-ctx-", suffix=".json")
@@ -768,6 +804,10 @@ def cmd_outcome(argv):
     sent_file = _flag_value(argv, "--sent-file")
     edit_nature_raw = _flag_value(argv, "--edit-nature")
     edit_nature = [s.strip() for s in edit_nature_raw.split(",") if s.strip()] if edit_nature_raw else []
+    unknown = [s for s in edit_nature if s not in EDIT_LABELS]
+    if unknown:
+        print(f"outcome: unknown --edit-nature label(s) {unknown}; use {EDIT_LABELS}", file=sys.stderr)
+        return 2
 
     sent_text = None
     if not discarded:
@@ -786,8 +826,13 @@ def cmd_outcome(argv):
 
     suffix = f" (edit_distance {result['edit_distance']})" if result["edit_distance"] is not None else ""
     print(f"outcome recorded: {draft_id} -> {result['disposition']}{suffix}")
+    if result["edit_nature"]:
+        print(f"edit labels: {', '.join(result['edit_nature'])}")
+    if result["label_error"]:
+        print(f"labelling failed ({result['label_error']}); rerun with --edit-nature "
+              f"<{'|'.join(EDIT_LABELS)}> to label the edits yourself")
     if result["miscalibrated"]:
-        print(f"miscalibrated: over-confident on {result['implicated']}")
+        print(f"miscalibrated: {result['direction']}-confident")
     if result["dispatch"]:
         print(result["dispatch"])
     return 0

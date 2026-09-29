@@ -26,7 +26,7 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 ## Two shapes of the same flow
 
 - **An outward message** - email, Slack, Teams, a Jira or GitHub comment - ends in **Stage**: put the reviewed text where it will be sent and leave it there, and Russell sends it himself.
-  Then **Learn**: after he sends, diff his sent version against your draft and fold any voice change back into `message-rules` (the process for doing so is `document-authoring`'s voice-learning loop).
+  Then **Learn**: after he sends, record how his sent version differs from your draft, and a learning session folds any lesson back into the rules (the process for doing so is `document-authoring`'s `learn-from-send.md`).
   The message-shaped flow, step by step with its persona and staging detail, is `document-authoring`'s drafting loop.
 
 - **Shipped prose** - a skill, a README, a repo doc, a code comment, config prose - ends in **Ship**: commit it and open a PR.

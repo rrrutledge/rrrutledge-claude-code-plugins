@@ -41,8 +41,8 @@ Just invoke it in the source's mode.
   A draft is safe and fully reversible.
   NEVER click Send / press Enter - the user edits and sends.
   Only irreversible/outbound-to-others actions wait for explicit OK.
-- **Learn from every send (voice loop).**
-  After the user sends, diff the sent version against the draft and append a concrete lesson to the **document-authoring skill's Voice learning loop**.
+- **Learn from every send.**
+  After the user sends, run the **document-authoring skill's Learn step** (`learn-from-send.md`): record the outcome and run the learning-session spawn command it prints.
 - **Delete/archive freely - it's reversible, so do NOT ask first.**
   Narrate each with a one-line reason; clear only once the item is sent/handled/superseded.
 - **Newest-first**, one at a time, conversational.

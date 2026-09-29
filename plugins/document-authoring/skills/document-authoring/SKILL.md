@@ -1,13 +1,13 @@
 ---
 name: document-authoring
-description: Russell's personal style conventions for authoring or editing any document or message that contains links or formatted prose — Confluence pages, Word docs, email, Teams messages, PRs, etc. Use whenever composing such content. It is the writer's process - the drafting loop, staging, and voice-learning - over the two rule rubrics it loads.
+description: Russell's personal style conventions for authoring or editing any document or message that contains links or formatted prose — Confluence pages, Word docs, email, Teams messages, PRs, etc. Use whenever composing such content. It is the writer's process - the drafting loop, staging, and learning from the send - over the two rule rubrics it loads.
 ---
 
 # Document Authoring Style (Russell's preferences)
 
 Apply this whenever authoring or editing a document or message in Russell's name.
 
-This skill is the **writer's process**: how you get to a finished message - the drafting loop, staging, and the voice-learning loop.
+This skill is the **writer's process**: how you get to a finished message - the drafting loop, staging, and learning from the send.
 The rules for what the finished message must *be* live in two rubrics it reads:
 
 **REQUIRED BACKGROUND - load both first:**
@@ -41,43 +41,7 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
    If the UI genuinely can't be driven, show the proposed text in chat for approval instead, in a plain fenced code block rather than a blockquote - a blockquote's per-line `>` prefix rides along when Russell copies the text and corrupts the paste into the destination composer.
    **LinkedIn is the standing case of this** - by default, don't draft LinkedIn text at all, since Russell writes these himself; only draft one on his explicit ask, and never automate LinkedIn itself, so it's always handed over in chat rather than staged in the composer. Steps 1-3 (Read, Write, Verify) still run on it in full before it reaches Russell, the same as any other message.
    The one send exception: when a channel has a programmatic send path and Russell, having reviewed the exact draft this turn, gives an explicit per-message instruction to send it, you may send that reviewed text for him (today personal Gmail via the `gmail` skill's `gmail.js --send-draft`, personal Outlook via the `ms-graph` skill's `mail.js --send-draft`, and Slack via the `slack` skill's `slack.js --send`). Default, silence, and any autonomous run mean draft-only — never infer a send. This exception is the same one an interactive **drainer worker session** uses (see `worker-core.md`); an **autonomous drain** (no live Russell present, e.g. an `auto-handle` item) has no one to give that instruction, so it stays draft-only unconditionally.
-5. **Learn** — after he sends, run the **Voice learning loop** below: diff what he actually sent against your draft and update the guidance when the voice changed.
+5. **Learn** — after he sends or discards it, do the drafting session's part of `learn-from-send.md`: read what he actually sent, record the outcome, and run the spawn command it prints.
+   The learning session it spawns does the rest, filling any gap in the rules and sharpening the send-confidence estimate in one PR.
 
 A draft that reaches Russell should already read as his, because you verified it against the specific rules — not because you intended to.
-
----
-
-## Voice learning loop (keep the message rules current)
-
-This runs after **any** drafted message — formal or conversational, any channel (Jira, email, Teams). Whenever Russell edits a draft before sending, learn from the difference:
-
-1. After he sends (he edited it in the app UI and clicked send, or said "sent" / "learn from that"), read the **actually-sent** version from the source — Jira via the API/comment, Teams via browser-chauffeur reading the chat, email from the sent item — and diff it against your draft.
-   After diffing, record the outcome per `send-confidence.md`, and run the calibration dispatch if it prints one.
-2. Classify every difference into exactly one bucket:
-   - **Information fix** — a corrected fact, name, link, date, number, or scope detail.
-     One-off; it does **not** change the guidance.
-   - **Voice change** — phrasing he swapped, filler he cut, structure he reordered, length or altitude he adjusted.
-     Durable; this is what we learn from.
-3. For each voice change, distill the underlying **rule** — not the transcript.
-   The learned rule almost always belongs in `message-rules` (the message artifact rubric); a rule about *how you compose* rather than what lands belongs in this skill's loops instead.
-   **Search the whole target file for overlap before writing a word of new text — this is the step most often skipped, and skipping it is what produces a duplicate bullet.** Grep the entire `message-rules` `SKILL.md` for the concept (register keywords, the behavior, near-synonyms), across **every** section and persona block — Core voice, Asks, Holding the voice, Formal writing, and *every* persona under Conversational writing (`1on1`, `outreach`, `announcement`, `meeting-invite`) — not just the one persona the message you're learning from happens to match. The closest existing bullet is very often sitting in a sibling persona (an `outreach` rule can be exactly what a `1on1` message needs too); "I'm editing the 1on1 section so I only need to check 1on1" is the exact mistake to avoid. Search `authoring-rules` too when the instinct is medium-independent.
-   Fold the rule into whatever bullet that search turns up — expand its scope, sharpen its language, generalize it to a cross-persona Core-voice bullet if the instinct is universal, or add a sub-case — rather than adding a new one.
-   Add a new top-level bullet **only** once that whole-file search has genuinely come up empty, and name in the PR description which sections you checked and confirm none overlapped.
-   **State the rule crisply as a single imperative bullet: a bold lead phrase plus one sentence, no before/after quote.**
-   Add a short concrete pointer only when the rule is genuinely unclear without one; default to none.
-   The goal is fewer, broader, crisper rules — not a growing list of siblings, and not a museum of examples.
-4. **Make the edit as a PR to this plugin's source repo — never by editing the file you're reading.**
-   These skills ship from a separate GitHub repo (`rrrutledge/rrrutledge-claude-code-plugins`); the copy loaded at runtime is an installed/cached snapshot (e.g. under `~/.claude/plugins/...`), and editing that snapshot in place is silently thrown away on the next plugin update.
-   To make a change stick:
-   - Locate the working clone (`~/Dev/rrrutledge/rrrutledge-claude-code-plugins`; clone it from the origin if it's not there) — do **not** edit under `~/.claude/plugins/`.
-   - The voice rules are in `plugins/document-authoring/skills/message-rules/SKILL.md`; medium-independent rules are in `plugins/document-authoring/skills/authoring-rules/SKILL.md`.
-   - Create a branch, make the edit there, commit, and push - don't push straight to `main`.
-   - **Before opening the PR, dispatch an independent reviewer on the change** - a fresh agent that reads the *whole* file, not a re-read of your own edit - to confirm the new text isn't already covered elsewhere and that it obeys the rules in step 3 (one crisp imperative, no before/after quote, no "don't X, do Y" couplet, no em dash).
-     This is the same cold check the drafting loop's **Verify** step runs, and for the same reason it names.
-     Revise against what it finds, then mint the review receipt on the edited file so the PR gate lets it through: `python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <path-to-SKILL.md>` (run the newest if several are cached).
-     The `gh pr create` this loop ends in is gated on that receipt (see `writing-review`'s **The stage gate**), so minting here is what lets this loop's own PR open.
-   - **In the PR description, state the overlap search's outcome and the reviewer's verdict** - either "folded into `<bullet>` in `<section>`" or "searched Core voice / Asks / Holding the voice / every Conversational persona - no overlap, new bullet." This is what makes the check auditable at review time instead of invisible inside the diff.
-5. Tell Russell in one line what you learned and changed, with the PR link — or, if every edit was an information fix, say there were no voice changes (no PR needed).
-
-The goal is convergence: over time his edits should become information-only.
-A send where the only differences were information fixes is the **success signal** that the voice guidance is dialed in — not a missed chance to add a rule.
