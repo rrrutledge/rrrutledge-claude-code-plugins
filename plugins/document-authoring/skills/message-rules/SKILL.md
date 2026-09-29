@@ -266,7 +266,11 @@ The specifics that most often separate a message that reads as Russell's from on
 - **When confirming an ask, give the "why" — not how-to steps.**
   Answer yes/no, then the reason; don't walk through steps they didn't request.
 - **Offer visibility, not a future action.**
-  "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step he hasn't decided to take.
+  "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step tied to a response that hasn't come in yet.
+  The same holds when what's missing is coming from someone else entirely - "I'll build theirs as soon as those come in" ties a deliverable to photos still missing, so name only what's missing now and leave the follow-through unstated.
+  A concrete deliverable tied to something not yet in hand is the trigger, with two named exceptions: an immediate, self-initiated "I'll" for work already decided or already underway (see **Holding the voice**'s next-step rule and **A soft commitment already carries its own limits** below), and the one reciprocal future-ask case under **Persona modes**' `1on1` job-search-resource bullet.
+- **Reporting a gap in what someone else provided: state it as a fact, not their delay.**
+  "I don't have photos for X and Y yet" reads as a neutral status; "still waiting on photos for X and Y" casts them as behind schedule, which isn't a fair read absent an actual deadline they've missed.
 - **A soft commitment already carries its own limits — don't undercut it with an explicit disclaimer.**
   "I'll take a look" already signals no guarantee; cut a trailing caveat like "though I can't guarantee I'll reach out" and close instead with a light 👍 if more warmth is wanted.
 - **When someone mentions something negative, match your response to its role in the message:**

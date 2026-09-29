@@ -76,3 +76,11 @@ There's no replacement to score here, so the supersede path above doesn't apply 
 The outcome command prints a spawn command as its last line whenever the recorded outcome shows the draft was over-confident - the case a Stage 2 auto-send lane would need to avoid.
 Run that command as printed, and name the new session's short id in your reply so Russell can find it.
 No printed command means no dispatch is needed for this outcome.
+
+## The calibration session's own PR
+
+The spawned session works from the brief `_write_brief` wrote - the judge rationales, the claims, the implicated factors, and the draft-to-sent diff.
+Fold the generalized pattern into `calibration.md` per that file's own header instructions, run `weights-suggest`, and run the `writing-review` loop against `authoring-rules` before opening the PR.
+
+**Quote the original draft and the sent text verbatim in the PR body.**
+Russell runs many sessions in parallel and can lose track of which item a PR came from within minutes, and the local brief and draft files that made the diagnosis live outside the repo - they won't be there when he looks, so the PR is the only surviving record of what actually happened.
