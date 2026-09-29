@@ -83,4 +83,4 @@ The spawned session works from the brief `_write_brief` wrote - the judge ration
 Fold the generalized pattern into `calibration.md` per that file's own header instructions, run `weights-suggest`, and run the `writing-review` loop against `authoring-rules` before opening the PR.
 
 **Quote the original draft and the sent text verbatim in the PR body.**
-Russell reviews the PR days or weeks later with no memory of which item this was, and the local brief and draft files that made the diagnosis live outside the repo - they won't be there when he looks, so the PR is the only surviving record of what actually happened.
+Russell runs many sessions in parallel and can lose track of which item a PR came from within minutes, and the local brief and draft files that made the diagnosis live outside the repo - they won't be there when he looks, so the PR is the only surviving record of what actually happened.
