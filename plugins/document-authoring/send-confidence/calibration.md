@@ -16,6 +16,9 @@ Patterns in what makes a message read simpler, or more delicate, than it actuall
 - **An unsupported closing sentiment or next-step outranks its own brevity.**
   A draft that closes a routine acknowledgment with an invented expression of enthusiasm or anticipation about what comes next is padding the ask, even though the added sentence itself is short and friendly.
   Rate this above the routine band even when the base ask is a plain yes/no or acknowledgment - the add-on is exactly what a closing-brevity pass trims, so a routine rating overstates how likely the draft is to go out as offered.
+- **Job-search correspondence outranks its word count.**
+  Rate a reply to someone evaluating Russell for a role above the "plain informational reply" band, even when it's a single short acknowledgment in a tone he specified himself.
+  Being evaluated for a role is itself the sensitive content, independent of how routine the individual exchange reads.
 
 ## Task ambiguity
 
