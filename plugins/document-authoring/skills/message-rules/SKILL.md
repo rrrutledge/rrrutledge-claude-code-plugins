@@ -72,7 +72,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Naming an internal gap (a thin lineup, an unfilled slot) as the reason reads as recruiting a fallback rather than someone wanted.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
 - **Relaying a third party's request for someone's personal/sensitive info (a phone number, an address): attribute it to that third party and ask about their comfort sharing it, rather than requesting the detail directly as your own ask.**
-- **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand.
+- **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand. When the ask is backed by a screenshot or a brief supporting fact rather than dense context, lead with the ask and let that evidence follow it.
 - **Frame the ask to match the recipient's role.**
   When their job is to route you to a third party (find a volunteer, recommend a speaker), make the asks conditional on that handoff rather than personal requests to them — and don't narrate the follow-up's timing.
   On a repeat ask to someone with standing local knowledge, lean on that ("you have much more insight than me here") rather than citing a specific thing they said they'd do — the former trusts their judgment, the latter reads as holding them to an obligation.
@@ -310,8 +310,6 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Let the thread carry the context.**
   Ask the shortest open question that covers what you need; don't re-name the deliverable or prior exchange already visible.
   **When the original message is auto-quoted in full below the reply (a threaded email) and it holds more than one ask, point at it generically** ("what did you think about the below?") **rather than restating each ask as its own question.** The quote already carries every specific, so this overrides the "nudge on all of them" pattern below once the quote itself makes every ask visible.
-- **Put the actual question in the first sentence.**
-  Lead a follow-up with the direct ask ("can you suggest any contacts at X or Y?"), not a status/context line that delays it to a later sentence.
 - **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener.**
   Lead with the plain fact that prompted the check, not a credit or appreciative line, since this isn't a reply to something the other person just said or did.
   This differs from a task already confirmed stuck in the recipient's own process, where a bare acknowledgment carries the first touch and a direct status question only comes due on the second.
