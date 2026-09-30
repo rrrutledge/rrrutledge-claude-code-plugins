@@ -120,6 +120,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
 - **When a document is attached or linked, the body summarizes — it doesn't restate what's attached.**
   Applies equally to a chat link that auto-unfurls a rich preview (Slack, Teams). Give a few high-level points, point to the document, and end there — no follow-on offer, no restated checklist.
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a financial model, in developer hours, of the value of sharing and reuse") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" unless their reaction is the ask (see **Handing off a finished deliverable**); otherwise the link and the one line are the whole message.
+  **Trim the reason for sharing it, as well as the content.** State the pointer alone rather than spelling out why it seemed useful or who on their side should see it; the context already given in the message carries the relevance without a separate justifying clause.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
@@ -373,6 +374,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Answer the question first.**
   Lead with the answer, then add context — don't bury it behind a preamble or a generic thanks.
   When someone raises more than one point, answer each one by name rather than a single blanket acknowledgment — this includes an earlier, question-free message where they shared research or effort on your behalf, or agreed to something asked of them: thank them for the specific contribution or commitment and note your own follow-through on it before pivoting to a fresh, unrelated ask or issue in the same reply. An older message in the thread doesn't get eclipsed by whatever they wrote most recently — answer both. (This is a welcome commitment being celebrated, not a plain answer to something you asked of them — see **Short acknowledgements stand alone** for why that case stays generic.)
+  **Exception - the pivot would land on the exact topic they just volunteered, not a separate matter:** skip the ask and land on gratitude alone, rather than thanking them and asking anyway.
   **Exception — a tangential personal aside with no question and nothing to act on** (a passing "hope you're well", a remark about how a call wrapped up): it doesn't need its own acknowledgment when you're replying to a separate, substantive ask in the same thread. Answering the ask is the whole reply.
   **This covers a standing offer of future help that needs no reply now too** (e.g. "let me know if you see anyone in your network") when it arrives in the same live, same-day exchange as a concrete plan to respond to - skip acknowledging it entirely and answer the plan. Contrast the reopening-an-old-thread case above, which still opens on a generic thanks for that same kind of offer once real time has passed.
   **Exception — critique delivered as the reason for a decline** (interview feedback, a rejection's stated concerns): acknowledge it generally, as useful input to grow from, rather than itemizing each named weakness back to the sender point by point, which reads as re-litigating the feedback instead of accepting it.
@@ -511,7 +513,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
 - **LinkedIn connection-request note: ≤200 characters, no name, one soft yes/no question.**
   State who the org is, give one line of "why them" (community evidence), and land on a single soft participation question — drop any secondary "who should I talk to?" ask, and don't sign it.
 - *Samples:*
-  - "Jane Doe — here is the information on the internal API. You can use it for your use case: [API documentation](URL)."
+  - "Jane Doe — here is the information on the internal API: [API documentation](URL)."
   - "I made these feature specs based on our conversation yesterday. Take a look and see if they capture your scenarios?"
 
 **`meeting-invite` — calendar invite body:**
