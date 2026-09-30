@@ -20,11 +20,9 @@ There are two kinds of session to close, and the first question is always
         does not close it: the service respawns it under a new pid. Its clean
         close is `claude rm <short id>`, which ends the session and removes it
         from Agent View along with its job dir and worktree, keeping the
-        transcript resumable. It falls back to `claude stop <short id>` (the
-        session stays listed as Stopped, worktree intact) when `--pause` is
-        passed, when its worktree holds uncommitted or untracked files or is
-        shared with another live session, or when `claude rm` refuses (unpushed
-        commits). This holds even when CLAUDE_HOST_PID is set: a
+        transcript resumable. It falls back to `claude stop <short id>` when
+        `removal_blocker` names a reason (the conditions are in
+        commands/close.md). This holds even when CLAUDE_HOST_PID is set: a
         service started from a profile-loaded PowerShell passes that
         terminal's host pid on to every background session, and killing it
         would take down an unrelated terminal.

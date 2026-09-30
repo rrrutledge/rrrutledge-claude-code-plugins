@@ -12,7 +12,7 @@ The goal: in `claude agents`, the needs-you marker (the green star) sits only on
 
 **End a turn with a question only when the question is for Russell.**
 A session that ends its turn shows as `blocked` and wears the marker, whoever the turn was for.
-Anything meant for the other session goes in a result file, never in a turn-ending message.
+Anything meant for the other session goes in a result file.
 
 ## The loop
 
@@ -43,7 +43,7 @@ Anything meant for the other session goes in a result file, never in a turn-endi
    Pull a large file listed under Artifacts only when a step needs it, and hand any big read to a subagent.
    Remove any worker still listed in `claude agents` with `claude rm <short id>` (a sweep for stragglers).
    A `failed` result goes to Russell with its Open items, or back out as a fresh worker, your call.
-7. **Assemble everything** that reaches another person and stage it in one review round (Gmail drafts, Slack drafts, a review page), then ask Russell for "send it" and end your turn.
+7. **Assemble everything** that reaches another person and stage it in one review round, then ask Russell for "send it" and end your turn.
    That question is for him, so the marker is correct.
 8. **After he has sent**, correct the card's Start date, then close and remove yourself with `session-mgr:close` (no `--pause`).
 
@@ -60,7 +60,7 @@ Git carries code changes: a worker that changes a repo opens its PR as usual and
 | Situation | What the session does | Shows as |
 |---|---|---|
 | Worker is working | Works. | `working` |
-| Worker needs Russell (a login, a decision only he can make) | Asks him and ends its turn. | `blocked`, the marker |
+| Worker needs something only Russell can give | Asks him and ends its turn. | `blocked`, the marker |
 | Worker is done | Writes its result, runs `worker-done.py`. | Gone |
 | Coordinator is waiting on workers | Seals, then closes with `--pause`. | Off the live list |
 | Coordinator has everything staged for Russell | Asks for "send it" and ends its turn. | `blocked`, the marker |
