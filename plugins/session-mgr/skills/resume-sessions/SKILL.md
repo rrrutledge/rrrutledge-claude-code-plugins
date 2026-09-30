@@ -224,10 +224,8 @@ instructions: |-
   - `scripts/end-session.py` (next to the launcher) is the correct way for a session to close
     itself: it fires this plugin's SessionEnd hooks with the same payload the harness would send,
     then ends the session. A background session runs `claude rm` on itself: it leaves `claude agents`,
-    its worktree is deleted, and its conversation stays resumable. It stops instead (still listed as
-    Stopped, worktree kept, reason printed) when `--pause` is passed, when its worktree has
-    uncommitted or untracked files or is shared with another live session, or when `claude rm`
-    refuses unpushed commits; a session Russell started by hand in a terminal has its hosting tab's process
+    its worktree is deleted, and its conversation stays resumable. It stops instead of removing when
+    the worktree must be kept (the conditions are in `commands/close.md`); a session Russell started by hand in a terminal has its hosting tab's process
     tree killed. Anything that instructs a session to self-close should route through it (the
     drainer forwards via its own thin resolver, `close-session.py`), since a raw `taskkill` skips
     SessionEnd and strands a registry entry.

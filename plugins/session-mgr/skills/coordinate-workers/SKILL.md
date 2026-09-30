@@ -52,28 +52,8 @@ That is safe because every detail is on disk in the job folder.
 
 ## Result file format
 
-Each worker writes `<job folder>/<worker slug>.md`:
-
-```markdown
----
-status: done | failed
-worker: <session short id>
-finished: 2026-09-30 4:12 PM Central
----
-## Summary
-Three to five lines: what was done, what is staged, what Russell still has to do.
-
-## Artifacts
-- PR: <url>
-- Draft bodies: <path>
-- Data: <path to anything large>
-
-## Open items
-- Anything the coordinator must decide or pass to Russell.
-```
-
-The Summary stays under about 15 lines.
-Anything large goes in its own file beside the result and is listed under Artifacts.
+Each worker writes `<job folder>/<worker slug>.md`, in the shape the worker contract gives it (`WORKER_CONTRACT` in `spawn-session.py` is the one home for that shape): a `status: done | failed` front-matter line, then Summary, Artifacts, and Open items sections.
+Read the Summary and Open items, and open an Artifacts file only when a step needs it.
 Git carries code changes: a worker that changes a repo opens its PR as usual and the result file points to it.
 
 ## What each session shows in `claude agents`

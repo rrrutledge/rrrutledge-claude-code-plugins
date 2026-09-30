@@ -43,7 +43,7 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
    2. **Your session** - via the Bash tool, run `python <skill>/scripts/close-session.py`.
       It ends the session the way a clean exit would: it fires the SessionEnd hook event first (so the live-session registry drops this session instead of listing it as crash-interrupted for resume-sessions to resurrect), then closes the session for good.
       A worker is a background (`claude --bg`) session, so it closes with `claude rm` of its own session: it leaves `claude agents`, and its conversation stays resumable.
-      When its worktree holds uncommitted work, is shared with another live session, or has unpushed commits, the script stops the session instead, says why, and leaves it in Agent View as Stopped.
+      When the worktree can't safely be removed, the script stops the session instead and says why (the conditions are in session-mgr's `commands/close.md`).
       The same script also closes a session Russell started himself in a terminal, by killing its hosting tab.
       Never raw-`taskkill` your own session - a force-killed session dies before SessionEnd can fire, and force-killing a background session's own process only makes the background service respawn it under a new PID.
 
