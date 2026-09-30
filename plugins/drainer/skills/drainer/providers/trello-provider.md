@@ -193,9 +193,16 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 When unsure, default to infrequent.
 When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
 
+**Time the contact is away doesn't count - an out-of-office pauses the clock.**
+The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
+So count the interval from the day they return, not from the day of the last outbound: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
+Before drafting a nudge on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
+When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence - a silent nudge, not a follow-up.
+An auto-reply with no return date gets the full interval counted from the auto-reply's own date.
+
 If the situational check on an outreach card finds **nothing to do right now**, silently bump the Start date and finish - surface nothing to Russell.
 "Nothing to do" means only that an outside party holds the next step; a step waiting on Russell is something to do, per DUE-TASK.
-"Not yet time to follow up" is decided by the **nudge cadence above**: it's nothing-to-do only while that interval hasn't elapsed since the last outbound message (or they replied and the user already answered).
+"Not yet time to follow up" is decided by the **nudge cadence above**: it's nothing-to-do only while that interval hasn't elapsed since the last outbound message, not counting any days the contact was away (or they replied and the user already answered).
 Once the card's Start has arrived, they still haven't replied, **and** the cadence interval has elapsed, it *is* time to follow up - **draft the nudge** (needs-you), don't bump the date again.
 (A started card whose cadence has run out is not "nothing to do" - that misread is what turns a card into one that gets bumped forever without a follow-up ever going out.)
 
