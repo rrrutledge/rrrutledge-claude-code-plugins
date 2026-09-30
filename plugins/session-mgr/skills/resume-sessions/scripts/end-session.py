@@ -33,7 +33,8 @@ There are two kinds of session to close, and the first question is always
         force-kill of that hosting process tree.
 
 A session that is not background and has no host pid, but does carry
-CLAUDE_PID and a session id, also closes through `claude stop`, so a
+CLAUDE_PID and a session id, also closes as a
+background session (the `claude rm` close above, with the same stop fallback), so a
 background session whose job state can't be read still closes cleanly.
 
 Usage, from inside the session that wants to close (via the Bash tool):
@@ -248,8 +249,9 @@ def main(argv=None):
         return 0
 
     if claude_pid and claude_pid.isdigit() and session_id:
-        # No job state and no hosting tab, but a claude pid and session id: close via
-        # `claude stop` rather than a process kill.
+        # No job state and no hosting tab, but a claude pid and session id: close it as
+        # a background session (`claude rm`, or `claude stop` when removal is blocked) rather than
+        # a process kill.
         return close_headless(session_id, claude_pid, pause)
 
     print("end-session: not a background session, and neither CLAUDE_HOST_PID (a tab) nor "

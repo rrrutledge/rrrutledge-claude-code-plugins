@@ -39,7 +39,7 @@ Anything meant for the other session goes in a result file, never in a turn-endi
 5. **The last worker resumes you.**
    Each worker, when done, writes its result file, posts a one-line comment on the job's Trello card, and closes itself.
    The worker that finds every result in place runs your `resume_command` (under a lock, so two workers finishing together resume you once).
-6. **Read the Summary block of each result file**, and only that.
+6. **Read the Summary and Open items of each result file**, and only those.
    Pull a large file listed under Artifacts only when a step needs it, and hand any big read to a subagent.
    Remove any worker still listed in `claude agents` with `claude rm <short id>` (a sweep for stragglers).
    A `failed` result goes to Russell with its Open items, or back out as a fresh worker, your call.
@@ -52,8 +52,7 @@ That is safe because every detail is on disk in the job folder.
 
 ## Result file format
 
-Each worker writes `<job folder>/<worker slug>.md`, in the shape the worker contract gives it (`WORKER_CONTRACT` in `spawn-session.py` is the one home for that shape): a `status: done | failed` front-matter line, then Summary, Artifacts, and Open items sections.
-Read the Summary and Open items, and open an Artifacts file only when a step needs it.
+Each worker writes `<job folder>/<worker slug>.md`, in the shape `WORKER_CONTRACT` in `spawn-session.py` defines.
 Git carries code changes: a worker that changes a repo opens its PR as usual and the result file points to it.
 
 ## What each session shows in `claude agents`
