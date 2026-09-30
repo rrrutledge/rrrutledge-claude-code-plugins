@@ -33,17 +33,24 @@
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
 //                 the conversation/thread's "gone"; reversible, never deletes)
-// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>]
+// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>]
 //                (chat.postMessage of the reviewed body in <file> as the signed-in user, then prints the
 //                 sent message's permalink. The body is Slack mrkdwn — a link is `<url|anchor text>`. This
 //                 is the one write that reaches another person: human-in-the-loop only, run solely on
 //                 Russ's explicit per-message say-so after he's reviewed this exact body this turn, and
-//                 gated by the writing-review receipt on <file>. See "Sending" in the skill's SKILL.md.)
+//                 gated by the writing-review receipt on <file>. See "Sending" in the skill's SKILL.md.
+//                 With --file=<path>, uploads that local file instead of posting plain text: files.
+//                 getUploadURLExternal, POST the bytes to the returned URL, then files.completeUploadExternal
+//                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
 //                 sends anything; use the returned channel id with --history to read a named contact's
 //                 DM before --list-unread would show anything, e.g. a reply Russell already read)
+// Open DM:       node slack.js --open-dm=<user ID> [--json]
+//                (conversations.open for a Slack user ID directly, for when you already have the ID and
+//                 --find-dm's name-substring search would be the wrong tool — e.g. resolving 47 known
+//                 member IDs from a roster rather than searching by name one at a time)
 // Find by domain: node slack.js --find-by-domain=<email domain> [--json]
 //                (users.list filtered on profile.email ending in @<domain> — surfaces an existing
 //                 member who already works at a company, a warm path into a cold outreach target
@@ -467,12 +474,57 @@ async function mark() {
   console.log(`Marked ${args.channel} read up to ${args.ts}. Reversible — re-reading the conversation re-surfaces it.`);
 }
 
-// REAL SEND — post a reviewed body to a conversation as the signed-in user. This is the only write in
-// this script that reaches another person, so it stays human-in-the-loop: run it solely on Russ's
-// explicit per-message instruction to send, after he has reviewed this exact body this turn. The body
-// comes from a file (never an inline arg) so the writing-review gate can read and receipt it, the same way
-// the mail staging commands take --body-file. The body is Slack mrkdwn: chat.postMessage renders `<url|text>`
-// as a link and `<@U…>` as a mention.
+// Upload one local file to Slack via the current (v2) upload flow: reserve an upload URL sized to the
+// file, POST the raw bytes there (multipart/form-data — the one call in this script that isn't a plain
+// call() since it hits the reserved upload_url, not api/<method>, and carries a file body instead of
+// form params), then hand the returned file_id to files.completeUploadExternal, which is what actually
+// posts it into the conversation (with channel_id/initial_comment/thread_ts, same as chat.postMessage's
+// params). Returns the completeUploadExternal response's first file entry.
+async function uploadFile(filePath, channel, initialComment, threadTs) {
+  const fs = require('fs');
+  const path = require('path');
+  let data;
+  try {
+    data = fs.readFileSync(filePath);
+  } catch {
+    throw new Error(`--send: cannot read --file ${filePath}`);
+  }
+  const filename = path.basename(filePath);
+
+  const reserved = await call('files.getUploadURLExternal', { filename, length: String(data.length) });
+  const form = new FormData();
+  form.append('file', new Blob([data]), filename);
+  const uploadRes = await fetch(reserved.upload_url, { method: 'POST', body: form });
+  if (!uploadRes.ok) throw new Error(`file upload POST failed: HTTP ${uploadRes.status}`);
+
+  const completeParams = {
+    files: JSON.stringify([{ id: reserved.file_id, title: filename }]),
+    channel_id: channel,
+  };
+  if (initialComment) completeParams.initial_comment = initialComment;
+  if (threadTs) completeParams.thread_ts = threadTs;
+  const r = await call('files.completeUploadExternal', completeParams);
+  return (r.files && r.files[0]) || {};
+}
+
+// A freshly-uploaded file's message ts, if Slack's response says where it landed — used only to mark
+// the conversation read afterward (best-effort, see below). completeUploadExternal nests share info
+// under shares.public/private, keyed by channel id, each an array of share entries with a ts.
+function postedTs(fileEntry, channel) {
+  const shares = fileEntry.shares || {};
+  for (const bucket of [shares.private, shares.public]) {
+    const entries = bucket && bucket[channel];
+    if (entries && entries.length) return entries[0].ts;
+  }
+  return null;
+}
+
+// REAL SEND — post a reviewed body (optionally with an attached file) to a conversation as the signed-in
+// user. This is the only write in this script that reaches another person, so it stays human-in-the-loop:
+// run it solely on Russ's explicit per-message instruction to send, after he has reviewed this exact body
+// this turn. The body comes from a file (never an inline arg) so the writing-review gate can read and
+// receipt it, the same way the mail staging commands take --body-file. The body is Slack mrkdwn:
+// chat.postMessage (and a file's initial_comment) render `<url|text>` as a link and `<@U…>` as a mention.
 async function send() {
   if (!args.channel) {
     throw new Error('--send requires --channel (a DM/group/channel/conversation id; resolve a person with --find-dm)');
@@ -488,6 +540,21 @@ async function send() {
     throw new Error(`--send: cannot read --body-file ${bodyFile}`);
   }
   if (!text) throw new Error(`--send: --body-file ${bodyFile} is empty`);
+
+  if (args.file && args.file !== true) {
+    const fileEntry = await uploadFile(args.file, args.channel, text, args['thread-ts']);
+    const ts = postedTs(fileEntry, args.channel);
+    if (ts) {
+      try {
+        await markRead(args.channel, ts, args['thread-ts']);
+      } catch (e) {
+        console.error(`Warning: sent, but failed to mark read: ${e.message}`);
+      }
+    }
+    const permalink = fileEntry.permalink || '';
+    console.log(`Sent file to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
+    return;
+  }
 
   const params = { channel: args.channel, text };
   if (args['thread-ts']) params.thread_ts = args['thread-ts'];
@@ -536,6 +603,20 @@ async function findDm() {
   for (const o of out) console.log(`${o.name} (${o.userId}) -> DM channel ${o.channel}`);
 }
 
+// Open (or find the existing) 1:1 DM with a known Slack user ID — the ID-based counterpart to --find-dm's
+// name-substring search, for when a batch of member IDs is already in hand (e.g. from a roster) and
+// searching users.list by name one at a time would be the wrong tool.
+async function openDm() {
+  const userId = args['open-dm'];
+  if (!userId || userId === true) {
+    throw new Error('--open-dm requires a Slack user ID, e.g. --open-dm=U0123456');
+  }
+  const r = await call('conversations.open', { users: userId });
+  const channel = (r.channel && r.channel.id) || '';
+  if (args.json) { console.log(JSON.stringify({ userId, channel }, null, 2)); return; }
+  console.log(`DM channel with ${userId}: ${channel}`);
+}
+
 async function findByDomain() {
   const domain = String(args['find-by-domain'] || '').toLowerCase().replace(/^@/, '');
   if (!domain) throw new Error('--find-by-domain requires an email domain, e.g. --find-by-domain=opentext.com');
@@ -568,6 +649,7 @@ async function findByDomain() {
   if (args.mark) return await mark();
   if (args.send) return await send();
   if (args['find-dm']) return await findDm();
+  if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --find-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
