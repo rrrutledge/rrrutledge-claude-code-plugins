@@ -13,7 +13,8 @@ The drafting session's part is short and mechanical; the learning session, spawn
 
 After Russell sends a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
 
-1. **Read the actually-sent version from the source** - Jira via the API, Teams or Slack by reading the chat, email from the sent item - and write it to a file.
+1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Jira via the API, Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
+   Never reconstruct that text from anything the session already believes, remembers, or infers, even when a different version seems like the obviously correct one: a plausible guess recorded as the sent text fabricates the diff this whole procedure runs on.
 2. **Record the outcome:**
 
    ```
