@@ -86,8 +86,10 @@ Before drafting or deciding the move, pull the full recent thread/history, not j
 If the user's most recent message on the thread is already a reply to this sender, the item is done - close it without a new draft.
 If it's a question of theirs still unanswered, the item is blocked on the other party, not ready to act.
 Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full context for that source (for email: search sent + inbox in both directions; for Slack: `slack.js --history`, not just `--show` on the one linked message).
-**When you DO draft (a reply or a follow-up nudge), thread it off the most recent message in the thread - even when that latest message is one the user sent.**
+**When you DO draft (a reply or a follow-up nudge), thread it off the most recent real message in the thread - even when that latest message is one the user sent.**
 A follow-up answers where the conversation actually stands, so quote and thread on the newest message, not an older inbound one; provider DRAFT-MODE notes how to target a sent message.
+"Real" means a person wrote it: skip auto-generated messages (an out-of-office or automatic reply, a meeting accept/decline, a read receipt) and thread on the newest human message before them.
+An auto-reply also never counts as the contact answering.
 
 **One captured conversation can hold several distinct open asks - group them, then handle each.**
 When a chat source keys one item per conversation (a DM, a group chat, an unread channel, a subscribed thread), the messages waiting since the user's last read may be several separate tasks or one topic typed across rapid-fire messages - and it takes judgment to tell which.
