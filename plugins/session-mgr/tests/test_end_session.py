@@ -283,7 +283,16 @@ def test_resolver_forwards():
           result.stdout + result.stderr)
 
 
+def test_resolver_forwards_pause():
+    print("test: drainer close-session.py forwards --pause (no argparse rejection, exit 1 not 2)")
+    result = subprocess.run([sys.executable, CLOSE_SESSION, "--pause"], env=scrubbed_env(),
+                            capture_output=True, text=True)
+    check("exit code 1 (nothing to close, flag accepted)", result.returncode == 1,
+          f"got {result.returncode}: {result.stderr}")
+
+
 if __name__ == "__main__":
+    test_resolver_forwards_pause()
     test_nothing_to_close_refuses()
     test_non_ancestor_pid_refuses()
     test_self_close_fires_session_end_then_kills()
