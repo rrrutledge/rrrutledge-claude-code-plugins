@@ -7,6 +7,12 @@ same machine pointed at the same `token_cache` file also share one login: Zoom r
 on every use, so two independent copies of this logic reading/writing the same cache file would
 invalidate each other's tokens.
 
+Other processes on the machine share that cache file too (the host project's own Zoom scripts, a Zoom
+MCP headersHelper), so every refresh runs under a cross-process lock: `<token_cache>.lock`, created
+exclusively and treated as abandoned after a minute. Whoever takes the lock re-reads the cache first and
+reuses a token another process just minted, so only one process ever spends a given refresh token.
+Anything else writing the same cache follows the same protocol.
+
 Provider-agnostic: raises `ProviderError` (imported lazily from `provider_base`, which every adapter
 already has on `sys.path` by the time it runs under the poller) rather than assuming any one adapter's
 error-handling shape.
@@ -14,15 +20,20 @@ error-handling shape.
 import base64
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from provider_base import ProviderError
 
 API_BASE = "https://api.zoom.us"
 OAUTH_URL = "https://zoom.us/oauth/token"
+FRESH_SECONDS = 3500
+LOCK_WAIT_SECONDS = 30
+LOCK_STALE_SECONDS = 60
 
 
 def _http(method, url, headers=None, data=None, timeout=45):
@@ -58,10 +69,45 @@ class ZoomClient:
         if not self.token_cache:
             return
         os.makedirs(os.path.dirname(self.token_cache), exist_ok=True)
-        tmp = f"{self.token_cache}.tmp"
+        tmp = f"{self.token_cache}.{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp, self.token_cache)
+
+    @contextmanager
+    def _refresh_lock(self):
+        """Hold `<token_cache>.lock` for the duration of a refresh (see the module docstring)."""
+        if not self.token_cache:
+            yield
+            return
+        lock = f"{self.token_cache}.lock"
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - os.path.getmtime(lock) > LOCK_STALE_SECONDS:
+                        os.remove(lock)
+                        continue
+                except OSError:
+                    continue
+                if time.monotonic() > deadline:
+                    raise ProviderError(
+                        f"{self.error_prefix}: timed out waiting for the Zoom token lock at {lock}",
+                        kind="auth")
+                time.sleep(0.2)
+        try:
+            os.write(fd, str(os.getpid()).encode())
+            yield
+        finally:
+            os.close(fd)
+            try:
+                os.remove(lock)
+            except OSError:
+                pass
 
     @staticmethod
     def _age_seconds(obtained_at):
@@ -76,9 +122,16 @@ class ZoomClient:
         """A fresh access token, refreshing (and rotating the refresh token in the cache) when the
         cached one is near expiry. Bootstraps from `refresh_bootstrap_env` if the cache has none."""
         cache = self._read_cache()
-        if cache.get("access_token") and self._age_seconds(cache.get("obtained_at")) < 3500:
+        if self._is_fresh(cache):
             return cache["access_token"]
-        return self._refresh(cache.get("refresh_token") or os.environ.get(self.refresh_bootstrap_env))
+        with self._refresh_lock():
+            cache = self._read_cache()
+            if self._is_fresh(cache):
+                return cache["access_token"]
+            return self._refresh(cache.get("refresh_token") or os.environ.get(self.refresh_bootstrap_env))
+
+    def _is_fresh(self, cache):
+        return bool(cache.get("access_token")) and self._age_seconds(cache.get("obtained_at")) < FRESH_SECONDS
 
     def _refresh(self, refresh_token):
         if not refresh_token:
