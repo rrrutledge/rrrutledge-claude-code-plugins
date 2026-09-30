@@ -1,12 +1,12 @@
 """Tests for scripts/zoom_client.py's cross-process refresh lock.
 
-The bug this guards against: Zoom rotates the refresh token on every use, and several processes share
-one token cache file (both drainer Zoom adapters, plus the host project's own Zoom scripts). Two of them
-refreshing at the same moment both spent the same refresh token; Zoom honored one and answered the other
-with `invalid_grant`, and whichever wrote the cache last could leave a spent refresh token behind.
+Zoom rotates the refresh token on every use, and several processes share one token cache file (both
+drainer Zoom adapters, plus the host project's own Zoom scripts). Two of them refreshing at the same
+moment would both spend the same refresh token: Zoom honors one and answers the other with
+`invalid_grant`, and whichever writes the cache last could leave a spent refresh token behind.
 
-Now every refresh runs under `<token_cache>.lock`, and whoever takes the lock re-reads the cache first,
-so a burst of concurrent callers on an expired token costs exactly one refresh.
+Every refresh runs under `<token_cache>.lock`, and whoever takes the lock re-reads the cache first, so a
+burst of concurrent callers on an expired token costs exactly one refresh.
 
 No network or Zoom credentials: a fake `_http` stands in for Zoom's OAuth endpoint and counts refreshes,
 and a temp directory holds the token cache. Run directly:
