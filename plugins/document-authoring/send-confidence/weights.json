@@ -1,10 +1,10 @@
 {
-  "version": 2,
+  "version": 3,
   "weights": {
     "familiarity": 0.2,
-    "stakes": 0.2,
-    "content_latitude": 0.2,
-    "fact_support": 0.2,
+    "stakes": 0.1661,
+    "content_latitude": 0.1873,
+    "fact_support": 0.2466,
     "rule_coverage": 0.2
   },
   "thresholds": {

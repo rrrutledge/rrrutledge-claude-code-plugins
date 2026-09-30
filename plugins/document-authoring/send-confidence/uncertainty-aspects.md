@@ -25,7 +25,7 @@ Rate what the rules settle, not whether the text complies: a choice the rules cl
 ## Content latitude
 
 How much of *what to say* the ask left for the writer to decide or find.
-Latitude grows with every piece of content the writer had to supply itself: an answer or decision the draft makes on Russell's behalf, a fact or option it looked up rather than being handed in the ask or the inputs, and anything it chose to add that the ask didn't call for.
+Latitude grows with every piece of content the writer had to supply itself: an answer or decision the draft makes on Russell's behalf, a fact or option it looked up rather than being handed in the ask or the inputs, anything it chose to add that the ask didn't call for, and which of several supplied facts it chose to keep or drop when the ask didn't say which ones mattered.
 
 - 1 - Russell handed over the actual wording.
 - 2 - the intent and every piece of content are explicit; only the wording is open.
