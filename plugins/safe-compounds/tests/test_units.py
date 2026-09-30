@@ -207,49 +207,73 @@ class TestSed:
 
 
 class TestTaskkill:
+    """`is_own_descendant` is mocked False by default in every case here so
+    the host-pid path is exercised deterministically; `test_own_descendant_*`
+    below covers the descendant path directly against `procs.is_own_descendant`."""
+
+    def _mock(self, monkeypatch, host_pid, descendants=()):
+        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: host_pid)
+        monkeypatch.setattr(procs, "is_own_descendant", lambda pid: pid in descendants)
+
     def test_self_pid_approved(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /PID 16552 /T /F") is True
 
     def test_other_pid_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /PID 9999 /T /F") is False
 
     def test_undetermined_host_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: None)
+        self._mock(monkeypatch, None)
         assert is_taskkill_safe("taskkill /PID 16552 /T /F") is False
 
     def test_image_name_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /IM chrome.exe /F") is False
 
     def test_remote_machine_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /S remotehost /PID 16552 /F") is False
 
     def test_no_pid_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /F") is False
 
     def test_non_numeric_pid_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /PID abc /F") is False
 
     def test_multiple_pids_all_must_match(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /PID 16552 /PID 9999 /F") is False
 
     def test_case_insensitive_flags(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill /pid 16552 /t /f") is True
 
     def test_msys_double_slash_approved(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill //PID 16552 //T //F") is True
 
     def test_msys_double_slash_other_pid_rejected(self, monkeypatch):
-        monkeypatch.setattr(procs, "self_tab_host_pid", lambda: 16552)
+        self._mock(monkeypatch, 16552)
         assert is_taskkill_safe("taskkill //PID 9999 //T //F") is False
+
+    def test_own_descendant_pid_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242})
+        assert is_taskkill_safe("taskkill /PID 4242 /T /F") is True
+
+    def test_non_descendant_pid_rejected(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242})
+        assert is_taskkill_safe("taskkill /PID 9999 /T /F") is False
+
+    def test_mixed_host_and_descendant_pids_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242})
+        assert is_taskkill_safe("taskkill /PID 16552 /PID 4242 /F") is True
+
+    def test_one_unproven_pid_among_many_rejects_whole_command(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242})
+        assert is_taskkill_safe("taskkill /PID 4242 /PID 9999 /F") is False
 
 
 class TestSelfTabHostPid:
@@ -286,6 +310,89 @@ class TestSelfTabHostPid:
     def test_cycle_returns_none(self):
         snap = {100: (200, 'python.exe'), 200: (100, 'sh.exe')}
         assert procs.self_tab_host_pid(start_pid=100, snapshot=snap) is None
+
+
+class TestIsOwnDescendant:
+    def _snapshot(self):
+        # 100 (this hook, the anchor) -> 200 -> 300 (this session's claude.exe)
+        # -> 400 (tab host) -> 500 (WindowsTerminal) -> 600 (services.exe)
+        # 310/320 are this session's own child/grandchild of claude.exe (300).
+        # 330 shares 300 as its recorded parent but predates it (reused PID).
+        # 900/910 belong to an unrelated session's claude.exe tree.
+        return {
+            100: (200, 'python.exe'),
+            200: (300, 'sh.exe'),
+            300: (400, 'claude.exe'),
+            400: (500, 'powershell.exe'),
+            500: (600, 'windowsterminal.exe'),
+            600: (0, 'services.exe'),
+            310: (300, 'bash.exe'),
+            320: (310, 'node.exe'),
+            330: (300, 'sneaky.exe'),
+            900: (0, 'claude.exe'),
+            910: (900, 'bash.exe'),
+        }
+
+    def _times(self):
+        return {300: 1000, 310: 1100, 320: 1200, 330: 500,
+                 400: 900, 500: 800, 600: 700, 900: 100, 910: 1050}
+
+    def test_direct_child_approved(self):
+        assert procs.is_own_descendant(
+            310, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is True
+
+    def test_grandchild_approved(self):
+        assert procs.is_own_descendant(
+            320, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is True
+
+    def test_other_session_process_rejected(self):
+        assert procs.is_own_descendant(
+            910, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_claude_itself_rejected(self):
+        assert procs.is_own_descendant(
+            300, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_tab_host_rejected(self):
+        assert procs.is_own_descendant(
+            400, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_windows_terminal_rejected(self):
+        assert procs.is_own_descendant(
+            500, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_above_windows_terminal_rejected(self):
+        assert procs.is_own_descendant(
+            600, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_reused_pid_parent_newer_than_child_rejected(self):
+        assert procs.is_own_descendant(
+            330, start_pid=100, snapshot=self._snapshot(), creation_times=self._times()) is False
+
+    def test_broken_chain_rejected(self):
+        snap = self._snapshot()
+        del snap[310]
+        assert procs.is_own_descendant(320, start_pid=100, snapshot=snap, creation_times=self._times()) is False
+
+    def test_no_own_claude_found_rejected(self):
+        snap = self._snapshot()
+        del snap[300]
+        assert procs.is_own_descendant(310, start_pid=100, snapshot=snap, creation_times=self._times()) is False
+
+    def test_missing_creation_time_rejected(self):
+        times = self._times()
+        del times[310]
+        assert procs.is_own_descendant(
+            320, start_pid=100, snapshot=self._snapshot(), creation_times=times) is False
+
+    def test_empty_snapshot_rejected(self):
+        assert procs.is_own_descendant(310, start_pid=100, snapshot={}, creation_times=self._times()) is False
+
+    def test_cycle_returns_false(self):
+        snap = {100: (200, 'python.exe'), 200: (300, 'sh.exe'), 300: (400, 'claude.exe'),
+                 310: (320, 'a.exe'), 320: (310, 'b.exe')}
+        times = {300: 1000, 310: 100, 320: 100}
+        assert procs.is_own_descendant(310, start_pid=100, snapshot=snap, creation_times=times) is False
 
 
 class TestOutputRedirectionSafe:

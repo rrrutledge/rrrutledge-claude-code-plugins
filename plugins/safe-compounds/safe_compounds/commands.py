@@ -456,18 +456,30 @@ def is_powershell_safe(seg):
 
 
 # ------------------------------------------------------------ taskkill --------
-# A drainer worker closes its own tab by killing the terminal's hosting process
-# (see plugins/drainer/skills/drainer/engine/worker-core.md). Approve ONLY the
-# narrow self-close shape: `/PID <n>` (never `/IM`, `/S`, `/U`, `/P`, `/FI`, ...)
-# where every PID given is proven — via a live OS process-ancestry walk, not a
-# trusted argument — to be this session's own tab host. Anything else defers to
-# a manual prompt.
+# Two shapes get auto-approved, both proven via a live OS process-ancestry
+# walk rather than trusting the argument:
+#   1. A drainer worker closing its own tab by killing the terminal's hosting
+#      process (see plugins/drainer/skills/drainer/engine/worker-core.md) —
+#      every PID equals this session's own tab host.
+#   2. A session cleaning up its own leftover child processes (idle shell
+#      wrappers, conhost.exe, stray subagent scripts) at Stop-hook time —
+#      every PID is a live descendant of this session's own claude.exe,
+#      confirmed by `procs.is_own_descendant` (ancestry walk + a creation-time
+#      check on each hop, to rule out a reused PID faking the chain).
+# Only `/PID <n>` (plus `/T` `/F`) is recognized — never `/IM`, `/S`, `/U`,
+# `/P`, `/FI`, ... — and a PID that's neither the tab host nor a proven own
+# descendant defers the whole command to a manual prompt.
 #
 # The Bash tool runs Git Bash, whose MSYS layer treats a single leading slash
 # as a POSIX path and mangles it — so commands built for that tool arrive as
 # `//PID`, `//T`, `//F` (doubled slash escapes the mangling) rather than the
 # Windows-native `/PID`. Normalize away the doubling before comparing so both
 # forms are recognized.
+#
+# A `$pid`-style variable in place of a literal PID can't be verified
+# statically — it never reaches here, since `enforce_bash` already blocks
+# simple variable expansion (and `for`/`while` loops) upstream and asks for a
+# `.tmp/` Python script instead.
 TASKKILL_NO_ARG_FLAGS = {'/t', '/f'}
 
 
@@ -497,7 +509,10 @@ def is_taskkill_safe(seg):
         return False
     from . import procs
     host_pid = procs.self_tab_host_pid()
-    return host_pid is not None and all(pid == host_pid for pid in pids)
+    return all(
+        pid == host_pid or procs.is_own_descendant(pid)
+        for pid in pids
+    )
 
 
 # ----------------------------------------------------------- cmd files --------

@@ -143,7 +143,7 @@ safe_compounds/
   commands.py            subcommand engine (git/gh/npm/yarn/pip/pnpm/bun via a
                          spec table) + bespoke checkers (curl/sed/start/cmd/file ops/taskkill)
   procs.py               live Windows process-ancestry walk (ctypes, no deps) —
-                         backs the taskkill self-close-my-own-tab checker
+                         backs the taskkill checker's tab-host and own-descendant proofs
   enforce.py             the BLOCK rules ("rewrite into a validatable form")
   approve.py             per-segment trust decision
   mcp.py                 MCP tool classification
@@ -156,7 +156,7 @@ Subcommand-shaped tools (git, gh, the package managers) share one
 `check_subcommand_tool` engine driven by `SUBCOMMAND_SPECS` in `commands.py` —
 adding a new such tool is a table entry, not new code. Tools whose safety isn't
 subcommand-shaped (curl URLs, `sed -i`, `start` extensions,
-`.cmd` parsing, CWD-scoped file ops, `taskkill` self-targeting) stay
+`.cmd` parsing, CWD-scoped file ops, `taskkill` (see `procs.py` above)) stay
 as small purpose-built checkers.
 
 One orchestrator (not two separate hook processes) preserves the block-then-
