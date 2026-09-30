@@ -27,6 +27,8 @@ Rate what the rules settle, not whether the text complies: a choice the rules cl
 How much of *what to say* the ask left for the writer to decide or find.
 Latitude grows with every piece of content the writer had to supply itself: an answer or decision the draft makes on Russell's behalf, a fact or option it looked up rather than being handed in the ask or the inputs, and anything it chose to add that the ask didn't call for.
 
+A quantity the ask names only by category - an amount, a rate, "compensation" - still leaves the writer to pick which underlying referent it targets (whose pay, which party's rate, which unit). That choice is content the writer supplied, not wording, even when the general topic was explicit in the ask.
+
 - 1 - Russell handed over the actual wording.
 - 2 - the intent and every piece of content are explicit; only the wording is open.
 - 3 - the intent is clear, but some content had to be worked out, looked up, or chosen.

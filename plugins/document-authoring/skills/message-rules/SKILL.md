@@ -89,7 +89,7 @@ Don't present a menu of options or stack a numbered list of questions.
   State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
 - **Phrase a requested edit to someone else's draft as a question, not a flat correction** — "can you make it X?" reads as collaborative even when you already know exactly what should change; save the flat "should be X" framing for reference material, not a live ask.
 - **When a decision-relevant fact is still outstanding, get it before committing — and don't let the wait look like stalling.**
-  Hold off until the number, document, or valuation is in hand even if the other side wants a yes now; keep the tone warm and move straight to what you still need, so it reads as diligence.
+  Hold off until the number, document, or valuation is in hand even if the other side wants a yes now; keep the tone warm and move straight to what you still need, applying the same don't-narrate-the-timing rule as **Frame the ask to match the recipient's role** above - so it reads as diligence.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
   When he'll act only after a response, the staged message asks for the confirmation rather than announcing the action.
   Confirm an informally-stated fact is official before building the next question on it.
