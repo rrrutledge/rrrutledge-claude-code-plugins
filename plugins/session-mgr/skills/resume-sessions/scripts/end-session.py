@@ -18,8 +18,11 @@ There are two kinds of session to close, and the first question is always
     Background session - a `claude --bg` session run by the background
         service, with no hosting tab. Force-killing its own claude process
         does not close it: the service respawns it under a new pid. Its clean
-        close is `claude stop <short id>`, which tells the service to end that
-        session for good. This holds even when CLAUDE_HOST_PID is set: a
+        close is `claude rm <short id>`, which ends the session and removes it
+        from Agent View along with its job dir and worktree, keeping the
+        transcript resumable. It falls back to `claude stop <short id>` when
+        `removal_blocker` names a reason (the conditions are in
+        commands/close.md). This holds even when CLAUDE_HOST_PID is set: a
         service started from a profile-loaded PowerShell passes that
         terminal's host pid on to every background session, and killing it
         would take down an unrelated terminal.
@@ -28,12 +31,16 @@ There are two kinds of session to close, and the first question is always
         force-kill of that hosting process tree.
 
 A session that is not background and has no host pid, but does carry
-CLAUDE_PID and a session id, also closes through `claude stop`, so a
+CLAUDE_PID and a session id, also closes as a
+background session (the `claude rm` close above, with the same stop fallback), so a
 background session whose job state can't be read still closes cleanly.
 
 Usage, from inside the session that wants to close (via the Bash tool):
 
-    python "<this file>"
+    python "<this file>" [--pause]
+
+Pass --pause when the session will be resumed later (a coordinator waiting on workers, a
+resume-on-completion): it keeps the session's worktree.
 
 Everything needed comes from the session's own environment:
 
@@ -48,6 +55,7 @@ Everything needed comes from the session's own environment:
 If it is none of these, the exit code is 1: nothing is killed, the session
 keeps running, and the real SessionEnd fires whenever it actually ends.
 """
+import argparse
 import json
 import os
 import subprocess
@@ -117,23 +125,83 @@ def fire_session_end(session_id):
                 print(f"end-session: SessionEnd hook failed ({e}): {command}")
 
 
-def stop_own_bg_session(session_id):
+def _git(args):
+    """Stdout of a git call in the current directory, or None when git fails."""
+    try:
+        res = subprocess.run(["git"] + args, capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return res.stdout.strip() if res.returncode == 0 else None
+
+
+def _norm(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def in_linked_worktree():
+    """True when the current directory is a linked git worktree (not the main checkout) - the only
+    kind of directory `claude rm` deletes."""
+    git_dir, common = _git(["rev-parse", "--git-dir"]), _git(["rev-parse", "--git-common-dir"])
+    return bool(git_dir and common) and _norm(git_dir) != _norm(common)
+
+
+def other_live_session_here(session_id):
+    """True when another live session (`claude agents --json`) shares this working directory."""
+    try:
+        res = subprocess.run(["claude", "agents", "--json"], capture_output=True, text=True,
+                             timeout=30, check=False)
+        agents = json.loads(res.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    here = _norm(os.getcwd())
+    return any(isinstance(a, dict) and a.get("sessionId") != session_id
+               and a.get("cwd") and _norm(a["cwd"]) == here for a in agents)
+
+
+def removal_blocker(session_id, pause):
+    """Why this close must stop the session instead of removing it, or None when removal is safe.
+    `claude rm` deletes the session's worktree, ignored .tmp/ files included, so a session that will
+    be resumed, or whose worktree holds unsaved or shared work, is only stopped."""
+    if pause:
+        return "--pause was passed (the session will be resumed)"
+    if in_linked_worktree():
+        if _git(["status", "--porcelain"]):
+            return "its worktree has uncommitted or untracked files"
+        if other_live_session_here(session_id):
+            return "another live session is working in the same directory"
+    return None
+
+
+def stop_own_bg_session(session_id, pause=False):
     """Close a headless `claude --bg` worker by asking the background service to
-    stop this session. Force-killing the worker's own claude process only makes
-    the service respawn it under a new pid, so `claude stop` is the clean teardown
-    - it drops the session off the live list (`claude agents`) for good, leaving it
-    only in the stopped history. The handle `claude stop` takes is the short id: the
-    session guid's first hyphen-delimited segment (its 8-hex prefix); the full guid
-    is rejected. `claude` is a trusted bare command, so this auto-approves even under
-    --permission-mode manual."""
+    end this session. Force-killing the worker's own claude process only makes
+    the service respawn it under a new pid, so the service's own commands are the
+    clean teardown. By default that is `claude rm`: it drops the session from the
+    list (`claude agents`) and deletes its job dir and worktree, keeping the
+    transcript, so `claude --resume <guid>` still works. `claude stop` leaves the
+    session in Agent View as Stopped, and is the fallback when `removal_blocker`
+    names a reason, or when `claude rm` itself refuses (unpushed commits). The handle
+    both take is the short id: the session guid's first hyphen-delimited segment
+    (its 8-hex prefix); the full guid is rejected. `claude` is a trusted bare
+    command, so this auto-approves even under --permission-mode manual."""
     short_id = session_id.split("-", 1)[0]
-    print(f"end-session: stopping headless background session {short_id}.")
+    blocker = removal_blocker(session_id, pause)
+    if blocker is None:
+        print(f"end-session: removing headless background session {short_id}.")
+        res = subprocess.run(["claude", "rm", short_id], capture_output=True, text=True, check=False)
+        output = ((res.stdout or "") + (res.stderr or "")).strip()
+        if output:
+            print(output)
+        if res.returncode == 0:
+            return 0
+        blocker = "`claude rm` refused (see above)"
+    print(f"end-session: stopping (not removing) headless background session {short_id}: {blocker}.")
     subprocess.run(["claude", "stop", short_id], check=False)
     return 0
 
 
-def close_headless(session_id, claude_pid):
-    """Deregister and stop a background session. When CLAUDE_PID is known, the
+def close_headless(session_id, claude_pid, pause=False):
+    """Deregister and end a background session. When CLAUDE_PID is known, the
     same self-target guard as the tab path, pointed at the session's own claude
     process, first confirms we are really running inside it."""
     if claude_pid and claude_pid.isdigit() and not pid_is_ancestor(int(claude_pid), "worker"):
@@ -141,21 +209,26 @@ def close_headless(session_id, claude_pid):
               "refusing to stop the session. Close it manually.")
         return 1
     fire_session_end(session_id)
-    return stop_own_bg_session(session_id)
+    return stop_own_bg_session(session_id, pause)
 
 
-def main():
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Close this Claude Code session.")
+    ap.add_argument("--pause", action="store_true",
+                    help="stop a background session instead of removing it, keeping its worktree "
+                         "for a later resume")
+    pause = ap.parse_args(argv).pause
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
     claude_pid = os.environ.get("CLAUDE_PID")
 
     if is_background_session():
-        # Background session: `claude stop`, whatever CLAUDE_HOST_PID says - a host pid
-        # here was inherited from the terminal that started the background service.
+        # Background session: `claude rm` (or `claude stop`), whatever CLAUDE_HOST_PID says - a
+        # host pid here was inherited from the terminal that started the background service.
         if not session_id:
             print("end-session: background session, but CLAUDE_CODE_SESSION_ID is unset - "
-                  "no short id to stop it by. Close it manually.")
+                  "no short id to close it by. Close it manually.")
             return 1
-        return close_headless(session_id, claude_pid)
+        return close_headless(session_id, claude_pid, pause)
 
     host_pid = os.environ.get("CLAUDE_HOST_PID")
     if host_pid and host_pid.isdigit():
@@ -174,9 +247,10 @@ def main():
         return 0
 
     if claude_pid and claude_pid.isdigit() and session_id:
-        # No job state and no hosting tab, but a claude pid and session id: close via
-        # `claude stop` rather than a process kill.
-        return close_headless(session_id, claude_pid)
+        # No job state and no hosting tab, but a claude pid and session id: close it as
+        # a background session (`claude rm`, or `claude stop` when removal is blocked) rather than
+        # a process kill.
+        return close_headless(session_id, claude_pid, pause)
 
     print("end-session: not a background session, and neither CLAUDE_HOST_PID (a tab) nor "
           "CLAUDE_PID plus a session id is set - nothing to close. Stop normally instead; "

@@ -133,7 +133,7 @@ When you read the content and determine no action is needed and there's nothing 
 2. **Patch `triage` to `"fyi"`** in the `items/<id>.json` file using the Edit tool before queuing, so the digest categorizes it correctly (not as needs-you).
 3. **Queue a digest entry**:
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
-4. **Close this session** - via the Bash tool, run `python <skill>/scripts/close-session.py` (fires the SessionEnd event, then stops this background session with `claude stop` - see `engine/auto-handle.md`'s close-up step for the full mechanic).
+4. **Close this session** - via the Bash tool, run `python <skill>/scripts/close-session.py` (fires the SessionEnd event, then removes this background session with `claude rm` - see `engine/auto-handle.md`'s close-up step for the full mechanic).
 
 Do not present anything to Russell.
 The digest is how he learns about it.
@@ -289,7 +289,7 @@ Decide by who's holding the conversation:
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
-- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`, run `schedule-resume.py` to capture the resume command, deliver it via `SendMessage` or a spawned session's handoff doc, then close via `close-session.py`).
+- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`, run `schedule-resume.py` to capture the resume command, deliver it via `SendMessage` or a spawned session's handoff doc, then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree).
   **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
 

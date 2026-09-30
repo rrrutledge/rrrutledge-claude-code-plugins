@@ -10,7 +10,10 @@ working-clone copy.
 
 Workers run it via the Bash tool as their very last step:
 
-    python "<this file>"
+    python "<this file>" [--pause]
+
+Every argument is forwarded, so `--pause` (stop the session instead of removing it, for a worker
+that will be resumed) reaches end-session.py unchanged.
 """
 import os
 import subprocess

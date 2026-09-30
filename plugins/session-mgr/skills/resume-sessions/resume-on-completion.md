@@ -37,8 +37,9 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    A drainer worker leaves a dated comment on its Trello card noting the pause and naming the session it handed the resume to; a plain session notes it wherever that work is tracked.
 
-4. **Close this session now** via the **`session-mgr:close`** skill (a drainer worker: `python <skill>/scripts/close-session.py`).
+4. **Close this session now, paused**, via the **`session-mgr:close`** skill with `--pause` (a drainer worker: `python <skill>/scripts/close-session.py --pause`).
    This fires `SessionEnd` cleanly, so the session deregisters from the live-session registry rather than looking crash-interrupted.
+   `--pause` stops the session instead of removing it, because a plain close deletes its worktree and the resume needs that worktree intact.
 
 The resumed session comes back under a new session id carrying the full history, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
 

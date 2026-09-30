@@ -223,8 +223,9 @@ instructions: |-
     work until the registry has enough history built up.
   - `scripts/end-session.py` (next to the launcher) is the correct way for a session to close
     itself: it fires this plugin's SessionEnd hooks with the same payload the harness would send,
-    then ends the session. A background session runs `claude stop` on itself, and its conversation
-    stays resumable; a session Russell started by hand in a terminal has its hosting tab's process
+    then ends the session. A background session runs `claude rm` on itself: it leaves `claude agents`,
+    its worktree is deleted, and its conversation stays resumable. It stops instead of removing when
+    the worktree must be kept (the conditions are in `commands/close.md`); a session Russell started by hand in a terminal has its hosting tab's process
     tree killed. Anything that instructs a session to self-close should route through it (the
     drainer forwards via its own thin resolver, `close-session.py`), since a raw `taskkill` skips
     SessionEnd and strands a registry entry.
@@ -237,7 +238,7 @@ instructions: |-
     a peer already doing that work, or a fresh session it spawns. The blocked session runs
     `schedule-resume.py` to capture the `spawn-session.py --resume` command that brings it back,
     hands that to the session doing the blocking work (a `SendMessage` to a peer, or a line in a
-    spawned session's handoff doc), and closes now via `end-session.py`; the other session runs the
+    spawned session's handoff doc), and closes now via `end-session.py --pause` (keeping its worktree for the resume); the other session runs the
     captured command when its work is done. Read that doc when a session needs to pause on a
     specific in-flight session rather than on Russell in this session.
 ---
