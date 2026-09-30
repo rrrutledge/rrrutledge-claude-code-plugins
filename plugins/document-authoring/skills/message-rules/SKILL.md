@@ -245,6 +245,7 @@ The specifics that most often separate a message that reads as Russell's from on
   In outreach re-engagement, lead with one open question and stop; the invitation to participate carries the ask on its own.
   Say the thing plainly rather than reaching for a punchy interjection, a colorful idiom, or a dry aside — "she had a tough first week", not "she got a rude awakening" followed by "so that was interesting."
   When a warm contact wraps their own news in jokes or wordplay, react to the news itself with plain enthusiasm rather than volleying their wordplay back.
+  The plain-speech rule above targets decorating a description, not a genuine reaction to someone else's good news — that's **Warm exclamations used genuinely**, below.
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
   This covers confirming a completed institutional-onboarding action too - "we made you a new email address" reads as the org processing someone into it, not Russell personally handling it; contrast the next bullet's personal "I'll", which is for work that's Russell's own to do, not the org's standing process.
@@ -426,7 +427,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — when their reply also volunteers something beyond what you asked** (a genuine extra contribution they weren't prompted for, not just a passing pleasantry): that part still gets its own named reaction, per **Answer the question first** — running through the full **Thanking a volunteer** effusive register when it qualifies, since the unprompted extra is usually the bigger contribution even when the asked-for part stays a bare acknowledgment.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
   Once the observation that's the actual reason for the outreach is solid enough to build the ask around (e.g. a pattern in someone's behavior prompting a meeting request), state it as a plain fact, not a hedged impression.
-- **Warm exclamations used genuinely, not as hype** — "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!"
+- **Warm exclamations used genuinely, not as hype** — a direct reaction to someone else's news, not a description dressed up: "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!", "Wow, that is amazing 🎉"
 - **Two spaces after a period** — a real typing habit.
 
 ### Emoji
