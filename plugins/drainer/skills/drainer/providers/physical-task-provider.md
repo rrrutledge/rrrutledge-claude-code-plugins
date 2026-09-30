@@ -65,13 +65,14 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 ## CAPTURE
 `items/<id>.json`:
 `{ "id","source":"physical-task","triage":"needs-you","kind":"work","subject","date","minutes",`
-`"isRecurring","calendar","eventId","seriesMasterId","repeatAfter","window","days","url","ts":"<ISO now>" }`
+`"isRecurring","calendar","eventId","messageId","seriesMasterId","repeatAfter","window","days","url","ts":"<ISO now>" }`
 - `subject` - the task itself, in Russell's own words (however he named the calendar event).
 - `date` - the day it became queued (YYYY-MM-DD); may be well in the past for something that's sat unstarted.
 - `minutes` - the duration Russell estimated (the event's own length while queued) - also the size of the free gap that made this item eligible to dispatch right now.
 - `isRecurring` - whether this is a recurring series rather than a one-off.
   When true, `date` is the most recent queued occurrence, not necessarily today - a series left unstarted can accumulate several missed occurrences (see CLEAR's catch-up behavior).
 - `eventId` - the raw Graph id `startTaskNow`/`finishTaskNow` act on directly: the event's own id for a one-off, or the **most recent queued occurrence's own instance id** for a recurring one (never the series master - starting one occurrence must never touch the others).
+- `messageId` - same value as `eventId`, duplicated under the name the reconcile machinery checks.
 - `seriesMasterId` - present only when `isRecurring` is true; the series master's id, needed only for the backlog cleanup (`--catch-up-series`) after `eventId` has been started.
 - `repeatAfter` - the human interval (`"7 days"`, `"1 month"`) when this one-off carries a `Repeat: ... after completion` body marker, else null.
   It's a heads-up for the worker to tell Russell when the task will come back; the actual re-queue is done by CLEAR's Finished step (see REPEAT-AFTER-COMPLETION below), which reads the marker off the event itself, not this field.

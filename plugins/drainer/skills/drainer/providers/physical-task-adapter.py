@@ -229,7 +229,7 @@ class Provider(ProviderBase):
             "triageReason": item.get("_triageReason"),
             "subject": item["subject"], "date": item["date"], "minutes": item["minutes"],
             "isRecurring": item["isRecurring"], "calendar": self.calendar,
-            "eventId": item["id"], "seriesMasterId": item.get("seriesMasterId"),
+            "eventId": item["id"], "messageId": item["id"], "seriesMasterId": item.get("seriesMasterId"),
             "repeatAfter": item.get("repeatAfter"), "window": item.get("window"),
             "days": item.get("days"),
             "url": item.get("webLink"), "correspondent": item.get("_correspondent"),
