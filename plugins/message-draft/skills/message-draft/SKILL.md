@@ -118,6 +118,14 @@ Never send, and never prompt Russell directly - hand a gate back to me.
    no one to review, do NOT overwrite — leave the draft and flag the conversation instead. (Clearing a
    truly abandoned draft also collapses the duplicate "new chat" rail entry it spawned and unblocks
    clean future sends.)
+   **Narrow exception — a composer holding text that exactly matches an already-sent message needs no OK.**
+   Before treating the composer content as an ambiguous draft, check it against this conversation's own
+   recent sent history (Slack: `node slack.js --history --channel=<C>`; Teams: `node teams-chat.js messages <convId> --top 20`).
+   If the composer text is an exact or near-exact match (allowing for markdown-link-vs-plain-text
+   rendering differences and whitespace) to a message Russell already sent in this same conversation,
+   it already went out. Clear it and proceed with the new draft; note in the done-criteria which stale
+   text was cleared, for visibility.
+   Anything short of that exact match keeps the default above.
 6. **Selectors below are last-known-good (web UIs, 2026-06) — expect drift.** The invariants
    don't drift; rediscover selectors live via browser-chauffeur (screenshot → inspect) when they do.
 
