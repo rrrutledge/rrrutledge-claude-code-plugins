@@ -38,6 +38,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 
 **Represent every person, event, document, or call a message references — never leave it as bare text.**
 - **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention via the platform's mention picker, never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @cristina", not "Hi Cristina") — not only when notifying them is the point.
+  When you also write their name in plain text next to the mention, pull it from their actual profile or a prior message.
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.

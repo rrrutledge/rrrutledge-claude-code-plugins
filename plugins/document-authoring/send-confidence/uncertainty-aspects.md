@@ -38,6 +38,7 @@ Latitude grows with every piece of content the writer had to supply itself: an a
 Whether every factual claim in the draft is backed by the ask or the inputs.
 A claim is a name, date, number, link, commitment, or statement of fact, and it is supported only when the ask or the inputs state it; a claim the draft inferred or invented is unsupported.
 Check each claim's tense or status separately from the fact itself: stating a completed thing as upcoming, or a pending thing as done, is unsupported even when the underlying fact is backed.
+A person's own name is a claim too, including any fuller form used to address them: when the ask or inputs name them only casually or by first name, that shorthand backs the shorthand alone.
 
 The judge lists every claim and marks each supported or unsupported; the factor is the supported share.
 
