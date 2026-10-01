@@ -367,7 +367,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Warm, direct, humble.**
   Plain words, short sentences. When a reply covers more than one idea, give each its own sentence of even weight rather than chaining them into one long run-on - whether the join is a comma, an "and", or a dash or colon bolting a trailing clause onto an already-complete sentence.
   **A caveat that qualifies the very fact just stated stays joined to it with "but," not split into its own sentence** — "End of this week works, but if you run out of time that's OK too!" This is one idea (the timing, plus its own caveat), not two; reserve the split-and-flatten treatment above for genuinely separate ideas.
-- **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
+- **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special (the member-wide ISC email is the exception - see `announcement`).
   - **Aim the warm line at the person or their intent** - whether it opens or closes the message: affirm the specific, genuine thing they're actually doing or thinking about, rather than restating the deliverable as the thing you're glad of.
   - **A closing compliment lands as real appreciation of what they're already doing** - most of all to someone Russell leads or a member of his community, not a generic welcome or a forward-looking invitation to do more.
   - **React to being asked before diving into the answer** - when someone is specifically asking for his own expertise or experience, "I'm honored that you'd want to hear from me" reads warmer than a transactional "glad to help."
@@ -389,7 +389,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Document a sequence as short bullets, and open with the current status** — not a defensive framing line.
   This is for a chronological record proving you acted (what happened and when), not a recap of supporting facts about one topic offered as context, which stays a flowing paragraph per **Keep a short message plain** above.
   Let the record carry the point; skip the "I've been responsive" editorializing.
-- **Open groups with "Hey guys / folks / everyone"** — but skip the group greeting when replying to a specific quoted message or directly continuing an active conversation thread; the existing context replaces it.
+- **Open groups with "Hey guys / folks / everyone"** — but skip the group greeting when replying to a specific quoted message or directly continuing an active conversation thread; the existing context replaces it. (The member-wide ISC email greets the community by name instead - see `announcement`.)
   The greeting alone is what drops: **Open with warmth** still governs, so a short reaction to what they just said ("Sounds great!") still leads before the ask.
 - **Soften a flaw you're flagging in someone else's work into a suggestion, not a defect.** "Website would be good to point to X" reads better than "the website link is broken" when the material belongs to a teammate — say what you'd change, skip diagnosing what's wrong with it.
 - **When someone reports a problem whose cause isn't actually confirmed, ask them what led to it rather than asserting a diagnosis.** A screenshot or description is evidence, not proof — a genuine "How did you get to that page?" finds the real cause and reads as curious, not defensive, where a stated conclusion ("that page is misconfigured") can turn out wrong and commits you to it in writing.
@@ -456,7 +456,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
 - **A genuine joke or callback landing at a message's close** — personal-friend banter (per **Register** above), a warm, established-rapport callback to something the recipient said earlier in the thread, or a self-deprecating aside in a warm-but-official register like the departing-ward-member membership-clerk case above — reaching outside the palette, and past the one-emoji cap when an earlier emoji already opened the message, to punctuate it: 🙂 to punctuate a self-deprecating laugh ("Farming - haha 🙂"), 🙃 for a lighter "losing track of the details" aside ("trying to keep it all straight 🙃"), or a second, off-palette emoji closing out a joke that echoes the recipient's own words back to them.
 - **The terse thread-continuation opener in Slack or Teams** (see **Core voice**'s "Replying to someone who just messaged" rule): an off-palette emoji standing in for the acknowledgment word itself (":cool: - did you hear anything from Micaela?") is in-voice there, since it's filling the same slot "Ah, got it" would.
 - **A light-touch nudge asking people to follow through on a still-open, voluntary ask stacks the pointing emoji with 🙏 past both the one-emoji cap and the documented palette** - the congregation-membership-clerk register's repeat ask (a record-keeper's personal nudge, not an institutional or work message, stacking ❓ too: "wanted to ask again if you can let me know about this👇🙏❓") and an `announcement`-persona deadline reminder to a team or channel ("now's a good time 🙏👇") are both this pattern: pleading plus pointing.
-- **The ISC workspace's custom :isc: emoji** - in the InnerSource Commons Slack, it is in-voice to generate excitement or mark a message as ISC-specific, past both the palette and the one-emoji cap, and never required.
+- **ISC excitement emoji** - in the InnerSource Commons Slack (the custom :isc: emoji) and in a member-wide ISC email that carries the excitement emoji of the same announcement's Slack post, it is in-voice to generate excitement or mark a message as ISC-specific, past both the palette and the one-emoji cap, and never required.
 
 ### Persona modes — pick the one matching the context
 
@@ -533,6 +533,8 @@ These registers reach outside the palette, and most also stack past the one-emoj
 
 **`announcement` — broad post to a group or channel:**
 - Open with "Hey folks / everyone / guys", run into the first sentence with ` - `.
+  **A member-wide email from the ISC Executive Director to the membership list greets the community by name instead** ("Hello InnerSourcerers❗") and opens straight on the news.
+  Its warmth sits in the greeting and a closing "Thank you! And keep InnerSourcering!", which replaces **Open with warmth**'s opening line and the close-on-the-ask rule below for this email.
 - **When sharing news or status, open with the candid first-person account** — what happened and how you found it — not a packaged framing line ("wanted to give you a heads-up", "I'd rather you hear it from me").
 - **Tag @here or @channel when the ask needs the whole channel's eyes, not just whoever happens to be scrolling** — a favor-ask or call for volunteers is easy for busy members to miss otherwise.
 - State what you did or want, then a tight bulleted list of specifics if needed, then a low-pressure call for feedback.
