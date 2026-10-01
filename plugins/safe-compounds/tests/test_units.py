@@ -211,9 +211,26 @@ class TestTaskkill:
     the host-pid path is exercised deterministically; `test_own_descendant_*`
     below covers the descendant path directly against `procs.is_own_descendant`."""
 
-    def _mock(self, monkeypatch, host_pid, descendants=()):
+    def _mock(self, monkeypatch, host_pid, descendants=(), absent=()):
         monkeypatch.setattr(procs, "self_tab_host_pid", lambda: host_pid)
         monkeypatch.setattr(procs, "is_own_descendant", lambda pid: pid in descendants)
+        monkeypatch.setattr(procs, "is_absent", lambda pid: pid in absent)
+
+    def test_absent_pid_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /T /F") is True
+
+    def test_absent_plus_live_descendant_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242}, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /PID 4242 /F") is True
+
+    def test_absent_plus_live_non_descendant_rejected(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242}, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /PID 9999 /F") is False
+
+    def test_live_non_descendant_rejected(self, monkeypatch):
+        self._mock(monkeypatch, 16552, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 9999 /F") is False
 
     def test_self_pid_approved(self, monkeypatch):
         self._mock(monkeypatch, 16552)
@@ -274,6 +291,19 @@ class TestTaskkill:
     def test_one_unproven_pid_among_many_rejects_whole_command(self, monkeypatch):
         self._mock(monkeypatch, 16552, descendants={4242})
         assert is_taskkill_safe("taskkill /PID 4242 /PID 9999 /F") is False
+
+
+class TestIsAbsent:
+    SNAP = {100: (1, 'claude.exe'), 200: (100, 'bash.exe')}
+
+    def test_pid_missing_from_snapshot_is_absent(self):
+        assert procs.is_absent(999, snapshot=self.SNAP) is True
+
+    def test_pid_in_snapshot_is_not_absent(self):
+        assert procs.is_absent(200, snapshot=self.SNAP) is False
+
+    def test_empty_snapshot_fails_closed(self):
+        assert procs.is_absent(999, snapshot={}) is False
 
 
 class TestSelfTabHostPid:

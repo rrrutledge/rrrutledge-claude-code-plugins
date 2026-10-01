@@ -154,6 +154,26 @@ def _lookup_creation_time(pid, creation_times):
     return _process_creation_time(pid)
 
 
+def is_absent(pid, snapshot=None):
+    """True only if `pid` is provably not in the live process table, so a
+    `taskkill` on it is a no-op ("not found").
+
+    An empty or failed snapshot is never proof of absence: it returns False
+    so callers fail closed.
+
+    Accepted residual risk: Windows could hand `pid` to a new, unrelated
+    process in the milliseconds between this check and the kill. Absent PIDs
+    are common (processes listed by the Stop hook exit on their own before
+    the kill runs), and refusing them prompts on a command that cannot do
+    anything, so the race is tolerated.
+    """
+    try:
+        snap = snapshot if snapshot is not None else _snapshot()
+        return bool(snap) and pid not in snap
+    except Exception:
+        return False
+
+
 def is_own_descendant(pid, start_pid=None, max_depth=MAX_ANCESTOR_DEPTH,
                        snapshot=None, creation_times=None):
     """True only if `pid` is a live descendant of THIS session's own

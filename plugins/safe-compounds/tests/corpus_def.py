@@ -112,12 +112,15 @@ CASES = [
     # (not a static literal), so it's covered by test_units.py's
     # TestTaskkill/TestSelfTabHostPid instead — these cases pin the negative
     # (never blanket-approved) forms.
-    {"id": "taskkill_bogus_pid", "tool": "Bash", "command": "taskkill /PID 999999 /T /F", "expect": "PROMPT"},
+    # PID 4 (System) is live on Windows and never an own descendant; off
+    # Windows the empty process table fails closed - PROMPT either way. (An
+    # absent PID now auto-approves, so a made-up number no longer works here.)
+    {"id": "taskkill_bogus_pid", "tool": "Bash", "command": "taskkill /PID 4 /T /F", "expect": "PROMPT"},
     {"id": "taskkill_image_name", "tool": "Bash", "command": "taskkill /IM chrome.exe /F", "expect": "PROMPT"},
     {"id": "taskkill_remote_host", "tool": "Bash", "command": "taskkill /S otherhost /PID 1 /F", "expect": "PROMPT"},
     # MSYS/Git-Bash doubles the leading slash (//PID, //T, //F) to escape its
     # path-mangling — same negative case, doubled-slash form.
-    {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 999999 //T //F", "expect": "PROMPT"},
+    {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 4 //T //F", "expect": "PROMPT"},
     # The drainer's self-close primitive (fires SessionEnd, then kills its own
     # tab) must auto-approve via the trusted plugin-cache script dir — a worker
     # that hits a prompt here sits open forever instead of closing silently.

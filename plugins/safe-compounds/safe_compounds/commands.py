@@ -470,6 +470,13 @@ def is_powershell_safe(seg):
 # `/P`, `/FI`, ... — and a PID that's neither the tab host nor a proven own
 # descendant defers the whole command to a manual prompt.
 #
+# A PID absent from the live process table also passes: the target already
+# exited, so taskkill just prints "not found". Between the Stop-hook report and
+# the kill many listed processes die on their own, and prompting on those costs
+# a round trip for a no-op. Residual risk: the PID being reused by an unrelated
+# process in the milliseconds between this check and the kill (see
+# `procs.is_absent`).
+#
 # The Bash tool runs Git Bash, whose MSYS layer treats a single leading slash
 # as a POSIX path and mangles it — so commands built for that tool arrive as
 # `//PID`, `//T`, `//F` (doubled slash escapes the mangling) rather than the
@@ -510,7 +517,7 @@ def is_taskkill_safe(seg):
     from . import procs
     host_pid = procs.self_tab_host_pid()
     return all(
-        pid == host_pid or procs.is_own_descendant(pid)
+        pid == host_pid or procs.is_absent(pid) or procs.is_own_descendant(pid)
         for pid in pids
     )
 
