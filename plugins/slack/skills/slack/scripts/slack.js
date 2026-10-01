@@ -33,7 +33,7 @@
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
 //                 the conversation/thread's "gone"; reversible, never deletes)
-// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>]
+// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>[,<path>...]]
 //                (chat.postMessage of the reviewed body in <file> as the signed-in user, then prints the
 //                 sent message's permalink. The body is Slack mrkdwn — a link is `<url|anchor text>`. This
 //                 is the one write that reaches another person: human-in-the-loop only, run solely on
@@ -41,7 +41,9 @@
 //                 gated by the writing-review receipt on <file>. See "Sending" in the skill's SKILL.md.
 //                 With --file=<path>, uploads that local file instead of posting plain text: files.
 //                 getUploadURLExternal, POST the bytes to the returned URL, then files.completeUploadExternal
-//                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.)
+//                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.
+//                 A comma-separated --file=a.png,b.png uploads each file's bytes, then one
+//                 completeUploadExternal call posts the body and every file as a single message.)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
@@ -474,31 +476,37 @@ async function mark() {
   console.log(`Marked ${args.channel} read up to ${args.ts}. Reversible — re-reading the conversation re-surfaces it.`);
 }
 
-// Upload one local file to Slack via the current (v2) upload flow: reserve an upload URL sized to the
-// file, POST the raw bytes there (multipart/form-data — the one call in this script that isn't a plain
-// call() since it hits the reserved upload_url, not api/<method>, and carries a file body instead of
-// form params), then hand the returned file_id to files.completeUploadExternal, which is what actually
-// posts it into the conversation (with channel_id/initial_comment/thread_ts, same as chat.postMessage's
-// params). Returns the completeUploadExternal response's first file entry.
-async function uploadFile(filePath, channel, initialComment, threadTs) {
+// Upload one or more local files to Slack via the current (v2) upload flow: for each file, reserve an
+// upload URL sized to it and POST the raw bytes there (multipart/form-data — the one call in this script
+// that isn't a plain call() since it hits the reserved upload_url, not api/<method>, and carries a file
+// body instead of form params). Then ONE files.completeUploadExternal call with every file id is what
+// actually posts them into the conversation (with channel_id/initial_comment/thread_ts, same as
+// chat.postMessage's params), so the body and all the files land as a single message. Every file is
+// read before anything is uploaded, so a bad path fails before Slack sees a byte. Returns the
+// completeUploadExternal response's first file entry.
+async function uploadFiles(filePaths, channel, initialComment, threadTs) {
   const fs = require('fs');
   const path = require('path');
-  let data;
-  try {
-    data = fs.readFileSync(filePath);
-  } catch {
-    throw new Error(`--send: cannot read --file ${filePath}`);
-  }
-  const filename = path.basename(filePath);
+  const loaded = filePaths.map(filePath => {
+    try {
+      return { data: fs.readFileSync(filePath), filename: path.basename(filePath) };
+    } catch {
+      throw new Error(`--send: cannot read --file ${filePath}`);
+    }
+  });
 
-  const reserved = await call('files.getUploadURLExternal', { filename, length: String(data.length) });
-  const form = new FormData();
-  form.append('file', new Blob([data]), filename);
-  const uploadRes = await fetch(reserved.upload_url, { method: 'POST', body: form });
-  if (!uploadRes.ok) throw new Error(`file upload POST failed: HTTP ${uploadRes.status}`);
+  const uploaded = [];
+  for (const { data, filename } of loaded) {
+    const reserved = await call('files.getUploadURLExternal', { filename, length: String(data.length) });
+    const form = new FormData();
+    form.append('file', new Blob([data]), filename);
+    const uploadRes = await fetch(reserved.upload_url, { method: 'POST', body: form });
+    if (!uploadRes.ok) throw new Error(`file upload POST failed for ${filename}: HTTP ${uploadRes.status}`);
+    uploaded.push({ id: reserved.file_id, title: filename });
+  }
 
   const completeParams = {
-    files: JSON.stringify([{ id: reserved.file_id, title: filename }]),
+    files: JSON.stringify(uploaded),
     channel_id: channel,
   };
   if (initialComment) completeParams.initial_comment = initialComment;
@@ -542,7 +550,9 @@ async function send() {
   if (!text) throw new Error(`--send: --body-file ${bodyFile} is empty`);
 
   if (args.file && args.file !== true) {
-    const fileEntry = await uploadFile(args.file, args.channel, text, args['thread-ts']);
+    const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
+    if (!filePaths.length) throw new Error('--send: --file names no files');
+    const fileEntry = await uploadFiles(filePaths, args.channel, text, args['thread-ts']);
     const ts = postedTs(fileEntry, args.channel);
     if (ts) {
       try {
@@ -552,7 +562,8 @@ async function send() {
       }
     }
     const permalink = fileEntry.permalink || '';
-    console.log(`Sent file to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
+    const noun = filePaths.length === 1 ? 'file' : `${filePaths.length} files`;
+    console.log(`Sent ${noun} to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
     return;
   }
 
