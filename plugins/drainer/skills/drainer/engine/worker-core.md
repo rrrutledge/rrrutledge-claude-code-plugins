@@ -179,9 +179,9 @@ Route each piece of work by where it belongs - which is also where Russell can r
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
   Launch it as a background session, the way the poller launched you, and let this session stay on its own item:
-  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model id>`
+  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
-  Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
+  Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
@@ -193,7 +193,7 @@ It's a nudge weighing on your own judgment - continuing can genuinely be the rig
 
 **A complex worker steps its model down when the open-ended phase ends.**
 A worker triaged complex runs on Opus to investigate and plan; the mechanical implementation that follows does not need Opus.
-The planning-into-execution boundary is exactly the hand-off case above: when you reach it (the hook may prompt you there, or you may notice it first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id.
+The planning-into-execution boundary is exactly the hand-off case above: when you reach it (the hook may prompt you there, or you may notice it first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `sonnet` as the model.
 Doing so drops the plan-phase context from the implementation session, runs the mechanical half on the cheaper model, and keeps correctness because the plan doc carries the distilled context that makes the build correct.
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.

@@ -624,7 +624,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
             f'--title "{_spawn_title(scored)}" '
             '--cwd "<plugins repo clone>" '
-            f'--brief "{brief_path}" --model claude-sonnet-5'
+            f'--brief "{brief_path}" --model sonnet'
         )
 
     return {**event, "dispatch": dispatch, "label_error": label_error}
