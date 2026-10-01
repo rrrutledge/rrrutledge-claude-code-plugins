@@ -26,6 +26,7 @@ Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
 """
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -1319,12 +1320,51 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
               "left unrecorded to retry next cycle.")
 
 
+def _orphan_session_name(session_id, home=None):
+    """The orphaned session's own name, read from its transcript (`~/.claude*/projects/*/<id>.jsonl`, which
+    covers every account's config dir): the last `custom-title` record's name, else the last `ai-title`'s,
+    else None. A leading `Resume: ` (left by an earlier version of the resume path) is dropped. Lines are
+    screened by substring before parsing because a transcript can run to many MB."""
+    home = home or os.path.expanduser("~")
+    hits = glob.glob(os.path.join(home, ".claude*", "projects", "*", f"{session_id}.jsonl"))
+    custom = ai = None
+    for path in hits:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"custom-title"' in line:
+                        key = "customTitle"
+                    elif '"ai-title"' in line:
+                        key = "aiTitle"
+                    else:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    name = rec.get(key)
+                    if isinstance(name, str) and name.strip():
+                        if key == "customTitle" and rec.get("type") == "custom-title":
+                            custom = name
+                        elif key == "aiTitle" and rec.get("type") == "ai-title":
+                            ai = name
+        except OSError:
+            continue
+    name = (custom or ai or "").strip()
+    if name.startswith("Resume:"):
+        name = name[len("Resume:"):].strip()
+    return name or None
+
+
 def spawn_resume(session_id, cwd, repo):
     """Dispatch an orphan-sessions item: reopen an existing session in the background via `claude --bg
     --resume <session_id>`, in ITS OWN original `cwd` (not the drainer's repo) — unlike every other
-    source, there's no prompt seed to write; the session already has its full history."""
+    source, there's no prompt seed to write; the session already has its full history. The resumed session
+    keeps the orphan's own name (so a later re-crash still reads it back); a session with no recorded name
+    is titled `Resume: <cwd basename>`."""
     base = os.path.basename((cwd or "").rstrip("/\\")) or session_id[:8]
-    title = _session_title(f"Resume: {base}", f"resume:{session_id[:8]}")
+    own = _orphan_session_name(session_id)
+    title = _session_title(own or f"Resume: {base}", f"resume:{session_id[:8]}")
     if not spawn_bg(None, None, cwd or repo, title, resume=session_id):
         print(f"spawn_resume {session_id}: headless `claude --bg --resume` launch returned no id.")
 
