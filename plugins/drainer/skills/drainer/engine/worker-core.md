@@ -179,7 +179,7 @@ Route each piece of work by where it belongs - which is also where Russell can r
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
   Launch it as a background session, the way the poller launched you, and let this session stay on its own item:
-  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model id>`
+  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
