@@ -97,6 +97,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **Confirming a root cause or closing out an inquiry with an outside party, on any topic: don't assert the specific finding until it's verified on Russell's own side.**
   This holds even when the other party's own account or theory already points to one clean answer.
   Acknowledge what they found and say it'll be looked into.
+  **The same goes for reporting a fix: until the affected person has seen it work, a test on Russell's side leaves "fixed" open, so hedge it ("I think it's fixed") and ask them to retry.**
 
 ---
 
