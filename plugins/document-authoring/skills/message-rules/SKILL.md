@@ -54,6 +54,9 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 **One concrete question or request per message.**
 Land on the single thing you actually need and ask for that.
 Don't present a menu of options or stack a numbered list of questions.
+- **Scope the message's content to what the current ask needs, not material already drafted or approved elsewhere.**
+  A paragraph written and conceptually signed off in an earlier, unsent message doesn't earn a place in this one just because it already exists - if the live ask doesn't call for it, leave it out.
+- **When a second question is just downstream of the first - you'll already know the answer once the first resolves - drop it and ask only the one that's blocking.**
 
 - **Name the concrete need, not the options.**
   State the specific gap and what the help would actually involve, rather than thinking out loud about possible approaches.
@@ -317,8 +320,8 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Let the thread carry the context.**
   Ask the shortest open question that covers what you need; don't re-name the deliverable or prior exchange already visible.
   **When the original message is auto-quoted in full below the reply (a threaded email) and it holds more than one ask, point at it generically** ("what did you think about the below?") **rather than restating each ask as its own question.** The quote already carries every specific, so this overrides the "nudge on all of them" pattern below once the quote itself makes every ask visible.
-- **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener.**
-  Lead with the plain fact that prompted the check, not a credit or appreciative line, since this isn't a reply to something the other person just said or did.
+- **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener and the named greeting alike, even over email.**
+  Lead straight with the plain fact that prompted the check - no "Hi [Name]," no credit or appreciative line - since this isn't a reply to something the other person just said or did.
   This differs from a task already confirmed stuck in the recipient's own process, where a bare acknowledgment carries the first touch and a direct status question only comes due on the second.
 - **Don't re-paste something you already shared upthread** — a link, file, date, or detail the recipient already has.
   Just ask plainly, as a direct imperative when the nudge is the whole message.
@@ -394,6 +397,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **When someone reports a problem whose cause isn't actually confirmed, ask them what led to it rather than asserting a diagnosis.** A screenshot or description is evidence, not proof — a genuine "How did you get to that page?" finds the real cause and reads as curious, not defensive, where a stated conclusion ("that page is misconfigured") can turn out wrong and commits you to it in writing.
 - **1:1s often open with no greeting at all, or the person's name.**
   **Replying to someone who just messaged in an active Slack or Teams 1:1 thread, open with a terse contextual acknowledgment of what they said** ("Ah, got it.", "Ah - thanks for letting me know.") instead of a named warm greeting plus explicit thanks ("Hey Olive, thanks for the nudge on this") - the existing thread already carries the context, so a fuller opener reads as over-warm for a reply that's continuing a conversation already in progress. **This is a chat-surface pattern, not an email one** - an email reply keeps the `1on1` persona's own "Hi [Name] -" greeting even inside an active back-and-forth, since a threaded email reply doesn't carry the same immediate, in-progress feel a Slack/Teams thread does. **Exception - a personal-friend contact keeps a bare name-first greeting over email too, chat drops it outright** (see **Register** above) - unless that email exchange is itself moving at chat speed (several same-day replies with that friend), in which case the greeting drops outright there too, per **Register**'s fast-thread carve-out. **This terse opener is only for replying soon after they messaged - once their message has sat for weeks, "the same thread" is no longer "just messaged," even though no one else has posted since**: use the delayed-reply apology opener below instead ("Sorry I missed this thread:"), which the elapsed time calls for regardless of how the thread otherwise looks. **The same elapsed-time break governs nudging into someone else's long silence, not just replying into your own delay** - a repeat nudge sent well after they've gone quiet earns a name greeting ("Hi Monika:") even on a chat-style surface like a client portal's chat tab, rather than the terse live-thread opener.
+  **Exception - a status-check nudge into a stalled, ambiguous-ownership item drops the greeting too, even over email** (see Follow-up nudges).
   In Slack or Teams, that terse acknowledgment can be a single emoji shorthand standing in for the words entirely (":cool: - did you hear anything from Micaela?") rather than a typed phrase - the emoji carries the same "got it" beat a word would, so it doesn't have to be spelled out too.
 - **Address people by name mid-message** — "Thanks for looking at this, Alex" (see **Links** for representing the name itself).
 - **Address someone who outranks you by their title, not their first name** — pointedly in church contexts ("Thanks, Bishop"). Keep thanks to a superior to a single word; piling on extra gratitude reads as patronizing.
