@@ -15,6 +15,7 @@ Nothing here names a person, an organization, or quotes a real message.
 How completely and unambiguously the writing rules settle the wording, tone, and structure choices this text makes.
 The writing reviewer rates it from the text alone, after reviewing the text against those rules.
 Rate what the rules settle, not whether the text complies: a choice the rules clearly settle counts as settled even when the text got it wrong, because that is a finding.
+When more than one rule bears on the same choice, it counts as settled only if it's also clear which one governs: two equally-applicable rules with nothing saying which takes priority leave the choice unsettled.
 
 - 5 - every choice the text makes is settled by a clear rule.
 - 4 - a minor choice falls where the rules are silent, and any reasonable reading lands in the same place.
