@@ -89,5 +89,34 @@ check("directory words kept", call["name"], "Resume: proj evil")
 check("directory of only semicolons", resume_call("C:/;;;")["name"], "Resume:")
 check("no cwd falls back to the repo", resume_call(None)["cwd"], "C:/repo")
 
+print("\nspawn_resume keeps the orphan's own name, read from its transcript")
+
+
+def name_from(lines, sid="abcd1234-0000"):
+    with tempfile.TemporaryDirectory() as home:
+        proj = os.path.join(home, ".claude-bg", "projects", "C--proj")
+        os.makedirs(proj)
+        if lines is not None:
+            with open(os.path.join(proj, f"{sid}.jsonl"), "w", encoding="utf-8") as f:
+                f.write("\n".join(json.dumps(r) if isinstance(r, dict) else r for r in lines))
+        return poller._orphan_session_name(sid, home=home)
+
+
+ct = lambda n: {"type": "custom-title", "customTitle": n, "sessionId": "s"}
+at = lambda n: {"type": "ai-title", "aiTitle": n}
+check("last custom-title wins", name_from([ct("first"), {"type": "user"}, ct("second"), at("ai")]), "second")
+check("ai-title is the fallback", name_from([{"type": "user"}, at("Fix the build")]), "Fix the build")
+check("no transcript gives None", name_from(None), None)
+check("no title records gives None", name_from([{"type": "user"}, "not json"]), None)
+check("Resume: prefix stripped", name_from([ct("Resume: personal-ai-pod")]), "personal-ai-pod")
+check("only a Resume: prefix gives None", name_from([ct("Resume:")]), None)
+
+real_name = poller._orphan_session_name
+poller._orphan_session_name = lambda sid, home=None: "my session"
+try:
+    check("resumed under the original name", resume_call("C:/Users/me/proj")["name"], "my session")
+finally:
+    poller._orphan_session_name = real_name
+
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)
