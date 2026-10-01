@@ -57,7 +57,7 @@ Innocent: the Check lines' own surface-form evidence, which is a reviewer's dete
 **No helper tail.**
 Stop the moment the point is made.
 Treat any sentence after the main point as guilty until proven necessary: cut reassurance, offers, hedges, restated context, and invitations to react.
-**Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to"; a final paragraph restating what was already said; unrequested reassurance.
+**Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to"; a final paragraph restating what was already said; unrequested reassurance, including a precautionary instruction tacked on after the point already closes ("hold onto it until then", "just hang on for now").
 Innocent: a genuinely open decision, asked as one direct question and stopped there.
 
 **One concept, one canonical place; everywhere else points to it.**
