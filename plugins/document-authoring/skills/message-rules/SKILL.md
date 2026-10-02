@@ -124,6 +124,8 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a financial model, in developer hours, of the value of sharing and reuse") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" unless their reaction is the ask (see **Handing off a finished deliverable**); otherwise the link and the one line are the whole message.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
+  **Point at attachments generically.**
+  Write "see screenshot", "other screenshot", or "more screenshots" in place of numbered pointers, because the mail client sets images apart from the body and "(screenshot 3)" refers to nothing the reader can match.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
 
 ### Reports, reviews & status updates
@@ -353,6 +355,10 @@ The specifics that most often separate a message that reads as Russell's from on
 
 ### Core voice
 
+- **Emphasize with single asterisks.**
+  In a message body, wrap the emphasized word in one pair (`*thank you*`), which reads as warm where bold or bold-italic reads as shouting.
+- **Say what you haven't done yet.**
+  When the ask is about a document or charge that looks wrong, state the one fact that tells the recipient whether money has moved (what you have and haven't invoiced against it); this is a fact the ask rests on, not internal mechanics.
 - **Sign off as "Russ" in email — no sign-off in any chat-style composer.**
   Email sign-offs are always `Russ`, never "Russell". Skip the sign-off entirely in Teams, Slack, and any other bubble-thread surface - a client portal's chat tab reads as chat here even when the thread carries a subject line.
   Put it on its own line — no valediction before it, and no closing word fused onto that same line (no "Thanks, Russ", "Best, Russ", or similar; the line is `Russ` alone, full stop). A genuine thanks belongs in the body as its own sentence (see **Light, genuine appreciation**), not welded onto the sign-off — and skip it entirely when there's nothing yet to thank the recipient for, e.g. a first-touch ask where they haven't done anything for you yet.
