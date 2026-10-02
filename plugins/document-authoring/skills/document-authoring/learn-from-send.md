@@ -72,7 +72,7 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    A generic existing bullet that technically covers the edit still leaves the specific pattern unnamed enough to go unapplied, so fold in or sharpen a bullet even when a broader rule already brushes against the same case.
    Add a new top-level bullet **only** once that whole-file search has genuinely come up empty.
    **State the rule crisply as a single imperative bullet: a bold lead phrase plus one sentence, no before/after quote.**
-   Add a short concrete pointer only when the rule is genuinely unclear without one; default to none.
+   Add a short concrete pointer only when the rule is genuinely unclear without one, built from invented names and details; default to none.
    The goal is fewer, broader, crisper rules.
 4. **Estimate facet - sharpen a description, never add a case.**
    When step 2 found an aspect whose description failed to recognize the situation, sharpen that aspect's definition or anchors in `uncertainty-aspects.md`, per that file's header.
@@ -81,11 +81,13 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
 5. **Open one PR carrying both facets.**
    Branch from `main` in the clone, never editing the installed snapshot under `~/.claude/plugins/`, which is thrown away on the next plugin update.
    Before opening the PR, run the `writing-review` loop on every changed prose file - a fresh reviewer that reads the *whole* file, confirming the new text isn't already covered elsewhere and obeys the rules in step 3 - then mint each file's receipt, since `gh pr create` is gated on it.
-   **Quote the original draft and the sent text verbatim in the PR body.**
-   Russell runs many sessions in parallel and can lose track of which item a PR came from within minutes, and the brief and draft files that made the diagnosis live outside the repo - the PR is the only surviving record of what actually happened.
+   **This repo is public, so no real correspondence reaches it - not the files, the branch name, the commit messages, or the PR body.**
+   The draft, the sent text, the diff, the recipient, and any name, amount, or org detail from the exchange stay in the local brief and this terminal session.
+   The PR body describes each change as the pattern it captures, then states the brief's file name (its draft id) so Russell can trace the PR back to the send locally.
    Also state, for each voice rule, the overlap search's outcome ("folded into `<bullet>` in `<section>`" or "searched every section and persona - no overlap, new bullet"), and name which facets produced changes and why any expected facet produced none.
    A session whose diagnosis finds nothing to learn still reports that finding, and a session that finds the process itself at fault fixes the process instead.
 6. **Report in one line** what was learned and changed, with the PR link.
+   The terminal session is where Russell sees the draft and sent text side by side, so quote them here when the change needs them to make sense.
 
 ## Convergence
 

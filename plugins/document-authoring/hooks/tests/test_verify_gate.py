@@ -52,7 +52,7 @@ def write_body(tmp_path, name, text):
 
 def test_stage_without_receipt_is_blocked(tmp_path):
     receipts = str(tmp_path / "receipts")
-    write_body(tmp_path, "reply.md", "Hi Addie - I can help with that.")
+    write_body(tmp_path, "reply.md", "Hi Dana - I can help with that.")
     r = run([], stdin=bash_payload("node gmail.js --reply --message-id=X --body-file=reply.md"),
             cwd=str(tmp_path), receipt_dir=receipts)
     assert decision(r.stdout) == "DENY"
@@ -61,7 +61,7 @@ def test_stage_without_receipt_is_blocked(tmp_path):
 
 def test_mint_then_stage_is_allowed_through(tmp_path):
     receipts = str(tmp_path / "receipts")
-    body = write_body(tmp_path, "reply.md", "Hi Addie - I can help with that.")
+    body = write_body(tmp_path, "reply.md", "Hi Dana - I can help with that.")
     m = run(["mint", str(body)], receipt_dir=receipts)
     assert m.returncode == 0
     r = run([], stdin=bash_payload("node gmail.js --reply --message-id=X --body-file=reply.md"),
@@ -113,7 +113,7 @@ def test_send_self_is_gated(tmp_path):
 
 def test_slack_send_without_receipt_is_blocked(tmp_path):
     receipts = str(tmp_path / "receipts")
-    write_body(tmp_path, "dm.md", "Raimund - can you take a look at the pattern?")
+    write_body(tmp_path, "dm.md", "Theo - can you take a look at the pattern?")
     r = run([], stdin=bash_payload("node slack.js --send --channel=DAQPLK5PD --body-file=dm.md"),
             cwd=str(tmp_path), receipt_dir=receipts)
     assert decision(r.stdout) == "DENY"
@@ -122,7 +122,7 @@ def test_slack_send_without_receipt_is_blocked(tmp_path):
 
 def test_slack_send_mint_then_allowed_through(tmp_path):
     receipts = str(tmp_path / "receipts")
-    body = write_body(tmp_path, "dm.md", "Raimund - can you take a look at the pattern?")
+    body = write_body(tmp_path, "dm.md", "Theo - can you take a look at the pattern?")
     run(["mint", str(body)], receipt_dir=receipts)
     r = run([], stdin=bash_payload("node slack.js --send --channel=DAQPLK5PD --body-file=dm.md"),
             cwd=str(tmp_path), receipt_dir=receipts)

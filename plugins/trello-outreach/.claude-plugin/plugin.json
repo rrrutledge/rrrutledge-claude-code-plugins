@@ -1,6 +1,6 @@
 {
   "name": "trello-outreach",
-  "version": "2.0.5",
+  "version": "2.0.6",
   "description": "The outreach-funnel process layer over Trello: when and why to open, advance, dedupe, and route cards across the outreach boards, plus the board registry and initiative model. The Trello API mechanics (card/comment/label/checklist CRUD, the client library) are the separate `trello` plugin.",
   "author": {
     "name": "Russell Rutledge"

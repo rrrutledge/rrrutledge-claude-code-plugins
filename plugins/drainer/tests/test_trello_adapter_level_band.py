@@ -61,7 +61,7 @@ def test_referral_band_reads_label():
           Provider._referral_band(card(labels=[{"name": "Referral"}])) == 0)
     check("no referral label -> 0", Provider._referral_band(card(labels=[{"name": "🎯 P1"}])) == 0)
     check("contact name containing 'referral' does NOT trip it -> 0",
-          Provider._referral_band(card(labels=[{"name": "Referral from Zack"}])) == 0)
+          Provider._referral_band(card(labels=[{"name": "Referral from Dana"}])) == 0)
     check("no labels -> 0", Provider._referral_band(card()) == 0)
 
 
@@ -69,8 +69,8 @@ def test_referral_label_held_out_of_contacts():
     print("test: the Referral label is not misread as a contact name")
     prov = adapter_mod.Provider.__new__(adapter_mod.Provider)
     prov.channels, prov.features, prov.status_labels = set(), set(), {"blocked", "waiting"}
-    _, _, contacts, _ = prov._classify_labels(card(labels=[{"name": "🤝 Referral"}, {"name": "Zack Koppert"}]))
-    check("Referral held out; a real person stays a contact", contacts == ["Zack Koppert"], contacts)
+    _, _, contacts, _ = prov._classify_labels(card(labels=[{"name": "🤝 Referral"}, {"name": "Dana Whitfield"}]))
+    check("Referral held out; a real person stays a contact", contacts == ["Dana Whitfield"], contacts)
 
 
 # The real queue-order policy under test — the shared band_rank tuple, plus the trailing date key the
@@ -81,22 +81,22 @@ SORT_KEY = lambda it: (*provider_base.band_rank(it), it["_sort_dt"])
 def test_sort_key_orders_level_within_band():
     print("test: (priority_band, level_band, referral_band, date) sort puts Director/VP ahead of IC within the same band")
     Provider = adapter_mod.Provider
-    # Mirrors the real-world case: SentinelOne (P1 Director/VP, older date) must outrank
-    # eBay (P1 IC, newer date) even though eBay's date alone would sort first.
+    # Contoso (P1 Director/VP, older date) must outrank
+    # Northwind (P1 IC, newer date) even though Northwind's date alone would sort first.
     p1_band = adapter_mod._PRIORITY_BAND[1]
-    sentinelone = {
-        "name": "SentinelOne", "_priority_band": p1_band, "_referral_band": 0,
+    contoso = {
+        "name": "Contoso", "_priority_band": p1_band, "_referral_band": 0,
         "_level_band": Provider._level_band(card("Priority: P1 · Eng leadership · Director/VP-level")),
         "_sort_dt": "2026-07-22",
     }
-    ebay = {
-        "name": "eBay", "_priority_band": p1_band, "_referral_band": 0,
+    northwind = {
+        "name": "Northwind", "_priority_band": p1_band, "_referral_band": 0,
         "_level_band": Provider._level_band(card("Priority: P1 · Platform · IC-level")),
         "_sort_dt": "2026-08-15",
     }
-    ranked = sorted([ebay, sentinelone], key=SORT_KEY, reverse=True)
+    ranked = sorted([northwind, contoso], key=SORT_KEY, reverse=True)
     check("Director/VP-level card dispatches before a same-band, newer-dated IC-level card",
-          ranked[0]["name"] == "SentinelOne", [it["name"] for it in ranked])
+          ranked[0]["name"] == "Contoso", [it["name"] for it in ranked])
 
 
 def test_band_rank_is_priority_then_level_then_referral():
@@ -153,7 +153,7 @@ def test_startable_gate_start_is_the_only_date():
     future = now + timedelta(days=6)
 
     # A future Start defers, full stop - nothing else can pull the card into play early. This is what
-    # keeps a card deferred to "next Monday" from surfacing before then (the Huntress failure was a
+    # keeps a card deferred to "next Monday" from surfacing before then (the Fabrikam failure was a
     # stale Due dragging a future-Start card in early, which no longer exists as a concept).
     check("future Start -> deferred (not startable)", Provider._startable(future, now) is False)
     check("past Start -> startable", Provider._startable(past, now) is True)

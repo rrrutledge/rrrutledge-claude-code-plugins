@@ -9,7 +9,7 @@
 //                (Junk Email folder, read+unread, newest-first; same shape as --list-inbox)
 // List drafts:   node mail.js --list-drafts [--top=30]
 //                (drafts folder, most-recently-edited first; same block format with id)
-// Search:        node mail.js --search="Griffiths" [--top=10] [--folder=sent]
+// Search:        node mail.js --search="Okafor" [--top=10] [--folder=sent]
 //                (flags any result still sitting in Drafts with a "[DRAFT — NOT SENT]" tag,
 //                 so a drafted-but-unsent reply is never mistaken for a sent message. Without
 //                 --folder, searches the whole mailbox; --folder=sent scopes to Sent Items -

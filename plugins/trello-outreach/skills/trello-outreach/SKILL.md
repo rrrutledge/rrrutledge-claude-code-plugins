@@ -34,7 +34,7 @@ instructions: |-
       'Executive Director Outreach': 'hpvdRw3G',
       # ...the rest of the registry...
   }
-  entity = 'JetBrains'
+  entity = 'Contoso'
   hits = [(b, c) for b, bid in BOARDS.items()
           for c in get_board_cards(bid, s)
           if entity.lower() in (c.get('name', '') + ' ' + c.get('desc', '')).lower()]
