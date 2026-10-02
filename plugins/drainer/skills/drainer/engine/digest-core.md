@@ -93,11 +93,11 @@ Your job here is only to split on that disposition and print each item's reason 
 Present one distinct **"Auto-handled"** section (separate from fyi), split two ways:
 - **State changed (worth a glance)** - every item whose disposition is anything other than `nudged` (`abandoned`, `advanced`, or an item carrying no disposition at all).
   One line each, printed with its `dispositionReason` verbatim, most-notable first - an `abandoned` item leads, since a dead req is a real signal: e.g. "Abandoned - req closed (Acme / Staff Eng)", "Advanced to Interested - they replied yes", "Approved workspace invite for *jane@acme.com* (requested by Bob)".
-- **Checked, no change** - the `nudged` items.
-  Collapse these to a single count with a short by-source breakdown ("Checked, no change: 9 outreach cards bumped"), not a line each.
-  Surface an individual nudge only when its reason flags something odd.
+- **Checked, no change** - the `nudged` items, in their own group below "State changed".
+  List every one on its own line: the item name (linked), the new date it was bumped to, and its `dispositionReason` verbatim (tightly paraphrased only when very long).
+  Every automatic bump shows why it was bumped, so Russell can judge the call without opening the card: e.g. "[Shell renewal](url) - bumped to Oct 8 2026 - hold condition unmet, Summit 2026 outreach hasn't reached Shell yet".
 
-An item carrying no `disposition` field (an older queue entry, or a worker that didn't stamp one) lands in the **state changed** group and prints whatever detail it has - an unlabeled item is never folded into the count, where it would vanish unseen.
+An item carrying no `disposition` field (an older queue entry, or a worker that didn't stamp one) lands in the **state changed** group and prints whatever detail it has - an unlabeled item is never filed under "Checked, no change", where it would read as routine.
 
 On Russell's review these need **no provider CLEAR** (the worker already cleared the source) - just `queue-clear` them like the rest (step 4).
 If something here looks wrong - a rule fired when it shouldn't have, or an abandon that reads as a mistake - flag it so the AUTO-HANDLE rule can be tightened or the card reopened; that's the one case where an auto-handled item needs follow-up.

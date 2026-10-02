@@ -152,7 +152,7 @@ Only **after** the user confirms they sent/handled the message, advance the card
 **The CLEAR op is the item's digest disposition.**
 When a worker auto-handles a card and self-closes it (worker-core §6a), the CLEAR it performed is what the digest reports: **stop → `abandoned`**, **advance → `advanced`**, **nudge → `nudged`**.
 Stamp that value as `disposition` on `items/<id>.json`, with the dated comment's one-liner as `dispositionReason`, before the digest `queue-add` (worker-core §6a).
-The digest then lists an abandoned or advanced card under its Auto-handled "state changed" group with that reason, and folds a nudge into the "checked, no change" count, so a closed-req abandon reads as a real signal, not a deferral.
+The digest then lists an abandoned or advanced card under its Auto-handled "state changed" group with that reason, and lists each nudge on its own line, with its reason and new Start date, under "checked, no change", so a closed-req abandon reads as a real signal, not a deferral.
 
 A card reaches the digest as `nudged` only on the **silent-bump** path: the situational check found recent activity since the Start date was last set - the contact replied, or Russell already answered on the thread - so a follow-up right now would be premature, and the card's Start is bumped out with nothing sent.
 A follow-up Russell actually sends is a needs-you item he already saw, never an auto-handled nudge.
