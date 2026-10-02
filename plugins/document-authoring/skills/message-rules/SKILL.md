@@ -124,6 +124,8 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a cost model, in team hours, of what the shared tooling saves") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" unless their reaction is the ask (see **Handing off a finished deliverable**); otherwise the link and the one line are the whole message.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
+  **Point at attachments generically.**
+  Write "see screenshot", "other screenshot", or "more screenshots" in place of numbered pointers, because the mail client sets images apart from the body and "(screenshot 3)" refers to nothing the reader can match.
 - Avoid corporate filler ("leverage", "streamline", "as per"), long compound sentences, and effusive sign-offs.
 
 ### Reports, reviews & status updates
