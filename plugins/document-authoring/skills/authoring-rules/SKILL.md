@@ -96,7 +96,8 @@ Put an intro sentence above a list, with a blank line before the list.
 A list of named people or entities (a per-contact status roster) bolds just the name; let the sentence that follows carry the status.
 
 **Plain words over corporate and AI filler.**
-**Check:** "leverage" as a verb, "streamline", "as per", "kindly", "delve", "furthermore", "moreover", "I wanted to reach out", "I hope this message finds you well", "please don't hesitate to", "I'm excited to share", "honestly" as a hedge opener.
+Raise or mention something with "mention", "tell you about", or "let me know".
+**Check:** "flag", "flagging", "flagged" used to mean raising or mentioning something, "leverage" as a verb, "streamline", "as per", "kindly", "delve", "furthermore", "moreover", "I wanted to reach out", "I hope this message finds you well", "please don't hesitate to", "I'm excited to share", "honestly" as a hedge opener.
 
 **Semantic line breaks in markdown source.**
 Within a paragraph or a multi-sentence bullet, start each sentence on a new line.
