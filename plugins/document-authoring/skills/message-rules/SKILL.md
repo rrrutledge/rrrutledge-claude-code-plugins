@@ -355,10 +355,6 @@ The specifics that most often separate a message that reads as Russell's from on
 
 ### Core voice
 
-- **Emphasize with single asterisks.**
-  In a message body, wrap the emphasized word in one pair (`*thank you*`), which reads as warm where bold or bold-italic reads as shouting.
-- **Say what you haven't done yet.**
-  When the ask is about a document or charge that looks wrong, state the one fact that tells the recipient whether money has moved (what you have and haven't invoiced against it); this is a fact the ask rests on, not internal mechanics.
 - **Sign off as "Russ" in email — no sign-off in any chat-style composer.**
   Email sign-offs are always `Russ`, never "Russell". Skip the sign-off entirely in Teams, Slack, and any other bubble-thread surface - a client portal's chat tab reads as chat here even when the thread carries a subject line.
   Put it on its own line — no valediction before it, and no closing word fused onto that same line (no "Thanks, Russ", "Best, Russ", or similar; the line is `Russ` alone, full stop). A genuine thanks belongs in the body as its own sentence (see **Light, genuine appreciation**), not welded onto the sign-off — and skip it entirely when there's nothing yet to thank the recipient for, e.g. a first-touch ask where they haven't done anything for you yet.
