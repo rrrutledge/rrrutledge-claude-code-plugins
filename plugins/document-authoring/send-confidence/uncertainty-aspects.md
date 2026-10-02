@@ -27,6 +27,8 @@ Rate what the rules settle, not whether the text complies: a choice the rules cl
 How much of *what to say* the ask left for the writer to decide or find.
 Latitude grows with every piece of content the writer had to supply itself: an answer or decision the draft makes on Russell's behalf, a fact or option it looked up rather than being handed in the ask or the inputs, anything it chose to add that the ask didn't call for, and which of several supplied facts it chose to keep or drop when the ask didn't say which ones mattered.
 
+A long message covering several separate topics or asks also carries latitude: its structure, order, and which details to keep are all the writer's choices, and a complicated subject rates 4 or higher even when every fact is supplied.
+
 - 1 - Russell handed over the actual wording.
 - 2 - the intent and every piece of content are explicit; only the wording is open.
 - 3 - the intent is clear, but some content had to be worked out, looked up, or chosen.
@@ -45,6 +47,7 @@ The judge lists every claim and marks each supported or unsupported; the factor 
 
 How much rides on this message landing exactly right, which makes Russell read it closely whatever the rules say.
 Stakes come from the situation, not the length: a two-line message can carry the highest stakes.
+A message touching money with a sponsor, funder, or other partner stacks three signals at once (money, an outside party, a relationship that matters) and rates 5 however well the text reads.
 
 The signals of stakes:
 - money, or a financial or accounting explanation, above all to an outside party;
