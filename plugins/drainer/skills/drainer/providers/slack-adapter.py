@@ -92,10 +92,10 @@ class Provider(ProviderBase):
         """Mark an fyi/junk Slack conversation read at triage time (the provider CLEAR: advance the read
         cursor via `slack.js --mark`). Reversible and non-destructive - a newer message re-surfaces it.
         Returns True on success, False on failure - see ProviderBase.clear for why the poller can call
-        this safely. Only ever runs on fyi/junk items (the poller's queue path), never needs-you (those
-        clear via their worker after every ask in the span is handled), so advancing the read cursor over
-        the unread span here buries no unhandled ask - the same reason email's fyi/junk archive at triage
-        is safe. Slack marks read in-process over the Web API, so unlike Teams it needs no batch worker."""
+        this safely. Runs on fyi/junk items at triage and on needs-you items right after their worker
+        spawns. The captured item body carries the whole unread span and the open worker session is the
+        tracker, so advancing the read cursor here buries no ask: it is the same trade email makes when it
+        archives at spawn. Slack marks read in-process over the Web API, so unlike Teams it needs no batch worker."""
         cmd = [self.slackjs, "--mark", f"--channel={item['channel']}", f"--ts={item['ts']}"]
         thread_ts = item.get("threadTs")
         if thread_ts:

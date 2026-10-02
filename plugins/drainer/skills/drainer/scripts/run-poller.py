@@ -19,8 +19,8 @@ Fail-safe: a message-id is recorded as seen only AFTER its dispatch succeeds; lo
 re-processes items (safe), never drops one. The poller clears only fyi/junk, and only at the end of
 dispatch (after the item is captured, queued for the digest, and recorded), so an inbox provider archives
 mail Russell has already dispositioned right at triage; a failed clear leaves the item queued, never lost.
-needs-you email (a provider with archive_at_spawn) is archived by the poller right after its worker spawns;
-other needs-you items are cleared by their worker on completion. See engine/poller-core.md for the contract.
+needs-you item whose provider implements clear (email, Slack) is cleared by the poller right after its worker
+spawns; other needs-you items (Teams, Trello) are cleared by their worker on completion. See engine/poller-core.md for the contract.
 
 Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # one live cycle
@@ -2054,7 +2054,7 @@ def main():
         # a launch that returned a session id: a failed archive leaves the mail in the inbox (reconcile
         # re-queues it if the worker dies), and a failed launch never archives mail nobody is working. A
         # worker that dies after the archive is resumed by orphan-sessions, same as for a §2d early clear.
-        if spawned and provider.archive_at_spawn and provider.clear(it):
+        if spawned and provider.clear(it):
             spawn_archived += 1
         if corr:
             active_correspondents.add(corr)

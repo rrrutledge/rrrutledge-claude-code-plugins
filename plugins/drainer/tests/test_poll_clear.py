@@ -50,14 +50,10 @@ print("\nProviderBase.clear default is None (a provider with no safe poll-time a
 check("base clear -> None", provider_base.ProviderBase().clear({"id": "x"}), None)
 
 
-print("\narchive_at_spawn: only the one-message reversible-archive email providers opt in")
-check("base default is False", provider_base.ProviderBase.archive_at_spawn, False)
-check("gmail opts in", gmail.Provider.archive_at_spawn, True)
-check("outlook-graph opts in", outlook.Provider.archive_at_spawn, True)
-check("slack overrides clear but stays out", slack.Provider.archive_at_spawn, False)
+print("\nclear-at-spawn needs no flag: a provider with no clear returns None, so the poller skips it")
 for fname in ("teams-adapter.py", "trello-adapter.py"):
     mod = _load(fname.replace("-", "_")[:-3], os.path.join(PROVIDERS, fname))
-    check(f"{fname} stays out", mod.Provider.archive_at_spawn, False)
+    check(f"{fname} inherits the base clear", mod.Provider.clear is provider_base.ProviderBase.clear, True)
 
 
 print("\noutlook-graph adapter clear() archives via mail.js --delete and reports success/failure")

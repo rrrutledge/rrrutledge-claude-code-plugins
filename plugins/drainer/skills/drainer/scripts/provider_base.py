@@ -609,13 +609,6 @@ class ProviderBase:
     # never even fetched for the count).
     count_in_backlog = True
 
-    # Whether the poller archives a needs-you item via `clear` the moment its worker spawns, so the open
-    # session is the tracker and the inbox holds only untriaged mail. True only for a provider whose
-    # CLEAR is a reversible archive AND whose item is exactly one message (the inbox email providers).
-    # Slack/Teams (a shared read cursor would drop unread asks) and Trello (its Start date is the queue)
-    # keep this False even when they override `clear` for fyi/junk.
-    archive_at_spawn = False
-
     def configure(self, cfg):
         """Optional hook: receive the parsed drainer config (incl. `repo`) after construction. Adapters
         that drain user-configured targets (e.g. trello boards) override this; inbox adapters ignore it."""
@@ -702,8 +695,9 @@ class ProviderBase:
         raise NotImplementedError
 
     def clear(self, item):
-        """Archive this item's source object at triage time, for an fyi/junk item being queued for the
-        daily digest. An inbox provider whose CLEAR is a reversible archive overrides this so a message
+        """Archive this item's source object at triage time: for an fyi/junk item being queued for the
+        daily digest, and for a needs-you item the moment its worker spawns (the open session is then the
+        tracker, so the source holds only untriaged items). An inbox provider whose CLEAR is a reversible archive overrides this so a message
         Russell has effectively already dispositioned leaves his inbox the moment it's triaged, rather
         than sitting there as noise until he approves clearing it at the digest. Return True on a
         successful archive, False on a failure. The default returns None: the provider has no safe
