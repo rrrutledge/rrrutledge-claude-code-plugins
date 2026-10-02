@@ -121,3 +121,4 @@ Teams junk is just cleared (marked read) - the user manages their own Teams mute
 ## DRAFT-MODE
 `message-draft` skill, `teams` mode (browser composer - owns the voice + composer mechanics + the footgun rules).
 Only the read mechanics use the REST script; drafting stays in the browser.
+Before writing the body, follow the pre-draft step in `email-base.md`.
