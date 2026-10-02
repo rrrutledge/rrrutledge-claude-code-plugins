@@ -82,4 +82,5 @@ There's **no Zoom thread to reply into** - a Zoom action item is a commitment wh
 Most action items are **work** (prepare, check, build) or an **outbound message**.
 When the action is a reply/outbound message, draft it through the **`message-draft`** skill in the channel the action implies (e.g. `outlook` / `gmail` for email, `slack` / `teams` when the action names that surface).
 Draft-only; never send.
+Before writing the body, follow the pre-draft step in `email-base.md`.
 A reply is warranted only after any underlying **work** is done - draft about the outcome, not a promise.

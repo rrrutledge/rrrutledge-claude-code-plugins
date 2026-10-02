@@ -211,3 +211,4 @@ N/A - outreach cards are curated, not inbound noise.
 
 ## DRAFT-MODE
 `message-draft` skill, in the mode matching the card's channel (`outlook` / `teams` / `slack`).
+Before writing the body, follow the pre-draft step in `email-base.md`.

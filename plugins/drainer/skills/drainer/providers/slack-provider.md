@@ -128,6 +128,7 @@ There is no inbound-mail-style unsubscribe for Slack.
 Stage the reply through the **`message-draft`** skill's **`slack`** mode (browser, draft-only) - that skill owns the composer mechanics and the voice gate.
 It jumps to the conversation, confirms the header matches, and **types the reply into the Slack composer without sending** (Slack auto-saves it as a per-conversation draft).
 **Never press Enter / never send.**
+Before writing the body, follow the pre-draft step in `email-base.md`.
 Show the draft text in your reply and tell the user to edit + send it themselves in Slack.
 (message-draft loads `document-authoring` for the voice and runs its stage-time voice gate; learning from the send still applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.)
 
