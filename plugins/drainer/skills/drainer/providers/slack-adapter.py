@@ -110,7 +110,7 @@ class Provider(ProviderBase):
         # One item per conversation, keyed to its latest ts — deliberately NOT one item per distinct ask.
         # A conversation that accreted several asks between reads (the graphics/logo/case-study/channel/line
         # burst) stays a single item whose body carries the whole unread span (see `capture`), and the
-        # worker handles every ask before clearing (worker-core §2/§6). Splitting one conversation into
+        # worker handles every ask before it closes (worker-core §2/§6). Splitting one conversation into
         # per-ask items would mean guessing task boundaries semantically at poll time (lossy and brittle)
         # and would fragment the read cursor, which advances per conversation, not per message. The
         # capture-the-whole-span approach is the robust path.
@@ -137,9 +137,9 @@ class Provider(ProviderBase):
             except ValueError:
                 pass
         # Write the FULL unread span into the body, not only the newest message. One DM/channel/thread can
-        # accrete several distinct asks between reads, and CLEAR (advancing the read cursor to `ts`) drops
-        # every still-unread message under it — so the worker must see them all here to handle each one
-        # before clearing. enumerate already computed this span (same last_read snapshot, no extra API
+        # accrete several distinct asks between reads, and the poller's clear at spawn (advancing the read
+        # cursor to `ts`) drops every still-unread message under it — so the worker must see them all here
+        # to handle each one. enumerate already computed this span (same last_read snapshot, no extra API
         # call); fall back to the single shown message when it's absent (older slack.js or a lone message).
         unread = item.get("unread") or []
         if len(unread) > 1:
@@ -151,8 +151,9 @@ class Provider(ProviderBase):
                     "distinct asks first - several rapid-fire messages on one topic are one ask; different "
                     "topics are separate asks (the timestamps below are a tiebreaker: minutes apart leans "
                     "one ask, hours or days apart leans separate). Then handle each group as its own unit "
-                    "(do the work, draft any reply). The item is not done, and you must not CLEAR it, until "
-                    "every group is completed, staged as a draft, or tracked on a follow-up card.\n\n"
+                    "(do the work, draft any reply). The conversation is already marked read, so this session "
+                    "is its only tracker: the item is not done until every group is completed, staged as a "
+                    "draft, or tracked on a follow-up card.\n\n"
                     + "\n\n".join(parts))
         else:
             body = text + _attachment_lines(shown_files)
