@@ -397,6 +397,7 @@ def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     with open(_brief(draft_id), encoding="utf-8") as fh:
         brief = fh.read()
     assert brief.startswith("# Learn from send: slack to a@b.com")
+    assert "This repo is public." in brief
     assert f"Follow `{sc.PROCEDURE_PATH}`" in brief
     assert "The draft line." in brief and "The sent line." in brief
     assert "Over-confident" in brief and "Voice edit" in brief

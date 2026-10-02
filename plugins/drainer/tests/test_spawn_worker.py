@@ -55,11 +55,11 @@ def spawn(triage, config_repo, bg_id="abc123ef", agents=()):
         os.makedirs(local_dir)
         json_file = os.path.join(tmp, "item.json")
         with open(json_file, "w", encoding="utf-8") as f:
-            json.dump({"id": "x1", "source": "trello", "subject": "Kirk Strobeck", "triage": triage}, f)
+            json.dump({"id": "x1", "source": "trello", "subject": "Jordan Avery", "triage": triage}, f)
         error = None
         try:
             poller.spawn_worker("item-x1", json_file, tmp, runtime, "sonnet", local_dir, config_repo,
-                                {"_source": "trello", "subject": "Kirk Strobeck"})
+                                {"_source": "trello", "subject": "Jordan Avery"})
         except Exception as e:  # the regression under test: any exception here aborts the whole poll cycle
             error = e
         prompt_file = os.path.join(runtime, "seeds", "item-x1.prompt.txt")
