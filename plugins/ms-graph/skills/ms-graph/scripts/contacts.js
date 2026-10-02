@@ -2,10 +2,10 @@
 //
 // List:    node contacts.js --list [--top=50]
 //          (all contacts, alphabetical by display name)
-// Search:  node contacts.js --search="Foster"
+// Search:  node contacts.js --search="Jamie"
 // Show:    node contacts.js --show=<id>
 //          (full contact, including addresses)
-// Create:  node contacts.js --create --name="Stuart Foster" [--email=a@x] [--phone=555-1234] \
+// Create:  node contacts.js --create --name="Jamie Lin" [--email=a@x] [--phone=555-1234] \
 //            [--company=Acme] [--job-title=Director]
 //          (creates a new personal contact; requires the Contacts.ReadWrite scope)
 // Update:  node contacts.js --update=<id> [--street="123 Main St"] [--city=...] [--state=...] \

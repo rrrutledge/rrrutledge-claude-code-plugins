@@ -106,10 +106,10 @@ human never writes and only the notification carries:
 The through-line: match the phrase the sending machine puts there by template, as a distinctive
 fragment, scoped to where it is reliable.
 
-**The body-escalation case, worked.** A subject like "Your Account with TPWD Has been Updated" tempts
+**The body-escalation case, worked.** A subject like "Your Account with Contoso Has been Updated" tempts
 you to lift the surrounding words as the phrase — but `Has been Updated` alone buries good mail ("Your
 job application status has been updated"), and the only way to keep the fragment safe is to keep the
-company name in it, which fails the recurrence side: the next company's version won't say "TPWD." No
+company name in it, which fails the recurrence side: the next company's version won't say "Contoso." No
 subject fragment threads that needle, so escalate per step 2 above: drop to the **body**, where
 account-update notifications carry a template sentence the subject doesn't show - `account has been
 updated with your requested changes`. That full template sentence recurs across companies (the safety
@@ -218,7 +218,7 @@ the same three cold before the rule is shown to Russell, the way `document-autho
 - **No single-sender token.** The phrase contains no company, bank, brand, product, or person name (see
   "The craft"). This is the highest-value check, the one the writer's blindness most often lets slip.
   **Check:** a capitalized proper noun mid-phrase, an all-caps or mixed-case brand or acronym (KBB, IMDb,
-  TPWD), or a known company / product / person name. Innocent: a generic type-word that happens to be
+  ACME), or a known company / product / person name. Innocent: a generic type-word that happens to be
   capitalized - a subject-prefix convention (`Accepted:`, `Automatic reply:`) or a template word
   (`Passcode`, `Receipt`) that names the *kind* of notification rather than the sender, and
   sentence-initial capitalization.

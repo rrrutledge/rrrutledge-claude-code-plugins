@@ -6,7 +6,7 @@
 // List:      node drive.js list "<folder-path-under-onedrive-root>"
 //            prints each child's name and webUrl (path defaults to the drive root).
 //
-// Paths are relative to the OneDrive root, e.g. "Claude/job-applications/LasVegasSands".
+// Paths are relative to the OneDrive root, e.g. "Claude/job-applications/Contoso".
 
 const { getGraphClient } = require('./graph-client');
 
