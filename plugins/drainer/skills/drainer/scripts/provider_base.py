@@ -609,6 +609,13 @@ class ProviderBase:
     # never even fetched for the count).
     count_in_backlog = True
 
+    # Whether the poller archives a needs-you item via `clear` the moment its worker spawns, so the open
+    # session is the tracker and the inbox holds only untriaged mail. True only for a provider whose
+    # CLEAR is a reversible archive AND whose item is exactly one message (the inbox email providers).
+    # Slack/Teams (a shared read cursor would drop unread asks) and Trello (its Start date is the queue)
+    # keep this False even when they override `clear` for fyi/junk.
+    archive_at_spawn = False
+
     def configure(self, cfg):
         """Optional hook: receive the parsed drainer config (incl. `repo`) after construction. Adapters
         that drain user-configured targets (e.g. trello boards) override this; inbox adapters ignore it."""

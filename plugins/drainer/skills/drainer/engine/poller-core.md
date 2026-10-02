@@ -72,7 +72,12 @@ No AI re-implements the loop.
      A provider with a reversible-archive CLEAR (the inbox email providers, and Slack via its read-cursor advance) overrides `clear`; a provider whose CLEAR isn't a plain archive (e.g. outlook-graph-junk, which never queues an item: the poller un-junks misfiled mail into the inbox and the inbox provider takes it from there) or that has no inbox returns `None` and stays in the inbox for the digest to clear.
      The triage-time archive changes only when an fyi/junk item leaves the inbox, not whether Russell reviews it in the digest.
 6. **Clear timing.**
-   Workers clear needs-you on completion. fyi/junk are archived at triage above (for providers whose CLEAR is a reversible archive); the daily digest still runs its review-gated CLEAR on each one, a harmless no-op for a message already archived here and the real clear for any provider that couldn't archive at triage.
+   A needs-you email (a provider with `archive_at_spawn`: gmail, outlook-graph - one message per item, CLEAR is a reversible archive) is archived by the poller itself right after its worker spawns, so the open session is the tracker and the inbox holds only untriaged mail.
+   The archive runs **last**, after the spawn returned a session id and the item is recorded seen: a failed archive leaves the mail in the inbox (reconcile re-queues it if the worker dies), and a failed launch never archives mail nobody is working.
+   A worker that dies after the archive is resumed by the orphan-sessions provider, the same backstop that covers a worker's early clear (worker-core §2d).
+   The worker's own CLEAR for such an item is a harmless no-op.
+   Slack and Teams (a shared read cursor would drop unread asks) and Trello (its Start date is the queue) are unchanged: their workers clear on completion.
+   fyi/junk are archived at triage above (for providers whose CLEAR is a reversible archive); the daily digest still runs its review-gated CLEAR on each one, a harmless no-op for a message already archived here and the real clear for any provider that couldn't archive at triage.
 
 ## Reconcile: completion is read off the source, not off a receipt
 

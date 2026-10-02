@@ -147,6 +147,7 @@ What differs source to source is **how soon the bar is met**, because that depen
 - **Scope is the item itself, known instantly** - one email is one ask (every email provider keys one item per message, per `providers/email-base.md`), and a source like `zoom` fans out one item per action step.
   There, this section and §2c have already told you everything: the item is real, current, and needs-you.
   The bar is met right here - CLEAR now, before starting step 3's work.
+  For an email item (gmail, outlook-graph) the poller already archived the message when it spawned you, so your CLEAR is a harmless no-op: run it anyway if you reach it, but never wait on it or treat it as the moment the mail left the inbox.
 - **Scope isn't visible until you've read the item** - a chat source (Slack, Teams) can bundle several distinct asks behind one shared read-cursor; you don't know how many until the grouping read above (§2, "group-then-handle") is done.
   The bar isn't met at capture - clearing then, before any of those asks are accounted for, would silently drop all of them the moment the cursor advances.
   It's met once every ask the grouping surfaced is handled, staged, or tracked - which for a multi-ask span can land as late as step 6, but is never later than that.
