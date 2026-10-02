@@ -29,6 +29,8 @@ Latitude grows with every piece of content the writer had to supply itself: an a
 
 A long message covering several separate topics or asks also carries latitude: its structure, order, and which details to keep are all the writer's choices, and a complicated subject rates 4 or higher even when every fact is supplied.
 
+A quantity the ask names only by category - an amount, a rate, "compensation" - still leaves the writer to pick which underlying referent it targets (whose pay, which party's rate, which unit). That choice is content the writer supplied, not wording, even when the general topic was explicit in the ask.
+
 - 1 - Russell handed over the actual wording.
 - 2 - the intent and every piece of content are explicit; only the wording is open.
 - 3 - the intent is clear, but some content had to be worked out, looked up, or chosen.
