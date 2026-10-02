@@ -695,8 +695,9 @@ class ProviderBase:
         raise NotImplementedError
 
     def clear(self, item):
-        """Archive this item's source object at triage time, for an fyi/junk item being queued for the
-        daily digest. An inbox provider whose CLEAR is a reversible archive overrides this so a message
+        """Archive this item's source object at triage time: for an fyi/junk item being queued for the
+        daily digest, and for a needs-you item the moment its worker spawns (the open session is then the
+        tracker, so the source holds only untriaged items). An inbox provider whose CLEAR is a reversible archive overrides this so a message
         Russell has effectively already dispositioned leaves his inbox the moment it's triaged, rather
         than sitting there as noise until he approves clearing it at the digest. Return True on a
         successful archive, False on a failure. The default returns None: the provider has no safe

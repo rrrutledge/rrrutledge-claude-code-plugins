@@ -19,7 +19,8 @@ Fail-safe: a message-id is recorded as seen only AFTER its dispatch succeeds; lo
 re-processes items (safe), never drops one. The poller clears only fyi/junk, and only at the end of
 dispatch (after the item is captured, queued for the digest, and recorded), so an inbox provider archives
 mail Russell has already dispositioned right at triage; a failed clear leaves the item queued, never lost.
-needs-you items are cleared by their worker on completion. See engine/poller-core.md for the contract.
+needs-you item whose provider implements clear (email, Slack) is cleared by the poller right after its worker
+spawns; other needs-you items (Teams, Trello) are cleared by their worker on completion. See engine/poller-core.md for the contract.
 
 Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # one live cycle
@@ -1315,9 +1316,10 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file))
     if bg_id:
         write_receipt(prompt_file, bg_id)
-    else:
-        print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
-              "left unrecorded to retry next cycle.")
+        return True
+    print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
+          "left unrecorded to retry next cycle.")
+    return False
 
 
 def _orphan_session_name(session_id, home=None):
@@ -1996,7 +1998,7 @@ def main():
                   + ", ".join(it.get("convId") or it["_id"] for it in teams_others))
         return
 
-    dispatched, auto_dispatched, held, held_corr, queued, poll_cleared = 0, 0, 0, 0, 0, 0
+    dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
     # throttled by the worker buffer, recorded with its own triage so capture stamps the json and the seed
     # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
@@ -2040,12 +2042,20 @@ def main():
             stamp["selfAuthenticated"] = True  # so the worker's own re-screen acts on Russell's own directive
         if stamp:
             _stamp_item_fields(json_file, **stamp)
+        spawned = False
         if it["_source"] == "orphan-sessions":
             spawn_resume(it["session_id"], it["cwd"], repo)
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+            spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
+        # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
+        # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
+        # a launch that returned a session id: a failed archive leaves the mail in the inbox (reconcile
+        # re-queues it if the worker dies), and a failed launch never archives mail nobody is working. A
+        # worker that dies after the archive is resumed by orphan-sessions, same as for a §2d early clear.
+        if spawned and provider.clear(it):
+            spawn_archived += 1
         if corr:
             active_correspondents.add(corr)
         slots -= 1
@@ -2094,7 +2104,7 @@ def main():
 
     buf = ("scan failed" if wcounts is None
            else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
-    print(f"dispatched {dispatched} worker(s), {auto_dispatched} auto-handle worker(s), "
+    print(f"dispatched {dispatched} worker(s) ({spawn_archived} source mail archived at spawn), {auto_dispatched} auto-handle worker(s), "
           f"queued {queued} for digest ({poll_cleared} archived at triage), "
           f"{correctly_junked_count} correctly-filed junk (no action), "
           f"{rescued_count} un-junked to the Inbox, "
