@@ -215,8 +215,14 @@ def first_word(segment):
     if not segment:
         return ASSIGNMENT_ONLY
     segment = re.sub(r'^\d*[<>]+\S*\s*', '', segment).strip()
-    words = segment.split()
-    cmd = words[0] if words else ''
+    # A quoted executable path may contain spaces ("/c/Program Files/.../x.exe"),
+    # so take the whole quoted string rather than the text up to the first space.
+    quoted = re.match(r'^"([^"]*)"|^\'([^\']*)\'', segment)
+    if quoted:
+        cmd = quoted.group(1) if quoted.group(1) is not None else quoted.group(2)
+    else:
+        words = segment.split()
+        cmd = words[0] if words else ''
     cmd = cmd.strip('"\'')
     if '/' in cmd or '\\' in cmd:
         cmd = os.path.basename(cmd.replace('\\', '/'))

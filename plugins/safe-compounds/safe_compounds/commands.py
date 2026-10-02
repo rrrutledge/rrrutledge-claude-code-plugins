@@ -445,6 +445,63 @@ def is_start_safe(seg):
     return ext.lower() in START_SAFE_EXTENSIONS
 
 
+# ----------------------------------------------------- headless browser --------
+# A headless Chromium-family browser rendering a local page to an image or PDF
+# is a render-and-save: the only effect is the output file, so it is approved
+# when that file lands somewhere already trusted for writes, the page is a
+# local file (or localhost), and every flag is on the harmless-rendering list.
+# Anything that opens a debugging port, loads extensions, or picks its own
+# profile directory is outside the list and prompts.
+HEADLESS_BROWSER_NAMES = {'msedge', 'chrome', 'chromium', 'chromium-browser', 'google-chrome'}
+HEADLESS_BROWSER_FLAGS = {
+    '--disable-gpu', '--hide-scrollbars', '--force-dark-mode',
+    '--run-all-compositor-stages-before-draw', '--no-pdf-header-footer',
+    '--blink-settings', '--window-size', '--virtual-time-budget',
+    '--default-background-color', '--force-device-scale-factor',
+}
+HEADLESS_OUTPUT_FLAGS = {'--screenshot', '--print-to-pdf'}
+_LOCAL_URL = re.compile(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?(/|$)', re.IGNORECASE)
+
+
+def _file_url_to_path(url):
+    path = re.sub(r'^file:///?', '', url, flags=re.IGNORECASE)
+    return path if re.match(r'^[A-Za-z]:', path) else '/' + path
+
+
+def is_headless_browser_safe(seg):
+    tokens = shell_tokenize(seg)
+    if not tokens:
+        return False
+    exe = os.path.basename(tokens[0].replace('\\', '/')).lower()
+    if exe.endswith('.exe'):
+        exe = exe[:-4]
+    if exe not in HEADLESS_BROWSER_NAMES:
+        return False
+    headless = False
+    urls = []
+    for tok in tokens[1:]:
+        if not tok.startswith('--'):
+            urls.append(tok)
+            continue
+        name, _, value = tok.partition('=')
+        if name == '--headless':
+            headless = True
+        elif name in HEADLESS_OUTPUT_FLAGS:
+            if value and not _dest_allowed(value):
+                return False
+        elif name not in HEADLESS_BROWSER_FLAGS:
+            return False
+    if not headless or not urls:
+        return False
+    for url in urls:
+        if url.lower().startswith('file:'):
+            if not _source_allowed(_file_url_to_path(url)):
+                return False
+        elif not _LOCAL_URL.match(url):
+            return False
+    return True
+
+
 # ---------------------------------------------------------- powershell --------
 POWERSHELL_ENV_PATTERN = re.compile(
     r'^powershell\s+-NoProfile\s+-Command\s+"?\[System\.Environment\]::GetEnvironmentVariable\('
