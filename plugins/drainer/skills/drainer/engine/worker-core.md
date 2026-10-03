@@ -354,14 +354,46 @@ So a staged draft he hasn't confirmed sending, or a piece of work that's genuine
 A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
 
 **The close condition is symmetric: your part done, and his part done - not just yours.**
-Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
+Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item, §7's lesson if the session earned one) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
 **"Advancing the source item" means naming step 6's CLEAR command for this item's source and pointing to its actual output from this session - not that sending the reply already did it, and not that step 6 said so.**
 Two independent Slack workers sent their reply, heard Russell confirm it, and closed without ever calling `slack.js --mark`; the conversation sat flagged unread indefinitely even though the work was fully done.
 If you can't point to the CLEAR command's output, run it now, before invoking `session-mgr:close`.
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
 But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
 
-## 7. Improve the source (don't just hoard facts)
-If the user had to tell you something you could have known, don't just note it - figure out *where it should have come from* and improve THAT source so it's findable next time: a system, a skill, or the internal knowledge source.
+## 7. Improve the source, or leave a lesson
+This is the one place a session turns friction into improvement.
+Check it before you close (§6), while you still hold the full context of what went wrong.
+
+**A trigger starts it - any of these happened in this session:**
+- a **correction**: Russell told you that you were wrong, or told you something you could have known (the last paragraph covers a missing fact);
+- a **dead end**: an approach you committed to and then abandoned;
+- **repeated failed attempts**: the same operation failing three or more times before it worked or you gave it up.
+
+**No trigger, no lesson.**
+Most workers write nothing here, and that is correct; don't invent a lesson to fill the step.
+The bar is: a skill, doc, or script could have prevented this, which leaves out struggles that came from the outside world.
+
+**When a trigger fires and the bar is met, record one lesson - at most one per session.**
+Record only: write the ledger line and stop.
+Never open a skill PR for a lesson; the weekly State of the Pod review groups lessons across workers and recommends the PRs.
+Run, with the item's captured json named so the line carries its id and source:
+
+```
+python <skill>/scripts/record-lesson.py \
+  --trigger correction|dead-end|retries \
+  --what "<what went wrong, one or two sentences>" \
+  --target "<repo-relative path of the skill, doc, or script that should change>" \
+  --change "<the proposed change, concrete enough to write the PR from>" \
+  --item "<path to the item's items/<id>.json>" \
+  [--pr <url of a fix you already opened>]
+```
+
+Then name the lesson in one line in your final message, so Russell sees it while it's fresh.
+Describe the pattern, never the item's content: lessons feed a public plugins repo.
+
+**When the correction was a fact Russell had to supply, fixing its source stays the move.**
+Work out *where it should have come from* and improve THAT source (a system, a skill, or the internal knowledge source) when the fix is obvious, so it's findable next time.
 Only when the shared brain is genuinely the right long-term home does it go in the local `context.md`; voice feedback goes to the document-authoring skill.
+Record the lesson with `--pr <url>` pointing at that fix, so the weekly review sees it was already handled.
 The goal is fewer questions over time because sources got better, not a growing notes pile.
