@@ -29,7 +29,13 @@ CASES = [
     {"id": "git_push_plain", "tool": "Bash", "command": "git push", "expect": "ALLOW"},
     {"id": "git_reset_soft", "tool": "Bash", "command": "git reset --soft HEAD~1", "expect": "ALLOW"},
     {"id": "git_checkout_branch", "tool": "Bash", "command": "git checkout -b feature", "expect": "ALLOW"},
-    {"id": "git_push_force", "tool": "Bash", "command": "git push --force", "expect": "PROMPT"},
+    {"id": "git_push_force", "tool": "Bash", "command": "git push --force", "expect": "BLOCK"},
+    {"id": "git_push_force_with_lease", "tool": "Bash", "command": "git push --force-with-lease origin feat", "expect": "BLOCK"},
+    {"id": "git_push_force_short_cluster", "tool": "Bash", "command": "git push -uf origin feat", "expect": "BLOCK"},
+    {"id": "git_push_plus_refspec", "tool": "Bash", "command": "git push origin +feat", "expect": "BLOCK"},
+    {"id": "git_push_delete_no_local_branch", "tool": "Bash", "command": "git push origin --delete gone-branch", "expect": "PROMPT"},
+    {"id": "git_push_delete_main", "tool": "Bash", "command": "git push origin --delete main", "expect": "PROMPT"},
+    {"id": "git_push_colon_delete_main", "tool": "Bash", "command": "git push origin :main", "expect": "PROMPT"},
     {"id": "git_reset_hard_origin", "tool": "Bash", "command": "git reset --hard origin/main", "expect": "ALLOW"},
     {"id": "git_reset_hard_head", "tool": "Bash", "command": "git reset --hard HEAD", "expect": "PROMPT"},
     {"id": "git_reset_hard_pathspec", "tool": "Bash", "command": "git reset --hard -- origin/main", "expect": "PROMPT"},
@@ -243,7 +249,7 @@ CASES = [
      "command": ('python "C:/Users/russe/.claude/plugins/cache/rrrutledge-claude-code-plugins/session-mgr/1.8.0/'
                  'skills/resume-sessions/scripts/spawn-session.py" --title "X" --cwd "C:/Users/russe/Dev/repo" '
                  '--brief "C:/Users/russe/Dev/repo/.tmp/handoff-x.md" --model claude-sonnet-5; git push --force'),
-     "expect": "PROMPT"},
+     "expect": "BLOCK"},
     {"id": "spawn_session_then_curl_post", "tool": "Bash",
      "command": ('python "C:/Users/russe/.claude/plugins/cache/rrrutledge-claude-code-plugins/session-mgr/1.8.0/'
                  'skills/resume-sessions/scripts/spawn-session.py" --title "X" --cwd "C:/Users/russe/Dev/repo" '
