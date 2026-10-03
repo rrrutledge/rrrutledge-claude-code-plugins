@@ -18,6 +18,7 @@ proceed to approval. Individual detectors are exposed for unit testing.
 import os
 import re
 
+from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args
 from .log import log_debug
 from .paths import PLUGIN_CACHE_PATTERN, read_script_file
 from .scripts import extract_script_filename
@@ -496,6 +497,21 @@ def detect_raw_trello_write(command):
     return False
 
 
+def detect_git_force_push(command):
+    """True if a segment is a force `git push`. Rewriting pushed history is
+    never needed here: a new commit on top fixes the same problem and keeps
+    the branch's published history intact, so it is blocked outright with a
+    pointer to that path rather than left to a manual prompt."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens or tokens[0] != 'git':
+            continue
+        sub, args = _extract_subcommand(tokens, GIT_GLOBAL_OPTS_WITH_ARG, 'simple')
+        if sub == 'push' and is_force_push_args(args):
+            return True
+    return False
+
+
 def enforce_bash(command):
     """Return a block-reason string for `command`, or None to allow it to
     proceed to approval. Mirrors the legacy block ordering exactly."""
@@ -530,6 +546,15 @@ def enforce_bash(command):
                 'trello_request for anything without one -- e.g. add_comment for a card comment) and '
                 'run it with `python .tmp/script.py`. See the `trello` skill\'s SKILL.md for the '
                 'import pattern.')
+
+    if detect_git_force_push(command):
+        return ('BLOCKED: Force push (--force, -f, --force-with-lease, or a +ref refspec) rewrites '
+                'history that is already pushed. Skip the rewrite: fix the problem with a new commit '
+                'on top of the branch (a revert or a corrective commit) and push it normally with '
+                '`git push`. History cleanliness does not matter here, and a plain push needs no '
+                'approval. To clean up an abandoned branch, delete it with '
+                '`git push origin --delete <branch>` (allowed when the branch also exists locally and '
+                'is not main) or close its PR with `gh pr close <n> --delete-branch`.')
 
     if detect_plugin_cache_reference(command):
         return ('BLOCKED: Command references a path under the installed plugin cache '

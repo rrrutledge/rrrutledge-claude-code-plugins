@@ -135,6 +135,33 @@ class TestGit:
     def test_push_force_blocked(self):
         assert is_git_command_safe("git push --force") is False
 
+    def test_push_force_variants_not_safe(self):
+        for cmd in ("git push -f", "git push --force-with-lease", "git push -uf origin x",
+                    "git push origin +x", "git push --force-if-includes"):
+            assert is_git_command_safe(cmd) is False, cmd
+
+    def test_push_delete_needs_local_unprotected_branch(self, monkeypatch):
+        from safe_compounds import commands
+        monkeypatch.setattr(commands, "_git_default_branch", lambda: "trunky")
+        local = {"feat"}
+        monkeypatch.setattr(commands, "_git_ref_succeeds",
+                            lambda *a: a[-1].removeprefix("refs/heads/") in local | {"main", "trunky"})
+        assert is_git_command_safe("git push origin --delete feat") is True
+        assert is_git_command_safe("git push origin -d feat") is True
+        assert is_git_command_safe("git push origin :feat") is True
+        assert is_git_command_safe("git push origin --delete gone") is False
+        assert is_git_command_safe("git push origin --delete main") is False
+        assert is_git_command_safe("git push origin :main") is False
+        assert is_git_command_safe("git push origin --delete trunky") is False
+        assert is_git_command_safe("git push origin --delete feat gone") is False
+        assert is_git_command_safe("git push --delete origin") is False
+
+    def test_force_push_blocked_with_new_commit_message(self):
+        reason = enforce_bash("git -C /repo push --force origin x")
+        assert reason and "new commit" in reason
+        assert enforce_bash("git push origin feature") is None
+        assert enforce_bash("git push origin --delete feature") is None
+
     def test_reset_hard_blocked(self):
         assert is_git_command_safe("git reset --hard") is False
 

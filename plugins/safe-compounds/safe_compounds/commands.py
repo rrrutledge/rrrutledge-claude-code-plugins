@@ -4,6 +4,7 @@ start/cmd launchers, and CWD-scoped file operations (cp/mv/touch/ln/chmod).
 """
 import os
 import re
+import subprocess
 
 from . import ai, config
 from .learned import add_learned_command, add_learned_subcommand, learned_subcommands
@@ -176,10 +177,75 @@ GIT_TRUSTED_SUBCOMMANDS = {
 }
 
 GIT_CONDITIONAL_SUBCOMMANDS = {
-    'push':   {'--force', '-f', '--delete'},
     'tag':    {'-d', '--delete'},
     'switch': {'--discard-changes', '-f', '--force'},
 }
+
+_FORCE_PUSH_LONG_FLAGS = ('--force', '--force-with-lease', '--force-if-includes')
+
+
+def is_force_push_args(args):
+    """True if `git push` args rewrite remote history: a force flag (long, or
+    a short cluster like -uf), or a `+ref` refspec, which forces that ref."""
+    for a in args:
+        if a.startswith('--'):
+            if a.split('=', 1)[0] in _FORCE_PUSH_LONG_FLAGS:
+                return True
+        elif a.startswith('-'):
+            if 'f' in a[1:]:
+                return True
+        elif a.startswith('+'):
+            return True
+    return False
+
+
+GIT_PROTECTED_BRANCHES = {'main', 'master', 'develop', 'development', 'trunk', 'HEAD'}
+
+
+def _git_ref_succeeds(*git_args):
+    try:
+        result = subprocess.run(['git', *git_args], capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def _git_default_branch():
+    try:
+        result = subprocess.run(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip().removeprefix('origin/') or None
+
+
+def _git_push_deletable(branch):
+    """A remote branch is safe to delete when it is not a protected/default
+    branch and a local branch of the same name remains, so the delete is undone
+    by pushing that local branch again."""
+    branch = branch.removeprefix('refs/heads/')
+    if not branch or branch in GIT_PROTECTED_BRANCHES or branch == _git_default_branch():
+        return False
+    return _git_ref_succeeds('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}')
+
+
+def _git_push_ok(args):
+    """Plain pushes pass; force pushes never do (enforce.py blocks them with a
+    "make a new commit" message). A branch delete (--delete, -d, or a `:ref`
+    refspec) passes only for non-protected branches still present locally."""
+    if is_force_push_args(args):
+        return False
+    positional = [a for a in args if not a.startswith('-')]
+    delete_flag = '--delete' in args or '-d' in args
+    targets = positional[1:] if delete_flag else []
+    targets += [a[1:] for a in positional if a.startswith(':')]
+    if not delete_flag and not targets:
+        return True
+    if not targets:
+        return False
+    return all(_git_push_deletable(t) for t in targets)
 
 
 def _git_checkout_ok(args):
@@ -218,7 +284,8 @@ GIT_SPEC = {
     'command': 'git',
     'trusted': GIT_TRUSTED_SUBCOMMANDS,
     'conditional': GIT_CONDITIONAL_SUBCOMMANDS,
-    'specials': {'checkout': _git_checkout_ok, 'clean': _git_clean_ok, 'reset': _git_reset_ok},
+    'specials': {'checkout': _git_checkout_ok, 'clean': _git_clean_ok, 'reset': _git_reset_ok,
+                 'push': _git_push_ok},
     'global_opts': GIT_GLOBAL_OPTS_WITH_ARG,
     'allow_empty': True,
     'category': None,  # no AI fallback: unknown git subcommands prompt
