@@ -226,15 +226,18 @@ def _check_segment(seg, command, language, inline_flag):
         return verdict is True
     filename = extract_script_filename(seg, command)
     if filename:
+        content = read_script_file(filename)
+        if content is None and has_unquoted_windows_drive_path(seg):
+            # The mangled name resolves against the cwd, so it must be rejected
+            # before the trusted-dir check: a cwd under .claude/ would otherwise
+            # make the nonexistent path look trusted.
+            _record_mangled_path_block(filename, seg)
+            return False
         if is_in_trusted_script_dir(filename):
             log_debug(f"Script in trusted directory, allowing: {filename}")
             return True
-        content = read_script_file(filename)
         if content is None:
-            if has_unquoted_windows_drive_path(seg):
-                _record_mangled_path_block(filename, seg)
-            else:
-                _record_missing_script(filename, language)
+            _record_missing_script(filename, language)
             return False
         verdict, reason = ask_ai_about_script(content, language, command_line=seg)
         if verdict is False:
@@ -261,15 +264,15 @@ def check_direct_script_segment(seg, language):
         return True
     filename = tokens[0]
     log_debug(f"Direct {language} script execution: {filename}")
+    content = read_script_file(filename)
+    if content is None and has_unquoted_windows_drive_path(seg):
+        _record_mangled_path_block(filename, seg)
+        return False
     if is_in_trusted_script_dir(filename):
         log_debug(f"Direct script in trusted directory, allowing: {filename}")
         return True
-    content = read_script_file(filename)
     if content is None:
-        if has_unquoted_windows_drive_path(seg):
-            _record_mangled_path_block(filename, seg)
-        else:
-            _record_missing_script(filename, language)
+        _record_missing_script(filename, language)
         return False
     verdict, reason = ask_ai_about_script(content, language, command_line=seg)
     if verdict is False:
