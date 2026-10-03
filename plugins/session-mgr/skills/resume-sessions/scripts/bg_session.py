@@ -232,6 +232,33 @@ def _settings_env():
     return json.dumps({"env": env})
 
 
+def canonical_cwd(path):
+    """`path` spelled the way the disk spells it. Windows paths are case-insensitive, so a launch from
+    `...\\dev\\...` reaches the same folder as `...\\Dev\\...`, but a session started in the
+    differently-cased spelling runs without safe-compounds' PreToolUse hook firing: no hook log
+    entry, every command falls through to a manual permission prompt. Resolving each component to its
+    on-disk case by listing each parent folder (GetLongPathNameW only corrects the upper levels, and
+    realpath would also rewrite junctions) and upper-casing the drive letter keeps every launched
+    session on the spelling the hook works under. A path that doesn't exist, or any non-Windows path,
+    comes back unchanged."""
+    if os.name != "nt" or not os.path.isdir(path):
+        return path
+    drive, tail = os.path.splitdrive(os.path.abspath(path))
+    if drive[1:2] == ":":
+        drive = drive.upper()
+    current = drive + os.sep
+    for part in tail.split(os.sep):
+        if not part:
+            continue
+        try:
+            names = os.listdir(current)
+        except OSError:
+            names = []
+        match = part if part in names else next((n for n in names if n.lower() == part.lower()), part)
+        current = os.path.join(current, match)
+    return current
+
+
 def spawn_bg(seed, model, cwd, name, resume=None):
     """Launch a headless background Claude session with `claude --bg` and return the short session id
     claude prints (hand it to write_receipt), or None when the launch fails or the id can't be parsed.
@@ -269,7 +296,7 @@ def spawn_bg(seed, model, cwd, name, resume=None):
     if seed:
         args += ["--", seed]
     try:
-        res = run_bounded(args, timeout=120, cwd=cwd, env=env, creationflags=NO_WINDOW)
+        res = run_bounded(args, timeout=120, cwd=canonical_cwd(cwd), env=env, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
         return None
     if res.returncode != 0:

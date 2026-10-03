@@ -221,6 +221,23 @@ def test_short_id_parsing():
             check(label, got == want, f"got {got!r}")
 
 
+def test_launch_cwd_uses_on_disk_case():
+    print("test: a launch cwd typed in the wrong case runs under the on-disk spelling")
+    if os.name != "nt":
+        print("  SKIP: case-insensitive paths are a Windows concern")
+        return
+    with sandbox() as s:
+        real = os.path.join(s.tmp, "MixedCaseDir")
+        os.makedirs(real)
+        swapped = os.path.join(s.tmp.swapcase(), "mixedCASEdir")
+        bg_session.spawn_bg("x", "m", swapped, "n")
+        got = s.calls[-1][1].get("cwd")
+        check("on-disk case restored", os.path.basename(got) == "MixedCaseDir", got)
+        check("drive letter upper-cased", got[:1] == got[:1].upper(), got)
+        missing = os.path.join(s.tmp, "no-such-dir")
+        check("a missing path is left alone", bg_session.canonical_cwd(missing) == missing, missing)
+
+
 def test_write_receipt():
     print("test: write_receipt writes the full guid when claude_agents lists it, else the short id")
     for label, agents, want in (
@@ -319,6 +336,7 @@ if __name__ == "__main__":
     test_resume_forgets_old_registry_entry()
     test_accounts_discovered_not_named()
     test_short_id_parsing()
+    test_launch_cwd_uses_on_disk_case()
     test_write_receipt()
     test_claude_agents_merges_accounts()
     test_is_background_session()
