@@ -68,6 +68,8 @@ def is_segment_trusted(seg, trusted):
         return commands.is_powershell_safe(seg)
     if word.lower() == 'taskkill':
         return commands.is_taskkill_safe(seg)
+    if word.lower() in commands.HEADLESS_BROWSER_NAMES:
+        return commands.is_headless_browser_safe(seg)
     if word == 'wt':
         # Windows Terminal runs whatever command line follows it in a new tab,
         # and nothing here validates that inner command's arguments, so it

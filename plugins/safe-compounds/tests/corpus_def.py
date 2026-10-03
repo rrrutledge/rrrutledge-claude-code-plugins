@@ -107,6 +107,14 @@ CASES = [
     {"id": "sed_inplace", "tool": "Bash", "command": "sed -i s/a/b/ file.txt", "expect": "BLOCK"},
     {"id": "sed_plain", "tool": "Bash", "command": "sed s/a/b/ file.txt", "expect": "ALLOW"},
 
+    # --- headless browser render (quoted exe path with spaces) --------------
+    {"id": "edge_headless_remote_url", "tool": "Bash",
+     "command": "\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\" --headless=new --screenshot=out.png https://example.com",
+     "expect": "PROMPT"},
+    {"id": "edge_headless_debug_port", "tool": "Bash",
+     "command": "\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\" --headless --remote-debugging-port=9222 file:///C:/x/.tmp/p.html",
+     "expect": "PROMPT"},
+
     # --- taskkill (self-close-my-own-tab only; anything else prompts) -------
     # A real self-target ALLOW depends on the live process tree at test time
     # (not a static literal), so it's covered by test_units.py's
