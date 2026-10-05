@@ -276,6 +276,7 @@ Clearing is the last act after the whole span is handled, never a per-message st
 If the situational check finds nothing to do right now - a thread where they replied and the user already answered, or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: bump the Start date / clear without surfacing anything to Russell.
 For an outreach card, "not yet time to follow up" means exactly that cadence window, and the interval is defined in the trello provider's CLEAR → Nudge cadence - read it there rather than guessing.
 A card whose Start has arrived, still unanswered, and past its cadence has crossed into "time to follow up": that is a nudge to draft, so keep it needs-you and present it normally, never a silent bump.
+The longest a silent bump may push a card is one week past the last outbound, and seven days elapsed means the nudge is due now.
 Bumping such a card's Start again instead of drafting the nudge is what turns it into one that gets pushed forever without a follow-up ever going out.
 The quiet resolve is for an outside party holding the next step, never for a due task whose next step is Russell's own.
 "Not done yet" on a task card is the reason it came due, not a reason to wait: present what he needs to do now, per the trello provider's DUE-TASK.

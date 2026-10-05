@@ -187,11 +187,18 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 - After 1st follow-up (no reply) → bump **1 week**
 
 **Infrequent contact** - someone outside the user's regular workflow, or where this ask isn't part of their day job:
-- After sending → bump **1 week + 1 day**
-- After 1st follow-up (no reply) → bump **2 weeks**
+- After sending → bump **1 week**
+- After 1st follow-up (no reply) → bump **1 week**
 
 When unsure, default to infrequent.
-When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
+**Seven days since the last outbound is the longest wait: a nudge is due.**
+No tier, ask type, or contact seniority stretches the interval past one week, including asks that need real commitment or internal approval (sponsorship money, a formal agreement, a referral).
+Never bump a card's Start further out than one week from the last communication, and never read "the last outbound was only 7 days ago" as too early - seven days is the point where the nudge goes out.
+Keeping momentum matters more than leaving a contact extra room.
+
+**A card tied to an event deadline never gets more than one week.**
+When a card's purpose is promoting or staffing something with a fixed date (a conference, a launch), a longer gap burns the runway before the date.
+The board's `purpose` or the card's initiative can name such a campaign; its next touch is at most 7 days after the last communication, and an absence pause below never stretches it further.
 
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
