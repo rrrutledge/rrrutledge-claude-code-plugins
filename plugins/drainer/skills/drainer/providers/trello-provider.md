@@ -192,16 +192,15 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 
 When unsure, default to infrequent.
 **Seven days since the last outbound is the longest wait: a nudge is due.**
-No tier, ask type, or contact seniority stretches the interval past one week, including asks that need real commitment or internal approval (sponsorship money, a formal agreement, a referral).
+No tier, ask type, or contact seniority stretches the interval past one week, including asks that need real commitment or internal approval.
 Never bump a card's Start further out than one week from the last communication, and never read "the last outbound was only 7 days ago" as too early - seven days is the point where the nudge goes out.
 Keeping momentum matters more than leaving a contact extra room.
-
-**A card tied to an event deadline never gets more than one week.**
-When a card's purpose is promoting or staffing something with a fixed date (a conference, a launch), a longer gap burns the runway before the date.
-The board's `purpose` or the card's initiative can name such a campaign; its next touch is at most 7 days after the last communication, and an absence pause below never stretches it further.
+The one exception is the contact's absence, below.
 
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
+A card whose purpose is promoting or staffing something with a fixed date is the exception to this pause: a longer gap burns the runway before the date, so its next touch stays at most 7 days after the last communication.
+The board's `purpose` or the card's initiative can name such a campaign.
 So count the interval from the day they return, not from the day of the last outbound: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
 Before drafting a nudge on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
 When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence - a silent nudge, not a follow-up.
