@@ -191,7 +191,11 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 - After 1st follow-up (no reply) → bump **2 weeks**
 
 When unsure, default to infrequent.
+
 When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
+
+**A board or initiative that states its own cadence overrides the tiers, including the 2-week commitment start.**
+When the card's board `purpose` (or its initiative) sets a follow-up interval, that interval is the card's cadence interval for every card there, in every rule below.
 
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
