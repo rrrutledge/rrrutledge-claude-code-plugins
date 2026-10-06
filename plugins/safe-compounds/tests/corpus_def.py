@@ -282,16 +282,28 @@ CASES = [
     # destination under a `.tmp` dir in an unrelated directory is still safe.
     {"id": "cp_to_unrelated_repo_tmp_dir", "tool": "Bash",
      "command": 'cp a.txt "{HOME}/Dev/some-other-repo/.tmp/b.txt"', "files": {"a.txt": "x"}, "expect": "ALLOW"},
-    # ~/.claude/jobs/<job-id>/tmp/... is the harness's own scratch dir for
-    # background-agent jobs -- disposable, Claude-owned, same role as the
-    # session scratchpad dir.
+    # Writes under ~/.claude/jobs hit Claude Code's own ~/.claude confirmation,
+    # which no hook decision can suppress -- blocked with a redirect to .tmp/.
     {"id": "cp_to_claude_jobs_tmp", "tool": "Bash",
      "command": 'cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"', "files": {".tmp/stuff": "x"},
-     "expect": "ALLOW"},
+     "expect": "BLOCK"},
     {"id": "cp_du_to_claude_jobs_tmp", "tool": "Bash",
      "command": ('cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi" '
                  '&& du -sh "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"'),
-     "files": {".tmp/stuff": "x"}, "expect": "ALLOW"},
+     "files": {".tmp/stuff": "x"}, "expect": "BLOCK"},
+    {"id": "mkdir_claude_jobs_tmp", "tool": "Bash",
+     "command": 'mkdir -p ~/.claude/jobs/x/tmp', "expect": "BLOCK"},
+    {"id": "cat_head_then_mkdir_claude_jobs", "tool": "Bash",
+     "command": 'cat ~/.claude/CLAUDE.md | head -5; mkdir -p /c/Users/russe/.claude/jobs/cd7048a0/tmp',
+     "expect": "BLOCK"},
+    {"id": "mkdir_tmp_ok", "tool": "Bash", "command": "mkdir -p .tmp/x", "expect": "ALLOW"},
+    {"id": "cat_global_claude_md", "tool": "Bash", "command": "cat ~/.claude/CLAUDE.md", "expect": "BLOCK"},
+    {"id": "cat_global_claude_md_home_var", "tool": "Bash",
+     "command": 'cat "$HOME/.claude/CLAUDE.md" | head', "expect": "BLOCK"},
+    {"id": "cat_global_claude_md_msys", "tool": "Bash",
+     "command": 'cat "{HOME}/.claude/CLAUDE.md"', "expect": "BLOCK"},
+    {"id": "cat_project_claude_md", "tool": "Bash", "command": "cat CLAUDE.md", "files": {"CLAUDE.md": "x"},
+     "expect": "ALLOW"},
 
     # --- scripts (deny-by-default; trusted dir vs elsewhere) ----------------
     {"id": "pyfile_tmp", "tool": "Bash", "command": "python .tmp/run.py",

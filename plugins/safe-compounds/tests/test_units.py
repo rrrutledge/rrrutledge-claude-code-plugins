@@ -4,6 +4,8 @@ import os
 import sys
 import tempfile
 
+import pytest
+
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_DIR = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, PLUGIN_DIR)
@@ -23,7 +25,7 @@ from safe_compounds import procs  # noqa: E402
 from safe_compounds.mcp import classify_mcp_tool  # noqa: E402
 from safe_compounds.enforce import (  # noqa: E402
     detect_complex_bash, detect_simple_expansion, detect_cd_compound, detect_function_definition,
-    detect_plugin_cache_reference, detect_gh_api_contents_write, detect_raw_trello_write,
+    detect_plugin_cache_reference, detect_claude_jobs_write, detect_global_claude_md_read,detect_gh_api_contents_write, detect_raw_trello_write,
     detect_unbounded_wide_find, enforce_bash,
 )
 from safe_compounds.scripts import check_node_segment, get_block_reason, reset_block_reason  # noqa: E402
@@ -1038,6 +1040,60 @@ class TestPluginCacheBlocking:
         assert reason is not None
         assert "plugin cache" in reason
         assert "Read tool" in reason
+
+
+class TestClaudeDirBlocking:
+    """Claude Code always confirms `~/.claude` paths itself, so scratch writes
+    under ~/.claude/jobs and Bash reads of the global CLAUDE.md are blocked
+    with a redirect instead of reaching that unavoidable prompt."""
+
+    def test_exact_prompted_command_blocks_with_jobs_message(self):
+        cmd = 'cat ~/.claude/CLAUDE.md | head -5; mkdir -p /c/Users/russe/.claude/jobs/cd7048a0/tmp'
+        assert detect_claude_jobs_write(cmd) is True
+
+    @pytest.mark.parametrize("cmd", [
+        'mkdir -p ~/.claude/jobs/x/tmp',
+        'touch "$HOME/.claude/jobs/x/tmp/f"',
+        'mkdir -p "C:\\Users\\russe\\.claude\\jobs\\x"',
+        'mkdir -p /c/Users/russe/.claude/jobs/x',
+        'cp a.txt ~/.claude/jobs/x/tmp/',
+        'mv -t ~/.claude/jobs/x/tmp a.txt',
+    ])
+    def test_jobs_writes_detected(self, cmd):
+        assert detect_claude_jobs_write(cmd) is True
+        assert "~/.claude" in enforce_bash(cmd)
+
+    @pytest.mark.parametrize("cmd", [
+        'mkdir -p .tmp/x',
+        'cp ~/.claude/jobs/x/tmp/a.txt .tmp/a.txt',
+        'ls ~/.claude/jobs',
+    ])
+    def test_jobs_negatives(self, cmd):
+        assert detect_claude_jobs_write(cmd) is False
+
+    @pytest.mark.parametrize("cmd", [
+        'cat ~/.claude/CLAUDE.md',
+        'cat "$HOME/.claude/CLAUDE.md" | head',
+        'head -5 "${HOME}/.claude/CLAUDE.md"',
+        'grep -n push "C:\\Users\\russe\\.claude\\CLAUDE.md"',
+        'wc -l /c/Users/russe/.claude/CLAUDE.md',
+    ])
+    def test_global_claude_md_reads_detected(self, cmd, monkeypatch):
+        monkeypatch.setattr(os.path, 'expanduser',
+                            lambda p: p.replace('~', 'C:/Users/russe', 1) if p.startswith('~') else p)
+        assert detect_global_claude_md_read(cmd) is True
+
+    @pytest.mark.parametrize("cmd", [
+        'cat CLAUDE.md',
+        'cat ~/.claude/settings.json',
+        'cat ~/Dev/repo/CLAUDE.md',
+    ])
+    def test_global_claude_md_negatives(self, cmd):
+        assert detect_global_claude_md_read(cmd) is False
+
+    def test_claude_md_message_points_at_context_and_read_tool(self):
+        reason = enforce_bash('cat ~/.claude/CLAUDE.md')
+        assert "already loaded" in reason and "Read tool" in reason
 
 
 class TestGhApiContentsWriteBlocking:
