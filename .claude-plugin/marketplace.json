@@ -119,6 +119,11 @@
       "name": "git-workflow",
       "source": "./plugins/git-workflow",
       "description": "Russell's git/GitHub workflow rules — branching from main, when PRs merge, closing PRs and branch cleanup, code review timing, repo deletion, gh CLI usage, PR link formatting. Use whenever creating a branch/commit/PR, merging, closing, or reviewing a PR, or doing any other git/gh operation."
+    },
+    {
+      "name": "spec-document",
+      "source": "./plugins/spec-document",
+      "description": "Write a spec for something Russell proposes to build in his standard five-section format - Business value, Problem, What we'll do, Visuals, Detailed notes - as an HTML page exported to PDF."
     }
   ]
 }
