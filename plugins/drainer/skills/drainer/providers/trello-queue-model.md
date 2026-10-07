@@ -33,14 +33,14 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
 
 ## ENUMERATE
 Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), and are **startable** - Start now-or-earlier, or no Start at all.
-A future Start is the only thing that holds a card back.
+A future Start is the only thing that makes a card unstartable; the P2/P3 job cards held out of the queue are covered below the level band.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
 Rank is `(priority band, level band, referral band, date)`, all descending - level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
 The order of those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
-An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
+An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while the `P2`/`P3` cards that are queued sit **below** it.
 Every other board carries neither label and orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 

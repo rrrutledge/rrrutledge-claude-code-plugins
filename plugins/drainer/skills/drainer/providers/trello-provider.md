@@ -2,7 +2,7 @@
 
 A provider for the **outreach** source.
 The card's **Start date IS the queue**: harvested on every run like any other source, it returns the cards that are startable now and not wearing a ⛔ Blocked label.
-A card is startable once its Start has arrived, or immediately when it has no Start; a future Start is the only thing that holds a card back - "not okay to begin until this day".
+A card is startable once its Start has arrived, or immediately when it has no Start; a future Start is the only thing that makes a card not yet startable - "not okay to begin until this day" (which job cards the adapter holds out of the queue is in `trello-queue-model.md`).
 Start is the one date the queue reads (see STARTABLE-TASK MODEL): the "work-on-it / go-live" day, whether the card is an outreach follow-up or a task.
 It rides the single schedule with no special cadence.
 All Trello reads and mutations go through the **`trello`** skill's `trello_utils.py` - never the Trello REST API directly.
