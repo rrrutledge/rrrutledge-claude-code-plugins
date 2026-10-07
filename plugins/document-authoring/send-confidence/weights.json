@@ -1,11 +1,11 @@
 {
   "version": 8,
   "weights": {
-    "familiarity": 0.1414,
-    "stakes": 0.0755,
-    "content_latitude": 0.4137,
-    "fact_support": 0.317,
-    "rule_coverage": 0.0524
+    "familiarity": 0.1664,
+    "stakes": 0.0734,
+    "content_latitude": 0.4025,
+    "fact_support": 0.3067,
+    "rule_coverage": 0.051
   },
   "thresholds": {
     "factor_high": 70,
