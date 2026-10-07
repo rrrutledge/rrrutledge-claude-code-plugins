@@ -23,7 +23,8 @@ Usage (via the Bash tool):
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
 
-Prints the new session's short id (the handle `claude attach/logs/stop` take) and full guid, and
+Prints the new session's name first (the title Russell recognizes in the Claude app), then its short id (the
+handle `claude attach/logs/stop` take) and full guid, and
 writes the guid to `<FILE>.session` beside the brief or prompt file - the receipt peek.py reads.
 Exit code 1 means nothing was launched.
 """
@@ -84,8 +85,9 @@ def main(argv=None):
     if not short_id:
         print("spawn-session: `claude --bg` launch failed or returned no session id; nothing was launched.")
         return 1
-    print(f"Launched in the background: {name or 'resumed session'} - session {short_id} ({receipt}). "
-          f"Reach it from claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here.")
+    print(f"Launched \"{name or 'resumed session'}\" in the background - tell Russell this name "
+          f"(it's what shows in his Claude app's session list), not the id. "
+          f"Here: `claude attach {short_id}` / `claude logs {short_id}` (guid {receipt}).")
     return 0
 
 

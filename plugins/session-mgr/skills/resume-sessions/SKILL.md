@@ -192,11 +192,11 @@ instructions: |-
   - The session keeps its own name and model; add `--title "<short title>"` only to rename it
 
   Resume each session sequentially (the Bash tool runs them one at a time naturally).
-  Each prints the resumed session's short id.
+  Each prints the resumed session's name and short id.
 
   ## Step 4 - Confirm
 
-  Tell the user how many sessions were resumed and list the titles with their short ids, noting how
+  Tell the user how many sessions were resumed and list the sessions by title (the name shown in the Claude app; no ids), noting how
   many came from the registry (confirmed) versus the fallback scan (heuristic). If any sessions were
   skipped because they were already open, mention that count too. The resumed sessions appear in
   the Claude app and at claude.ai/code; `claude agents` lists them here, `claude attach <short id>`

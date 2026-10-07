@@ -257,7 +257,7 @@ def main():
         print("run-digest: headless `claude --bg` launch returned no id; the digest did not start.")
         sys.exit(1)
     receipt = write_receipt(prompt_file, bg_id)
-    print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
+    print(f"Launched the digest as background session \"{summary}\" (guid {receipt}, model {cfg['digest_model']}) "
           f"for {runtime_dir}.")
 
 
