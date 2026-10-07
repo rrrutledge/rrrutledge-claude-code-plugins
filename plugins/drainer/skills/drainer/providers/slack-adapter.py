@@ -157,17 +157,6 @@ class Provider(ProviderBase):
                     + "\n\n".join(parts))
         else:
             body = text + _attachment_lines(shown_files)
-        context = item.get("contextBefore") or []
-        if context:
-            ctx_parts = [f"**{m.get('from') or '?'}** ({(m.get('received') or '')[:16].replace('T', ' ')}):\n"
-                         f"{m.get('text', '')}{_attachment_lines(m.get('files'))}"
-                         for m in context]
-            body = ("## Preceding context (already read - NOT new, NOT yours to act on)\n"
-                    "The messages just before the unread span, oldest first. Read them first: a short reply "
-                    "('that is strange!') answers what is here, and may already be handled by something "
-                    "Russell himself wrote.\n\n"
-                    + "\n\n".join(ctx_parts)
-                    + "\n\n## Unread (the item)\n\n" + body)
         with open(body_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\n"
                     f"Channel: {item.get('channelName')} ({channel})\nReceived: {item.get('received')}\n"

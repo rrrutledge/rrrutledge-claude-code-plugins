@@ -52,13 +52,16 @@ Reply only to what is still open.
 
 A Slack item's body carries the **full unread span** (every unread message since Russell's last read, not just the newest), so apply worker-core §2's group-then-handle model to it: read the whole span and decide how many distinct asks it holds before you draft.
 
+## READ-IN-CONTEXT (triage, the worker, and the digest all follow this)
+When a message does not make sense on its own, fetch the messages just before it and read it against them before judging it.
+Fetch the history as in SITUATIONAL-CHECK, with `--limit=8` to get the messages before the item.
+Russell's own earlier post is often the context, and it may already have handled the item.
+Never call a Slack item context-free, or surface it as such, until this fetch has been tried.
+
 ## CAPTURE (the item shape the worker reads)
 The adapter writes these two files for each dispatched item (`slack-adapter.py` → `capture`); this is the shape the worker can rely on:
 - `items/<id>.slack.md` - header block (From, Channel, Received, Unread messages, Link, MessageRef) + the **full unread span**: every unread message since Russell's last read, oldest first, each labelled with its author and time (from the `unread` array `slack.js --list-unread --json` attaches to each item).
-  A channel or thread item opens with a **Preceding context** block: the recent already-read messages before the unread span, oldest first, labelled as background (handled earlier, or Russell's own).
-  The block comes from the `contextBefore` array in `--list-unread --json`.
-  The `slack` skill owns its size and age limits.
-  **Read the preceding context first** - a short reply answers what sits above it, and Russell's own earlier post may already have handled it.
+  The capture holds the unread messages only; earlier messages are fetched on demand (see READ-IN-CONTEXT above).
   A bot post with empty `text` shows its attachment/block content instead, so judge it by that.
   A single-message item falls back to that one message's text.
   A message carrying an image/file shows an `[Attachment: <name> (<mimetype>)] <permalink>` line right after its text.
