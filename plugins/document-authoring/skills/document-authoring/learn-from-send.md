@@ -26,7 +26,7 @@ After Russell sends a draft (he edited it in the app and clicked Send, or said "
    If the session no longer has the draft id handy, `--body-file <staged body>` finds it by rehashing that file against the log.
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
-3. **Run the spawn command it prints**, exactly as printed, and name the new session's short id in your reply so Russell can find it.
+3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title (not its short id) in your reply so Russell can find it.
    No printed command means nothing to learn from this send.
 
 **Record `--discarded` when Russell discards a staged draft outright**, with `--reason` naming why in one phrase - except in the replacement case below.
