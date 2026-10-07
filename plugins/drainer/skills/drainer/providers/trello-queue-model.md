@@ -47,6 +47,9 @@ The band each tier maps to - and how to change it - is defined in one place, the
 A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores.
 Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; only a card whose desc contains `IC-level` drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
 
+P1 cards drain whatever their level or list.
+P2/P3 job cards are held back from the queue (they stay on the board for Russell to work by hand) when they are IC-level or still in the Identified list; a `👤 Contact` follow-up in Identified and any application past Identified drains normally - see the adapter's `_held_back`.
+
 The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
 See the adapter's `_referral_band`.
 The priority, referral, and 👤 Contact labels, like ⛔/⏳ status labels, are held out of the contact parse so none is read as a person.

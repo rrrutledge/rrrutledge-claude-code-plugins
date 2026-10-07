@@ -333,6 +333,29 @@ class Provider(ProviderBase):
         return any(_CONTACT_RE.match(l.get("name") or "") for l in card.get("labels", []))
 
     @staticmethod
+    def _is_p1(card):
+        """True if the card wears a P1 (top-fit) priority label, with or without the 🎯 prefix."""
+        for l in card.get("labels", []):
+            m = _PRIORITY_RE.match(l.get("name") or "")
+            if m and m.group(1) == "1":
+                return True
+        return False
+
+    @classmethod
+    def _held_back(cls, card, list_name):
+        """True if the card stays on the board but is never handed to a worker. P1 job cards drain
+        normally whatever their level or list. Every other card is held when it is a below-director
+        posting (job-board-poll writes an "IC-level" line into the body of job-search cards only) or a
+        brand-new application still in the Identified intake list (P2/P3 and the weekly sweep card). A
+        👤 Contact follow-up keeps its own nudge cadence in Identified, and applications advanced past
+        Identified drain normally. Only the Job Search Outreach board has an Identified list."""
+        if cls._is_p1(card):
+            return False
+        if "IC-level" in (card.get("desc") or ""):
+            return True
+        return "identified" in list_name.lower() and not cls._is_contact_card(card)
+
+    @staticmethod
     def _parse_dt(value):
         """Parse a Trello date field (an ISO-8601 string) to an aware datetime, or None if absent/bad."""
         if not value:
@@ -381,24 +404,7 @@ class Provider(ProviderBase):
             # label and sets Start = today, so they resurface on a later drain).
             if self._has_skip_label(card):
                 continue
-            # Director+ pause: while Russell is focused on his in-flight interviews, a below-director
-            # job-search card is kept on the board but never drained - it still exists for him to work by
-            # hand, it just isn't handed over as a worker. job-board-poll marks a below-director posting
-            # with an "IC-level" line in the card body (its tiers.js LEVEL_WORD), and only job-search
-            # cards ever carry that line (see _level_band's docstring), so this suppresses nothing else.
-            # Remove this block to reopen lower-level job cards to the drain queue.
-            if "IC-level" in (card.get("desc") or ""):
-                continue
-            # New-application pause: while Russell preps for his in-flight interviews, don't hand over a
-            # brand-new job he hasn't touched - anything still sitting in the Identified intake list that
-            # isn't a person follow-up. That covers the auto-sourced application cards (🎯 P1/P2/P3) and
-            # the weekly job-board sweep card; they stay on the board for him to work by hand, they just
-            # aren't dispatched to a worker. A 👤 Contact follow-up keeps its own nudge cadence even while
-            # it sits in Identified, and every application already advanced past Identified (Applied /
-            # Reached Out onward) keeps draining normally. Only the Job Search Outreach board has an
-            # Identified list, so this suppresses nothing on any other board. Remove this block to resume
-            # starting fresh applications.
-            if "identified" in list_name.lower() and not self._is_contact_card(card):
+            if self._held_back(card, list_name):
                 continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
