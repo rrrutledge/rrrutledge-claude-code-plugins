@@ -1,0 +1,9 @@
+{
+  "name": "spec-document",
+  "version": "1.0.0",
+  "description": "Write a spec for something Russell proposes to build in his standard five-section format - Business value, Problem, What we'll do, Visuals, Detailed notes - as an HTML page exported to PDF.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
