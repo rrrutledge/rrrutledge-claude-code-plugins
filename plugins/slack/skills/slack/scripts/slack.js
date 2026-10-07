@@ -15,7 +15,10 @@
 //                 a thread you're actually a participant in (replied to, or mentioned in) still surfaces
 //                 even when its channel is muted — same distinction Slack's own Threads panel makes,
 //                 since muting silences ambient channel noise but doesn't unsubscribe you from a thread
-//                 you're personally on; --json emits a structured array. Each item also carries `unread`:
+//                 you're personally on; --json emits a structured array. Channel and thread items also
+//                 carry `contextBefore`: up to 5 already-read messages (none older than 48h) just before
+//                 the unread span, so a short reply reads against what it answers. Message text includes
+//                 bot attachment/block content when `text` is empty (GitHub app posts etc.). Each item also carries `unread`:
 //                 the FULL span of unread messages since the last read cursor, oldest-first, each with
 //                 from/received/text — so a conversation that accreted several distinct asks between
 //                 reads exposes every one, not only its newest message. Each item also carries
@@ -213,9 +216,81 @@ async function renderText(text) {
   return clean(out);
 }
 
+// Bot/app posts (the GitHub app, CI, forms) usually carry an empty `text` and put the readable content
+// in `attachments` (pretext/title/text, else the plain-text fallback) and `blocks` (section/context
+// text). Flatten those to plain lines so a caller sees what the post says.
+const blockText = (t) => (t && (t.text || '')) || '';
+function attachmentLines(m) {
+  return (m.attachments || []).map(a => {
+    const parts = [a.pretext, a.title, a.text].map(clean).filter(Boolean);
+    if (!parts.length) parts.push(clean(a.fallback));
+    return parts.filter(Boolean).join(' - ');
+  }).filter(Boolean);
+}
+function blockLines(m) {
+  const lines = [];
+  for (const b of m.blocks || []) {
+    if (b.type === 'section') {
+      if (b.text) lines.push(blockText(b.text));
+      for (const f of b.fields || []) lines.push(blockText(f));
+    } else if (b.type === 'context') {
+      const els = (b.elements || []).map(blockText).filter(Boolean);
+      if (els.length) lines.push(els.join(' '));
+    } else if (b.type === 'header') {
+      if (b.text) lines.push(blockText(b.text));
+    }
+  }
+  return lines.map(clean).filter(Boolean);
+}
+
+// The readable text of a message: its `text`, plus attachment content, and block content when `text` is
+// empty (on a normal message the blocks just restate `text`, so they're only a fallback). Slack's
+// `<url|label>` link markup is reduced to the label.
+async function messageText(m) {
+  const base = await renderText(m.text);
+  const extra = attachmentLines(m);
+  if (!base) extra.push(...blockLines(m));
+  const joined = [base, ...extra.filter(l => l !== base)].filter(Boolean).join('\n');
+  return joined.replace(/<([^|>]+)\|([^>]+)>/g, '$2').replace(/<(https?:[^>]+)>/g, '$1');
+}
+
 // Build a short joined preview from up to 5 messages (oldest-first), rendered and trimmed.
 async function previewText(msgs) {
-  return clean((await Promise.all(msgs.slice(0, 5).reverse().map(m => renderText(m.text)))).join(' / ')).slice(0, 600);
+  return clean((await Promise.all(msgs.slice(0, 5).reverse().map(messageText))).join(' / ')).slice(0, 600);
+}
+
+// The last few messages BEFORE an unread span, already read, so a short reply ("that is strange!") can be
+// read against what it answers. Bounded: at most CONTEXT_MAX messages, none older than CONTEXT_HOURS
+// before the span starts. Includes the user's own messages (that is often exactly the context). In a
+// thread the root and earlier replies come from conversations.replies; in a channel, from history.
+const CONTEXT_MAX = 5;
+const CONTEXT_HOURS = 48;
+async function precedingContext(channel, oldestUnreadTs, threadTs) {
+  try {
+    let msgs;
+    if (threadTs) {
+      const r = await call('conversations.replies', { channel, ts: threadTs, limit: '100' });
+      msgs = r.messages || [];
+    } else {
+      const r = await call('conversations.history',
+        { channel, latest: oldestUnreadTs, inclusive: 'false', limit: String(CONTEXT_MAX + 5) });
+      msgs = (r.messages || []).slice().reverse();
+    }
+    const floor = parseFloat(oldestUnreadTs) - CONTEXT_HOURS * 3600;
+    const before = msgs
+      .filter(m => m.ts && parseFloat(m.ts) < parseFloat(oldestUnreadTs) && parseFloat(m.ts) >= floor)
+      .filter(m => !m.subtype || m.subtype === 'thread_broadcast' || m.subtype === 'me_message' || m.subtype === 'bot_message')
+      .slice(-CONTEXT_MAX);
+    const out = [];
+    for (const m of before) {
+      const entry = { ts: m.ts, from: await userName(m.user || m.bot_id), received: tsToIso(m.ts), text: await messageText(m) };
+      if (m.files && m.files.length) entry.files = fileMeta(m.files);
+      out.push(entry);
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 // Build the full unread span (oldest-first) for an item body: every unread message kept whole, with its
@@ -225,7 +300,7 @@ async function previewText(msgs) {
 async function unreadSpan(msgs) {
   const out = [];
   for (const m of msgs.slice().reverse()) {
-    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await renderText(m.text) };
+    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await messageText(m) };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
     out.push(entry);
   }
@@ -304,7 +379,7 @@ async function listUnread() {
     if (mentions.length) {
       for (const m of mentions) {
         const from = await userName(m.user);
-        const rendered = await renderText(m.text);
+        const rendered = await messageText(m);
         const unreadEntry = { ts: m.ts, from, received: tsToIso(m.ts), text: rendered };
         if (m.files && m.files.length) unreadEntry.files = fileMeta(m.files);
         items.push({
@@ -313,6 +388,7 @@ async function listUnread() {
           received: tsToIso(m.ts), isRead: false, unreadCount: 1,
           preview: rendered.slice(0, 600),
           unread: [unreadEntry],
+          contextBefore: await precedingContext(c.id, m.ts, ''),
           knownContact: false,
         });
       }
@@ -324,6 +400,7 @@ async function listUnread() {
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
         preview: await previewText(msgs), unread: await unreadSpan(msgs),
+        contextBefore: await precedingContext(c.id, msgs[msgs.length - 1].ts, ''),
         knownContact: false,
       });
     }
@@ -358,6 +435,7 @@ async function listUnread() {
         subject: mentioned ? `@mention in thread in ${chName}` : `Thread reply in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: unread.length,
         preview: await previewText(unread), unread: await unreadSpan(unread),
+        contextBefore: await precedingContext(channel, unread[unread.length - 1].ts, threadTs),
         knownContact: await hasMeMessage(channel, me, threadTs),
       });
     }
@@ -395,7 +473,7 @@ async function show() {
   const m = await fetchOne(args.channel, args.ts, args['thread-ts']);
   if (!m) { console.log('Message not found.'); return; }
   const from = await userName(m.user);
-  const text = await renderText(m.text);
+  const text = await messageText(m);
   const files = fileMeta(m.files);
   let permalink = '';
   try { permalink = (await call('chat.getPermalink', { channel: args.channel, message_ts: args.ts })).permalink || ''; }
@@ -432,8 +510,8 @@ async function history() {
   for (const m of msgs) {
     const entry = {
       ts: m.ts, threadTs: m.thread_ts || '', replyCount: m.reply_count || 0,
-      from: await userName(m.user), fromId: m.user,
-      received: tsToIso(m.ts), text: await renderText(m.text),
+      from: await userName(m.user || m.bot_id), fromId: m.user,
+      received: tsToIso(m.ts), text: await messageText(m),
     };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
     out.push(entry);

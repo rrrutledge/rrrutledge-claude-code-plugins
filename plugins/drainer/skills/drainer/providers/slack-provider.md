@@ -55,6 +55,9 @@ A Slack item's body carries the **full unread span** (every unread message since
 ## CAPTURE (the item shape the worker reads)
 The adapter writes these two files for each dispatched item (`slack-adapter.py` → `capture`); this is the shape the worker can rely on:
 - `items/<id>.slack.md` - header block (From, Channel, Received, Unread messages, Link, MessageRef) + the **full unread span**: every unread message since Russell's last read, oldest first, each labelled with its author and time (from the `unread` array `slack.js --list-unread --json` attaches to each item).
+  A channel or thread item opens with a **Preceding context** block: up to the last 5 already-read messages (none older than 48h) before the unread span, oldest first, marked as not new and not yours to act on (the `contextBefore` array from `--list-unread --json`; it includes Russell's own messages).
+  **Read the preceding context before calling a short reply context-free** - "that is strange!" answers what sits above it, and it may already be handled by Russell's own earlier post.
+  A bot post (GitHub app, CI) with empty `text` shows its attachment/block content instead, so judge it by that and run the matching-email check against it.
   A single-message item falls back to that one message's text.
   A message carrying an image/file shows an `[Attachment: <name> (<mimetype>)] <permalink>` line right after its text.
   **Always open that permalink and look before concluding on the item** - the same "read it yourself before acting" principle as `../engine/pointers.md`, which also covers reading a screenshot only inside a subagent, per worker-core step 3.
