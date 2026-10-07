@@ -135,6 +135,8 @@ A match means the item is already tracked: name and link the card, and frame the
 No match → surface it as genuinely new.
 This applies regardless of which source (mail, Teams, Slack) captured the item.
 
+Before calling a Slack item context-free, apply READ-IN-CONTEXT in `providers/slack-provider.md`.
+
 ## 3. junk - group by source, each with a source-stop proposal
 
 Group junk by sender/source.
