@@ -47,6 +47,7 @@ import os
 import re
 import sys
 import glob
+import html
 import json
 import math
 import socket
@@ -366,9 +367,17 @@ def fold_drafts(events=None):
     return drafts
 
 
+def _plain_text(text):
+    """Strip HTML markup from a staged body, so a Gmail draft staged as `<p>...</p>` compares
+    equal to the plain text the sent item reads back as."""
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text or "")
+    text = re.sub(r"<[^>]+>", "", text)
+    return html.unescape(text).strip()
+
+
 def _read_draft_text(draft_id):
     with open(os.path.join(drafts_dir(), f"{draft_id}.txt"), "r", encoding="utf-8") as fh:
-        return fh.read()
+        return _plain_text(fh.read())
 
 
 def _supersede_pending(thread_ref, recipient):
