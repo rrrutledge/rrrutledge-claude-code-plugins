@@ -319,10 +319,10 @@ No pre-existing label or rule predicted this in advance (that's what `auto-handl
 
 When that's the case, treat the close-out like `auto-handle`'s (steps 4-5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
 **When you queue a digest entry, first re-tag the item's `triage` to `"auto-handle"` in `items/<id>.json` (Edit tool) before the `queue-add` - the same re-tag §2c makes for an FYI downgrade.**
-In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, and a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`.
+In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
 A nudge's `dispositionReason` must state why it was bumped (the hold condition or the evidence you checked) and the new Start date, because the digest lists every nudge with that reason.
 Use the same one-liner you wrote as the source's dated comment for `dispositionReason`, so the digest reports the real outcome ("Abandoned - req closed") instead of guessing at deferral language.
-This files the entry under the digest's **"Auto-handled"** section (already done, dismiss-only), so a finished item is shown as handled rather than resurfacing as a live needs-you.
+This files the entry under the digest's **"Auto-handled"** section, so a finished item is shown as handled rather than resurfacing as a live needs-you.
 Queue it via
 `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`,
 then close the session (`python <skill>/scripts/close-session.py`) instead of presenting-and-waiting.
@@ -334,6 +334,16 @@ Self-close here only when ALL of these are unambiguously true:
 - no decision remains that only he could make (which option to pursue, whether to escalate, how to word something delicate, whether an ambiguous match is good enough)
 - nothing outbound-to-others or irreversible is pending his OK
 - no next step waits on Russell himself (per the trello provider's DUE-TASK)
+
+**A briefing for Russell to read is not, by itself, something waiting on him.**
+Put the summary in the digest and close when all three hold:
+- **All that's left is a summary of what you found** - no staged draft, no decision only he can make, no step of his (a send, a signature, a speaker rename, a reply), no new deliverable for him to review (a PR, a doc, slide text), and no failure or blocker to report.
+- **Russell has had no turn in this session at all.** Once he has said anything here, even mid-way, he's in a conversation with you and may have more to add, so present as normal and stay open.
+- **The item isn't a topic he started himself.** A note he emailed the pod is already his input, so it's a conversation too.
+
+For a drainer worker this overrides the generic end-of-turn close check's "new information he hasn't reacted to yet": the digest is where he reads it, and he picks any topic back up from the digest session.
+A zero-input session that ends in a summary almost always ends with Russell typing `/close`, so holding it open buys nothing.
+Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, and write the briefing itself into a `summary` field on `items/<id>.json`: the findings, any deadline or number that matters, and anything he might choose to do with it.
 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
