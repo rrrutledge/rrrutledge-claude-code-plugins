@@ -260,6 +260,16 @@ def test_sent_as_is_with_middling_score_spawns_nothing(tmp_path):
     assert result["dispatch"] is None
 
 
+def test_html_staged_draft_sent_as_plain_text_is_sent_as_is(tmp_path):
+    draft_id, body = _score(tmp_path, rule_coverage=3)
+    path = os.path.join(sc.drafts_dir(), f"{draft_id}.txt")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(f"<p>{body}</p>")
+    result = sc.record_outcome(draft_id, body, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "sent-as-is"
+    assert result["learn_reasons"] == []
+
+
 def test_factual_correction_implicates_fact_support(tmp_path):
     factors = {**NEUTRAL, "fact_support": 80}
     draft_id = _seed_scored("d-factual", "Original draft body text here today please now.", factors, score=56)
