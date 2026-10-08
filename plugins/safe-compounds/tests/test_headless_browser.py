@@ -57,6 +57,12 @@ class TestHeadlessBrowser:
         seg = f'{EDGE} --headless --user-data-dir=C:\\\\x --screenshot="{OUT}" "{PAGE}"'
         assert is_headless_browser_safe(seg) is False
 
+    def test_user_data_dir_in_tmp_scratch_approved(self):
+        seg = (f'{EDGE} --headless=new --no-pdf-header-footer '
+               f'--user-data-dir="C:/Users/russe/docs/Election 2026/.tmp/edge-pdf" '
+               f'--print-to-pdf="{OUT}" "{PAGE}?print=1"')
+        assert is_headless_browser_safe(seg) is True
+
     def test_no_page_prompts(self):
         assert is_headless_browser_safe(f'{EDGE} --headless --screenshot="{OUT}"') is False
 
