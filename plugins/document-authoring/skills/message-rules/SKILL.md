@@ -32,7 +32,7 @@ Anchor by format:
 - **Teams / Slack**: anchor via the link dialog (Ctrl+K).
 - **Word / rich-text email / Markdown / PRs**: anchor to natural words.
 - **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL in parentheses right after the text — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
-  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
+  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): for a link inside a sentence, put the plain URL in parentheses right after the text, as above; for a link that stands on its own line, write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
 
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
@@ -109,7 +109,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
 - **No emoji** — warmth comes from word choice, not symbols.
 - Structure with headings, bullets, and tables where they help the reader navigate.
 - Neutral tone in reference data, tables, and specs; warm in narrative and intro sections.
-- Center the reader with "you/your"; use "we're" for the team or product, "I" for a personal action.
+- Center the reader with "you/your"; use "we're" for the team or product, "I" for what Russell personally did or perceived, even when the same sentence goes on to a shared "we could".
 - **"We" for coordinating follow-up** — next steps that involve reaching out, scheduling, or connecting are "we'll", even when Russell executes them personally.
 - Short sentences.
   One idea per sentence.
