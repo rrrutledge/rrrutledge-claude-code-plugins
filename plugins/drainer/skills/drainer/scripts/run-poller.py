@@ -1313,7 +1313,11 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     # the receipt every reader uses (<prompt_file>.session), so open_correspondents, reconcile, and peek
     # stay path-agnostic. A launch that returns no id leaves no receipt, so reconcile re-queues the item
     # after the launch grace.
-    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file))
+    # A worker writes only scratch under the repo's `.tmp/` (draft bodies, scripts, its own items/<id>.json)
+    # and hands any source change to a fresh session, so it launches scratch_only: no worktree just to
+    # write a draft body.
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file),
+                     scratch_only=True)
     if bg_id:
         write_receipt(prompt_file, bg_id)
         return True

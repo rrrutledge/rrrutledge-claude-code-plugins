@@ -187,6 +187,9 @@ Route each piece of work by where it belongs - which is also where Russell can r
   The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
+**Route every change to a repo-tracked file through a handoff - a skill, script, doc, or config edit, §7's "improve the source" fix included.**
+The poller launches you with Claude Code's background worktree guard off so your `.tmp/` scratch writes land in place, which leaves the handoff, launched with the guard on, as what keeps a source edit in its own worktree.
+
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this session; this rule resets the context the work you keep has accumulated.
 Because the whole prefix is re-read every model call (above), a session that has grown long makes even a one-line "ship it" tweak pay a full re-read of everything before it, so the cheapest work lands against the largest context.

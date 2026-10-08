@@ -129,6 +129,19 @@ def test_notify_sound_absent_when_unset():
         check("env is just the cleared host pid", settings == {"env": {"CLAUDE_HOST_PID": ""}}, settings)
 
 
+def test_scratch_only_turns_off_worktree_guard():
+    print("test: scratch_only=True -> --settings sets worktree.bgIsolation none; the default leaves the guard on")
+    with sandbox() as s:
+        bg_session.spawn_bg("x", "m", s.tmp, "n", scratch_only=True)
+        bg_session.spawn_bg("x", "m", s.tmp, "n")
+        scratch = json.loads(flag_value(s.calls[0][0], "--settings"))
+        default = json.loads(flag_value(s.calls[1][0], "--settings"))
+        check("scratch_only launch turns the guard off", scratch.get("worktree") == {"bgIsolation": "none"}, scratch)
+        check("scratch_only launch still clears the host pid", scratch.get("env", {}).get("CLAUDE_HOST_PID") == "",
+              scratch)
+        check("default launch keeps the guard", "worktree" not in default, default)
+
+
 def test_config_dir_follows_registry():
     print("test: CLAUDE_CONFIG_DIR in the launch env follows the registry")
     with sandbox() as s:
@@ -331,6 +344,7 @@ def test_spawn_session_cli():
 if __name__ == "__main__":
     test_fresh_launch_flags()
     test_notify_sound_absent_when_unset()
+    test_scratch_only_turns_off_worktree_guard()
     test_config_dir_follows_registry()
     test_resume_uses_transcript_account()
     test_resume_forgets_old_registry_entry()

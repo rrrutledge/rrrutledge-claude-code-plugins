@@ -218,18 +218,23 @@ def _launch_env():
     return _account_env(current_config_dir(), env)
 
 
-def _settings_env():
+def _settings_env(scratch_only=False):
     """The --settings JSON handing the session current values the daemon's env may have stale:
     FRESH_USER_ENV from the registry, and an empty CLAUDE_HOST_PID - a daemon started from a
     profile-loaded PowerShell inherits that terminal's host pid, which is never a background
-    session's own."""
+    session's own.
+    `scratch_only` also turns off Claude Code's background-session worktree guard for this one
+    session (`worktree.bgIsolation: none`); spawn_bg says when a caller asks for it."""
     env = {"CLAUDE_HOST_PID": ""}
     for name in FRESH_USER_ENV:
         known, value = _user_env(name)
         value = value if known else os.environ.get(name)
         if value:
             env[name] = value
-    return json.dumps({"env": env})
+    settings = {"env": env}
+    if scratch_only:
+        settings["worktree"] = {"bgIsolation": "none"}
+    return json.dumps(settings)
 
 
 def canonical_cwd(path):
@@ -259,7 +264,7 @@ def canonical_cwd(path):
     return current
 
 
-def spawn_bg(seed, model, cwd, name, resume=None):
+def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     """Launch a headless background Claude session with `claude --bg` and return the short session id
     claude prints (hand it to write_receipt), or None when the launch fails or the id can't be parsed.
 
@@ -275,6 +280,12 @@ def spawn_bg(seed, model, cwd, name, resume=None):
         seed as another tool name, leaving the session idle with no prompt.
       - The call runs on the current account (_launch_env) and hands the session current values
         through `--settings` (_settings_env), since the session's own env comes from the daemon.
+      - `scratch_only` is for a session whose only direct writes are scratch: files under the
+        repo's gitignored `.tmp/` (draft bodies, scripts, its own runtime state), never repo-tracked
+        source. Claude Code's background guard blocks every write in the shared checkout until the
+        session enters a worktree, and it has no per-path exemption, so the flag turns the guard off
+        for that one session. The setting rides in the job's saved launch flags, so a respawn keeps
+        it. Every other launch keeps the guard, so a handoff that edits source still isolates.
     `resume` takes an existing session's full guid: `claude --bg --resume <guid>` continues it in the
     background with its full history, on the account that holds its transcript. `seed` may then be
     None to reopen it with nothing queued, and `model`/`name` None to keep the ones it already has.
@@ -292,7 +303,7 @@ def spawn_bg(seed, model, cwd, name, resume=None):
         args += ["--name", name]
     if model:
         args += ["--model", model]
-    args += ["--settings", _settings_env(), "--disallowedTools", BG_DISALLOWED_TOOLS]
+    args += ["--settings", _settings_env(scratch_only), "--disallowedTools", BG_DISALLOWED_TOOLS]
     if seed:
         args += ["--", seed]
     try:
