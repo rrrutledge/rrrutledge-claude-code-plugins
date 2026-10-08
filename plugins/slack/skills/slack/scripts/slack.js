@@ -45,6 +45,16 @@
 //                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.
 //                 A comma-separated --file=a.png,b.png uploads each file's bytes, then one
 //                 completeUploadExternal call posts the body and every file as a single message.)
+// List drafts:   node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]
+//                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
+//                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
+//                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
+//                 the proof a staged draft actually saved; a browser reload can restore a local-only copy)
+// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]
+//                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
+//                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
+//                 Links written as Slack mrkdwn `<url|anchor text>` become real links. Gated by the
+//                 writing-review receipt on <file>, the same as --send)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
@@ -576,17 +586,7 @@ async function send() {
   if (!args.channel) {
     throw new Error('--send requires --channel (a DM/group/channel/conversation id; resolve a person with --find-dm)');
   }
-  const bodyFile = args['body-file'];
-  if (!bodyFile || bodyFile === true) {
-    throw new Error('--send requires --body-file (the reviewed message body; the writing-review gate reads it)');
-  }
-  let text;
-  try {
-    text = require('fs').readFileSync(bodyFile, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  } catch {
-    throw new Error(`--send: cannot read --body-file ${bodyFile}`);
-  }
-  if (!text) throw new Error(`--send: --body-file ${bodyFile} is empty`);
+  const text = readBody('--send');
 
   if (args.file && args.file !== true) {
     const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
@@ -622,6 +622,100 @@ async function send() {
     permalink = (await call('chat.getPermalink', { channel: r.channel, message_ts: r.ts })).permalink || '';
   } catch { /* permalink optional — the send already succeeded */ }
   console.log(`Sent to ${r.channel} at ts ${r.ts}.${permalink ? ` Link: ${permalink}` : ''}`);
+}
+
+// Read a --body-file the same way --send does: normalized newlines, trimmed, never empty.
+function readBody(verb) {
+  const bodyFile = args['body-file'];
+  if (!bodyFile || bodyFile === true) {
+    throw new Error(`${verb} requires --body-file (the reviewed message body; the writing-review gate reads it)`);
+  }
+  let text;
+  try {
+    text = require('fs').readFileSync(bodyFile, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  } catch {
+    throw new Error(`${verb}: cannot read --body-file ${bodyFile}`);
+  }
+  if (!text) throw new Error(`${verb}: --body-file ${bodyFile} is empty`);
+  return text;
+}
+
+// A draft's body is rich_text blocks, not mrkdwn: turn the body into one rich_text section, splitting
+// out each `<url|anchor>` (or bare `<url>`) into a link element so the link survives as a link.
+function richTextBlocks(text) {
+  const elements = [];
+  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>/g;
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > last) elements.push({ type: 'text', text: text.slice(last, m.index) });
+    elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) elements.push({ type: 'text', text: text.slice(last) });
+  return [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements }] }];
+}
+
+// The plain text of a draft's rich_text blocks, for listing.
+function draftText(blocks) {
+  const out = [];
+  const walk = (els) => {
+    for (const e of els || []) {
+      if (e.type === 'text') out.push(e.text || '');
+      else if (e.type === 'link') out.push(e.text || e.url || '');
+      else if (e.type === 'user') out.push(`<@${e.user_id}>`);
+      else if (e.type === 'channel') out.push(`<#${e.channel_id}>`);
+      else if (e.type === 'emoji') out.push(`:${e.name}:`);
+      else if (e.elements) walk(e.elements);
+    }
+  };
+  for (const b of blocks || []) walk(b.elements);
+  return out.join('');
+}
+
+async function listDrafts() {
+  const drafts = [];
+  let cursor = '';
+  do {
+    const r = await call('drafts.list', cursor ? { limit: '100', cursor } : { limit: '100' });
+    drafts.push(...(r.drafts || []));
+    cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
+  } while (cursor);
+  const channel = args.channel && args.channel !== true ? args.channel : '';
+  const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
+  const out = drafts
+    .filter(d => !d.is_sent && !d.is_deleted)
+    .filter(d => !channel || (d.destinations || []).some(x =>
+      x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))
+    .map(d => ({
+      id: d.id,
+      destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '' })),
+      updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
+      text: draftText(d.blocks),
+    }));
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
+  for (const d of out) {
+    const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '')).join(', ');
+    console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
+    console.log(d.text || '(no text)');
+  }
+}
+
+// Create an unsent draft on the server - reaches no one; Russell sends it himself from his own Slack.
+async function createDraft() {
+  if (!args.channel || args.channel === true) throw new Error('--create-draft requires --channel');
+  const text = readBody('--create-draft');
+  const destination = { channel_id: args.channel };
+  if (args['thread-ts'] && args['thread-ts'] !== true) destination.thread_ts = args['thread-ts'];
+  const r = await call('drafts.create', {
+    client_msg_id: require('crypto').randomUUID(),
+    blocks: JSON.stringify(richTextBlocks(text)),
+    file_ids: '[]',
+    destinations: JSON.stringify([destination]),
+    is_from_composer: 'false',
+  });
+  const id = (r.draft && r.draft.id) || '';
+  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}. Not sent.`);
 }
 
 async function check() {
@@ -698,8 +792,10 @@ async function findByDomain() {
   if (args.react) return await react();
   if (args.mark) return await mark();
   if (args.send) return await send();
+  if (args['list-drafts']) return await listDrafts();
+  if (args['create-draft']) return await createDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --find-dm, --open-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
