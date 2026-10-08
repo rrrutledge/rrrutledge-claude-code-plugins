@@ -81,7 +81,11 @@ Under `scripts/` (run with `node`):
     review and send himself.
     It reaches no one.
     Mrkdwn links (`<url|anchor text>`) become real links.
+    Mentions (`<@U...>` for a person, `<#C...>` for a channel) become name chips instead of literal text.
     The writing-review gate requires a receipt on `--body-file`, the same as any other stage.
+  - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one staged draft, using the id that
+    `--list-drafts` or `--create-draft` prints.
+    It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
     user ID you already have, printing the DM channel id.
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
@@ -103,8 +107,8 @@ Under `scripts/` (run with `node`):
 - `chat.postMessage` - post one reviewed message as the signed-in user (`--send`; needs the `d` cookie).
 - `files.getUploadURLExternal` / `files.completeUploadExternal` - reserve an upload slot per file, then post
   the uploaded files into the conversation with the reviewed body as their caption (`--send --file=<path>[,<path>...]`).
-- `drafts.list` / `drafts.create` - read the server-side draft list, and save an unsent draft
-  (`--list-drafts`, `--create-draft`).
+- `drafts.list` / `drafts.create` / `drafts.delete` - read the server-side draft list, save an unsent draft,
+  and remove one (`--list-drafts`, `--create-draft`, `--delete-draft`).
 - `conversations.open` - open or find the existing 1:1 DM for a known user ID (`--open-dm`; also used
   internally by `--find-dm` once it's matched a name to a user).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).

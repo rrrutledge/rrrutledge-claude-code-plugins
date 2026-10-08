@@ -53,8 +53,12 @@
 // Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
-//                 Links written as Slack mrkdwn `<url|anchor text>` become real links. Gated by the
-//                 writing-review receipt on <file>, the same as --send)
+//                 Links written as Slack mrkdwn `<url|anchor text>` become real links, and `<@U...>` /
+//                 `<#C...>` become user / channel chips. Gated by the writing-review receipt on <file>,
+//                 the same as --send)
+// Delete draft:  node slack.js --delete-draft=<draft id>
+//                (drafts.delete of one staged draft, the id --list-drafts or --create-draft prints; it
+//                 reaches no one, and removes a bad staged draft without cleaning it up by hand)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
@@ -641,14 +645,17 @@ function readBody(verb) {
 }
 
 // A draft's body is rich_text blocks, not mrkdwn: turn the body into one rich_text section, splitting
-// out each `<url|anchor>` (or bare `<url>`) into a link element so the link survives as a link.
+// out each `<url|anchor>` (or bare `<url>`) into a link element so the link survives as a link, and
+// each `<@U...>` / `<#C...>` into a user / channel element so the mention renders as a chip.
 function richTextBlocks(text) {
   const elements = [];
-  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>/g;
+  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>|<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|<#(C[A-Z0-9]+)(?:\|[^>]*)?>/g;
   let last = 0;
   for (const m of text.matchAll(re)) {
     if (m.index > last) elements.push({ type: 'text', text: text.slice(last, m.index) });
-    elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
+    if (m[3]) elements.push({ type: 'user', user_id: m[3] });
+    else if (m[4]) elements.push({ type: 'channel', channel_id: m[4] });
+    else elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
     last = m.index + m[0].length;
   }
   if (last < text.length) elements.push({ type: 'text', text: text.slice(last) });
@@ -672,7 +679,7 @@ function draftText(blocks) {
   return out.join('');
 }
 
-async function listDrafts() {
+async function fetchDrafts() {
   const drafts = [];
   let cursor = '';
   do {
@@ -680,6 +687,11 @@ async function listDrafts() {
     drafts.push(...(r.drafts || []));
     cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
   } while (cursor);
+  return drafts;
+}
+
+async function listDrafts() {
+  const drafts = await fetchDrafts();
   const channel = args.channel && args.channel !== true ? args.channel : '';
   const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
   const out = drafts
@@ -716,6 +728,17 @@ async function createDraft() {
   });
   const id = (r.draft && r.draft.id) || '';
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}. Not sent.`);
+}
+
+// Remove one staged draft by id, so a bad draft doesn't need hand cleanup.
+async function deleteDraft() {
+  const id = String(args['delete-draft'] || '');
+  if (!id || id === 'true') throw new Error('--delete-draft requires a draft id, e.g. --delete-draft=Dr0123ABC');
+  const draft = (await fetchDrafts()).find(d => d.id === id && !d.is_deleted);
+  if (!draft) throw new Error(`--delete-draft: no active draft ${id}`);
+  // The server rejects the draft's own last_updated_ts as a conflict; it wants the client's current time.
+  await call('drafts.delete', { draft_id: id, client_last_updated_ts: (Date.now() / 1000).toFixed(6) });
+  console.log(`Draft ${id} deleted.`);
 }
 
 async function check() {
@@ -794,8 +817,9 @@ async function findByDomain() {
   if (args.send) return await send();
   if (args['list-drafts']) return await listDrafts();
   if (args['create-draft']) return await createDraft();
+  if (args['delete-draft']) return await deleteDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --find-dm, --open-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
