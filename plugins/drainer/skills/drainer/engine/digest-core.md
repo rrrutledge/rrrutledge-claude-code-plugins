@@ -86,12 +86,15 @@ On his OK here, only the digest queue entry is removed, per step 4's clearing ru
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)
 
 Items a worker resolved autonomously - either under a provider **AUTO-HANDLE** rule (e.g. an approved Slack workspace invite) or by finishing a needs-you item's work and self-closing it (§6a of worker-core, re-tagged `auto-handle` on the way into the queue).
-The action and the source-clear are **already done** - this section is purely so Russell *sees* what happened, never to ask him to act.
+The action and the source-clear are **already done** - this section is so Russell *sees* what happened, not to ask him to act, though he may choose to pick up a briefing.
 
-Each item carries a `disposition` its worker stamped (`abandoned` | `advanced` | `nudged`, defined in worker-core step 4) and a one-line `dispositionReason`.
+Each item carries a `disposition` its worker stamped (`abandoned` | `advanced` | `nudged` | `briefed`, defined in `engine/auto-handle.md` step 4) and a one-line `dispositionReason`.
 Your job here is only to split on that disposition and print each item's reason verbatim, so you need the split rule, not the value definitions.
-Present one distinct **"Auto-handled"** section (separate from fyi), split two ways:
-- **State changed (worth a glance)** - every item whose disposition is anything other than `nudged` (`abandoned`, `advanced`, or an item carrying no disposition at all).
+Present one distinct **"Auto-handled"** section (separate from fyi), split three ways:
+- **Briefings (read these)** - the `briefed` items, first in the section.
+  Each is the item name (linked), its `dispositionReason` as the headline, then its `summary` in full - the findings its worker would otherwise have held a session open for.
+  These are the one auto-handled group Russell may want to act on: when he picks one up, do that work in this session or hand it off, the same as any digest follow-up.
+- **State changed (worth a glance)** - every item whose disposition is `abandoned` or `advanced`, or that carries no disposition at all.
   One line each, printed with its `dispositionReason` verbatim, most-notable first - an `abandoned` item leads, since a dead req is a real signal: e.g. "Abandoned - req closed (Acme / Staff Eng)", "Advanced to Interested - they replied yes", "Approved workspace invite for *jane@acme.com* (requested by Bob)".
 - **Checked, no change** - the `nudged` items, in their own group below "State changed".
   List every one on its own line: the item name (linked), the new date it was bumped to, and its `dispositionReason` verbatim (tightly paraphrased only when very long).

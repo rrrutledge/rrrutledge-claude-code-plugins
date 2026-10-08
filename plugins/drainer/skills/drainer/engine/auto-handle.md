@@ -28,6 +28,7 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
         A nudge's `dispositionReason` always states why it was bumped (the hold condition or the evidence you checked) and the new Start date.
         An item whose next step waits on Russell himself is never `nudged` - it is needs-you (the trello provider's DUE-TASK).
         See the trello provider's CLEAR for the exact recent-activity case a card nudges on.
+      - `briefed` - done, and what's left is findings for Russell to read (worker-core §6a): `dispositionReason` is a one-line headline, and the briefing itself goes in a `summary` field on the same file, which the digest prints in full.
 
       Pick the value that matches what you actually did, per your source's AUTO-HANDLE / CLEAR mapping, and set `dispositionReason` to the same one-liner you recorded on the source (the dated Trello comment, e.g.): "req closed - posting expired", "moved to Interested - they replied yes", "they replied and I already answered - too early to follow up".
       The digest prints every item with this reason, `nudged` items included, in separate groups, so a closed-req abandon reads as "Abandoned - req closed", never as a deferral.
