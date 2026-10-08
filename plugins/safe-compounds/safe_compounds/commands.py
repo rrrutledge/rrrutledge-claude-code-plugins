@@ -517,8 +517,9 @@ def is_start_safe(seg):
 # is a render-and-save: the only effect is the output file, so it is approved
 # when that file lands somewhere already trusted for writes, the page is a
 # local file (or localhost), and every flag is on the harmless-rendering list.
-# Anything that opens a debugging port, loads extensions, or picks its own
-# profile directory is outside the list and prompts.
+# Anything that opens a debugging port or loads extensions is outside the list
+# and prompts. A --user-data-dir is allowed only when it points at a trusted
+# write location (a scratch profile), never at a real browser profile.
 HEADLESS_BROWSER_NAMES = {'msedge', 'chrome', 'chromium', 'chromium-browser', 'google-chrome'}
 HEADLESS_BROWSER_FLAGS = {
     '--disable-gpu', '--hide-scrollbars', '--force-dark-mode',
@@ -553,7 +554,7 @@ def is_headless_browser_safe(seg):
         name, _, value = tok.partition('=')
         if name == '--headless':
             headless = True
-        elif name in HEADLESS_OUTPUT_FLAGS:
+        elif name in HEADLESS_OUTPUT_FLAGS or name == '--user-data-dir':
             if value and not _dest_allowed(value):
                 return False
         elif name not in HEADLESS_BROWSER_FLAGS:
