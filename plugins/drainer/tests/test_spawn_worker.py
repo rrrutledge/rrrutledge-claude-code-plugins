@@ -43,8 +43,8 @@ def spawn(triage, config_repo, bg_id="abc123ef", agents=()):
     (error, prompt, summary_exists, calls, receipt)."""
     calls = []
 
-    def fake_spawn_bg(seed, model, cwd, name, resume=None):
-        calls.append({"seed": seed, "model": model, "cwd": cwd, "name": name})
+    def fake_spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
+        calls.append({"seed": seed, "model": model, "cwd": cwd, "name": name, "scratch_only": scratch_only})
         return bg_id
 
     poller.spawn_bg = fake_spawn_bg
@@ -85,6 +85,8 @@ for triage in ("needs-you", "auto-handle"):
         check("seed points the worker at its prompt file",
               "open it and begin immediately without waiting for further input." in calls[0]["seed"], True)
         check("seed passes the worker model", calls[0]["model"], "sonnet")
+        # A worker's writes are .tmp/ scratch, so it launches without the background worktree guard.
+        check("worker launches scratch_only", calls[0]["scratch_only"], True)
     check("receipt falls back to the short id when `claude agents` can't resolve it", receipt, "abc123ef")
 
 print("\nspawn_worker records the full guid when `claude agents` lists the new session")

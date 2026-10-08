@@ -47,7 +47,7 @@ def resume_call(cwd):
     """spawn_resume's one spawn_bg call, captured (never a real launch)."""
     calls = []
     real = poller.spawn_bg
-    poller.spawn_bg = lambda seed, model, cwd, name, resume=None: calls.append(
+    poller.spawn_bg = lambda seed, model, cwd, name, resume=None, scratch_only=False: calls.append(
         {"seed": seed, "model": model, "cwd": cwd, "name": name, "resume": resume}) or "r35u0000"
     try:
         poller.spawn_resume("abcd1234-0000", cwd, "C:/repo")

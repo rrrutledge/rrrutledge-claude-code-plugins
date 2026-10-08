@@ -67,7 +67,7 @@ with tempfile.TemporaryDirectory() as tmp:
 print("\n_spawn_diagnostic launches a background session and writes its receipt")
 calls, receipts = [], []
 real_spawn, real_receipt = poller.spawn_bg, poller.write_receipt
-poller.spawn_bg = lambda seed, model, cwd, name, resume=None: calls.append((seed, model, cwd, name)) or "d1a90000"
+poller.spawn_bg = lambda seed, model, cwd, name, resume=None, scratch_only=False: calls.append((seed, model, cwd, name)) or "d1a90000"
 poller.write_receipt = lambda anchor, sid: receipts.append((anchor, sid)) or sid
 try:
     with tempfile.TemporaryDirectory() as tmp:
