@@ -129,6 +129,21 @@ def test_slack_send_mint_then_allowed_through(tmp_path):
     assert decision(r.stdout) == "DEFER"
 
 
+def test_slack_create_draft_without_receipt_is_blocked(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    write_body(tmp_path, "dm.md", "Theo - can you take a look at the pattern?")
+    r = run([], stdin=bash_payload("node slack.js --create-draft --channel=DAQPLK5PD --body-file=dm.md"),
+            cwd=str(tmp_path), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
+
+
+def test_slack_list_drafts_not_gated(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    r = run([], stdin=bash_payload("node slack.js --list-drafts --channel=DAQPLK5PD"),
+            cwd=str(tmp_path), receipt_dir=receipts)
+    assert decision(r.stdout) != "DENY"
+
+
 # --- things that must NOT be gated ---
 
 def test_send_draft_not_gated(tmp_path):
