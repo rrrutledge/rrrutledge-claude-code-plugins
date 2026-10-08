@@ -187,12 +187,8 @@ Route each piece of work by where it belongs - which is also where Russell can r
   The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
 
-**Every file you write yourself is scratch, and it goes straight into `.tmp/` in the repo you were launched in.**
-That covers a draft body file, a scratch script, a handoff brief, and a patch to your own `items/<id>.json` in the runtime dir.
-The poller launches you with Claude Code's background worktree guard off, so these writes land in place with no worktree.
-A change to anything repo-tracked (a skill, a script, a doc, config) is a code change, so it goes to a handoff per the routing above.
-The handoff launches with the guard on and isolates its own edits in a worktree, which keeps the shared checkout clean.
-The same holds for §7's "improve the source" fix: the handoff ships it, and your lesson's `--pr` points at that PR.
+**Route every change to a repo-tracked file through a handoff - a skill, script, doc, or config edit, §7's "improve the source" fix included.**
+The poller launches you with Claude Code's background worktree guard off so your `.tmp/` scratch writes land in place, which leaves the handoff, launched with the guard on, as what keeps a source edit in its own worktree.
 
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this session; this rule resets the context the work you keep has accumulated.
