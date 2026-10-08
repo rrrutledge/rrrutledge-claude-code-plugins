@@ -240,7 +240,7 @@ A single clear sentence ending in a question is usually the whole message — re
 - **Proposing a concrete date to someone who's already agreed to the underlying ask: ask about their availability for it, not their desire again.**
   "Want to bring it then?" re-asks something they already answered; "are you available to bring it then?" asks the one thing still genuinely open.
 - **Inviting someone to a call that already exists: name that call and ask whether they can join.**
-  Include the date, time, timezone conversion, and invite promise only when Russell supplied them; each is a commitment the message makes on his behalf.
+  The call is already on their calendar, so the message restates no date, time, or timezone conversion and promises no new invite.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
 
