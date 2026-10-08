@@ -336,13 +336,14 @@ Self-close here only when ALL of these are unambiguously true:
 - no next step waits on Russell himself (per the trello provider's DUE-TASK)
 
 **A briefing for Russell to read is not, by itself, something waiting on him.**
-When the work is done and all that's left is a summary of what you found - no staged draft, no decision only he can make, no step of his (a send, a signature, a speaker rename, a reply), and no new deliverable for him to review (a PR, a doc, slide text) - put that summary in the digest and close.
+Put the summary in the digest and close when all three hold:
+- **All that's left is a summary of what you found** - no staged draft, no decision only he can make, no step of his (a send, a signature, a speaker rename, a reply), no new deliverable for him to review (a PR, a doc, slide text), and no failure or blocker to report.
+- **Russell has had no turn in this session at all.** Once he has said anything here, even mid-way, he's in a conversation with you and may have more to add, so present as normal and stay open.
+- **The item isn't a topic he started himself.** A note he emailed the pod is already his input, so it's a conversation too.
+
 For a drainer worker this overrides the generic end-of-turn close check's "new information he hasn't reacted to yet": the digest is where he reads it, and he picks any topic back up from the digest session.
-Most summary-only stay-opens end with Russell typing `/close` or a one-line wrap-up, so holding the session open buys nothing.
+A zero-input session that ends in a summary almost always ends with Russell typing `/close`, so holding it open buys nothing.
 Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, and write the briefing itself into a `summary` field on `items/<id>.json`: the findings, any deadline or number that matters, and anything he might choose to do with it.
-Two cases still stay open and present as normal, even when the end state is a summary:
-- **A topic Russell started himself** - an item he sent the pod (a note he emailed himself, e.g.) is a conversation, and his reply usually carries it forward.
-- **A failure or blocker you hit** - report it and stay open, since what went wrong is something he'll want to weigh in on now.
 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
