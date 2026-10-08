@@ -178,8 +178,9 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 The orchestrator has already minted the reviewed body's receipt into the `--body-file` it hands over.
 
 Stages a draft in the **Slack composer** (web) for a DM, group DM, channel message, or threaded reply.
-Slack has no draft API — typing into the composer and stopping leaves Slack's own per-conversation
-auto-saved **draft**. You drive **browser-chauffeur**; never Playwright directly. This skill never sends;
+Typing into the composer and stopping leaves Slack's own per-conversation auto-saved **draft**, and the
+**`slack`** skill's `slack.js --list-drafts` reads Slack's server-side draft list to prove it saved.
+You drive **browser-chauffeur**; never Playwright directly. This skill never sends;
 sending a reviewed Slack message is the separate, gated `slack.js --send` step in the **`slack`** skill,
 reserved for Russell's explicit per-message OK, parallel to how Outlook's send is `ms-rest send-draft`.
 
@@ -211,10 +212,14 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
 5. **Save the draft, then leave it.** Do NOT press Enter / click Send.
    A Slack composer draft is saved only once the composer loses focus and Slack's save request fires, so typing and then immediately navigating to another conversation (or ending the script) discards it before it ever saves.
    After typing, blur the composer (`el.blur()`) and let the save settle (`page.waitForLoadState('networkidle')`) before moving to the next conversation or finishing.
-   Verify it saved the hard way: reload the page and confirm the body is still in the composer.
-   A draft that survives a reload is saved server-side, so it syncs to the user's own Slack - the sidebar shows a **Draft** badge on the conversation and it appears under **Drafts & sent**, which is where they review and send it.
-   A draft that is empty after the reload never saved; re-type it, blur, and re-verify.
-   When staging several drafts in one run, save-and-verify each one before opening the next, since a not-yet-saved draft is the one a navigation silently drops.
+   When staging several drafts in one run, save each one before opening the next, since a not-yet-saved draft is the one a navigation silently drops.
+6. **Verify the save on the server.** Back in the orchestrator, list the conversation's server-side drafts with the **`slack`** skill:
+   `node slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
+   A draft listed there with the body's text is saved, so it syncs to the user's own Slack - the sidebar shows a **Draft** badge on the conversation and it appears under **Drafts & sent**, which is where they review and send it.
+   A page reload proves nothing: Slack restores the composer from browser-local storage, so a draft can survive a reload and still be missing from the server list and from the user's other devices.
+   When the list has no matching draft, create it on the server from the same reviewed body:
+   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
+   `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
 
 ## Mode: `outlook`
 
