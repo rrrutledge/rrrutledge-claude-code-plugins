@@ -173,25 +173,7 @@ def test_priority_band_still_leads_level_band():
     check("P1 IC still outranks P2 Director/VP", ranked[0]["name"] == "P1 IC", [it["name"] for it in ranked])
 
 
-def test_held_back_policy():
-    print("test: _held_back - P1 drains whatever its level; P2/P3 Identified and IC-level P2/P3 stay held")
-    Provider = adapter_mod.Provider
-    p1, p1_bare, p2 = [{"name": "🎯 P1"}], [{"name": "P1"}], [{"name": "🎯 P2"}]
-    contact = [{"name": "👤 Contact"}]
-    director = "Priority: P1 · Platform · Director/VP-level"
-    ic = "Priority: P1 · Platform · IC-level"
-    check("P1 Director/VP in Identified drains", not Provider._held_back(card(director, p1), "Identified"))
-    check("P1 IC-level in Identified drains", not Provider._held_back(card(ic, p1), "Identified"))
-    check("bare 'P1' label drains", not Provider._held_back(card(ic, p1_bare), "Identified"))
-    check("P2 Director/VP in Identified is held", Provider._held_back(card(director, p2), "Identified"))
-    check("P2 IC-level past Identified is held", Provider._held_back(card(ic, p2), "Applied"))
-    check("P2 Director/VP past Identified drains", not Provider._held_back(card(director, p2), "Applied"))
-    check("unlabeled sweep card in Identified is held", Provider._held_back(card("sweep"), "Identified"))
-    check("Contact follow-up in Identified drains", not Provider._held_back(card("", contact), "Identified"))
-
-
 if __name__ == "__main__":
-    test_held_back_policy()
     test_level_band_reads_desc_line()
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()

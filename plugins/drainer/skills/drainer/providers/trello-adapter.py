@@ -333,29 +333,6 @@ class Provider(ProviderBase):
         return any(_CONTACT_RE.match(l.get("name") or "") for l in card.get("labels", []))
 
     @staticmethod
-    def _is_p1(card):
-        """True if the card wears a P1 (top-fit) priority label, with or without the 🎯 prefix."""
-        for l in card.get("labels", []):
-            m = _PRIORITY_RE.match(l.get("name") or "")
-            if m and m.group(1) == "1":
-                return True
-        return False
-
-    @classmethod
-    def _held_back(cls, card, list_name):
-        """True if the card stays on the board but is never handed to a worker. P1 job cards drain
-        normally whatever their level or list. Every other card is held when it is a below-director
-        posting (job-board-poll writes an "IC-level" line into the body of job-search cards only) or a
-        brand-new application still in the Identified intake list (P2/P3 and the weekly sweep card). A
-        👤 Contact follow-up keeps its own nudge cadence in Identified, and applications advanced past
-        Identified drain normally. Only the Job Search Outreach board has an Identified list."""
-        if cls._is_p1(card):
-            return False
-        if "IC-level" in (card.get("desc") or ""):
-            return True
-        return "identified" in list_name.lower() and not cls._is_contact_card(card)
-
-    @staticmethod
     def _parse_dt(value):
         """Parse a Trello date field (an ISO-8601 string) to an aware datetime, or None if absent/bad."""
         if not value:
@@ -403,8 +380,6 @@ class Provider(ProviderBase):
             # ⛔ Blocked cards are suppressed until their upstream clears (the push cascade removes the
             # label and sets Start = today, so they resurface on a later drain).
             if self._has_skip_label(card):
-                continue
-            if self._held_back(card, list_name):
                 continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
