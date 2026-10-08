@@ -32,7 +32,7 @@ Anchor by format:
 - **Teams / Slack**: anchor via the link dialog (Ctrl+K).
 - **Word / rich-text email / Markdown / PRs**: anchor to natural words.
 - **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL in parentheses right after the text — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
-  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
+  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): for a link inside a sentence, put the plain URL in parentheses right after the text, as above; for a link that stands on its own line, write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
 
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
@@ -109,7 +109,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
 - **No emoji** — warmth comes from word choice, not symbols.
 - Structure with headings, bullets, and tables where they help the reader navigate.
 - Neutral tone in reference data, tables, and specs; warm in narrative and intro sections.
-- Center the reader with "you/your"; use "we're" for the team or product, "I" for a personal action.
+- Center the reader with "you/your"; use "we're" for the team or product, "I" for what Russell personally did or perceived, even when the same sentence goes on to a shared "we could".
 - **"We" for coordinating follow-up** — next steps that involve reaching out, scheduling, or connecting are "we'll", even when Russell executes them personally.
 - Short sentences.
   One idea per sentence.
@@ -192,7 +192,7 @@ A single clear sentence ending in a question is usually the whole message — re
   **The expertise this defers to isn't only technical — it includes knowing a person better than Russell does.** When asking someone to make an introduction for a delicate ask (money, sponsorship — anywhere a misjudged approach risks offending the contact), and they know that contact better than Russell does, close on whether they think it's a good idea ("if you think that's a good idea?") rather than a generic bandwidth release ("no worries if you're swamped") — a real question for their read on the person, not a hedge about their being busy.
   This holds equally when the ask is for them to personally follow up with that contact, not just to make an introduction: pose it as an open question about whose call it is to reach out, and offer to do it yourself as the fallback, rather than asserting they're the natural one.
   Digging up a fact they lacked doesn't transfer the decision to you; it's still theirs, most of all when they've already voiced doubt about the lead and left the call open ("maybe it helps if you mail him") — that's an invitation to weigh in, not permission to proceed.
-  When you counter their objection with a fix, acknowledge their point in a clause and give the proposal in one plain sentence, then a short open check ("Sound OK?") - cut the full restatement of their concern, the justification for why the fix works, the list of problems it sidesteps, and any call offer; the expert sees all that already.
+  When you counter their objection with a fix, acknowledge their point in a clause and give the proposal in one plain sentence, then a short open check ("Sound OK?") - unless the proposal is a hedged "we could" that follows a release of their earlier path ("no worries about X ... we could ask Y after that"), where the release already leaves the call open and the check would ask twice, so end on the proposal; cut the full restatement of their concern, the justification for why the fix works, the list of problems it sidesteps, and any call offer; the expert sees all that already.
   The same short close applies when you're the one surfacing a discrepancy you found in their setup, not answering an objection of theirs: name the finding, then close on your own tentative lean as a plain question ("I'm thinking we should have something more narrow?") rather than a two-part "was that intentional, or should we match the usual pattern because it's Y" that makes them account for it - they'll supply the reasoning themselves if they disagree.
   Hedge with "that I know of" when not fully certain.
 - **When someone else owns a topic, loop them into the thread rather than answering on Russell's own authority — even when he's confident of the answer.**
