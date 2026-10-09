@@ -62,7 +62,7 @@ Under `scripts/` (run with `node`):
   - Mark read: `node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]` — `conversations.mark`
     up to `<ts>`, or `subscriptions.thread.mark` when `--thread-ts` is given (the conversation/thread's
     "gone"; reversible — re-reading re-surfaces it, never deletes).
-  - Send (REAL SEND): `node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>[,<path>...]]` -
+  - Send (REAL SEND): `node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--file=<path>[,<path>...]]` -
     `chat.postMessage` of the reviewed body as the signed-in user (or, with `--file`, the upload-and-caption
     flow below), then prints the sent message's permalink. Pass `--thread-ts` to reply inside a thread; omit
     it to post a top-level message (a DM, group DM, or channel message). The body is **Slack mrkdwn**: a link
@@ -78,7 +78,7 @@ Under `scripts/` (run with `node`):
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
-  - Create a draft: `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]` -
+  - Create a draft: `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace]` -
     saves the reviewed body as an unsent draft in that conversation, under **Drafts & sent** for Russ to
     review and send himself.
     It reaches no one.
@@ -107,11 +107,11 @@ Under `scripts/` (run with `node`):
 - `conversations.info` / `users.info` — resolve channel names and sender real-names (cached per run).
 - `chat.getPermalink` — a stable web link to one message (the captured item's `url`, and the link `--send`
   prints for the message it just posted).
-- `chat.postMessage` - post one reviewed message as the signed-in user (`--send`; needs the `d` cookie).
+- `chat.postMessage` - post one reviewed message as the signed-in user (`--send`; needs the `d` cookie; `reply_broadcast` for `--broadcast`).
 - `files.getUploadURLExternal` / `files.completeUploadExternal` - reserve an upload slot per file, then post
   the uploaded files into the conversation with the reviewed body as their caption (`--send --file=<path>[,<path>...]`).
-- `drafts.list` / `drafts.create` - read the server-side draft list, and save an unsent draft
-  (`--list-drafts`, `--create-draft`).
+- `drafts.list` / `drafts.create` / `drafts.delete` - read the server-side draft list, save an unsent draft,
+  and delete one (`--list-drafts`, `--create-draft`, `--delete-draft`, `--create-draft --replace`).
 - `conversations.open` - open or find the existing 1:1 DM for a known user ID (`--open-dm`; also used
   internally by `--find-dm` once it's matched a name to a user).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).
@@ -140,8 +140,7 @@ When Russ says to send:
    for those exact bytes already exists from staging.
 3. Resolve the target: a DM channel via `--find-dm` (by name) or `--open-dm` (by user ID), or the
    `channel` (+ `thread-ts`) from the captured item.
-4. Run `node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>[,<path>...]]` and
-   report the permalink.
+4. Run `--send` as described under Send above, and report the permalink.
 
 These constraints keep send safe:
 
