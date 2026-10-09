@@ -34,7 +34,7 @@
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
 //                 the conversation/thread's "gone"; reversible, never deletes)
-// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>[,<path>...]]
+// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--file=<path>[,<path>...]]
 //                (chat.postMessage of the reviewed body in <file> as the signed-in user, then prints the
 //                 sent message's permalink. The body is Slack mrkdwn — a link is `<url|anchor text>`. This
 //                 is the one write that reaches another person: human-in-the-loop only, run solely on
@@ -44,17 +44,24 @@
 //                 getUploadURLExternal, POST the bytes to the returned URL, then files.completeUploadExternal
 //                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.
 //                 A comma-separated --file=a.png,b.png uploads each file's bytes, then one
-//                 completeUploadExternal call posts the body and every file as a single message.)
+//                 completeUploadExternal call posts the body and every file as a single message.
+//                 --broadcast (thread replies only, not with --file) ticks "Also send to <channel>":
+//                 chat.postMessage with reply_broadcast=true.)
 // List drafts:   node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]
 //                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
 //                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
 //                 the proof a staged draft actually saved; a browser reload can restore a local-only copy)
-// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]
+// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
 //                 Links written as Slack mrkdwn `<url|anchor text>` become real links. Gated by the
-//                 writing-review receipt on <file>, the same as --send)
+//                 writing-review receipt on <file>, the same as --send.
+//                 --broadcast stages the thread reply with "Also send to <channel>" ticked. Slack allows
+//                 one draft per thread, so a second create fails with attached_draft_exists unless
+//                 --replace deletes the thread's existing draft first)
+// Delete draft:  node slack.js --delete-draft=<draft id>
+//                (drafts.delete of one unsent draft, found via --list-drafts; it never reaches anyone)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
@@ -587,6 +594,12 @@ async function send() {
     throw new Error('--send requires --channel (a DM/group/channel/conversation id; resolve a person with --find-dm)');
   }
   const text = readBody('--send');
+  if (args.broadcast && !(args['thread-ts'] && args['thread-ts'] !== true)) {
+    throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
+  }
+  if (args.broadcast && args.file && args.file !== true) {
+    throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
+  }
 
   if (args.file && args.file !== true) {
     const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
@@ -608,6 +621,7 @@ async function send() {
 
   const params = { channel: args.channel, text };
   if (args['thread-ts']) params.thread_ts = args['thread-ts'];
+  if (args.broadcast) params.reply_broadcast = 'true';
   const r = await call('chat.postMessage', params);
   // A post doesn't advance the read cursor the way the Slack client does, so the conversation
   // stays bold forever with our own reply as the only "unread" message. Mark it ourselves —
@@ -673,6 +687,29 @@ function draftText(blocks) {
 }
 
 async function listDrafts() {
+  const drafts = await activeDrafts();
+  const channel = args.channel && args.channel !== true ? args.channel : '';
+  const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
+  const out = drafts
+    .filter(d => !channel || (d.destinations || []).some(x =>
+      x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))
+    .map(d => ({
+      id: d.id,
+      destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '', broadcast: !!x.broadcast })),
+      updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
+      text: draftText(d.blocks),
+    }));
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
+  for (const d of out) {
+    const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '') + (x.broadcast ? ' +channel' : '')).join(', ');
+    console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
+    console.log(d.text || '(no text)');
+  }
+}
+
+// Every active draft from drafts.list, paginated.
+async function activeDrafts() {
   const drafts = [];
   let cursor = '';
   do {
@@ -680,42 +717,56 @@ async function listDrafts() {
     drafts.push(...(r.drafts || []));
     cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
   } while (cursor);
-  const channel = args.channel && args.channel !== true ? args.channel : '';
-  const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
-  const out = drafts
-    .filter(d => !d.is_sent && !d.is_deleted)
-    .filter(d => !channel || (d.destinations || []).some(x =>
-      x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))
-    .map(d => ({
-      id: d.id,
-      destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '' })),
-      updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
-      text: draftText(d.blocks),
-    }));
-  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
-  if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
-  for (const d of out) {
-    const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '')).join(', ');
-    console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
-    console.log(d.text || '(no text)');
-  }
+  return drafts.filter(d => !d.is_sent && !d.is_deleted);
+}
+
+// drafts.delete wants the draft's last_updated_ts plus one second as client_last_updated_ts: the exact
+// value is rejected as draft_has_conflict and omitting it as invalid_arguments.
+async function deleteDraftById(draft) {
+  const clientTs = (parseFloat(draft.last_updated_ts || '0') + 1).toFixed(6);
+  await call('drafts.delete', { draft_id: draft.id, client_last_updated_ts: clientTs });
+}
+
+async function deleteDraft() {
+  const id = args['delete-draft'];
+  if (!id || id === true) throw new Error('--delete-draft requires a draft id (see --list-drafts)');
+  const draft = (await activeDrafts()).find(d => d.id === id);
+  if (!draft) throw new Error(`--delete-draft: no active draft ${id}`);
+  await deleteDraftById(draft);
+  console.log(`Draft ${id} deleted. It was never sent.`);
 }
 
 // Create an unsent draft on the server - reaches no one; Russell sends it himself from his own Slack.
+// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the thread's
+// existing draft (Slack allows one per thread) instead of failing with attached_draft_exists.
 async function createDraft() {
   if (!args.channel || args.channel === true) throw new Error('--create-draft requires --channel');
   const text = readBody('--create-draft');
   const destination = { channel_id: args.channel };
   if (args['thread-ts'] && args['thread-ts'] !== true) destination.thread_ts = args['thread-ts'];
-  const r = await call('drafts.create', {
+  if (args.broadcast) {
+    if (!destination.thread_ts) throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
+    destination.broadcast = true;
+  }
+  const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
     blocks: JSON.stringify(richTextBlocks(text)),
     file_ids: '[]',
     destinations: JSON.stringify([destination]),
     is_from_composer: 'false',
   });
+  let r;
+  try {
+    r = await create();
+  } catch (e) {
+    if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
+    const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
+      x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
+    for (const d of stale) await deleteDraftById(d);
+    r = await create();
+  }
   const id = (r.draft && r.draft.id) || '';
-  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}. Not sent.`);
+  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }
 
 async function check() {
@@ -794,8 +845,9 @@ async function findByDomain() {
   if (args.send) return await send();
   if (args['list-drafts']) return await listDrafts();
   if (args['create-draft']) return await createDraft();
+  if (args['delete-draft']) return await deleteDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --find-dm, --open-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

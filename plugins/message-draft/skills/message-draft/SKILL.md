@@ -220,6 +220,7 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    When the list has no matching draft, create it on the server from the same reviewed body:
    `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
+   For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`; see the **`slack`** skill.
 
 ## Mode: `outlook`
 
