@@ -73,6 +73,8 @@ Under `scripts/` (run with `node`):
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts
     them all as a single message with the `--body-file` text as the caption.
     Same gate, same say-so - `--file` only changes how the reviewed body reaches Slack.
+    Add `--broadcast` to a `--thread-ts` reply to tick "Also send to #channel" (`reply_broadcast=true`).
+    It does not combine with `--file`.
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
@@ -82,6 +84,11 @@ Under `scripts/` (run with `node`):
     It reaches no one.
     Mrkdwn links (`<url|anchor text>`) become real links.
     The writing-review gate requires a receipt on `--body-file`, the same as any other stage.
+    Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
+    Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
+    Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
+  - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
+    It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
     user ID you already have, printing the DM channel id.
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
