@@ -29,6 +29,8 @@ Latitude grows with every piece of content the writer had to supply itself: an a
 
 On a multi-person thread, which message and which person the reply answers is also content the writer chose when the ask didn't name them, and a thread with several voices rates 4 or higher.
 
+A dictated decision does not settle the framing: when the message declines or redirects something in front of a group, how it acknowledges the other side, how firmly it states the reason, and how it phrases the alternative are all the writer's choices, so that rates 4 or higher even when every fact is supplied.
+
 A long message covering several separate topics or asks also carries latitude: its structure, order, and which details to keep are all the writer's choices, and a complicated subject rates 4 or higher even when every fact is supplied.
 
 - 1 - Russell handed over the actual wording.
