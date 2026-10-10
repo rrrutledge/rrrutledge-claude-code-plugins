@@ -209,6 +209,9 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
 4. **Links.** Slack renders a pasted URL as a link automatically; for anchor-text links, type the phrase
    and apply a link via the composer's link affordance (Ctrl+K inside the Slack composer opens its
    link dialog — distinct from the quick switcher, which is Ctrl+K when no composer is focused).
+   **Mentions.** Typing `<@U...>` into the composer lands as literal text.
+   For a real mention, mount the chip from the autocomplete as in `teams` step 5.
+   A body that carries `<@U...>` tokens is simpler to stage with `slack.js --create-draft` (step 6), which turns them into real mentions.
 5. **Save the draft, then leave it.** Do NOT press Enter / click Send.
    A Slack composer draft is saved only once the composer loses focus and Slack's save request fires, so typing and then immediately navigating to another conversation (or ending the script) discards it before it ever saves.
    After typing, blur the composer (`el.blur()`) and let the save settle (`page.waitForLoadState('networkidle')`) before moving to the next conversation or finishing.
@@ -220,6 +223,7 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    When the list has no matching draft, create it on the server from the same reviewed body:
    `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
+   For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`; see the **`slack`** skill.
 
 ## Mode: `outlook`
 

@@ -23,8 +23,11 @@ Reading it is YOUR job; never hand the lookup back to the user ("go read the mes
 
 **The rule is dynamic - *try* to read it; don't pre-judge the bucket by whether there's a sign-in.**
 The test is whether Claude can get the content, not whether a login exists: browser-chauffeur already holds live sessions for many authenticated surfaces, so open them and then re-triage what you find on its merits (the step below) - that is what sets the bucket.
-**The one time you don't reach that re-triage is a wall Claude genuinely can't pass** - the content needs the user's own credentials, or lives in an app Claude holds no session for - and then the pointer stays **needs-you**: hand the user the direct deep link.
-Attempt the fetch first every time; the hand-back is the fallback for a wall you actually hit, not a guess made from the URL.
+**A login wall on a site the persistent browser can be signed into is a gate, not a dead end.**
+Open the page in browser-chauffeur, and when it lands on a sign-in, report `HELP_NEEDED` per `engine/browser-gate.md` with the tab left open.
+Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond, staging any reply draft-only.
+**The one time you don't reach that re-triage is content with no browser path at all** - it lives in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
+Attempt the fetch first every time; the hand-back is the fallback for a surface you can't open, not a guess made from the URL and not a substitute for the sign-in gate.
 
 **Exception: LinkedIn/Facebook "X just messaged you" pointers** - the stricter form of that fallback, where you must not even *attempt* the fetch.
 Never drive browser-chauffeur to linkedin.com or facebook.com for any reason - LinkedIn suspended Russell's account for automation in July 2026.
