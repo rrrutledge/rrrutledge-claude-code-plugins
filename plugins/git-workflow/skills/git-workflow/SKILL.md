@@ -8,7 +8,13 @@ description: Russell's git/GitHub workflow rules - branching from main, when PRs
 ## Before opening a PR - read the target repo's own CLAUDE.md and CONTRIBUTING.md
 Every repo can carry its own contribution rules on top of everything in this skill - a required screenshot, a local build/test step, a specific PR template.
 Read that repo's own `CLAUDE.md`, `CONTRIBUTING.md`, and any `.github/PULL_REQUEST_TEMPLATE*` before opening a PR there, every time, even in a repo worked in before - a rule can be added after the last visit.
-Follow whatever they ask in full: run the build/preview step they name, attach whatever artifact they ask for, and match their PR template if one exists.
+Match their PR template if one exists.
+
+**This is a hard gate, and `gh pr create` is the gate.**
+Before any `gh pr create`, list every PR requirement found in the files read above.
+A `CLAUDE.md` already loaded in context counts - re-read it for PR rules, since any of the three files can hold a requirement the other two lack.
+Complete each requirement first, or open the PR as a draft with each undone requirement named as pending in the description.
+A leftover step listed in the summary does not satisfy a requirement; only completing it, or naming it as pending in a draft PR's description, does.
 
 **When the work targets a repo other than the session's working directory, root the session in that repo's own checkout.**
 This is the case whenever a session started in one repo picks up a task that turns out to need changes in another.
