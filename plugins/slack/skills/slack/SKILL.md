@@ -82,8 +82,7 @@ Under `scripts/` (run with `node`):
     saves the reviewed body as an unsent draft in that conversation, under **Drafts & sent** for Russ to
     review and send himself.
     It reaches no one.
-    Mrkdwn links (`<url|anchor text>`) become real links.
-    Mrkdwn mentions (`<@U...>`, `<#C...>`, `<!here>`, `<!channel>`) become real mentions.
+    The Send mrkdwn (`<url|anchor text>`, `<@U…>`) becomes real links and mentions; `<#C…>`, `<!here>`, and `<!channel>` do too.
     The writing-review gate requires a receipt on `--body-file`, the same as any other stage.
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
     Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.

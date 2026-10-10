@@ -209,8 +209,8 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
 4. **Links.** Slack renders a pasted URL as a link automatically; for anchor-text links, type the phrase
    and apply a link via the composer's link affordance (Ctrl+K inside the Slack composer opens its
    link dialog — distinct from the quick switcher, which is Ctrl+K when no composer is focused).
-   **Mentions.** Typing `<@U...>` into the composer lands as literal text, and typing `@Name` as plain text does not mention anyone.
-   For a real mention, type `@` plus the first few characters of the name, wait for the autocomplete, and click the matching suggestion so the chip mounts.
+   **Mentions.** Typing `<@U...>` into the composer lands as literal text.
+   For a real mention, mount the chip from the autocomplete as in `teams` step 5.
    A body that carries `<@U...>` tokens is simpler to stage with `slack.js --create-draft` (step 6), which turns them into real mentions.
 5. **Save the draft, then leave it.** Do NOT press Enter / click Send.
    A Slack composer draft is saved only once the composer loses focus and Slack's save request fires, so typing and then immediately navigating to another conversation (or ending the script) discards it before it ever saves.
