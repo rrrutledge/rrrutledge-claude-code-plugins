@@ -10,6 +10,12 @@ Every repo can carry its own contribution rules on top of everything in this ski
 Read that repo's own `CLAUDE.md`, `CONTRIBUTING.md`, and any `.github/PULL_REQUEST_TEMPLATE*` before opening a PR there, every time, even in a repo worked in before - a rule can be added after the last visit.
 Follow whatever they ask in full: run the build/preview step they name, attach whatever artifact they ask for, and match their PR template if one exists.
 
+**This is a hard gate, and `gh pr create` is the gate.**
+Before any `gh pr create`, list every PR requirement found across the repo's `CLAUDE.md`, `CONTRIBUTING.md`, and PR template.
+A `CLAUDE.md` already loaded in context counts - re-read it for PR rules rather than assuming it was skimmed, and don't stop at the PR template or `CONTRIBUTING.md`, since a rule like a required screenshot can live in `CLAUDE.md` alone.
+Complete each requirement first (build or preview step, screenshots, checklist items), or open the PR as a draft with each undone requirement named as pending in the description.
+Opening a non-draft PR with a known requirement undone is not allowed, and listing it as a leftover step in the summary is not a substitute.
+
 **When the work targets a repo other than the session's working directory, root the session in that repo's own checkout.**
 This is the case whenever a session started in one repo picks up a task that turns out to need changes in another.
 Claude Code auto-loads `CLAUDE.md` only from the session's own working-directory tree, so a session editing a different repo never sees that repo's rules on its own - and `CONTRIBUTING.md` and the PR template never auto-load even when the working directory is the repo.
