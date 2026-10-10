@@ -55,7 +55,8 @@
 // Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
-//                 Links written as Slack mrkdwn `<url|anchor text>` become real links. Gated by the
+//                 Links written as Slack mrkdwn `<url|anchor text>` become real links, and `<@U...>`,
+//                 `<#C...>`, `<!here>`, `<!channel>` become real mentions. Gated by the
 //                 writing-review receipt on <file>, the same as --send.
 //                 --broadcast stages the thread reply with "Also send to <channel>" ticked. Slack allows
 //                 one draft per thread, so a second create fails with attached_draft_exists unless
@@ -655,14 +656,18 @@ function readBody(verb) {
 }
 
 // A draft's body is rich_text blocks, not mrkdwn: turn the body into one rich_text section, splitting
-// out each `<url|anchor>` (or bare `<url>`) into a link element so the link survives as a link.
+// out each mrkdwn token into its own element so it survives as a link, user chip, channel chip, or
+// @here/@channel broadcast instead of literal `<...>` text.
 function richTextBlocks(text) {
   const elements = [];
-  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>/g;
+  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>|<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|<#(C[A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel)>/g;
   let last = 0;
   for (const m of text.matchAll(re)) {
     if (m.index > last) elements.push({ type: 'text', text: text.slice(last, m.index) });
-    elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
+    if (m[3]) elements.push({ type: 'user', user_id: m[3] });
+    else if (m[4]) elements.push({ type: 'channel', channel_id: m[4] });
+    else if (m[5]) elements.push({ type: 'broadcast', range: m[5] });
+    else elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
     last = m.index + m[0].length;
   }
   if (last < text.length) elements.push({ type: 'text', text: text.slice(last) });
