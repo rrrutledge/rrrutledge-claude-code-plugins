@@ -141,7 +141,9 @@ A **`Recurs:`** card follows the same rule (see Recurring tasks below for when i
 When the recurring task has fallen behind - its own records show the last completed occurrence is well past one cadence ago - say so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
 ## CLEAR (advance the card)
-Only **after** the user confirms they sent/handled the message, advance the card via the `trello` skill:
+Only **after** the user confirms they sent/handled the message, advance the card via the `trello` skill.
+A draft staged for the user to send leaves the card at its current Start until they confirm every staged send for the occurrence; this covers nudge, advance, and the recurring bump alike.
+To put progress on record early, add a checklist to the card naming each pending send, check items off as the user confirms them, and leave Start where it is.
 - **nudge** - bump the Start date out N days (they haven't replied; follow up later).
   Use the cadence below.
 - **advance** - move to a later stage + set the next Start date (it progressed).
@@ -168,7 +170,7 @@ This applies to any board, not just outreach: a personal to-do that repeats ("ca
 
 On CLEAR, once the work for this occurrence is done - or launched and running on its own, as a spawned session that IS the occurrence's work - **do not** move a `Recurs:` card to Abandoned or Finished.
 Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the usual dated comment.
-"Done" includes Russell's confirmed sends: a draft staged for him to send keeps the card at its current Start until he confirms it went out.
+Work that stages a send for the user counts as done only once they confirm that send (see CLEAR above).
 The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
 
 A `Recurs:` card is never `stop`ped for being "done" - completing one occurrence isn't the end of the task, only this cycle of it.

@@ -139,7 +139,7 @@ Do not present anything to Russell.
 The digest is how he learns about it.
 
 ## 2d. Clear as soon as this item's scope is fully accounted for
-One rule, every source: **CLEAR the moment you can state the complete scope of what this item covers and every piece of that scope is accounted for** - done, staged as a draft, or tracked on a follow-up card.
+One rule, with one source-specific exception (Trello, below): **CLEAR the moment you can state the complete scope of what this item covers and every piece of that scope is accounted for.**
 "Accounted for" is not "fully resolved" - a staged draft counts, a tracker card counts.
 Don't wait for step 6 by default; clear as soon as that bar is met, whichever step of this file you're actually on when it happens.
 
@@ -154,13 +154,11 @@ For a source whose provider implements `clear` (email, Slack), the poller alread
 For Slack that means the unread marker is already gone and your open session is the only tracker of the span's asks, so the grouping still decides what you must finish or track before you close.
 
 **Trello is the exception for drafts.**
-A card's Start date is the only thing that brings an unfinished occurrence back, so for the `trello` source a draft staged for Russell to send is NOT accounted for.
-Don't nudge, advance, or bump a recurring card until Russell confirms every staged send for this occurrence, matching the CLEAR rule in `providers/trello-provider.md`.
-To put progress on record early, add a checklist to the card naming each pending send, check items off as he confirms them, and leave Start where it is.
+A card's Start date is the only thing that brings an unfinished occurrence back, so for the `trello` source a draft staged for Russell to send is NOT accounted for; follow the CLEAR rule in `providers/trello-provider.md`.
 
 Clearing before step 3's work is verified complete relies on the **orphan-sessions** provider to catch a session whose process crashed mid-task - it resumes the exact crashed session from the live-session registry regardless of what state the source item is in.
-It does not catch a session parked waiting on Russell: the background service can unload that session's process (for example after the machine sleeps), and it stays `blocked` in `claude agents`, so orphan-sessions never resumes it and it may drop out of the list he sees on his phone.
-The session alone is therefore not a safe tracker for anything still waiting on Russell; the source item has to keep it.
+It does not catch a session parked waiting on Russell: the background service can unload that session's process, and it stays `blocked` in `claude agents`, so orphan-sessions never resumes it and it may drop out of the list he sees on his phone.
+The source item tracks anything still waiting on Russell.
 What still must not slip: anything this session doesn't finish before ending needs the normal "waiting on someone else → tracker card" rule (step 6), since the source item no longer tracks it once cleared.
 
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
