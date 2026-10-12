@@ -44,15 +44,35 @@ def classify_mcp_tool(tool_name):
     verb_match = re.match(r'[a-z]+', name)
     verb = verb_match.group(0) if verb_match else name
 
-    if verb in MCP_DESTRUCTIVE_VERBS or any(name.startswith(v) for v in MCP_DESTRUCTIVE_VERBS):
+    kind = _verb_kind(name, verb)
+    if kind is None:
+        # Noun-first names (recordings_list, meetings_get) carry the verb last.
+        trailing = re.split(r'[_-]', name)[-1]
+        if trailing != verb:
+            verb = trailing
+            kind = _verb_kind(trailing, trailing)
+
+    if kind == 'destructive':
         log_debug(f"MCP {tool_name}: destructive verb '{verb}', prompting")
         return False
-    if verb in MCP_READONLY_VERBS or any(name.startswith(v) for v in MCP_READONLY_VERBS):
+    if kind == 'readonly':
         log_debug(f"MCP {tool_name}: read-only verb '{verb}', approving")
         return True
-    if verb in MCP_REVERSIBLE_WRITE_VERBS or any(name.startswith(v) for v in MCP_REVERSIBLE_WRITE_VERBS):
+    if kind == 'write':
         log_debug(f"MCP {tool_name}: reversible-write verb '{verb}', approving")
         return True
 
     log_debug(f"MCP {tool_name}: unrecognized verb '{verb}', prompting")
     return False
+
+
+def _verb_kind(name, verb):
+    """Classify a name by its verb; destructive wins, None when unrecognized."""
+    for kind, verbs in (
+        ('destructive', MCP_DESTRUCTIVE_VERBS),
+        ('readonly', MCP_READONLY_VERBS),
+        ('write', MCP_REVERSIBLE_WRITE_VERBS),
+    ):
+        if verb in verbs or any(name.startswith(v) for v in verbs):
+            return kind
+    return None
