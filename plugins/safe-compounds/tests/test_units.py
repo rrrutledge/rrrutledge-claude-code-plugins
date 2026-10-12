@@ -534,6 +534,18 @@ class TestMcp:
         set_config()
         assert classify_mcp_tool("mcp__s__frobnicate_thing") is False
 
+    def test_noun_first_read_allowed(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__recordings_list") is True
+
+    def test_noun_first_destructive_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__recordings_delete") is False
+
+    def test_noun_first_unknown_trailing_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__s__recordings_frobnicate") is False
+
     def test_blanket_tool_configured(self):
         set_config(mcp_blanket_tools=["mcp__s__frobnicate_thing"])
         assert classify_mcp_tool("mcp__s__frobnicate_thing") is True
