@@ -153,7 +153,14 @@ What differs source to source is **how soon the bar is met**, because that depen
 For a source whose provider implements `clear` (email, Slack), the poller already cleared the item when it spawned you, so your own CLEAR is a harmless no-op: run it anyway if you reach it, but never wait on it.
 For Slack that means the unread marker is already gone and your open session is the only tracker of the span's asks, so the grouping still decides what you must finish or track before you close.
 
-Clearing before step 3's work is verified complete relies on the **orphan-sessions** provider to catch a session that dies mid-task - it resumes the exact crashed session from the live-session registry regardless of what state the source item is in, so an un-cleared item was never what stood in for "not done yet."
+**Trello is the exception for drafts.**
+A card's Start date is the only thing that brings an unfinished occurrence back, so for the `trello` source a draft staged for Russell to send is NOT accounted for.
+Don't nudge, advance, or bump a recurring card until Russell confirms every staged send for this occurrence, matching the CLEAR rule in `providers/trello-provider.md`.
+To put progress on record early, add a checklist to the card naming each pending send, check items off as he confirms them, and leave Start where it is.
+
+Clearing before step 3's work is verified complete relies on the **orphan-sessions** provider to catch a session whose process crashed mid-task - it resumes the exact crashed session from the live-session registry regardless of what state the source item is in.
+It does not catch a session parked waiting on Russell: the background service can unload that session's process (for example after the machine sleeps), and it stays `blocked` in `claude agents`, so orphan-sessions never resumes it and it may drop out of the list he sees on his phone.
+The session alone is therefore not a safe tracker for anything still waiting on Russell; the source item has to keep it.
 What still must not slip: anything this session doesn't finish before ending needs the normal "waiting on someone else → tracker card" rule (step 6), since the source item no longer tracks it once cleared.
 
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
