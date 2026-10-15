@@ -118,10 +118,11 @@ let gmail; // the Gmail API client, built in main() after auth so a sign-in erro
 // editor would otherwise treat as already "finished."
 const DEFAULT_FONT_STYLE = 'font-family:Arial,Helvetica,sans-serif; font-size:small; color:rgb(0,0,0)';
 function withDefaultFont(html) {
-  let styled = html.replace(/<p(\s[^>]*)?>/gi, (m, attrs) => {
+  // List items are styled too: a Markdown list renders as bare <li> elements outside any <p>.
+  let styled = html.replace(/<(p|li)(\s[^>]*)?>/gi, (m, tag, attrs) => {
     attrs = attrs || '';
     if (/style\s*=/i.test(attrs)) return m; // already styled - leave it
-    return `<p${attrs} style="${DEFAULT_FONT_STYLE}">`;
+    return `<${tag}${attrs} style="${DEFAULT_FONT_STYLE}">`;
   });
   if (!/<p[\s>]/i.test(styled)) styled = `<p style="${DEFAULT_FONT_STYLE}">${styled}</p>`;
   return styled;
@@ -151,9 +152,16 @@ function withSignature(html) {
 // as literal HTML inside a <blockquote>) - the HTML part staged correctly, but `--show` and any other
 // reader of `parsed.text` saw a truncated message. Deriving text explicitly from the same html string
 // this function already built removes the mismatch: both MIME parts trace back to one source.
+// A link keeps its URL in the text part as "text (url)", so a plain-text reader can still follow it;
+// a list item keeps a "- " marker so the list still reads as one.
 function htmlToPlainText(html) {
   return (html || '')
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<a\s[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (m, href, inner) => {
+      const label = inner.replace(/<[^>]+>/g, '').trim();
+      return !label || label === href || /^mailto:/i.test(href) ? (label || href) : `${label} (${href})`;
+    })
+    .replace(/<li(\s[^>]*)?>/gi, '- ')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|blockquote|li|h[1-6])>/gi, '\n')
     .replace(/<[^>]+>/g, '')
