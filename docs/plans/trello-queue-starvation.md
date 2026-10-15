@@ -10,22 +10,13 @@ Of 1,536 startable Trello cards on 2026-10-15, only 7 carry an id the drainer ha
 The rest are simply never reached: the drainer dispatches strictly newest-first, and it opens new workers only as fast as Russell closes old ones.
 Anything that is not near the top of that order on the day it becomes startable sinks under fresher items and stays there.
 
-The Portland card is a second, sharper case of the same thing, not a wrong archive.
+The physical-task source is the sharpest case: it is starved completely.
 
-## Finding 1: the Portland card was archived on purpose, then starved on the calendar
+## Finding 1: physical tasks never dispatch
 
-What happened, in order (all times Central):
-
-- **Oct 12, 5:00 AM** - a Slack-reply worker (session `8f639a2c`) created the card [mdRmJiqL](https://trello.com/c/mdRmJiqL) after Russell asked for the chore to be "a physical task."
-  It did not know the term, so it also put a 9:00 AM block on the main calendar.
-- **Oct 12, 5:07 AM** - Russell explained that "physical task" means the drainer's Physical Tasks calendar and asked for a handoff to teach that.
-- **Oct 12, 5:11 AM** - the worker handed off to session `5416fb49` with a brief that said, in step 2, to put the chore on the Physical Tasks calendar, delete the main-calendar block, and archive the Trello card as redundant.
-- **Oct 12, 5:12 AM** - `5416fb49` did all three, then shipped the new `physical-task` skill (personal-ai-pod#496).
-
-So the archive was correct: the work moved from Trello to the Physical Tasks calendar.
-The failure came after the move.
-The chore has sat on Physical Tasks as due since Oct 12 and has never been dispatched.
-It is not alone: 21 physical tasks are due right now, some since Sep 26, and the drainer has not dispatched a single physical task since **Oct 8, 2:56 PM**.
+Why the Portland LinkedIn card [mdRmJiqL](https://trello.com/c/mdRmJiqL) was archived belongs to a separate session ("Trello wrong-archive root cause") and is out of scope here.
+It is relevant only because the chore was moved to the Physical Tasks calendar on Oct 12 and has sat there as due ever since without being dispatched.
+It is not alone: 21 physical tasks are due right now, some since Sep 26, and the drainer has not dispatched a single physical task since **Oct 8, 2:56 PM Central**.
 
 **Why physical tasks never dispatch.**
 The poller orders every needs-you item by priority band, then by its `received` date, newest first.
@@ -33,10 +24,6 @@ Every other source stamps `received`; the physical-task source does not.
 An item with no `received` sorts *below every dated item in its band*, so a physical task only gets a worker once every email, Slack message, and neutral-band Trello card ahead of it has one.
 With one worker slot opening at a time, that never happens.
 The last burst of physical-task dispatches, 13 of them on Oct 1 and 2, most likely came on days the rest of the queue ran dry; I found no log that records the queue depth to confirm it.
-
-**Current state to resolve by hand.**
-Russell restored the card with Start = today, so the chore now exists in two places: the Trello card and the Physical Tasks event.
-One of them should go; I have left both alone.
 
 ## Finding 2: the queue is a newest-first stack fed faster than it drains
 
@@ -121,17 +108,7 @@ Open choices for Russell:
 - whether IC-level P1s get the same rule or a longer one,
 - whether to run the one-time bulk move at all, or only apply the rule going forward.
 
-### Fix E: retire cards by moving them, never by archiving (guard)
-
-The Portland archive was right this time, but an archived card is invisible everywhere: the drainer, the board, and the audit all skip it, so a wrong archive is silent.
-A list move is just as clean and stays visible.
-
-- The `trello` skill gains a rule: to retire a card, move it to Finished or Abandoned with a comment naming why and, if the work moved elsewhere, where it went (for example "moved to the Physical Tasks calendar as <subject>").
-  Archiving is only for cards Russell explicitly asks to archive.
-- `trello_utils` gains a `retire_card` helper that does the move plus comment, so the right way is also the easy way.
-- A hook-level block on archiving is possible but not recommended: the rule plus helper covers the realistic path, and a hard block would also stop Russell's own explicit archive requests.
-
-### Fix F: doc drift (tiny)
+### Fix E: doc drift (tiny)
 
 `poller-core.md` says the reconcile step covers email only, but Trello and physical tasks implement it too.
 The doc catches up to the code in the PR for Fix A.
@@ -142,9 +119,8 @@ The doc catches up to the code in the PR for Fix A.
 2. Fix C, so the effect of everything after it is visible.
 3. Fix B.
 4. Fix D, once Russell picks the threshold.
-5. Fix E and F alongside whichever PR is nearest.
+5. Fix E inside the PR for Fix A.
 
 ## Evidence
 
 All counts are from read-only runs on 2026-10-15 against live Trello, the drainer's seen-state and captured items in `personal-ai-pod/.tmp/drainer`, the Physical Tasks calendar, and `claude agents --json`.
-The session transcripts behind Finding 1 are `8f639a2c-2e42-49cc-8002-b9f3f7c4f78d` and `5416fb49-2b3f-40a2-af73-095df5726116` under `~/.claude/projects/`.
