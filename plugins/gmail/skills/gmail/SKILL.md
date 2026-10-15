@@ -112,7 +112,11 @@ Under `scripts/` (run with `node`):
     the nearest message before it that carries real content instead.
   - **`--body-file` is Markdown** — write the body in Markdown (`**bold**`, `[text](url)`, paragraphs,
     lists) and the script converts it to HTML via `marked`. HTML tags in the source pass through
-    unchanged. **If `GMAIL_SIGNATURE_HTML` is set (see Setup step 4), stop at the last content
+    unchanged. The draft carries that HTML as its body, so a `[text](url)` link reaches the reader as
+    a clickable anchor - write links that way, on descriptive text. The draft also carries a
+    plain-text alternative, derived from the HTML, for text-only clients, with each link's URL kept as
+    `text (url)`.
+    **If `GMAIL_SIGNATURE_HTML` is set (see Setup step 4), stop at the last content
     sentence — no sign-off line.**
   - **`--no-quote` (with `--reply`)** — suppress the auto-appended quoted original while keeping the
     thread's In-Reply-To/References headers. Use it for an **interleaved reply**: the `--body-file`
