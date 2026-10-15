@@ -289,6 +289,8 @@ Decide by who's holding the conversation:
 - *They* initiated and you've now replied → the ball is in their court by default; you're done, no card.
 - *You* initiated, they replied, and you've replied again → the ball is back with them and it's easy to lose track.
   Create a follow-up tracker card (the user's board, per `context.md`) before marking done, so it stays visible instead of relying on memory.
+  **If the follow-up is a step the rest of an existing card's process is fully blocked on, don't create a card:** record it as that card's next step (description plus a dated comment) and set the card's Start to when the step should be checked.
+  A separate deliverable, or a step that doesn't block the parent, still gets its own card.
 
 **Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.

@@ -45,6 +45,7 @@ instructions: |-
     After each send, run the document-authoring skill's Learn step (`learn-from-send.md`).
   - **Waiting on someone else → a tracker card** only when *you* initiated and the ball is back in their court (via the `trello-outreach` skill).
     If they initiated and you've replied, you're done.
+    When the wait is a step an existing card's process is fully blocked on, make it that card's next step (and move its Start) instead of creating a card.
   - **Lead with context** in every worker; items that need nothing right now resolve quietly.
 
   Sibling skills used: `message-draft`, `document-authoring`, `trello-outreach`, and `browser-chauffeur` for the browser providers.
