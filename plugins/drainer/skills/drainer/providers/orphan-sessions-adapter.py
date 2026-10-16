@@ -88,21 +88,24 @@ class Provider(ProviderBase):
                 "session_id": o.get("session_id"),
                 "cwd": o.get("cwd"),
                 "started_at": o.get("started_at"),
-                # Orders MULTIPLE simultaneous orphans against each other (newest crash
-                # first) within run-poller.py's dedicated orphan-dispatch pass —
+                "ended_at": o.get("ended_at"),
+                # Orders MULTIPLE simultaneous orphans against each other (most recently
+                # ended first) within run-poller.py's dedicated orphan-dispatch pass —
                 # cross-source priority is enforced structurally there (orphans dispatch
                 # before the rest of needs-you), not by this timestamp.
-                "received": o.get("started_at") or "",
+                "received": o.get("ended_at") or o.get("started_at") or "",
             })
         return items
 
     def stable_id(self, item):
-        # Baking started_at into the id (not just session_id) means a session already
-        # auto-resumed once, that later crashes AGAIN, gets a fresh id on its second crash —
-        # SessionStart re-fires on resume, advancing started_at — so it resurfaces as a new
-        # item instead of staying permanently seen after the first resume. Same idiom the
-        # trello adapter uses baking a card's go-live date into its id.
-        stamp = slug(item.get("started_at"), 32) or "unknown"
+        # Baking a timestamp into the id (not just session_id) means a session already
+        # auto-resumed once, that later ends AGAIN, gets a fresh id the second time, so it
+        # resurfaces as a new item instead of staying permanently seen after the first resume.
+        # A background session the service retired carries ended_at - its retirement time, which
+        # advances each time the service retires it again. Any other session carries only started_at,
+        # which SessionStart advances when the resume re-registers it. Same idiom the trello
+        # adapter uses baking a card's go-live date into its id.
+        stamp = slug(item.get("ended_at") or item.get("started_at"), 32) or "unknown"
         return f"orphan-{item.get('session_id')}-{stamp}"
 
     def capture(self, item, iid, runtime_dir):
@@ -117,6 +120,7 @@ class Provider(ProviderBase):
             "session_id": item.get("session_id"),
             "cwd": item.get("cwd"),
             "started_at": item.get("started_at"),
+            "ended_at": item.get("ended_at"),
             "ts": datetime.now(timezone.utc).isoformat(),
         }
         json_file = os.path.join(items_dir, f"{iid}.json")

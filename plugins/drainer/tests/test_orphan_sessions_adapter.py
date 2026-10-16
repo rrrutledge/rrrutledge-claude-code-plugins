@@ -96,10 +96,28 @@ def test_capture_writes_json():
         check("triage needs-you", record.get("triage") == "needs-you")
 
 
+def test_stable_id_follows_retirement():
+    print("test: a retired background session's id follows its retirement time, so each retirement "
+          "is a new item; without one, started_at keys it as before")
+    provider = adapter_mod.Provider()
+    base = {"session_id": "abc-123", "cwd": "C:/fake/repo", "started_at": "2026-10-01T00:00:00.000Z"}
+    first = provider.stable_id({**base, "ended_at": "2026-10-14T20:09:25.380Z"})
+    again = provider.stable_id({**base, "ended_at": "2026-10-14T20:09:25.380Z"})
+    later = provider.stable_id({**base, "ended_at": "2026-10-16T04:00:00.000Z"})
+    check("same retirement -> same id", first == again, f"{first} vs {again}")
+    check("next retirement -> new id", first != later, first)
+    check("no ended_at -> started_at id", provider.stable_id(base) == provider.stable_id({**base, "ended_at": None}))
+    with tempfile.TemporaryDirectory() as runtime_dir:
+        with open(provider.capture({**base, "ended_at": "2026-10-14T20:09:25.380Z"}, first, runtime_dir),
+                  encoding="utf-8") as f:
+            check("capture records ended_at", json.load(f).get("ended_at") == "2026-10-14T20:09:25.380Z")
+
+
 if __name__ == "__main__":
     test_resolver_finds_find_orphans()
     test_enumerate_returns_seeded_orphan()
     test_capture_writes_json()
+    test_stable_id_follows_retirement()
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

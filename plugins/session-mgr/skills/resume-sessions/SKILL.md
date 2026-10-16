@@ -14,7 +14,7 @@ instructions: |-
   python "$HOME/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/find-orphans.py"
   ```
 
-  It works in two parts:
+  It works in three parts:
   1. Builds the active set: every session `claude agents --json` reports live, read across every
      Claude account, plus the session ID on each running `claude.exe` command line
      (`--resume`/`--session-id`).
@@ -36,6 +36,8 @@ instructions: |-
      `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive - deregisters the
      session, and a reason-`"other"` end with no `host_pid` (a background or scheduled `claude`
      run) deregisters too, so neither is ever resurrected.
+  3. Adds the background sessions the background service retired without anyone closing them,
+     read from the service's own job records (the rules are in find-orphans.py's docstring).
 
   It also applies the self-close tail check before returning anything: a session that ends
   itself by force-killing its own process dies before the harness can fire `SessionEnd`, so its
@@ -51,10 +53,11 @@ instructions: |-
   AND deletes its entry from `live-sessions.json` (so a later run doesn't re-litigate it) — you
   don't need to re-check this by hand.
 
-  Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`. Everything in
-  this list is confirmed — go straight to the launch list (Step 3) for these; do not apply
-  Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan only,
-  next section) — the registry already proved they were still open.
+  Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`, with `ended_at`
+  added for a session found through its job record.
+  Everything in this list is confirmed - go straight to the launch list (Step 3) for these; do
+  not apply Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan
+  only, next section) - the registry or the job record already proved they were still open.
 
   Registry entries are self-healing: a resume through `spawn-session.py` drops the old session
   id from the registry, the resumed session registers its new id at `SessionStart`, and a later
@@ -213,8 +216,9 @@ instructions: |-
     Claude account `claude-account main|backup` last selected, and a resume on the account that
     holds its transcript. The drainer plugin ships a thin forwarder of its own
     (`spawn-handoff.py`) that finds this launcher, so drainer workers keep one stable path.
-  - `--resume <session_id>` continues an existing session by its UUID under a new session id,
-    carrying the full conversation history.
+  - `--resume <session_id>` continues an existing session by its UUID, carrying the full
+    conversation history - under a new session id, or under its own id when a retired background
+    session is woken in place (`spawn_bg` in `bg_session.py`).
   - There are ~1,300 JSONL session files total; the fallback scan reads all of them but only the
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what
