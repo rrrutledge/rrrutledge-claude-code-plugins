@@ -101,8 +101,10 @@ Three guards keep it from re-queuing work that is fine:
 Both fail-safes point at reconciling nothing rather than re-queuing live work: a process scan that can't run skips the cycle, and a provider whose inbox listing fails skips that provider (an empty id set would otherwise read as "every item is archived").
 `reconciled.json` memoizes the items already proven gone from the inbox, so the scan's per-cycle cost stays flat as seen-state grows; deleting it just makes the next cycle re-derive the set.
 
-**Email only.**
-`still_in_inbox_ids()` is implemented on the gmail and outlook-graph adapters and returns `None` everywhere else, so Slack, Teams, Trello and orphan-sessions are skipped and resurface on their own source's terms.
+**Email, Trello, and physical tasks.**
+`still_in_inbox_ids()` is implemented on the gmail, outlook-graph, trello, and physical-task adapters and returns `None` everywhere else, so Slack, Teams, and orphan-sessions are skipped and resurface on their own source's terms.
+For Trello the "inbox" is the set of startable cards: a cleared card's Start moves, which changes its id, so only a card whose worker never ran CLEAR stays in the set.
+For physical tasks it is the set of tasks still queued on the Physical Tasks calendar.
 A source with an inbox deeper than the 500-message listing hides its oldest messages from the check, which costs a missed catch and never causes a wrong re-queue.
 
 **Per-provider isolation + health.**
