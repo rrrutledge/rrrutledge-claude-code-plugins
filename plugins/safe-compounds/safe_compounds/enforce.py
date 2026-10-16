@@ -18,8 +18,12 @@ proceed to approval. Individual detectors are exposed for unit testing.
 import os
 import re
 
+from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, read_script_file
+from .paths import (
+    PLUGIN_CACHE_PATTERN, is_within_claude_jobs_dir, normalize_path_cross_platform,
+    read_script_file, resolve_against_cwd,
+)
 from .scripts import extract_script_filename
 from .shell import ShellTokenizer, first_word, shell_tokenize, split_segments, strip_var_assignment
 
@@ -389,6 +393,73 @@ def detect_plugin_cache_reference(command):
     return False
 
 
+def _expand_home_spelling(token):
+    """Turn a leading `$HOME` / `${HOME}` into `~` so path helpers see it."""
+    return re.sub(r'^\$\{?HOME\}?(?=/|\\|$)', '~', token)
+
+
+_JOBS_WRITERS_ALL_ARGS = {'mkdir', 'touch', 'chmod'}
+_JOBS_WRITERS_DEST_ARG = {'cp', 'mv', 'ln'}
+
+
+def detect_claude_jobs_write(command):
+    """True if a segment creates or writes a path under ~/.claude/jobs (mkdir,
+    touch, chmod on any path; cp/mv/ln on the destination). Claude Code always
+    shows its own confirmation for `~/.claude` paths, so the hook can't
+    suppress it; scratch belongs in `.tmp/` instead."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens:
+            continue
+        word = first_word(seg.strip())
+        if word not in _JOBS_WRITERS_ALL_ARGS | _JOBS_WRITERS_DEST_ARG:
+            continue
+        args = []
+        dest_flag_value = None
+        i = 1
+        while i < len(tokens):
+            t = tokens[i]
+            if t in ('-t', '--target-directory') and i + 1 < len(tokens):
+                dest_flag_value = tokens[i + 1]
+                i += 2
+                continue
+            if not t.startswith('-'):
+                args.append(t)
+            i += 1
+        if word in _JOBS_WRITERS_DEST_ARG:
+            dests = [dest_flag_value] if dest_flag_value else args[-1:]
+        else:
+            dests = args + ([dest_flag_value] if dest_flag_value else [])
+        if any(is_within_claude_jobs_dir(_expand_home_spelling(d)) for d in dests):
+            return True
+    return False
+
+
+_GLOBAL_CLAUDE_MD_READERS = {
+    'cat', 'head', 'tail', 'less', 'more', 'grep', 'egrep', 'fgrep', 'rg', 'wc',
+    'sed', 'awk', 'nl', 'tac', 'bat', 'sort', 'uniq', 'cut', 'tee', 'strings', 'xxd', 'od',
+}
+
+
+def detect_global_claude_md_read(command):
+    """True if a reader segment's argument resolves to exactly the global
+    ~/.claude/CLAUDE.md (any `~`, `$HOME`, MSYS or Windows spelling). Those
+    instructions are already in context, and the path also trips Claude Code's
+    own `~/.claude` confirmation. Project CLAUDE.md files and other files
+    under ~/.claude are left alone."""
+    target = normalize_path_cross_platform('~/.claude/CLAUDE.md')
+    for seg in split_segments(command):
+        word = first_word(seg.strip())
+        if word not in _GLOBAL_CLAUDE_MD_READERS:
+            continue
+        for t in shell_tokenize(seg.strip())[1:]:
+            if t.startswith('-'):
+                continue
+            if normalize_path_cross_platform(resolve_against_cwd(_expand_home_spelling(t))) == target:
+                return True
+    return False
+
+
 _FIND_LEADING_OPTS = {'-H', '-L', '-P', '-D', '-O'}
 
 
@@ -496,6 +567,21 @@ def detect_raw_trello_write(command):
     return False
 
 
+def detect_git_force_push(command):
+    """True if a segment is a force `git push`. Rewriting pushed history is
+    never needed here: a new commit on top fixes the same problem and keeps
+    the branch's published history intact, so it is blocked outright with a
+    pointer to that path rather than left to a manual prompt."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens or tokens[0] != 'git':
+            continue
+        sub, args = _extract_subcommand(tokens, GIT_GLOBAL_OPTS_WITH_ARG, 'simple')
+        if sub == 'push' and is_force_push_args(args):
+            return True
+    return False
+
+
 def enforce_bash(command):
     """Return a block-reason string for `command`, or None to allow it to
     proceed to approval. Mirrors the legacy block ordering exactly."""
@@ -531,6 +617,15 @@ def enforce_bash(command):
                 'run it with `python .tmp/script.py`. See the `trello` skill\'s SKILL.md for the '
                 'import pattern.')
 
+    if detect_git_force_push(command):
+        return ('BLOCKED: Force push (--force, -f, --force-with-lease, or a +ref refspec) rewrites '
+                'history that is already pushed. Skip the rewrite: fix the problem with a new commit '
+                'on top of the branch (a revert or a corrective commit) and push it normally with '
+                '`git push`. History cleanliness does not matter here, and a plain push needs no '
+                'approval. To clean up an abandoned branch, delete it with '
+                '`git push origin --delete <branch>` (allowed when the branch also exists locally and '
+                'is not main) or close its PR with `gh pr close <n> --delete-branch`.')
+
     if detect_plugin_cache_reference(command):
         return ('BLOCKED: Command references a path under the installed plugin cache '
                 '(~/.claude/plugins/cache/...). Claude Code always shows its own "sensitive '
@@ -541,6 +636,18 @@ def enforce_bash(command):
                 'gated. Otherwise, read the file with the Read tool directly instead of '
                 'Bash -- that triggers just the one native prompt, without also needing '
                 'this Bash command approved.')
+
+    if detect_claude_jobs_write(command):
+        return ('BLOCKED: Command creates or writes a path under ~/.claude/jobs. Claude Code '
+                'always shows its own confirmation for any ~/.claude path, no matter what this '
+                'hook decides -- it can\'t be suppressed here. Put scratch files in .tmp/ in the '
+                'current directory (or the session scratchpad dir) instead, never under ~/.claude.')
+
+    if detect_global_claude_md_read(command):
+        return ('BLOCKED: Command reads the global ~/.claude/CLAUDE.md through Bash. Those '
+                'instructions are already loaded in your context, so don\'t re-read them. If you '
+                'truly need the file\'s exact bytes, use the Read tool -- Claude Code shows its own '
+                'confirmation for ~/.claude paths that this hook can\'t suppress.')
 
     if detect_unbounded_wide_find(command):
         return ('BLOCKED: This find walks the whole filesystem (/, a drive root, or home) with no '

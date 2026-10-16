@@ -64,7 +64,10 @@ Build it in the `gmail` skill, then wire it here the same way the outlook-graph 
 ## DRAFT-MODE CLI commands
 Follow all voice and reply-vs-fresh rules in `email-base.md`, then use these Gmail commands.
 
-**When `GMAIL_SIGNATURE_HTML` is set (see the `gmail` skill's Setup step 5), the `--body-file` content must end on its last substantive sentence - never add a name/sign-off line of your own (`Russ`, `Thanks, Russ`, a full name/title/org block).**
+**Write the `--body-file` in Markdown - `gmail.js` stages it as a rich-text (HTML) draft.**
+A link written as `[descriptive text](url)` lands as a clickable anchor; the `gmail` skill's `--body-file` note covers the full Markdown behavior.
+
+**When `GMAIL_SIGNATURE_HTML` is set (see the `gmail` skill's Setup step 4), the `--body-file` content must end on its last substantive sentence - never add a name/sign-off line of your own (`Russ`, `Thanks, Russ`, a full name/title/org block).**
 The auto-appended signature already names the sender, so writing one in too duplicates it - the `gmail` skill's own docs flag this as the single most common mistake when staging a draft here.
 Check the last line of every `--body-file` against this before running `--reply`/`--draft-new`, even when mimicking the signature style of a quoted message earlier in the thread.
 

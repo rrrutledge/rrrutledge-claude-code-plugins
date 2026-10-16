@@ -16,7 +16,7 @@ the command line:
 
 Usage (via the Bash tool):
     python "<session-mgr>/skills/resume-sessions/scripts/spawn-session.py" --title "<short title>" \
-        --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model claude-sonnet-5
+        --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model sonnet
     python "<session-mgr>/skills/resume-sessions/scripts/spawn-session.py" --resume <session guid> \
         --cwd "<its cwd>"
 

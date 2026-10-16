@@ -15,7 +15,8 @@
 //                 a thread you're actually a participant in (replied to, or mentioned in) still surfaces
 //                 even when its channel is muted — same distinction Slack's own Threads panel makes,
 //                 since muting silences ambient channel noise but doesn't unsubscribe you from a thread
-//                 you're personally on; --json emits a structured array. Each item also carries `unread`:
+//                 you're personally on; --json emits a structured array. Message text includes
+//                 bot attachment/block content when `text` is empty (GitHub app posts etc.). Each item also carries `unread`:
 //                 the FULL span of unread messages since the last read cursor, oldest-first, each with
 //                 from/received/text — so a conversation that accreted several distinct asks between
 //                 reads exposes every one, not only its newest message. Each item also carries
@@ -33,7 +34,7 @@
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
 //                 the conversation/thread's "gone"; reversible, never deletes)
-// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--file=<path>]
+// Send (REAL):   node slack.js --send --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--file=<path>[,<path>...]]
 //                (chat.postMessage of the reviewed body in <file> as the signed-in user, then prints the
 //                 sent message's permalink. The body is Slack mrkdwn — a link is `<url|anchor text>`. This
 //                 is the one write that reaches another person: human-in-the-loop only, run solely on
@@ -41,7 +42,27 @@
 //                 gated by the writing-review receipt on <file>. See "Sending" in the skill's SKILL.md.
 //                 With --file=<path>, uploads that local file instead of posting plain text: files.
 //                 getUploadURLExternal, POST the bytes to the returned URL, then files.completeUploadExternal
-//                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.)
+//                 with the --body-file text as initial_comment — same gate, same human-in-the-loop bar.
+//                 A comma-separated --file=a.png,b.png uploads each file's bytes, then one
+//                 completeUploadExternal call posts the body and every file as a single message.
+//                 --broadcast (thread replies only, not with --file) ticks "Also send to <channel>":
+//                 chat.postMessage with reply_broadcast=true.)
+// List drafts:   node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]
+//                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
+//                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
+//                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
+//                 the proof a staged draft actually saved; a browser reload can restore a local-only copy)
+// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace]
+//                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
+//                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
+//                 Links written as Slack mrkdwn `<url|anchor text>` become real links, and `<@U...>`,
+//                 `<#C...>`, `<!here>`, `<!channel>` become real mentions. Gated by the
+//                 writing-review receipt on <file>, the same as --send.
+//                 --broadcast stages the thread reply with "Also send to <channel>" ticked. Slack allows
+//                 one draft per thread, so a second create fails with attached_draft_exists unless
+//                 --replace deletes the thread's existing draft first)
+// Delete draft:  node slack.js --delete-draft=<draft id>
+//                (drafts.delete of one unsent draft, found via --list-drafts; it never reaches anyone)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
 //                (users.list matched against real name, then conversations.open per match to resolve the
 //                 1:1 DM channel id — conversations.open only opens/returns the existing DM, it never
@@ -211,9 +232,47 @@ async function renderText(text) {
   return clean(out);
 }
 
+// Bot/app posts (the GitHub app, CI, forms) usually carry an empty `text` and put the readable content
+// in `attachments` (pretext/title/text, else the plain-text fallback) and `blocks` (section/context
+// text). Flatten those to plain lines so a caller sees what the post says.
+const blockText = (t) => (t && (t.text || '')) || '';
+function attachmentLines(m) {
+  return (m.attachments || []).map(a => {
+    const parts = [a.pretext, a.title, a.text].map(clean).filter(Boolean);
+    if (!parts.length) parts.push(clean(a.fallback));
+    return parts.filter(Boolean).join(' - ');
+  }).filter(Boolean);
+}
+function blockLines(m) {
+  const lines = [];
+  for (const b of m.blocks || []) {
+    if (b.type === 'section') {
+      if (b.text) lines.push(blockText(b.text));
+      for (const f of b.fields || []) lines.push(blockText(f));
+    } else if (b.type === 'context') {
+      const els = (b.elements || []).map(blockText).filter(Boolean);
+      if (els.length) lines.push(els.join(' '));
+    } else if (b.type === 'header') {
+      if (b.text) lines.push(blockText(b.text));
+    }
+  }
+  return lines.map(clean).filter(Boolean);
+}
+
+// The readable text of a message: its `text`, plus attachment content, and block content when `text` is
+// empty (on a normal message the blocks just restate `text`, so they're only a fallback). Slack's
+// `<url|label>` link markup is reduced to the label.
+async function messageText(m) {
+  const base = await renderText(m.text);
+  const extra = attachmentLines(m);
+  if (!base) extra.push(...blockLines(m));
+  const joined = [base, ...extra.filter(l => l !== base)].filter(Boolean).join('\n');
+  return joined.replace(/<([^|>]+)\|([^>]+)>/g, '$2').replace(/<(https?:[^>]+)>/g, '$1');
+}
+
 // Build a short joined preview from up to 5 messages (oldest-first), rendered and trimmed.
 async function previewText(msgs) {
-  return clean((await Promise.all(msgs.slice(0, 5).reverse().map(m => renderText(m.text)))).join(' / ')).slice(0, 600);
+  return clean((await Promise.all(msgs.slice(0, 5).reverse().map(messageText))).join(' / ')).slice(0, 600);
 }
 
 // Build the full unread span (oldest-first) for an item body: every unread message kept whole, with its
@@ -223,7 +282,7 @@ async function previewText(msgs) {
 async function unreadSpan(msgs) {
   const out = [];
   for (const m of msgs.slice().reverse()) {
-    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await renderText(m.text) };
+    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await messageText(m) };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
     out.push(entry);
   }
@@ -302,7 +361,7 @@ async function listUnread() {
     if (mentions.length) {
       for (const m of mentions) {
         const from = await userName(m.user);
-        const rendered = await renderText(m.text);
+        const rendered = await messageText(m);
         const unreadEntry = { ts: m.ts, from, received: tsToIso(m.ts), text: rendered };
         if (m.files && m.files.length) unreadEntry.files = fileMeta(m.files);
         items.push({
@@ -393,7 +452,7 @@ async function show() {
   const m = await fetchOne(args.channel, args.ts, args['thread-ts']);
   if (!m) { console.log('Message not found.'); return; }
   const from = await userName(m.user);
-  const text = await renderText(m.text);
+  const text = await messageText(m);
   const files = fileMeta(m.files);
   let permalink = '';
   try { permalink = (await call('chat.getPermalink', { channel: args.channel, message_ts: args.ts })).permalink || ''; }
@@ -430,8 +489,8 @@ async function history() {
   for (const m of msgs) {
     const entry = {
       ts: m.ts, threadTs: m.thread_ts || '', replyCount: m.reply_count || 0,
-      from: await userName(m.user), fromId: m.user,
-      received: tsToIso(m.ts), text: await renderText(m.text),
+      from: await userName(m.user || m.bot_id), fromId: m.user,
+      received: tsToIso(m.ts), text: await messageText(m),
     };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
     out.push(entry);
@@ -474,31 +533,37 @@ async function mark() {
   console.log(`Marked ${args.channel} read up to ${args.ts}. Reversible — re-reading the conversation re-surfaces it.`);
 }
 
-// Upload one local file to Slack via the current (v2) upload flow: reserve an upload URL sized to the
-// file, POST the raw bytes there (multipart/form-data — the one call in this script that isn't a plain
-// call() since it hits the reserved upload_url, not api/<method>, and carries a file body instead of
-// form params), then hand the returned file_id to files.completeUploadExternal, which is what actually
-// posts it into the conversation (with channel_id/initial_comment/thread_ts, same as chat.postMessage's
-// params). Returns the completeUploadExternal response's first file entry.
-async function uploadFile(filePath, channel, initialComment, threadTs) {
+// Upload one or more local files to Slack via the current (v2) upload flow: for each file, reserve an
+// upload URL sized to it and POST the raw bytes there (multipart/form-data — the one call in this script
+// that isn't a plain call() since it hits the reserved upload_url, not api/<method>, and carries a file
+// body instead of form params). Then ONE files.completeUploadExternal call with every file id is what
+// actually posts them into the conversation (with channel_id/initial_comment/thread_ts, same as
+// chat.postMessage's params), so the body and all the files land as a single message. Every file is
+// read before anything is uploaded, so a bad path fails before Slack sees a byte. Returns the
+// completeUploadExternal response's first file entry.
+async function uploadFiles(filePaths, channel, initialComment, threadTs) {
   const fs = require('fs');
   const path = require('path');
-  let data;
-  try {
-    data = fs.readFileSync(filePath);
-  } catch {
-    throw new Error(`--send: cannot read --file ${filePath}`);
-  }
-  const filename = path.basename(filePath);
+  const loaded = filePaths.map(filePath => {
+    try {
+      return { data: fs.readFileSync(filePath), filename: path.basename(filePath) };
+    } catch {
+      throw new Error(`--send: cannot read --file ${filePath}`);
+    }
+  });
 
-  const reserved = await call('files.getUploadURLExternal', { filename, length: String(data.length) });
-  const form = new FormData();
-  form.append('file', new Blob([data]), filename);
-  const uploadRes = await fetch(reserved.upload_url, { method: 'POST', body: form });
-  if (!uploadRes.ok) throw new Error(`file upload POST failed: HTTP ${uploadRes.status}`);
+  const uploaded = [];
+  for (const { data, filename } of loaded) {
+    const reserved = await call('files.getUploadURLExternal', { filename, length: String(data.length) });
+    const form = new FormData();
+    form.append('file', new Blob([data]), filename);
+    const uploadRes = await fetch(reserved.upload_url, { method: 'POST', body: form });
+    if (!uploadRes.ok) throw new Error(`file upload POST failed for ${filename}: HTTP ${uploadRes.status}`);
+    uploaded.push({ id: reserved.file_id, title: filename });
+  }
 
   const completeParams = {
-    files: JSON.stringify([{ id: reserved.file_id, title: filename }]),
+    files: JSON.stringify(uploaded),
     channel_id: channel,
   };
   if (initialComment) completeParams.initial_comment = initialComment;
@@ -529,20 +594,18 @@ async function send() {
   if (!args.channel) {
     throw new Error('--send requires --channel (a DM/group/channel/conversation id; resolve a person with --find-dm)');
   }
-  const bodyFile = args['body-file'];
-  if (!bodyFile || bodyFile === true) {
-    throw new Error('--send requires --body-file (the reviewed message body; the writing-review gate reads it)');
+  const text = readBody('--send');
+  if (args.broadcast && !(args['thread-ts'] && args['thread-ts'] !== true)) {
+    throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
   }
-  let text;
-  try {
-    text = require('fs').readFileSync(bodyFile, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  } catch {
-    throw new Error(`--send: cannot read --body-file ${bodyFile}`);
+  if (args.broadcast && args.file && args.file !== true) {
+    throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
   }
-  if (!text) throw new Error(`--send: --body-file ${bodyFile} is empty`);
 
   if (args.file && args.file !== true) {
-    const fileEntry = await uploadFile(args.file, args.channel, text, args['thread-ts']);
+    const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
+    if (!filePaths.length) throw new Error('--send: --file names no files');
+    const fileEntry = await uploadFiles(filePaths, args.channel, text, args['thread-ts']);
     const ts = postedTs(fileEntry, args.channel);
     if (ts) {
       try {
@@ -552,12 +615,14 @@ async function send() {
       }
     }
     const permalink = fileEntry.permalink || '';
-    console.log(`Sent file to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
+    const noun = filePaths.length === 1 ? 'file' : `${filePaths.length} files`;
+    console.log(`Sent ${noun} to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
     return;
   }
 
   const params = { channel: args.channel, text };
   if (args['thread-ts']) params.thread_ts = args['thread-ts'];
+  if (args.broadcast) params.reply_broadcast = 'true';
   const r = await call('chat.postMessage', params);
   // A post doesn't advance the read cursor the way the Slack client does, so the conversation
   // stays bold forever with our own reply as the only "unread" message. Mark it ourselves —
@@ -572,6 +637,141 @@ async function send() {
     permalink = (await call('chat.getPermalink', { channel: r.channel, message_ts: r.ts })).permalink || '';
   } catch { /* permalink optional — the send already succeeded */ }
   console.log(`Sent to ${r.channel} at ts ${r.ts}.${permalink ? ` Link: ${permalink}` : ''}`);
+}
+
+// Read a --body-file the same way --send does: normalized newlines, trimmed, never empty.
+function readBody(verb) {
+  const bodyFile = args['body-file'];
+  if (!bodyFile || bodyFile === true) {
+    throw new Error(`${verb} requires --body-file (the reviewed message body; the writing-review gate reads it)`);
+  }
+  let text;
+  try {
+    text = require('fs').readFileSync(bodyFile, 'utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  } catch {
+    throw new Error(`${verb}: cannot read --body-file ${bodyFile}`);
+  }
+  if (!text) throw new Error(`${verb}: --body-file ${bodyFile} is empty`);
+  return text;
+}
+
+// A draft's body is rich_text blocks, not mrkdwn: turn the body into one rich_text section, splitting
+// out each mrkdwn token into its own element so it survives as a link, user chip, channel chip, or
+// @here/@channel broadcast instead of literal `<...>` text.
+function richTextBlocks(text) {
+  const elements = [];
+  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>|<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|<#(C[A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel)>/g;
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    if (m.index > last) elements.push({ type: 'text', text: text.slice(last, m.index) });
+    if (m[3]) elements.push({ type: 'user', user_id: m[3] });
+    else if (m[4]) elements.push({ type: 'channel', channel_id: m[4] });
+    else if (m[5]) elements.push({ type: 'broadcast', range: m[5] });
+    else elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) elements.push({ type: 'text', text: text.slice(last) });
+  return [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements }] }];
+}
+
+// The plain text of a draft's rich_text blocks, for listing.
+function draftText(blocks) {
+  const out = [];
+  const walk = (els) => {
+    for (const e of els || []) {
+      if (e.type === 'text') out.push(e.text || '');
+      else if (e.type === 'link') out.push(e.text || e.url || '');
+      else if (e.type === 'user') out.push(`<@${e.user_id}>`);
+      else if (e.type === 'channel') out.push(`<#${e.channel_id}>`);
+      else if (e.type === 'emoji') out.push(`:${e.name}:`);
+      else if (e.elements) walk(e.elements);
+    }
+  };
+  for (const b of blocks || []) walk(b.elements);
+  return out.join('');
+}
+
+async function listDrafts() {
+  const drafts = await activeDrafts();
+  const channel = args.channel && args.channel !== true ? args.channel : '';
+  const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
+  const out = drafts
+    .filter(d => !channel || (d.destinations || []).some(x =>
+      x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))
+    .map(d => ({
+      id: d.id,
+      destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '', broadcast: !!x.broadcast })),
+      updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
+      text: draftText(d.blocks),
+    }));
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
+  for (const d of out) {
+    const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '') + (x.broadcast ? ' +channel' : '')).join(', ');
+    console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
+    console.log(d.text || '(no text)');
+  }
+}
+
+// Every active draft from drafts.list, paginated.
+async function activeDrafts() {
+  const drafts = [];
+  let cursor = '';
+  do {
+    const r = await call('drafts.list', cursor ? { limit: '100', cursor } : { limit: '100' });
+    drafts.push(...(r.drafts || []));
+    cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
+  } while (cursor);
+  return drafts.filter(d => !d.is_sent && !d.is_deleted);
+}
+
+// drafts.delete wants the draft's last_updated_ts plus one second as client_last_updated_ts: the exact
+// value is rejected as draft_has_conflict and omitting it as invalid_arguments.
+async function deleteDraftById(draft) {
+  const clientTs = (parseFloat(draft.last_updated_ts || '0') + 1).toFixed(6);
+  await call('drafts.delete', { draft_id: draft.id, client_last_updated_ts: clientTs });
+}
+
+async function deleteDraft() {
+  const id = args['delete-draft'];
+  if (!id || id === true) throw new Error('--delete-draft requires a draft id (see --list-drafts)');
+  const draft = (await activeDrafts()).find(d => d.id === id);
+  if (!draft) throw new Error(`--delete-draft: no active draft ${id}`);
+  await deleteDraftById(draft);
+  console.log(`Draft ${id} deleted. It was never sent.`);
+}
+
+// Create an unsent draft on the server - reaches no one; Russell sends it himself from his own Slack.
+// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the thread's
+// existing draft (Slack allows one per thread) instead of failing with attached_draft_exists.
+async function createDraft() {
+  if (!args.channel || args.channel === true) throw new Error('--create-draft requires --channel');
+  const text = readBody('--create-draft');
+  const destination = { channel_id: args.channel };
+  if (args['thread-ts'] && args['thread-ts'] !== true) destination.thread_ts = args['thread-ts'];
+  if (args.broadcast) {
+    if (!destination.thread_ts) throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
+    destination.broadcast = true;
+  }
+  const create = () => call('drafts.create', {
+    client_msg_id: require('crypto').randomUUID(),
+    blocks: JSON.stringify(richTextBlocks(text)),
+    file_ids: '[]',
+    destinations: JSON.stringify([destination]),
+    is_from_composer: 'false',
+  });
+  let r;
+  try {
+    r = await create();
+  } catch (e) {
+    if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
+    const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
+      x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
+    for (const d of stale) await deleteDraftById(d);
+    r = await create();
+  }
+  const id = (r.draft && r.draft.id) || '';
+  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }
 
 async function check() {
@@ -648,8 +848,11 @@ async function findByDomain() {
   if (args.react) return await react();
   if (args.mark) return await mark();
   if (args.send) return await send();
+  if (args['list-drafts']) return await listDrafts();
+  if (args['create-draft']) return await createDraft();
+  if (args['delete-draft']) return await deleteDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --find-dm, --open-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

@@ -48,7 +48,7 @@ All under `scripts/`:
 - **`mail.js`**
   - List unread: `node mail.js --list-unread [--top=30]` (inbox unread, newest-first; one block per message with id + webLink)
   - List inbox (read+unread): `node mail.js --list-inbox [--top=50] [--json]` (inbox items regardless of read state, newest-first, count-capped by `--top`; `--json` emits a structured array for scripts)
-  - Search: `node mail.js --search="Griffiths" [--top=10]` (flags any hit still sitting in Drafts with `[DRAFT — NOT SENT]`)
+  - Search: `node mail.js --search="Okafor" [--top=10]` (flags any hit still sitting in Drafts with `[DRAFT — NOT SENT]`)
   - Show one: `node mail.js --show=<messageId>` (prints a `*** DRAFT — NOT SENT ***` banner up top if the message is still a draft)
   - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values — the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen)
   - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.html`
@@ -64,10 +64,10 @@ All under `scripts/`:
     - Delete: `node mail.js --delete-rule="<id or name>"`
 - **`contacts.js`**
   - List: `node contacts.js --list [--top=50]` (alphabetical by display name)
-  - Search: `node contacts.js --search="Foster"` (prefix match on display name)
-  - Create: `node contacts.js --create --name="Stuart Foster" [--email=a@x] [--phone=555-1234] [--company=Acme] [--job-title=Director]`
+  - Search: `node contacts.js --search="Jamie"` (prefix match on display name)
+  - Create: `node contacts.js --create --name="Jamie Lin" [--email=a@x] [--phone=555-1234] [--company=Acme] [--job-title=Director]`
 - **`drive.js`** (personal OneDrive; needs the `Files.Read` scope)
-  - Web deep link: `node drive.js weburl "Claude/job-applications/LasVegasSands"` (prints the item's `webUrl` — a one-click `onedrive.live.com` link that opens the file or folder in the browser)
+  - Web deep link: `node drive.js weburl "Claude/job-applications/Contoso"` (prints the item's `webUrl` — a one-click `onedrive.live.com` link that opens the file or folder in the browser)
   - List a folder: `node drive.js list "Claude/job-applications"` (prints each child's name and `webUrl`; path defaults to the drive root). Paths are relative to the OneDrive root.
 
 ## Auth-error handling (do without being asked)

@@ -34,7 +34,7 @@ instructions: |-
       'Executive Director Outreach': 'hpvdRw3G',
       # ...the rest of the registry...
   }
-  entity = 'JetBrains'
+  entity = 'Contoso'
   hits = [(b, c) for b, bid in BOARDS.items()
           for c in get_board_cards(bid, s)
           if entity.lower() in (c.get('name', '') + ' ' + c.get('desc', '')).lower()]
@@ -44,6 +44,9 @@ instructions: |-
     advance/reschedule it, post a dated comment recording what happened (via `add_comment`), and set the
     next Start date. The existing card is the source of truth and carries the entity's whole history - keep
     it there.
+  - **A step that blocks the rest of an existing card's process is that card's next step, not a new card.**
+    When the larger goal can't move until the step is done, record the step as the card's next step (in the description and a dated comment) and set the card's Start to when the step should be checked.
+    A step that doesn't block the rest of the parent, or a separate deliverable, still gets its own card.
   - **Nothing matches → create on the entity's OWN board.** A sponsor/company or its contact belongs on
     that campaign's outreach board (match by the registry `purpose`/`initiative`), not as a generic
     reminder on a catch-all board. Put the card where that entity's funnel lives so it isn't orphaned

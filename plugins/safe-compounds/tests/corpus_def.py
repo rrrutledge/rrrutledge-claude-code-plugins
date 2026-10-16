@@ -29,7 +29,13 @@ CASES = [
     {"id": "git_push_plain", "tool": "Bash", "command": "git push", "expect": "ALLOW"},
     {"id": "git_reset_soft", "tool": "Bash", "command": "git reset --soft HEAD~1", "expect": "ALLOW"},
     {"id": "git_checkout_branch", "tool": "Bash", "command": "git checkout -b feature", "expect": "ALLOW"},
-    {"id": "git_push_force", "tool": "Bash", "command": "git push --force", "expect": "PROMPT"},
+    {"id": "git_push_force", "tool": "Bash", "command": "git push --force", "expect": "BLOCK"},
+    {"id": "git_push_force_with_lease", "tool": "Bash", "command": "git push --force-with-lease origin feat", "expect": "BLOCK"},
+    {"id": "git_push_force_short_cluster", "tool": "Bash", "command": "git push -uf origin feat", "expect": "BLOCK"},
+    {"id": "git_push_plus_refspec", "tool": "Bash", "command": "git push origin +feat", "expect": "BLOCK"},
+    {"id": "git_push_delete_no_local_branch", "tool": "Bash", "command": "git push origin --delete gone-branch", "expect": "PROMPT"},
+    {"id": "git_push_delete_main", "tool": "Bash", "command": "git push origin --delete main", "expect": "PROMPT"},
+    {"id": "git_push_colon_delete_main", "tool": "Bash", "command": "git push origin :main", "expect": "PROMPT"},
     {"id": "git_reset_hard_origin", "tool": "Bash", "command": "git reset --hard origin/main", "expect": "ALLOW"},
     {"id": "git_reset_hard_head", "tool": "Bash", "command": "git reset --hard HEAD", "expect": "PROMPT"},
     {"id": "git_reset_hard_pathspec", "tool": "Bash", "command": "git reset --hard -- origin/main", "expect": "PROMPT"},
@@ -107,17 +113,28 @@ CASES = [
     {"id": "sed_inplace", "tool": "Bash", "command": "sed -i s/a/b/ file.txt", "expect": "BLOCK"},
     {"id": "sed_plain", "tool": "Bash", "command": "sed s/a/b/ file.txt", "expect": "ALLOW"},
 
+    # --- headless browser render (quoted exe path with spaces) --------------
+    {"id": "edge_headless_remote_url", "tool": "Bash",
+     "command": "\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\" --headless=new --screenshot=out.png https://example.com",
+     "expect": "PROMPT"},
+    {"id": "edge_headless_debug_port", "tool": "Bash",
+     "command": "\"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe\" --headless --remote-debugging-port=9222 file:///C:/x/.tmp/p.html",
+     "expect": "PROMPT"},
+
     # --- taskkill (self-close-my-own-tab only; anything else prompts) -------
     # A real self-target ALLOW depends on the live process tree at test time
     # (not a static literal), so it's covered by test_units.py's
     # TestTaskkill/TestSelfTabHostPid instead — these cases pin the negative
     # (never blanket-approved) forms.
-    {"id": "taskkill_bogus_pid", "tool": "Bash", "command": "taskkill /PID 999999 /T /F", "expect": "PROMPT"},
+    # PID 4 (System) is live on Windows and never an own descendant; off
+    # Windows the empty process table fails closed - PROMPT either way. (An
+    # absent PID now auto-approves, so a made-up number no longer works here.)
+    {"id": "taskkill_bogus_pid", "tool": "Bash", "command": "taskkill /PID 4 /T /F", "expect": "PROMPT"},
     {"id": "taskkill_image_name", "tool": "Bash", "command": "taskkill /IM chrome.exe /F", "expect": "PROMPT"},
     {"id": "taskkill_remote_host", "tool": "Bash", "command": "taskkill /S otherhost /PID 1 /F", "expect": "PROMPT"},
     # MSYS/Git-Bash doubles the leading slash (//PID, //T, //F) to escape its
     # path-mangling — same negative case, doubled-slash form.
-    {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 999999 //T //F", "expect": "PROMPT"},
+    {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 4 //T //F", "expect": "PROMPT"},
     # The drainer's self-close primitive (fires SessionEnd, then kills its own
     # tab) must auto-approve via the trusted plugin-cache script dir — a worker
     # that hits a prompt here sits open forever instead of closing silently.
@@ -232,7 +249,7 @@ CASES = [
      "command": ('python "C:/Users/russe/.claude/plugins/cache/rrrutledge-claude-code-plugins/session-mgr/1.8.0/'
                  'skills/resume-sessions/scripts/spawn-session.py" --title "X" --cwd "C:/Users/russe/Dev/repo" '
                  '--brief "C:/Users/russe/Dev/repo/.tmp/handoff-x.md" --model claude-sonnet-5; git push --force'),
-     "expect": "PROMPT"},
+     "expect": "BLOCK"},
     {"id": "spawn_session_then_curl_post", "tool": "Bash",
      "command": ('python "C:/Users/russe/.claude/plugins/cache/rrrutledge-claude-code-plugins/session-mgr/1.8.0/'
                  'skills/resume-sessions/scripts/spawn-session.py" --title "X" --cwd "C:/Users/russe/Dev/repo" '
@@ -265,16 +282,28 @@ CASES = [
     # destination under a `.tmp` dir in an unrelated directory is still safe.
     {"id": "cp_to_unrelated_repo_tmp_dir", "tool": "Bash",
      "command": 'cp a.txt "{HOME}/Dev/some-other-repo/.tmp/b.txt"', "files": {"a.txt": "x"}, "expect": "ALLOW"},
-    # ~/.claude/jobs/<job-id>/tmp/... is the harness's own scratch dir for
-    # background-agent jobs -- disposable, Claude-owned, same role as the
-    # session scratchpad dir.
+    # Writes under ~/.claude/jobs hit Claude Code's own ~/.claude confirmation,
+    # which no hook decision can suppress -- blocked with a redirect to .tmp/.
     {"id": "cp_to_claude_jobs_tmp", "tool": "Bash",
      "command": 'cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"', "files": {".tmp/stuff": "x"},
-     "expect": "ALLOW"},
+     "expect": "BLOCK"},
     {"id": "cp_du_to_claude_jobs_tmp", "tool": "Bash",
      "command": ('cp -r .tmp/stuff "{HOME}/.claude/jobs/1008c8c0/tmp/ssi" '
                  '&& du -sh "{HOME}/.claude/jobs/1008c8c0/tmp/ssi"'),
-     "files": {".tmp/stuff": "x"}, "expect": "ALLOW"},
+     "files": {".tmp/stuff": "x"}, "expect": "BLOCK"},
+    {"id": "mkdir_claude_jobs_tmp", "tool": "Bash",
+     "command": 'mkdir -p ~/.claude/jobs/x/tmp', "expect": "BLOCK"},
+    {"id": "cat_head_then_mkdir_claude_jobs", "tool": "Bash",
+     "command": 'cat ~/.claude/CLAUDE.md | head -5; mkdir -p /c/Users/russe/.claude/jobs/cd7048a0/tmp',
+     "expect": "BLOCK"},
+    {"id": "mkdir_tmp_ok", "tool": "Bash", "command": "mkdir -p .tmp/x", "expect": "ALLOW"},
+    {"id": "cat_global_claude_md", "tool": "Bash", "command": "cat ~/.claude/CLAUDE.md", "expect": "BLOCK"},
+    {"id": "cat_global_claude_md_home_var", "tool": "Bash",
+     "command": 'cat "$HOME/.claude/CLAUDE.md" | head', "expect": "BLOCK"},
+    {"id": "cat_global_claude_md_msys", "tool": "Bash",
+     "command": 'cat "{HOME}/.claude/CLAUDE.md"', "expect": "BLOCK"},
+    {"id": "cat_project_claude_md", "tool": "Bash", "command": "cat CLAUDE.md", "files": {"CLAUDE.md": "x"},
+     "expect": "ALLOW"},
 
     # --- scripts (deny-by-default; trusted dir vs elsewhere) ----------------
     {"id": "pyfile_tmp", "tool": "Bash", "command": "python .tmp/run.py",

@@ -36,8 +36,11 @@ A task restricted to a time-of-day window only enumerates while local now falls 
 **An opt-in fourth gate: the day of the week.**
 A task restricted to particular weekdays only enumerates on one of them, however big the gap and whatever the time of day - see DAY-OF-WEEK-GATE below.
 
+**Dated like everything else in the queue.**
+Each task carries its due day as its `received` date (local midnight), so the poller's cross-source dispatch order, newest first, places it among mail, Slack, and Trello cards by that day.
+
 **Prefer the longest task that fits.**
-When several tasks are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns eligible tasks sorted longest-duration-first, so the cross-source dispatch order (which otherwise ties on priority band and falls back to arrival order) picks the task that best uses the room available.
+When several tasks due the same day are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns them longest-duration-first, and the dispatch order keeps that order for items with the same date, so it picks the task that best uses the room available.
 
 **Only one physical task is ever open at a time.**
 Russell can only be doing one physical-world thing at once, so even when several tasks are simultaneously eligible, the adapter's `correspondent` returns the same constant identity for every one of them - the poller's ordinary same-correspondent hold (built for "don't dispatch two items from the same person at once") then keeps every task but the first-picked out of dispatch until that one's worker session closes.

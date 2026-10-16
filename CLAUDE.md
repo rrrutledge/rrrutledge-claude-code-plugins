@@ -81,8 +81,11 @@ evaluated by a **declarative spec engine**. Each spec has:
 
 - **`trusted`** — set of always-approved subcommands (read-only or reversible writes).
 - **`conditional`** — subcommands approved *unless* a destructive flag is present.
-  Example: `git push` is approved unless `--force`/`-f`/`--delete` appears;
+  Example: `git tag` is approved unless `-d`/`--delete` appears;
   `git reset` is approved unless `--hard` appears.
+  `git push` has a special: a force push (`--force`, `-f`, `--force-with-lease`, `+ref`) is BLOCKed
+  with an instruction to make a new commit instead, and a branch delete (`--delete`, `-d`, `:ref`)
+  is approved only for a non-protected branch that still exists locally (re-pushing it undoes the delete).
 - **`specials`** — dict of `{subcommand: callable}` for one-off custom logic
   (e.g. `git checkout`, `git clean`).
 - **`category`** — a string key for the AI/learned fallback (see §5 below).

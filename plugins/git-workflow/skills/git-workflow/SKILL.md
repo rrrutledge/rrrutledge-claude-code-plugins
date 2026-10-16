@@ -8,7 +8,13 @@ description: Russell's git/GitHub workflow rules - branching from main, when PRs
 ## Before opening a PR - read the target repo's own CLAUDE.md and CONTRIBUTING.md
 Every repo can carry its own contribution rules on top of everything in this skill - a required screenshot, a local build/test step, a specific PR template.
 Read that repo's own `CLAUDE.md`, `CONTRIBUTING.md`, and any `.github/PULL_REQUEST_TEMPLATE*` before opening a PR there, every time, even in a repo worked in before - a rule can be added after the last visit.
-Follow whatever they ask in full: run the build/preview step they name, attach whatever artifact they ask for, and match their PR template if one exists.
+Match their PR template if one exists.
+
+**This is a hard gate, and `gh pr create` is the gate.**
+Before any `gh pr create`, list every PR requirement found in the files read above.
+A `CLAUDE.md` already loaded in context counts - re-read it for PR rules, since any of the three files can hold a requirement the other two lack.
+Complete each requirement first, or open the PR as a draft with each undone requirement named as pending in the description.
+A leftover step listed in the summary does not satisfy a requirement; only completing it, or naming it as pending in a draft PR's description, does.
 
 **When the work targets a repo other than the session's working directory, root the session in that repo's own checkout.**
 This is the case whenever a session started in one repo picks up a task that turns out to need changes in another.
@@ -30,12 +36,16 @@ If review surfaces changes, push follow-up commits to the same branch.
 
 **Each round of review feedback gets its own commit - never amend or squash rounds together, and don't force-push across them.**
 When Russell reviews a PR and asks for changes, make that round's changes a new commit and push it normally, so he can review just that round's diff instead of re-reading the whole PR each time.
-Reserve amend/force-push for fixing your own most-recent commit before Russell has looked at it; once a round is his to review, it stays its own commit.
+**Never force-push - fix pushed work with a new commit on top.**
+History cleanliness doesn't matter, so a mistake in pushed work gets a follow-up commit (a corrective commit or a revert) pushed normally, not an amend or rebase followed by `--force`.
+Amending is fine only for your own most-recent commit before it has been pushed.
+The safe-compounds hook blocks every force push (`--force`, `-f`, `--force-with-lease`, `+ref`) with this same instruction.
 
 **Closing a PR without merging it (superseded, duplicate, abandoned experiment): use `gh pr close <n> --delete-branch` as one command.**
 GitHub's repo-level "auto-delete branch on merge" setting only fires on merge, never on close, so a closed PR's branch needs explicit cleanup.
 `gh pr close --delete-branch` deletes it via the GitHub API as part of the close and is already on the trusted `gh pr` allowlist regardless of flags - it never prompts for approval.
-A separate `git push origin --delete <branch>` after the fact does prompt every time (push carries a destructive-flag gate for `--delete`/`--force`).
+A separate `git push origin --delete <branch>` (or `git push origin :<branch>`) after the fact is also auto-approved when the branch is not main/master/the default branch and still exists locally, because pushing the local branch again undoes it.
+A delete of a branch with no local copy still prompts.
 
 **Run `/code-review` only when Russell asks for it** - it's token-heavy, so it's opt-in.
 When he does request a review, run it on the local branch diff, apply the findings that make sense, and report what it found and fixed.

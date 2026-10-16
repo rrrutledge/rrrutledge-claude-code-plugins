@@ -121,6 +121,7 @@ The provider capability and the digest's report-on-approval handling live in `pr
 
 **Slack is a partial exception to the provider-capability rule above, and separately overrides junk classification for known contacts.**
 See `providers/slack-provider.md` for both.
+It also holds READ-IN-CONTEXT, which applies before a Slack item is triaged.
 
 ## Tie-breakers
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.

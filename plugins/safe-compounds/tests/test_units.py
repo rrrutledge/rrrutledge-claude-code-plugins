@@ -4,6 +4,8 @@ import os
 import sys
 import tempfile
 
+import pytest
+
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_DIR = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, PLUGIN_DIR)
@@ -23,7 +25,7 @@ from safe_compounds import procs  # noqa: E402
 from safe_compounds.mcp import classify_mcp_tool  # noqa: E402
 from safe_compounds.enforce import (  # noqa: E402
     detect_complex_bash, detect_simple_expansion, detect_cd_compound, detect_function_definition,
-    detect_plugin_cache_reference, detect_gh_api_contents_write, detect_raw_trello_write,
+    detect_plugin_cache_reference, detect_claude_jobs_write, detect_global_claude_md_read,detect_gh_api_contents_write, detect_raw_trello_write,
     detect_unbounded_wide_find, enforce_bash,
 )
 from safe_compounds.scripts import check_node_segment, get_block_reason, reset_block_reason  # noqa: E402
@@ -135,6 +137,33 @@ class TestGit:
     def test_push_force_blocked(self):
         assert is_git_command_safe("git push --force") is False
 
+    def test_push_force_variants_not_safe(self):
+        for cmd in ("git push -f", "git push --force-with-lease", "git push -uf origin x",
+                    "git push origin +x", "git push --force-if-includes"):
+            assert is_git_command_safe(cmd) is False, cmd
+
+    def test_push_delete_needs_local_unprotected_branch(self, monkeypatch):
+        from safe_compounds import commands
+        monkeypatch.setattr(commands, "_git_default_branch", lambda: "trunky")
+        local = {"feat"}
+        monkeypatch.setattr(commands, "_git_ref_succeeds",
+                            lambda *a: a[-1].removeprefix("refs/heads/") in local | {"main", "trunky"})
+        assert is_git_command_safe("git push origin --delete feat") is True
+        assert is_git_command_safe("git push origin -d feat") is True
+        assert is_git_command_safe("git push origin :feat") is True
+        assert is_git_command_safe("git push origin --delete gone") is False
+        assert is_git_command_safe("git push origin --delete main") is False
+        assert is_git_command_safe("git push origin :main") is False
+        assert is_git_command_safe("git push origin --delete trunky") is False
+        assert is_git_command_safe("git push origin --delete feat gone") is False
+        assert is_git_command_safe("git push --delete origin") is False
+
+    def test_force_push_blocked_with_new_commit_message(self):
+        reason = enforce_bash("git -C /repo push --force origin x")
+        assert reason and "new commit" in reason
+        assert enforce_bash("git push origin feature") is None
+        assert enforce_bash("git push origin --delete feature") is None
+
     def test_reset_hard_blocked(self):
         assert is_git_command_safe("git reset --hard") is False
 
@@ -211,9 +240,26 @@ class TestTaskkill:
     the host-pid path is exercised deterministically; `test_own_descendant_*`
     below covers the descendant path directly against `procs.is_own_descendant`."""
 
-    def _mock(self, monkeypatch, host_pid, descendants=()):
+    def _mock(self, monkeypatch, host_pid, descendants=(), absent=()):
         monkeypatch.setattr(procs, "self_tab_host_pid", lambda: host_pid)
         monkeypatch.setattr(procs, "is_own_descendant", lambda pid: pid in descendants)
+        monkeypatch.setattr(procs, "is_absent", lambda pid: pid in absent)
+
+    def test_absent_pid_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /T /F") is True
+
+    def test_absent_plus_live_descendant_approved(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242}, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /PID 4242 /F") is True
+
+    def test_absent_plus_live_non_descendant_rejected(self, monkeypatch):
+        self._mock(monkeypatch, 16552, descendants={4242}, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 7777 /PID 9999 /F") is False
+
+    def test_live_non_descendant_rejected(self, monkeypatch):
+        self._mock(monkeypatch, 16552, absent={7777})
+        assert is_taskkill_safe("taskkill /PID 9999 /F") is False
 
     def test_self_pid_approved(self, monkeypatch):
         self._mock(monkeypatch, 16552)
@@ -274,6 +320,19 @@ class TestTaskkill:
     def test_one_unproven_pid_among_many_rejects_whole_command(self, monkeypatch):
         self._mock(monkeypatch, 16552, descendants={4242})
         assert is_taskkill_safe("taskkill /PID 4242 /PID 9999 /F") is False
+
+
+class TestIsAbsent:
+    SNAP = {100: (1, 'claude.exe'), 200: (100, 'bash.exe')}
+
+    def test_pid_missing_from_snapshot_is_absent(self):
+        assert procs.is_absent(999, snapshot=self.SNAP) is True
+
+    def test_pid_in_snapshot_is_not_absent(self):
+        assert procs.is_absent(200, snapshot=self.SNAP) is False
+
+    def test_empty_snapshot_fails_closed(self):
+        assert procs.is_absent(999, snapshot={}) is False
 
 
 class TestSelfTabHostPid:
@@ -474,6 +533,18 @@ class TestMcp:
     def test_unknown_verb(self):
         set_config()
         assert classify_mcp_tool("mcp__s__frobnicate_thing") is False
+
+    def test_noun_first_read_allowed(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__recordings_list") is True
+
+    def test_noun_first_destructive_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__recordings_delete") is False
+
+    def test_noun_first_unknown_trailing_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__s__recordings_frobnicate") is False
 
     def test_blanket_tool_configured(self):
         set_config(mcp_blanket_tools=["mcp__s__frobnicate_thing"])
@@ -981,6 +1052,60 @@ class TestPluginCacheBlocking:
         assert reason is not None
         assert "plugin cache" in reason
         assert "Read tool" in reason
+
+
+class TestClaudeDirBlocking:
+    """Claude Code always confirms `~/.claude` paths itself, so scratch writes
+    under ~/.claude/jobs and Bash reads of the global CLAUDE.md are blocked
+    with a redirect instead of reaching that unavoidable prompt."""
+
+    def test_exact_prompted_command_blocks_with_jobs_message(self):
+        cmd = 'cat ~/.claude/CLAUDE.md | head -5; mkdir -p /c/Users/russe/.claude/jobs/cd7048a0/tmp'
+        assert detect_claude_jobs_write(cmd) is True
+
+    @pytest.mark.parametrize("cmd", [
+        'mkdir -p ~/.claude/jobs/x/tmp',
+        'touch "$HOME/.claude/jobs/x/tmp/f"',
+        'mkdir -p "C:\\Users\\russe\\.claude\\jobs\\x"',
+        'mkdir -p /c/Users/russe/.claude/jobs/x',
+        'cp a.txt ~/.claude/jobs/x/tmp/',
+        'mv -t ~/.claude/jobs/x/tmp a.txt',
+    ])
+    def test_jobs_writes_detected(self, cmd):
+        assert detect_claude_jobs_write(cmd) is True
+        assert "~/.claude" in enforce_bash(cmd)
+
+    @pytest.mark.parametrize("cmd", [
+        'mkdir -p .tmp/x',
+        'cp ~/.claude/jobs/x/tmp/a.txt .tmp/a.txt',
+        'ls ~/.claude/jobs',
+    ])
+    def test_jobs_negatives(self, cmd):
+        assert detect_claude_jobs_write(cmd) is False
+
+    @pytest.mark.parametrize("cmd", [
+        'cat ~/.claude/CLAUDE.md',
+        'cat "$HOME/.claude/CLAUDE.md" | head',
+        'head -5 "${HOME}/.claude/CLAUDE.md"',
+        'grep -n push "C:\\Users\\russe\\.claude\\CLAUDE.md"',
+        'wc -l /c/Users/russe/.claude/CLAUDE.md',
+    ])
+    def test_global_claude_md_reads_detected(self, cmd, monkeypatch):
+        monkeypatch.setattr(os.path, 'expanduser',
+                            lambda p: p.replace('~', 'C:/Users/russe', 1) if p.startswith('~') else p)
+        assert detect_global_claude_md_read(cmd) is True
+
+    @pytest.mark.parametrize("cmd", [
+        'cat CLAUDE.md',
+        'cat ~/.claude/settings.json',
+        'cat ~/Dev/repo/CLAUDE.md',
+    ])
+    def test_global_claude_md_negatives(self, cmd):
+        assert detect_global_claude_md_read(cmd) is False
+
+    def test_claude_md_message_points_at_context_and_read_tool(self):
+        reason = enforce_bash('cat ~/.claude/CLAUDE.md')
+        assert "already loaded" in reason and "Read tool" in reason
 
 
 class TestGhApiContentsWriteBlocking:

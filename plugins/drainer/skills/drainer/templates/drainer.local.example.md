@@ -47,14 +47,15 @@ runtime_dir: .tmp/drainer
 
 # Worker model per item - the poller picks by triage complexity (simple -> worker_model,
 # complex -> worker_model_complex). Set an EXPLICIT model so workers don't inherit whatever the
-# session default happens to be. Use the plain model id - no [1m] suffix needed, current models
-# already report a 1M context window.
-worker_model: claude-sonnet-5              # simple items (quick replies, trivial actions)
-worker_model_complex: claude-opus-5-5      # complex items (multi-step work, code, delicate messages)
-triage_model: claude-sonnet-5              # the per-cycle batched triage call (also pinned)
+# session default happens to be. Use a family alias (opus / sonnet / haiku) - Claude Code resolves
+# it to the newest model in that family, so launches move up with each release. No [1m] suffix
+# needed, current models already report a 1M context window.
+worker_model: sonnet              # simple items (quick replies, trivial actions)
+worker_model_complex: opus        # complex items (multi-step work, code, delicate messages)
+triage_model: sonnet              # the per-cycle batched triage call (runs through `claude -p`, so an alias works)
 
 # EOD digest (run-digest.py) - the once-a-day interactive slow loop.
-digest_model: claude-opus-5-5   # the digest session (summarize fyi, group junk)
+digest_model: opus              # the digest session (summarize fyi, group junk)
 orphan_grace_minutes: 15        # the poller re-queues any item whose source object is still unhandled with
                                 # no live worker session on it - there is no time limit on an open session.
                                 # This grace only stops a just-spawned worker (session not up yet) from being

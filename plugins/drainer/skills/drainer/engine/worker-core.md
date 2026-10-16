@@ -148,8 +148,10 @@ What differs source to source is **how soon the bar is met**, because that depen
   There, this section and §2c have already told you everything: the item is real, current, and needs-you.
   The bar is met right here - CLEAR now, before starting step 3's work.
 - **Scope isn't visible until you've read the item** - a chat source (Slack, Teams) can bundle several distinct asks behind one shared read-cursor; you don't know how many until the grouping read above (§2, "group-then-handle") is done.
-  The bar isn't met at capture - clearing then, before any of those asks are accounted for, would silently drop all of them the moment the cursor advances.
-  It's met once every ask the grouping surfaced is handled, staged, or tracked - which for a multi-ask span can land as late as step 6, but is never later than that.
+  The bar isn't met at capture, so don't treat capture as the moment everything is accounted for: it's met once every ask the grouping surfaced is handled, staged, or tracked - which for a multi-ask span can land as late as step 6, but is never later than that.
+
+For a source whose provider implements `clear` (email, Slack), the poller already cleared the item when it spawned you, so your own CLEAR is a harmless no-op: run it anyway if you reach it, but never wait on it.
+For Slack that means the unread marker is already gone and your open session is the only tracker of the span's asks, so the grouping still decides what you must finish or track before you close.
 
 Clearing before step 3's work is verified complete relies on the **orphan-sessions** provider to catch a session that dies mid-task - it resumes the exact crashed session from the live-session registry regardless of what state the source item is in, so an un-cleared item was never what stood in for "not done yet."
 What still must not slip: anything this session doesn't finish before ending needs the normal "waiting on someone else → tracker card" rule (step 6), since the source item no longer tracks it once cleared.
@@ -179,11 +181,14 @@ Route each piece of work by where it belongs - which is also where Russell can r
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
   Launch it as a background session, the way the poller launched you, and let this session stay on its own item:
-  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model id>`
+  `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
-  Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`claude-sonnet-5` for a bounded task, `claude-opus-5-5` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
+  Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   The script prints the new session's short id; name it in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
+
+**Route every change to a repo-tracked file through a handoff - a skill, script, doc, or config edit, §7's "improve the source" fix included.**
+The poller launches you with Claude Code's background worktree guard off so your `.tmp/` scratch writes land in place, which leaves the handoff, launched with the guard on, as what keeps a source edit in its own worktree.
 
 **Reset this item's own context at a boundary - the session-lifecycle hook tells you when.**
 The dispatch rule above moves *new or unrelated* work out of this session; this rule resets the context the work you keep has accumulated.
@@ -193,7 +198,7 @@ It's a nudge weighing on your own judgment - continuing can genuinely be the rig
 
 **A complex worker steps its model down when the open-ended phase ends.**
 A worker triaged complex runs on Opus to investigate and plan; the mechanical implementation that follows does not need Opus.
-The planning-into-execution boundary is exactly the hand-off case above: when you reach it (the hook may prompt you there, or you may notice it first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `claude-sonnet-5` as the model id.
+The planning-into-execution boundary is exactly the hand-off case above: when you reach it (the hook may prompt you there, or you may notice it first), hand off and step the model down - write a tight plan doc and spawn the implementation session from it with `sonnet` as the model.
 Doing so drops the plan-phase context from the implementation session, runs the mechanical half on the cheaper model, and keeps correctness because the plan doc carries the distilled context that makes the build correct.
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
@@ -284,6 +289,8 @@ Decide by who's holding the conversation:
 - *They* initiated and you've now replied → the ball is in their court by default; you're done, no card.
 - *You* initiated, they replied, and you've replied again → the ball is back with them and it's easy to lose track.
   Create a follow-up tracker card (the user's board, per `context.md`) before marking done, so it stays visible instead of relying on memory.
+  **If the follow-up is a step the rest of an existing card's process is fully blocked on, don't create a card:** record it as that card's next step (description plus a dated comment) and set the card's Start to when the step should be checked.
+  A separate deliverable, or a step that doesn't block the parent, still gets its own card.
 
 **Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
@@ -314,9 +321,10 @@ No pre-existing label or rule predicted this in advance (that's what `auto-handl
 
 When that's the case, treat the close-out like `auto-handle`'s (steps 4-5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
 **When you queue a digest entry, first re-tag the item's `triage` to `"auto-handle"` in `items/<id>.json` (Edit tool) before the `queue-add` - the same re-tag §2c makes for an FYI downgrade.**
-In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, and a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`.
+In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
+A nudge's `dispositionReason` must state why it was bumped (the hold condition or the evidence you checked) and the new Start date, because the digest lists every nudge with that reason.
 Use the same one-liner you wrote as the source's dated comment for `dispositionReason`, so the digest reports the real outcome ("Abandoned - req closed") instead of guessing at deferral language.
-This files the entry under the digest's **"Auto-handled"** section (already done, dismiss-only), so a finished item is shown as handled rather than resurfacing as a live needs-you.
+This files the entry under the digest's **"Auto-handled"** section, so a finished item is shown as handled rather than resurfacing as a live needs-you.
 Queue it via
 `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`,
 then close the session (`python <skill>/scripts/close-session.py`) instead of presenting-and-waiting.
@@ -328,6 +336,16 @@ Self-close here only when ALL of these are unambiguously true:
 - no decision remains that only he could make (which option to pursue, whether to escalate, how to word something delicate, whether an ambiguous match is good enough)
 - nothing outbound-to-others or irreversible is pending his OK
 - no next step waits on Russell himself (per the trello provider's DUE-TASK)
+
+**A briefing for Russell to read is not, by itself, something waiting on him.**
+Put the summary in the digest and close when all three hold:
+- **All that's left is a summary of what you found** - no staged draft, no decision only he can make, no step of his (a send, a signature, a speaker rename, a reply), no new deliverable for him to review (a PR, a doc, slide text), and no failure or blocker to report.
+- **Russell has had no turn in this session at all.** Once he has said anything here, even mid-way, he's in a conversation with you and may have more to add, so present as normal and stay open.
+- **The item isn't a topic he started himself.** A note he emailed the pod is already his input, so it's a conversation too.
+
+For a drainer worker this overrides the generic end-of-turn close check's "new information he hasn't reacted to yet": the digest is where he reads it, and he picks any topic back up from the digest session.
+A zero-input session that ends in a summary almost always ends with Russell typing `/close`, so holding it open buys nothing.
+Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, and write the briefing itself into a `summary` field on `items/<id>.json`: the findings, any deadline or number that matters, and anything he might choose to do with it.
 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
@@ -351,14 +369,46 @@ So a staged draft he hasn't confirmed sending, or a piece of work that's genuine
 A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
 
 **The close condition is symmetric: your part done, and his part done - not just yours.**
-Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
+Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item, §7's lesson if the session earned one) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
 **"Advancing the source item" means naming step 6's CLEAR command for this item's source and pointing to its actual output from this session - not that sending the reply already did it, and not that step 6 said so.**
 Two independent Slack workers sent their reply, heard Russell confirm it, and closed without ever calling `slack.js --mark`; the conversation sat flagged unread indefinitely even though the work was fully done.
 If you can't point to the CLEAR command's output, run it now, before invoking `session-mgr:close`.
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
 But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
 
-## 7. Improve the source (don't just hoard facts)
-If the user had to tell you something you could have known, don't just note it - figure out *where it should have come from* and improve THAT source so it's findable next time: a system, a skill, or the internal knowledge source.
+## 7. Improve the source, or leave a lesson
+This is the one place a session turns friction into improvement.
+Check it before you close (§6), while you still hold the full context of what went wrong.
+
+**A trigger starts it - any of these happened in this session:**
+- a **correction**: Russell told you that you were wrong, or told you something you could have known (the last paragraph covers a missing fact);
+- a **dead end**: an approach you committed to and then abandoned;
+- **repeated failed attempts**: the same operation failing three or more times before it worked or you gave it up.
+
+**No trigger, no lesson.**
+Most workers write nothing here, and that is correct; don't invent a lesson to fill the step.
+The bar is: a skill, doc, or script could have prevented this, which leaves out struggles that came from the outside world.
+
+**When a trigger fires and the bar is met, record one lesson - at most one per session.**
+Record only: write the ledger line and stop.
+Never open a skill PR for a lesson; the weekly State of the Pod review groups lessons across workers and recommends the PRs.
+Run, with the item's captured json named so the line carries its id and source:
+
+```
+python <skill>/scripts/record-lesson.py \
+  --trigger correction|dead-end|retries \
+  --what "<what went wrong, one or two sentences>" \
+  --target "<repo-relative path of the skill, doc, or script that should change>" \
+  --change "<the proposed change, concrete enough to write the PR from>" \
+  --item "<path to the item's items/<id>.json>" \
+  [--pr <url of a fix you already opened>]
+```
+
+Then name the lesson in one line in your final message, so Russell sees it while it's fresh.
+Describe the pattern, never the item's content: lessons feed a public plugins repo.
+
+**When the correction was a fact Russell had to supply, fixing its source stays the move.**
+Work out *where it should have come from* and improve THAT source (a system, a skill, or the internal knowledge source) when the fix is obvious, so it's findable next time.
 Only when the shared brain is genuinely the right long-term home does it go in the local `context.md`; voice feedback goes to the document-authoring skill.
+Record the lesson with `--pr <url>` pointing at that fix, so the weekly review sees it was already handled.
 The goal is fewer questions over time because sources got better, not a growing notes pile.

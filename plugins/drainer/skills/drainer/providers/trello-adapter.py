@@ -381,25 +381,6 @@ class Provider(ProviderBase):
             # label and sets Start = today, so they resurface on a later drain).
             if self._has_skip_label(card):
                 continue
-            # Director+ pause: while Russell is focused on his in-flight interviews, a below-director
-            # job-search card is kept on the board but never drained - it still exists for him to work by
-            # hand, it just isn't handed over as a worker. job-board-poll marks a below-director posting
-            # with an "IC-level" line in the card body (its tiers.js LEVEL_WORD), and only job-search
-            # cards ever carry that line (see _level_band's docstring), so this suppresses nothing else.
-            # Remove this block to reopen lower-level job cards to the drain queue.
-            if "IC-level" in (card.get("desc") or ""):
-                continue
-            # New-application pause: while Russell preps for his in-flight interviews, don't hand over a
-            # brand-new job he hasn't touched - anything still sitting in the Identified intake list that
-            # isn't a person follow-up. That covers the auto-sourced application cards (🎯 P1/P2/P3) and
-            # the weekly job-board sweep card; they stay on the board for him to work by hand, they just
-            # aren't dispatched to a worker. A 👤 Contact follow-up keeps its own nudge cadence even while
-            # it sits in Identified, and every application already advanced past Identified (Applied /
-            # Reached Out onward) keeps draining normally. Only the Job Search Outreach board has an
-            # Identified list, so this suppresses nothing on any other board. Remove this block to resume
-            # starting fresh applications.
-            if "identified" in list_name.lower() and not self._is_contact_card(card):
-                continue
             # Skip cards assigned to someone else; unassigned cards are always Russell's.
             assigned = card.get("idMembers") or []
             if assigned and my_id not in assigned:

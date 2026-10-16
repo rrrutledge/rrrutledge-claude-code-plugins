@@ -252,7 +252,9 @@ def main():
     summary_file = os.path.join(os.path.dirname(prompt_file), "digest.summary.txt")
     with open(summary_file, "w", encoding="utf-8") as f:
         f.write(summary)
-    bg_id = spawn_bg(prompt_seed(prompt_file, summary), cfg["digest_model"], repo, summary)
+    # Like a worker, the digest writes only runtime state under `.tmp/` and hands real work to a fresh
+    # session, so it launches scratch_only (no worktree needed).
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary), cfg["digest_model"], repo, summary, scratch_only=True)
     if not bg_id:
         print("run-digest: headless `claude --bg` launch returned no id; the digest did not start.")
         sys.exit(1)

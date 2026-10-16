@@ -40,7 +40,7 @@ instructions: |-
   from trello_utils import (
       get_trello_session, trello_request,
       get_board_lists, get_board_cards, get_board_labels,
-      create_card, update_card, delete_card, add_comment,
+      create_card, update_card, delete_card, retire_card, add_comment,
       create_label, add_label_to_card, get_or_create_list,
       find_card_by_name, create_card_from_template,
   )
@@ -72,6 +72,22 @@ instructions: |-
   startable-task dependency model (push-unblock via `cascade_unblock`, cross-board pull-unblock via
   `sweep_unblock`) lives in `trello_utils.py` - see the module's own docstrings for how a blocked card is
   freed once its blockers finish.
+
+  ---
+
+  ## Ending a card - move it, never archive it
+
+  A card's work ends with a move to a terminal list.
+
+  - **When the work is done** - move the card to **Finished**.
+  - **When the work won't finish on this card** - call `retire_card(card_id, reason, session)`.
+    It comments the reason on the card, so name where the work went and link to it, then moves the card to **Abandoned**.
+
+  Archiving an unfinished card hides its task.
+  The drainer reads only open cards, the board stops showing it, and an archived card counts as a finished blocker, so anything waiting on it gets unblocked.
+  `trello_utils` refuses to archive or delete any card outside a terminal list (`TERMINAL_LIST_SUBSTRS` in `trello_utils.py` names them) and raises `ArchiveRefused`.
+  The guard sits inside `trello_request`, so a call made directly through `trello_request` is refused too.
+  Archiving a card that already sits in a terminal list goes through as usual.
 
   ---
 

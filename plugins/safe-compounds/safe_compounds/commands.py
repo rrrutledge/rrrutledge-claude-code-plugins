@@ -4,6 +4,7 @@ start/cmd launchers, and CWD-scoped file operations (cp/mv/touch/ln/chmod).
 """
 import os
 import re
+import subprocess
 
 from . import ai, config
 from .learned import add_learned_command, add_learned_subcommand, learned_subcommands
@@ -176,10 +177,75 @@ GIT_TRUSTED_SUBCOMMANDS = {
 }
 
 GIT_CONDITIONAL_SUBCOMMANDS = {
-    'push':   {'--force', '-f', '--delete'},
     'tag':    {'-d', '--delete'},
     'switch': {'--discard-changes', '-f', '--force'},
 }
+
+_FORCE_PUSH_LONG_FLAGS = ('--force', '--force-with-lease', '--force-if-includes')
+
+
+def is_force_push_args(args):
+    """True if `git push` args rewrite remote history: a force flag (long, or
+    a short cluster like -uf), or a `+ref` refspec, which forces that ref."""
+    for a in args:
+        if a.startswith('--'):
+            if a.split('=', 1)[0] in _FORCE_PUSH_LONG_FLAGS:
+                return True
+        elif a.startswith('-'):
+            if 'f' in a[1:]:
+                return True
+        elif a.startswith('+'):
+            return True
+    return False
+
+
+GIT_PROTECTED_BRANCHES = {'main', 'master', 'develop', 'development', 'trunk', 'HEAD'}
+
+
+def _git_ref_succeeds(*git_args):
+    try:
+        result = subprocess.run(['git', *git_args], capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def _git_default_branch():
+    try:
+        result = subprocess.run(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip().removeprefix('origin/') or None
+
+
+def _git_push_deletable(branch):
+    """A remote branch is safe to delete when it is not a protected/default
+    branch and a local branch of the same name remains, so the delete is undone
+    by pushing that local branch again."""
+    branch = branch.removeprefix('refs/heads/')
+    if not branch or branch in GIT_PROTECTED_BRANCHES or branch == _git_default_branch():
+        return False
+    return _git_ref_succeeds('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}')
+
+
+def _git_push_ok(args):
+    """Plain pushes pass; force pushes never do (enforce.py blocks them with a
+    "make a new commit" message). A branch delete (--delete, -d, or a `:ref`
+    refspec) passes only for non-protected branches still present locally."""
+    if is_force_push_args(args):
+        return False
+    positional = [a for a in args if not a.startswith('-')]
+    delete_flag = '--delete' in args or '-d' in args
+    targets = positional[1:] if delete_flag else []
+    targets += [a[1:] for a in positional if a.startswith(':')]
+    if not delete_flag and not targets:
+        return True
+    if not targets:
+        return False
+    return all(_git_push_deletable(t) for t in targets)
 
 
 def _git_checkout_ok(args):
@@ -218,7 +284,8 @@ GIT_SPEC = {
     'command': 'git',
     'trusted': GIT_TRUSTED_SUBCOMMANDS,
     'conditional': GIT_CONDITIONAL_SUBCOMMANDS,
-    'specials': {'checkout': _git_checkout_ok, 'clean': _git_clean_ok, 'reset': _git_reset_ok},
+    'specials': {'checkout': _git_checkout_ok, 'clean': _git_clean_ok, 'reset': _git_reset_ok,
+                 'push': _git_push_ok},
     'global_opts': GIT_GLOBAL_OPTS_WITH_ARG,
     'allow_empty': True,
     'category': None,  # no AI fallback: unknown git subcommands prompt
@@ -445,6 +512,64 @@ def is_start_safe(seg):
     return ext.lower() in START_SAFE_EXTENSIONS
 
 
+# ----------------------------------------------------- headless browser --------
+# A headless Chromium-family browser rendering a local page to an image or PDF
+# is a render-and-save: the only effect is the output file, so it is approved
+# when that file lands somewhere already trusted for writes, the page is a
+# local file (or localhost), and every flag is on the harmless-rendering list.
+# Anything that opens a debugging port or loads extensions is outside the list
+# and prompts. A --user-data-dir is allowed only when it points at a trusted
+# write location (a scratch profile), never at a real browser profile.
+HEADLESS_BROWSER_NAMES = {'msedge', 'chrome', 'chromium', 'chromium-browser', 'google-chrome'}
+HEADLESS_BROWSER_FLAGS = {
+    '--disable-gpu', '--hide-scrollbars', '--force-dark-mode',
+    '--run-all-compositor-stages-before-draw', '--no-pdf-header-footer',
+    '--blink-settings', '--window-size', '--virtual-time-budget',
+    '--default-background-color', '--force-device-scale-factor',
+}
+HEADLESS_OUTPUT_FLAGS = {'--screenshot', '--print-to-pdf'}
+_LOCAL_URL = re.compile(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?(/|$)', re.IGNORECASE)
+
+
+def _file_url_to_path(url):
+    path = re.sub(r'^file:///?', '', url, flags=re.IGNORECASE)
+    return path if re.match(r'^[A-Za-z]:', path) else '/' + path
+
+
+def is_headless_browser_safe(seg):
+    tokens = shell_tokenize(seg)
+    if not tokens:
+        return False
+    exe = os.path.basename(tokens[0].replace('\\', '/')).lower()
+    if exe.endswith('.exe'):
+        exe = exe[:-4]
+    if exe not in HEADLESS_BROWSER_NAMES:
+        return False
+    headless = False
+    urls = []
+    for tok in tokens[1:]:
+        if not tok.startswith('--'):
+            urls.append(tok)
+            continue
+        name, _, value = tok.partition('=')
+        if name == '--headless':
+            headless = True
+        elif name in HEADLESS_OUTPUT_FLAGS or name == '--user-data-dir':
+            if value and not _dest_allowed(value):
+                return False
+        elif name not in HEADLESS_BROWSER_FLAGS:
+            return False
+    if not headless or not urls:
+        return False
+    for url in urls:
+        if url.lower().startswith('file:'):
+            if not _source_allowed(_file_url_to_path(url)):
+                return False
+        elif not _LOCAL_URL.match(url):
+            return False
+    return True
+
+
 # ---------------------------------------------------------- powershell --------
 POWERSHELL_ENV_PATTERN = re.compile(
     r'^powershell\s+-NoProfile\s+-Command\s+"?\[System\.Environment\]::GetEnvironmentVariable\('
@@ -469,6 +594,13 @@ def is_powershell_safe(seg):
 # Only `/PID <n>` (plus `/T` `/F`) is recognized — never `/IM`, `/S`, `/U`,
 # `/P`, `/FI`, ... — and a PID that's neither the tab host nor a proven own
 # descendant defers the whole command to a manual prompt.
+#
+# A PID absent from the live process table also passes: the target already
+# exited, so taskkill just prints "not found". Between the Stop-hook report and
+# the kill many listed processes die on their own, and prompting on those costs
+# a round trip for a no-op. Residual risk: the PID being reused by an unrelated
+# process in the milliseconds between this check and the kill (see
+# `procs.is_absent`).
 #
 # The Bash tool runs Git Bash, whose MSYS layer treats a single leading slash
 # as a POSIX path and mangles it — so commands built for that tool arrive as
@@ -510,7 +642,7 @@ def is_taskkill_safe(seg):
     from . import procs
     host_pid = procs.self_tab_host_pid()
     return all(
-        pid == host_pid or procs.is_own_descendant(pid)
+        pid == host_pid or procs.is_absent(pid) or procs.is_own_descendant(pid)
         for pid in pids
     )
 

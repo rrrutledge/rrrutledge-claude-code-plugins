@@ -143,7 +143,8 @@ safe_compounds/
   commands.py            subcommand engine (git/gh/npm/yarn/pip/pnpm/bun via a
                          spec table) + bespoke checkers (curl/sed/start/cmd/file ops/taskkill)
   procs.py               live Windows process-ancestry walk (ctypes, no deps) —
-                         backs the taskkill checker's tab-host and own-descendant proofs
+                         backs the taskkill checker's tab-host and own-descendant proofs,
+                         and treats a PID already gone from the process table as safe
   enforce.py             the BLOCK rules ("rewrite into a validatable form")
   approve.py             per-segment trust decision
   mcp.py                 MCP tool classification

@@ -42,7 +42,7 @@ class Provider(ProviderBase):
     @staticmethod
     def _own_outbound_reply(m):
         """True for a message Russell sent to other people that surfaced back in his inbox (a reply
-        threaded into the conversation, e.g. his "RE: Baggage Fee" to his dad). That is his own outbound
+        threaded into the conversation, e.g. his "RE: Travel plans" to a family member). That is his own outbound
         side, not inbound mail to triage — dropping it here keeps his replies out of the queue. A genuine
         self-note (he is a recipient, so `toMe` is set) is preserved: it's a task he captured for himself.
         `fromMe`/`toMe` come from mail.js, which resolves the mailbox owner's own address."""

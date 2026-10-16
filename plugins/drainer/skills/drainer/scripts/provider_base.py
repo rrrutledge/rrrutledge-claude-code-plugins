@@ -320,7 +320,7 @@ claude_agents = bg_session.claude_agents
 # entry.
 
 RELAY_CORRESPONDENTS = (
-    # Securus / JPay inmate-messaging notifications: "...new Message from: TYLER COSSEY Please login...".
+    # Securus / JPay inmate-messaging notifications: "...new Message from: SAM RIVERA Please login...".
     {
         "tag": "securus",
         "from_rx": re.compile(r"@(?:jpay|securustech)\.(?:com|net)", re.I),
@@ -374,7 +374,7 @@ def relay_correspondent(item, get_body):
 
     Returns one of three things:
       - a namespaced identity string when the item is from a known relay and the correspondent's name is
-        extractable from its subject / preview / body (e.g. Securus's "Message from: TYLER COSSEY"),
+        extractable from its subject / preview / body (e.g. Securus's "Message from: SAM RIVERA"),
       - None when there is no identity to hold on — a relay whose name can't be extracted, or a
         self-note — so the caller holds nothing rather than falling back to the shared From address,
         which would wrongly collapse two different real people (or every self-note) onto one key,
@@ -695,8 +695,9 @@ class ProviderBase:
         raise NotImplementedError
 
     def clear(self, item):
-        """Archive this item's source object at triage time, for an fyi/junk item being queued for the
-        daily digest. An inbox provider whose CLEAR is a reversible archive overrides this so a message
+        """Archive this item's source object at triage time: for an fyi/junk item being queued for the
+        daily digest, and for a needs-you item the moment its worker spawns (the open session is then the
+        tracker, so the source holds only untriaged items). An inbox provider whose CLEAR is a reversible archive overrides this so a message
         Russell has effectively already dispositioned leaves his inbox the moment it's triaged, rather
         than sitting there as noise until he approves clearing it at the digest. Return True on a
         successful archive, False on a failure. The default returns None: the provider has no safe

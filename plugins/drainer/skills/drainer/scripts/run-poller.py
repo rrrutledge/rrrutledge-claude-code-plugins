@@ -19,13 +19,15 @@ Fail-safe: a message-id is recorded as seen only AFTER its dispatch succeeds; lo
 re-processes items (safe), never drops one. The poller clears only fyi/junk, and only at the end of
 dispatch (after the item is captured, queued for the digest, and recorded), so an inbox provider archives
 mail Russell has already dispositioned right at triage; a failed clear leaves the item queued, never lost.
-needs-you items are cleared by their worker on completion. See engine/poller-core.md for the contract.
+needs-you item whose provider implements clear (email, Slack) is cleared by the poller right after its worker
+spawns; other needs-you items (Teams, Trello) are cleared by their worker on completion. See engine/poller-core.md for the contract.
 
 Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # one live cycle
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
 """
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -1311,22 +1313,70 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     # the receipt every reader uses (<prompt_file>.session), so open_correspondents, reconcile, and peek
     # stay path-agnostic. A launch that returns no id leaves no receipt, so reconcile re-queues the item
     # after the launch grace.
-    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file))
+    # A worker writes only scratch under the repo's `.tmp/` (draft bodies, scripts, its own items/<id>.json)
+    # and hands any source change to a fresh session, so it launches scratch_only: no worktree just to
+    # write a draft body.
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file),
+                     scratch_only=True)
     if bg_id:
         write_receipt(prompt_file, bg_id)
-    else:
-        print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
-              "left unrecorded to retry next cycle.")
+        return True
+    print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
+          "left unrecorded to retry next cycle.")
+    return False
+
+
+def _orphan_session_name(session_id, home=None):
+    """The orphaned session's own name, read from its transcript (`~/.claude*/projects/*/<id>.jsonl`, which
+    covers every account's config dir): the last `custom-title` record's name, else the last `ai-title`'s,
+    else None. A leading `Resume: ` (left by an earlier version of the resume path) is dropped. Lines are
+    screened by substring before parsing because a transcript can run to many MB."""
+    home = home or os.path.expanduser("~")
+    hits = glob.glob(os.path.join(home, ".claude*", "projects", "*", f"{session_id}.jsonl"))
+    custom = ai = None
+    for path in hits:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"custom-title"' in line:
+                        key = "customTitle"
+                    elif '"ai-title"' in line:
+                        key = "aiTitle"
+                    else:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except ValueError:
+                        continue
+                    name = rec.get(key)
+                    if isinstance(name, str) and name.strip():
+                        if key == "customTitle" and rec.get("type") == "custom-title":
+                            custom = name
+                        elif key == "aiTitle" and rec.get("type") == "ai-title":
+                            ai = name
+        except OSError:
+            continue
+    name = (custom or ai or "").strip()
+    if name.startswith("Resume:"):
+        name = name[len("Resume:"):].strip()
+    return name or None
 
 
 def spawn_resume(session_id, cwd, repo):
     """Dispatch an orphan-sessions item: reopen an existing session in the background via `claude --bg
     --resume <session_id>`, in ITS OWN original `cwd` (not the drainer's repo) — unlike every other
-    source, there's no prompt seed to write; the session already has its full history."""
+    source, there's no prompt seed to write; the session already has its full history. The resumed session
+    keeps the orphan's own name (so a later re-crash still reads it back); a session with no recorded name
+    is titled `Resume: <cwd basename>`. A background session the service retired is woken in place under
+    its own id and name instead (spawn_bg says when). True when the launch returned a session id."""
     base = os.path.basename((cwd or "").rstrip("/\\")) or session_id[:8]
-    title = _session_title(f"Resume: {base}", f"resume:{session_id[:8]}")
+    own = _orphan_session_name(session_id)
+    title = _session_title(own or f"Resume: {base}", f"resume:{session_id[:8]}")
     if not spawn_bg(None, None, cwd or repo, title, resume=session_id):
-        print(f"spawn_resume {session_id}: headless `claude --bg --resume` launch returned no id.")
+        print(f"spawn_resume {session_id}: headless `claude --bg --resume` launch returned no id; "
+              "left unrecorded to retry next cycle.")
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------- the cycle
@@ -1956,7 +2006,7 @@ def main():
                   + ", ".join(it.get("convId") or it["_id"] for it in teams_others))
         return
 
-    dispatched, auto_dispatched, held, held_corr, queued, poll_cleared = 0, 0, 0, 0, 0, 0
+    dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
     # throttled by the worker buffer, recorded with its own triage so capture stamps the json and the seed
     # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
@@ -2000,12 +2050,24 @@ def main():
             stamp["selfAuthenticated"] = True  # so the worker's own re-screen acts on Russell's own directive
         if stamp:
             _stamp_item_fields(json_file, **stamp)
+        spawned = False
         if it["_source"] == "orphan-sessions":
-            spawn_resume(it["session_id"], it["cwd"], repo)
+            # A failed resume stays unrecorded, so the same orphan, whose id changes only when it
+            # ends again, is tried again next cycle.
+            if not spawn_resume(it["session_id"], it["cwd"], repo):
+                slots -= 1
+                continue
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
+            spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it)
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
+        # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
+        # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
+        # a launch that returned a session id: a failed archive leaves the mail in the inbox (reconcile
+        # re-queues it if the worker dies), and a failed launch never archives mail nobody is working. A
+        # worker that dies after the archive is resumed by orphan-sessions, same as for a §2d early clear.
+        if spawned and provider.clear(it):
+            spawn_archived += 1
         if corr:
             active_correspondents.add(corr)
         slots -= 1
@@ -2054,7 +2116,7 @@ def main():
 
     buf = ("scan failed" if wcounts is None
            else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
-    print(f"dispatched {dispatched} worker(s), {auto_dispatched} auto-handle worker(s), "
+    print(f"dispatched {dispatched} worker(s) ({spawn_archived} source mail archived at spawn), {auto_dispatched} auto-handle worker(s), "
           f"queued {queued} for digest ({poll_cleared} archived at triage), "
           f"{correctly_junked_count} correctly-filed junk (no action), "
           f"{rescued_count} un-junked to the Inbox, "

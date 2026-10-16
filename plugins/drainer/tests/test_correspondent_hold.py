@@ -33,14 +33,14 @@ def check(name, got, want):
         failures.append(name)
 
 
-# The real Securus/JPay notification body, as capture writes it to items/<id>.email.md. The From is a
+# The Securus/JPay notification template body, as capture writes it to items/<id>.email.md. The From is a
 # shared no-reply that fronts every incarcerated contact; the person is named only in the body.
-SECURUS_BODY_TYLER = (
-    "You have received a new message Hello, You have received a new Message from: TYLER COSSEY "
+SECURUS_BODY_SAM = (
+    "You have received a new message Hello, You have received a new Message from: SAM RIVERA "
     "Please login to your Friend & Family account on the mobile app or log in using the website to "
     "view your new message. This is an auto-notification email, please do not reply."
 )
-SECURUS_BODY_JANE = SECURUS_BODY_TYLER.replace("TYLER COSSEY", "JANE DOE")
+SECURUS_BODY_JANE = SECURUS_BODY_SAM.replace("SAM RIVERA", "JANE DOE")
 
 
 def securus_item(body):
@@ -63,19 +63,19 @@ class ProviderStub(provider_base.ProviderBase):
 
 print("relay correspondent: Securus is keyed on the named person, not the shared From address")
 p = ProviderStub()
-tyler = p.correspondent(securus_item(SECURUS_BODY_TYLER))
-tyler2 = p.correspondent(securus_item(SECURUS_BODY_TYLER))
+sam = p.correspondent(securus_item(SECURUS_BODY_SAM))
+sam2 = p.correspondent(securus_item(SECURUS_BODY_SAM))
 jane = p.correspondent(securus_item(SECURUS_BODY_JANE))
-check("the name is extracted and namespaced", tyler, "relay|securus|tyler cossey")
-check("the same person yields the same key across notices", tyler, tyler2)
-check("two different people on the same From address do NOT collapse", tyler == jane, False)
+check("the name is extracted and namespaced", sam, "relay|securus|sam rivera")
+check("the same person yields the same key across notices", sam, sam2)
+check("two different people on the same From address do NOT collapse", sam == jane, False)
 
 print("\nrelay correspondent: the name can live in the body when the preview is truncated before it")
 # A preview cut off before the name — extraction must fall through to the fetched body, not the address.
 short = {"from": "Securus eMessaging <donotreply@jpay.com>", "fromAddress": "donotreply@jpay.com",
          "subject": "New Mail From A Correctional Facility", "preview": "You have received a new message"}
 check("body fetch resolves the correspondent",
-      ProviderStub(body=SECURUS_BODY_TYLER).correspondent(short), "relay|securus|tyler cossey")
+      ProviderStub(body=SECURUS_BODY_SAM).correspondent(short), "relay|securus|sam rivera")
 
 print("\nrelay correspondent: a recognized relay we can't extract from is NEVER held (no wrong collapse)")
 blank = {"from": "Securus eMessaging <donotreply@jpay.com>", "fromAddress": "donotreply@jpay.com",
@@ -119,9 +119,9 @@ def workspace(sessions):
 
 print("\nopen_correspondents: a LIVE worker on an item holds that correspondent open")
 GUID = "11111111-2222-3333-4444-555555555555"
-rt = workspace([("item-a", GUID, "relay|securus|tyler cossey")])
+rt = workspace([("item-a", GUID, "relay|securus|sam rivera")])
 check("live session -> its correspondent is held-open",
-      poller.open_correspondents(rt, {GUID}), {"relay|securus|tyler cossey"})
+      poller.open_correspondents(rt, {GUID}), {"relay|securus|sam rivera"})
 
 print("\nopen_correspondents: a DEAD worker (guid no longer live) releases the hold within one cycle")
 check("guid not in the live set -> not held-open (the crashed-worker fail-safe)",
@@ -134,7 +134,7 @@ print("\nopen_correspondents against the real live scan: a full-guid receipt and
 # couldn't be resolved, hold the short id. live_session_ids must make both match.
 FULL = "6997ef2f-aaaa-bbbb-cccc-dddddddddddd"
 rt2 = workspace([("item-full", FULL, "jane@example.com"),
-                 ("item-short", "33ddd28a", "relay|securus|tyler cossey"),
+                 ("item-short", "33ddd28a", "relay|securus|sam rivera"),
                  ("item-dead", "deadbeef", "bob@ex.com")])
 real_agents = poller.claude_agents
 poller.claude_agents = lambda: [
@@ -147,14 +147,14 @@ try:
 finally:
     poller.claude_agents = real_agents
 check("full-guid and short-id receipts both held; the pid-less session released",
-      poller.open_correspondents(rt2, live), {"jane@example.com", "relay|securus|tyler cossey"})
+      poller.open_correspondents(rt2, live), {"jane@example.com", "relay|securus|sam rivera"})
 
 print("\nin-cycle dedup: two duplicates in ONE cycle -> first dispatches, the rest wait")
 # Replays the needs-loop discipline from main: check held_for_correspondent, and register the
 # correspondent only on dispatch. Two items sharing a key must not both spawn.
 active = set()  # nothing open from a prior cycle
 decisions = []
-for corr in ["relay|securus|tyler cossey", "relay|securus|tyler cossey", "jane@example.com"]:
+for corr in ["relay|securus|sam rivera", "relay|securus|sam rivera", "jane@example.com"]:
     if poller.held_for_correspondent(corr, active):
         decisions.append("hold")
         continue
@@ -165,8 +165,8 @@ check("first of a pair dispatches, the duplicate waits, an unrelated sender disp
       decisions, ["dispatch", "hold", "dispatch"])
 
 print("\nin-cycle dedup: a needs-you item waits behind an already-open correspondent from a prior cycle")
-active = {"relay|securus|tyler cossey"}  # a worker from an earlier cycle still open
-check("its duplicate is held", poller.held_for_correspondent("relay|securus|tyler cossey", active), True)
+active = {"relay|securus|sam rivera"}  # a worker from an earlier cycle still open
+check("its duplicate is held", poller.held_for_correspondent("relay|securus|sam rivera", active), True)
 check("a None identity is never held", poller.held_for_correspondent(None, active), False)
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")

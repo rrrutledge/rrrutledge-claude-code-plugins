@@ -40,6 +40,17 @@ That means §2d's clear-now bar is met right there: archive it before starting a
 
 ## DRAFT-MODE (shared rules - CLI commands are in your provider file)
 
+### Pre-draft step (before writing any reply or fresh-note body)
+
+Load `document-authoring:writing-flow` and `document-authoring:message-rules` first, then write the body.
+The review at stage time catches a miss only after the body exists, so the rules go in front of you before the first word.
+These are the most-missed rules, restated so they ride in with this page:
+
+- No helper tail: no closing offer, no restated promise, no "let me know if".
+- Do not restate what the other person already said.
+- On a pure acknowledgment, mirror their length.
+- No new promises or details they did not ask for.
+
 ### Voice gate (mandatory - follow the full loop, not just Read)
 
 Invoke the `document-authoring` skill (call the Skill tool to load it) and follow its mandatory **Read → Write → Verify → Stage → Learn** drafting loop for this message - not just the Read step.

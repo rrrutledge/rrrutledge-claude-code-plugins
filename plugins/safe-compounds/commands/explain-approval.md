@@ -14,8 +14,15 @@ below.
 
 The command or tool call he's asking about: $ARGUMENTS
 
-If nothing was pasted, ask him to paste the exact command (or describe the tool call — e.g. an
-EnterWorktree/Write/mcp__ call) he was prompted for.
+If nothing was pasted, don't ask him to paste anything — he captures a screenshot of the approval
+prompt instead of copying the command. Invoke the `screenshot:screenshot` skill to load his most
+recent screenshot, and treat it as the permission prompt to analyze: read the tool name and the
+exact command or arguments off the dialog, then continue with the steps below. Only if the
+screenshot doesn't show an approval prompt, say so and ask him to paste the command or describe the
+tool call (e.g. an EnterWorktree/Write/mcp__ call) he was prompted for.
+
+Use this command by default whenever Russell asks whether a prompted command could be auto-approved
+or why it prompted, even without the slash command.
 
 ## 1. Identify the tool call shape
 

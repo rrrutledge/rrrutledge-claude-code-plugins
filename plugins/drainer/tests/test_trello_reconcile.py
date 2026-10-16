@@ -98,7 +98,7 @@ LISTS = {"B1": [{"id": "L1", "name": "To Do"}, {"id": "LT", "name": "\U0001F4CB 
 
 # The board as it stands NOW: one startable card, plus four the gate must exclude.
 CARDS_NOW = {"B1": [
-    card(ID_STARTABLE, "Huntress Director Engineering", "L1", start=PAST),
+    card(ID_STARTABLE, "Fabrikam Director Engineering", "L1", start=PAST),
     card(ID_BLOCKED, "Blocked Upstream", "L1", start=PAST,
          labels=[{"name": "⛔ Blocked", "color": "red"}]),
     card(ID_ASSIGNED, "Someone Elses Card", "L1", start=PAST, members=["other-member"]),
@@ -133,7 +133,7 @@ def sid(cid, name, start):
 print("still_in_inbox_ids returns exactly the currently-startable card ids")
 p = make_provider(FakeUtils(LISTS, CARDS_NOW))
 got = p.still_in_inbox_ids()
-want = {sid(ID_STARTABLE, "Huntress Director Engineering", PAST)}
+want = {sid(ID_STARTABLE, "Fabrikam Director Engineering", PAST)}
 check("only the startable card is 'still outstanding'", got, want)
 check("a Blocked-labeled card is not outstanding",
       sid(ID_BLOCKED, "Blocked Upstream", PAST) in got, False)
@@ -157,8 +157,8 @@ print("\ncapture writes messageId == the stable_id, the handle reconcile checks"
 rt_cap = tempfile.mkdtemp(prefix="trello-capture-")
 p = make_provider(FakeUtils(LISTS, CARDS_NOW))
 p._fetch_comments = lambda cid: "(none)"  # skip the comments API call
-iid = sid(ID_STARTABLE, "Huntress Director Engineering", PAST)
-item = {"cardId": ID_STARTABLE, "name": "Huntress Director Engineering", "start": PAST,
+iid = sid(ID_STARTABLE, "Fabrikam Director Engineering", PAST)
+item = {"cardId": ID_STARTABLE, "name": "Fabrikam Director Engineering", "start": PAST,
         "board": "Job Search Outreach", "list": "To Do", "_bucket": "needs-you", "_kind": "work"}
 p.capture(item, iid, rt_cap)
 rec = json.load(open(os.path.join(rt_cap, "items", f"{iid}.json"), encoding="utf-8"))
@@ -234,7 +234,7 @@ def run(rt, providers, live=()):
     return n, requeued
 
 
-ID_CRASHED = sid(ID_STARTABLE, "Huntress Director Engineering", PAST)
+ID_CRASHED = sid(ID_STARTABLE, "Fabrikam Director Engineering", PAST)
 ID_CLEARED_OLD = sid(ID_CLEARED, "Just Cleared Card", CLEARED_OLD_START)
 
 

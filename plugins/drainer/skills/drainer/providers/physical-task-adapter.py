@@ -177,11 +177,25 @@ class Provider(ProviderBase):
         eligible = [t for t in due if t["minutes"] + self.buffer_minutes <= gap]
         # Newest-due first, same as email (drain today's backlog before working backwards into
         # older stale items) — then, among tasks that became due on the same day, the longest one
-        # that fits so a big gap isn't wasted on a short task. This is what the poller's cross-source
-        # dispatch order actually follows (it otherwise ties same-priority-band items and falls back
-        # to insertion order) — see `still_in_inbox_ids`, unaffected by this order.
+        # that fits so a big gap isn't wasted on a short task.
         eligible.sort(key=lambda t: (t["date"], t["minutes"]), reverse=True)
+        for t in eligible:
+            t["received"] = self._received(t["date"])
         return eligible[:limit]
+
+    @staticmethod
+    def _received(date):
+        """The task's due day as the `received` timestamp the poller's cross-source needs-you sort
+        reads, so a physical task interleaves with mail, Slack, and Trello cards by date. An item with
+        no `received` sorts below every dated item in its band, so without one a physical task waits
+        behind the whole neutral band and never dispatches while the worker buffer stays busy.
+        Local midnight of the due day, in UTC ISO form like the Trello adapter's Start dates, so the
+        poller's plain string comparison orders it correctly against the other sources."""
+        try:
+            local = datetime.strptime(date, "%Y-%m-%d").astimezone()
+        except (TypeError, ValueError):
+            return ""
+        return local.astimezone(timezone.utc).isoformat()
 
     def still_in_inbox_ids(self):
         """Reconcile's analog of "still in the inbox": every currently-queued task's id, gap or no

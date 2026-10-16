@@ -47,6 +47,7 @@ import os
 import re
 import sys
 import glob
+import html
 import json
 import math
 import socket
@@ -366,9 +367,17 @@ def fold_drafts(events=None):
     return drafts
 
 
+def _plain_text(text):
+    """Strip HTML markup from a staged body, so a Gmail draft staged as `<p>...</p>` compares
+    equal to the plain text the sent item reads back as."""
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text or "")
+    text = re.sub(r"<[^>]+>", "", text)
+    return html.unescape(text).strip()
+
+
 def _read_draft_text(draft_id):
     with open(os.path.join(drafts_dir(), f"{draft_id}.txt"), "r", encoding="utf-8") as fh:
-        return fh.read()
+        return _plain_text(fh.read())
 
 
 def _supersede_pending(thread_ref, recipient):
@@ -474,6 +483,9 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
         f"# {_spawn_title(scored)}",
         "",
         f"Follow `{PROCEDURE_PATH}` in this repo - it is the whole procedure for this session.",
+        "",
+        "This repo is public. Nothing below - the recipient, the draft, the sent text, the diff, or any",
+        "name, amount, or detail from them - goes into a file, branch name, commit message, or PR body.",
         "",
         "## Why this session spawned",
         *_reason_lines(outcome_event, scored),
@@ -624,7 +636,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
             f'--title "{_spawn_title(scored)}" '
             '--cwd "<plugins repo clone>" '
-            f'--brief "{brief_path}" --model claude-sonnet-5'
+            f'--brief "{brief_path}" --model sonnet'
         )
 
     return {**event, "dispatch": dispatch, "label_error": label_error}

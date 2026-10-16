@@ -152,7 +152,7 @@ Only **after** the user confirms they sent/handled the message, advance the card
 **The CLEAR op is the item's digest disposition.**
 When a worker auto-handles a card and self-closes it (worker-core §6a), the CLEAR it performed is what the digest reports: **stop → `abandoned`**, **advance → `advanced`**, **nudge → `nudged`**.
 Stamp that value as `disposition` on `items/<id>.json`, with the dated comment's one-liner as `dispositionReason`, before the digest `queue-add` (worker-core §6a).
-The digest then lists an abandoned or advanced card under its Auto-handled "state changed" group with that reason, and folds a nudge into the "checked, no change" count, so a closed-req abandon reads as a real signal, not a deferral.
+The digest then lists an abandoned or advanced card under its Auto-handled "state changed" group with that reason, and lists each nudge on its own line, with its reason and new Start date, under "checked, no change", so a closed-req abandon reads as a real signal, not a deferral.
 
 A card reaches the digest as `nudged` only on the **silent-bump** path: the situational check found recent activity since the Start date was last set - the contact replied, or Russell already answered on the thread - so a follow-up right now would be premature, and the card's Start is bumped out with nothing sent.
 A follow-up Russell actually sends is a needs-you item he already saw, never an auto-handled nudge.
@@ -191,7 +191,11 @@ Otherwise, when no such timeframe was given, pick the tier based on how closely 
 - After 1st follow-up (no reply) → bump **2 weeks**
 
 When unsure, default to infrequent.
+
 When the ask requires real commitment or internal approval from the contact (e.g. sponsorship money, a formal agreement), start at **2 weeks** instead of 1 - regardless of how closely the user works with them.
+
+**A board or initiative that states its own cadence overrides the tiers, including the 2-week commitment start.**
+When the card's board `purpose` (or its initiative) sets a follow-up interval, that interval is the card's cadence interval for every card there, in every rule below.
 
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
@@ -211,3 +215,4 @@ N/A - outreach cards are curated, not inbound noise.
 
 ## DRAFT-MODE
 `message-draft` skill, in the mode matching the card's channel (`outlook` / `teams` / `slack`).
+Before writing the body, follow the pre-draft step in `email-base.md`.
