@@ -72,15 +72,16 @@ instructions: |-
 
   Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`, with `ended_at`
   added for a session found through its job record.
-  Everything in this list is confirmed — go straight to the launch list (Step 3) for these; do
+  Everything in this list is confirmed - go straight to the launch list (Step 3) for these; do
   not apply Step 2's `last_user_text` exclusion rules to them (those are for the fallback scan
-  only, next section) — the registry or the job record already proved they were still open.
+  only, next section) - the registry or the job record already proved they were still open.
 
   Registry entries are self-healing: a resume through `spawn-session.py` drops the old session
   id from the registry, the resumed session registers its new id at `SessionStart`, and a later
   clean exit fires `SessionEnd` (removing it) - so nothing needs manual pruning beyond what the
   script already does for self-closed sessions.
-  A retired background session resumed with nothing queued is instead woken in place - the bare
+  A retired background session resumed with no follow-up prompt, whose saved launch flags already
+  carry `--remote-control` and `--permission-mode manual`, is instead woken in place - the bare
   `claude --bg --resume <guid>`, which continues the same job under its own id, name and saved
   launch flags at no model cost - and the wake is logged in `~/.claude/session-mgr/wakes.json`
   for the backoff above.
@@ -237,8 +238,9 @@ instructions: |-
     Claude account `claude-account main|backup` last selected, and a resume on the account that
     holds its transcript. The drainer plugin ships a thin forwarder of its own
     (`spawn-handoff.py`) that finds this launcher, so drainer workers keep one stable path.
-  - `--resume <session_id>` continues an existing session by its UUID under a new session id,
-    carrying the full conversation history.
+  - `--resume <session_id>` continues an existing session by its UUID, carrying the full
+    conversation history - under a new session id, or under its own id when a retired background
+    session is woken in place (Step 1).
   - There are ~1,300 JSONL session files total; the fallback scan reads all of them but only the
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what

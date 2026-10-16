@@ -11,7 +11,7 @@ Implements `../engine/provider.md`'s adapter contract; classify by `../engine/tr
 Every other provider's needs-you item opens a **fresh** worker session that reads `../engine/worker-core.md` and drafts a reply.
 This source is different: resuming the session (via `run-poller.py`'s dedicated `spawn_resume()`, which reopens it as a background session with `claude --bg --resume <session_id>` in the session's own original `cwd`) IS the entire action.
 The resumed session carries the full history under a new session id, and the launcher drops the old id from session-mgr's live-session registry so it never reads as crashed again.
-A retired background session is woken in place instead, under its own id, name and saved launch flags, at no model cost.
+A retired background session is woken in place instead (see the `resume-sessions` skill's Step 1).
 Orphans take needs-you worker slots like any other item, ahead of every other source, so a backlog of them comes back a few at a time as the waiting pile drops below `target_reviewable` rather than all at once.
 A resume that returns no session id stays unrecorded and is tried again next cycle.
 The resumed session keeps the orphan's original name, read back from the orphan's transcript (its last custom title, else its AI-generated title), so several resumed sessions stay distinguishable and a second crash still reads the same name; a session with no recorded name is titled `Resume: <directory>`.
