@@ -29,9 +29,9 @@ ALLOWED = {
 }
 
 # A claude argv's first argument that makes it something other than a session launch: a one-shot
-# print (`-p`/`--print`), reading or stopping sessions (`agents`, `stop`, `attach`, `logs`), or
+# print (`-p`/`--print`), reading, stopping or removing sessions (`agents`, `stop`, `rm`, `attach`, `logs`), or
 # managing the install (`plugin`, `mcp`, `update`, `--version`).
-NON_SESSION_FIRST_ARGS = {"-p", "--print", "agents", "stop", "attach", "logs", "plugin", "mcp",
+NON_SESSION_FIRST_ARGS = {"-p", "--print", "agents", "stop", "rm", "attach", "logs", "plugin", "mcp",
                           "update", "--version", "-v", "doctor"}
 
 CODE_PATTERNS = [

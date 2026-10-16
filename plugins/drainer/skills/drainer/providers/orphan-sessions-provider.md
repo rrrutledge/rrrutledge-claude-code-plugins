@@ -2,7 +2,7 @@
 
 A provider for sessions the live-session registry confirms need resuming and aren't currently running: a session interrupted by a crash or forced restart (which never fires `SessionEnd`), or a session Russell started by hand in a terminal whose tab closed abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"`, and the registry hook keeps rather than deregisters, because the entry carries a `host_pid` marking it as a hand-started terminal session the user parked and wants back).
 It also covers a background session the background service retired for idling (or for low memory) without anyone closing it, found through the service's own job records even after the service drops it from `claude agents` and its registry entry is gone.
-A deliberate end - `/exit`, `/clear`, an executed `claude stop`, or the `session-mgr:close` self-close - deregisters or stops the session instead, so it is not resumed.
+A deliberate end - `/exit`, `/clear`, an executed `claude stop` or `claude rm`, or the `session-mgr:close` self-close - deregisters or stops the session instead, so it is not resumed.
 `find-orphans.py`'s docstring holds the full detection rules, including the wake backoff for a session Russell keeps leaving untouched.
 Implements `../engine/provider.md`'s adapter contract; classify by `../engine/triage.md` - though in practice this source skips AI triage entirely (see below). id prefix: `orphan-`.
 
