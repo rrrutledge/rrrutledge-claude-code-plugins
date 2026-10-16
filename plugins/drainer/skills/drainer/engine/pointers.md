@@ -26,11 +26,14 @@ The test is whether Claude can get the content, not whether a login exists: brow
 **A login wall on a site the persistent browser can be signed into is a gate, not a dead end.**
 Open the page in browser-chauffeur, and when it lands on a sign-in, report `HELP_NEEDED` per `engine/browser-gate.md` with the tab left open.
 Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond, staging any reply draft-only.
-**The one time you don't reach that re-triage is content with no browser path at all** - it lives in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
-Attempt the fetch first every time; the hand-back is the fallback for a surface you can't open, not a guess made from the URL and not a substitute for the sign-in gate.
+**A "message waiting elsewhere" pointer is resolved in the browser by default** - any messaging service with a web inbox, from a bank's secure message to a social platform.
+Open the site in browser-chauffeur, read the message, re-triage on the real content, and stage any reply in that site's composer, left unsent.
+A missing session is the sign-in gate above, never a reason to hand back the link.
+**The one time you don't reach that re-triage is content with genuinely no web surface at all** - it lives only in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
+Attempt the fetch first every time; the hand-back is the fallback for a surface you tried and can't open, not a guess made from the URL and not a substitute for the sign-in gate.
 
-**Exception: LinkedIn/Facebook "X just messaged you" pointers** - the stricter form of that fallback, where you must not even *attempt* the fetch.
-Never drive browser-chauffeur to linkedin.com or facebook.com for any reason - LinkedIn suspended Russell's account for automation in July 2026.
+**Exception: LinkedIn "X just messaged you" pointers** - the stricter form of that fallback, where you must not even *attempt* the fetch.
+Never drive browser-chauffeur to linkedin.com for any reason - LinkedIn suspended Russell's account for automation in July 2026.
 Pull the deep link out of the notification and present it as a clickable link in your reply, routed straight to **needs-you** - Russell clicks it and reads/replies himself; you never open it.
 
 Give him the **direct destination link, not the Outlook item link**.
