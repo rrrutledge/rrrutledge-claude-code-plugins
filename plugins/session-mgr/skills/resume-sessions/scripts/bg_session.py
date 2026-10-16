@@ -16,6 +16,7 @@ Two facts about background sessions shape this module:
 Stdlib only: the drainer imports it straight from the installed plugin, and session-mgr's hook and
 scripts import it from their own tree.
 """
+import datetime
 import glob
 import json
 import os
@@ -175,6 +176,45 @@ def transcript_account(session_guid):
     return False
 
 
+def job_records():
+    """Every background job the background service has recorded, across every account: `(config_dir,
+    state)` per `<account>/jobs/<short id>/state.json`, where `state` is the service's own record of
+    the session - `sessionId`, `cwd`, `name`, `state` (working/blocked/done/stopped), `updatedAt`,
+    `respawnFlags`. A job outlives its session's listing in `claude agents`, so this is where a
+    session the service retired can still be found. Unreadable files are skipped."""
+    for d in account_config_dirs():
+        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
+        for path in glob.glob(os.path.join(root, "jobs", "*", "state.json")):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    state = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(state, dict) and state.get("sessionId"):
+                yield d, state
+
+
+def _wake_account(session_guid):
+    """The config dir (None = main) of the account whose background service holds `session_guid` as
+    a job that a bare `claude --bg --resume <guid>` can wake in place, or False when there is no such
+    job. Waking reuses the job's saved launch flags, so it only qualifies when those already carry
+    the two a launch can't do without: `--remote-control` and `--permission-mode manual`."""
+    short = session_guid.split("-", 1)[0]
+    for d in account_config_dirs():
+        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
+        try:
+            with open(os.path.join(root, "jobs", short, "state.json"), encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(state, dict) or state.get("sessionId") != session_guid:
+            continue
+        flags = [str(x) for x in state.get("respawnFlags") or []]
+        manual = any(a == "--permission-mode" and b == "manual" for a, b in zip(flags, flags[1:]))
+        return d if "--remote-control" in flags and manual else False
+    return False
+
+
 def claude_agents():
     """Every Claude session on this machine across every account: the merged `claude agents --json`
     lists, each entry carrying `id` (the short id, background sessions only), `sessionId` (the full
@@ -289,9 +329,22 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     `resume` takes an existing session's full guid: `claude --bg --resume <guid>` continues it in the
     background with its full history, on the account that holds its transcript. `seed` may then be
     None to reopen it with nothing queued, and `model`/`name` None to keep the ones it already has.
-    The continuation runs under a new session id, so the resumed guid leaves the live-session
-    registry (forget_session) - its history lives on in the new session, which registers itself.
+    Two ways that resume can go:
+      - A background job reopened with nothing queued is woken in place: the bare `claude --bg
+        --resume <guid>`, with no other flag, continues that same job under its own id, name and
+        saved launch flags (_wake_account says when the saved flags qualify). It costs no model
+        turn, and the wake is logged (record_wake) so find-orphans can tell a session Russell left
+        untouched since its last wake.
+      - Anything else - an interactive session, a follow-up seed, or saved flags missing
+        --remote-control - starts a continuation under a new session id, because any flag on the
+        command makes the service copy the job rather than continue it. The resumed guid then leaves
+        the live-session registry (forget_session); its history lives on in the new session, which
+        registers itself.
     """
+    if resume and not seed:
+        owner = _wake_account(resume)
+        if owner is not False:
+            return _wake(resume, owner, cwd)
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual"]
     env = _launch_env()
     if resume:
@@ -320,7 +373,100 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     return m.group(1) if m else None
 
 
+def _wake(session_guid, config_dir, cwd):
+    """Wake a background job in place: `claude --bg --resume <guid>` and nothing else, on the
+    account `config_dir` holding the job. Returns the short id claude prints (the job's own), or
+    None when the wake fails."""
+    env = _account_env(config_dir, _launch_env())
+    try:
+        res = run_bounded(["claude", "--bg", "--resume", session_guid], timeout=120,
+                          cwd=canonical_cwd(cwd), env=env, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if res.returncode != 0:
+        return None
+    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
+    if not m:
+        return None
+    record_wake(session_guid)
+    return m.group(1)
+
+
 REGISTRY_PATH = os.path.expanduser("~/.claude/session-mgr/live-sessions.json")
+# Every automated wake of a background job: guid -> when it was woken, how many messages Russell had
+# sent it by then, and how many wakes in a row he has left untouched. find-orphans reads it to back
+# off re-waking a session he keeps leaving alone (see find-orphans' wake_backoff_seconds).
+WAKES_PATH = os.path.expanduser("~/.claude/session-mgr/wakes.json")
+
+
+def transcript_file(session_guid):
+    """The session's .jsonl transcript, in whichever account's projects folder holds it, or None."""
+    for d in account_config_dirs():
+        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
+        matches = glob.glob(os.path.join(root, "projects", "*", session_guid + ".jsonl"))
+        if matches:
+            return matches[0]
+    return None
+
+
+def human_turns(session_guid):
+    """How many messages a person (or another session) has typed into the session: transcript records
+    of type "user" carrying text, as opposed to tool results. A wake or a stop appends only
+    bookkeeping records, so this count moves only when someone actually talks to the session. 0 when there is no readable transcript."""
+    path = transcript_file(session_guid)
+    if not path:
+        return 0
+    count = 0
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"type":"user"' not in line and '"type": "user"' not in line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if record.get("type") != "user" or record.get("isMeta"):
+                    continue
+                content = (record.get("message") or {}).get("content")
+                if isinstance(content, str) or any(
+                        isinstance(b, dict) and b.get("type") == "text" for b in content or []):
+                    count += 1
+    except OSError:
+        return 0
+    return count
+
+
+def load_wakes():
+    try:
+        with open(WAKES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record_wake(session_guid):
+    """Log an automated wake of `session_guid`. `untouched` counts the wakes in a row that Russell
+    never answered: it resets to 0 when he has typed into the session since the previous wake, and
+    otherwise goes up by one. Best effort: a log that can't be written only means the next wake
+    is not held back."""
+    turns = human_turns(session_guid)
+    for _ in range(5):
+        wakes = load_wakes()
+        prev = wakes.get(session_guid) or {}
+        untouched = prev.get("untouched", -1) + 1 if prev and turns <= prev.get("turns", 0) else 0
+        wakes[session_guid] = {"woken_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                               "turns": turns, "untouched": untouched}
+        try:
+            os.makedirs(os.path.dirname(WAKES_PATH), exist_ok=True)
+            tmp_path = WAKES_PATH + f".tmp.{os.getpid()}"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(wakes, f, indent=2)
+            os.replace(tmp_path, WAKES_PATH)
+            return
+        except OSError:
+            continue
 
 
 def forget_session(session_guid):

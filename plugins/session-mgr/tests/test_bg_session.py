@@ -53,8 +53,9 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
         "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
-        "REGISTRY_PATH")}
+        "REGISTRY_PATH", "WAKES_PATH")}
     bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
+    bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
     bg_session.ACCOUNTS_PATH = os.path.join(tmp, "accounts.json")
     with open(bg_session.ACCOUNTS_PATH, "w", encoding="utf-8") as f:
         json.dump([backup_dir], f)
@@ -180,6 +181,62 @@ def test_resume_uses_transcript_account():
         check("main account's transcript -> CLAUDE_CONFIG_DIR removed despite the registry",
               "CLAUDE_CONFIG_DIR" not in kw["env"], kw["env"].get("CLAUDE_CONFIG_DIR"))
         check("follow-up seed after `--`", args[-2:] == ["--", "follow up"], args)
+
+
+def write_job(account_dir, guid=GUID, flags=("--remote-control", "--permission-mode", "manual", "--name", "n")):
+    job = os.path.join(account_dir, "jobs", guid.split("-")[0])
+    os.makedirs(job, exist_ok=True)
+    with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"sessionId": guid, "state": "done", "respawnFlags": list(flags)}, f)
+
+
+def test_resume_wakes_background_job_in_place():
+    print("test: reopening a background job with nothing queued wakes it in place - the bare "
+          "`claude --bg --resume <guid>` on the job's account - and logs the wake")
+    with sandbox() as s:
+        write_transcript(s.backup)
+        write_job(s.backup)
+        with open(bg_session.REGISTRY_PATH, "w", encoding="utf-8") as f:
+            json.dump({GUID: {"cwd": "C:/repo"}}, f)
+        short = bg_session.spawn_bg(None, None, s.tmp, "Ignored title", resume=GUID)
+        args, kw = s.calls[0]
+        check("returns the short id", short == SHORT, f"got {short}")
+        check("bare resume, no other flag", args == ["claude", "--bg", "--resume", GUID], args)
+        check("on the job's account", kw["env"].get("CLAUDE_CONFIG_DIR") == s.backup,
+              kw["env"].get("CLAUDE_CONFIG_DIR"))
+        leaked = [k for k in bg_session._SESSION_ENV if k in kw["env"]]
+        check("session env vars cleared", not leaked, leaked)
+        check("wake logged", GUID in bg_session.load_wakes(), bg_session.load_wakes())
+        with open(bg_session.REGISTRY_PATH, encoding="utf-8") as f:
+            check("same id continues, so the registry entry stays", GUID in json.load(f))
+
+
+def test_resume_copies_when_wake_does_not_fit():
+    print("test: a follow-up seed, or saved flags without --remote-control / manual mode, resumes as a "
+          "fresh launch with every load-bearing flag instead of a wake")
+    cases = {
+        "follow-up seed": (("--remote-control", "--permission-mode", "manual"), "follow up"),
+        "no --remote-control": (("--permission-mode", "manual"), None),
+        "not manual mode": (("--remote-control", "--permission-mode", "auto"), None),
+    }
+    for label, (flags, seed) in cases.items():
+        with sandbox() as s:
+            write_transcript(s.main)
+            write_job(s.main, flags=flags)
+            bg_session.spawn_bg(seed, None, s.tmp, None, resume=GUID)
+            args = s.calls[0][0]
+            check(f"{label}: --remote-control added", "--remote-control" in args, args)
+            check(f"{label}: --resume guid", flag_value(args, "--resume") == GUID, args)
+            check(f"{label}: no wake logged", not bg_session.load_wakes(), bg_session.load_wakes())
+
+
+def test_failed_wake_returns_none():
+    print("test: a wake that fails returns None and logs nothing")
+    with sandbox(returncode=1) as s:
+        write_transcript(s.main)
+        write_job(s.main)
+        check("None", bg_session.spawn_bg(None, None, s.tmp, None, resume=GUID) is None)
+        check("no wake logged", not bg_session.load_wakes())
 
 
 def test_accounts_discovered_not_named():
@@ -348,6 +405,9 @@ if __name__ == "__main__":
     test_config_dir_follows_registry()
     test_resume_uses_transcript_account()
     test_resume_forgets_old_registry_entry()
+    test_resume_wakes_background_job_in_place()
+    test_resume_copies_when_wake_does_not_fit()
+    test_failed_wake_returns_none()
     test_accounts_discovered_not_named()
     test_short_id_parsing()
     test_launch_cwd_uses_on_disk_case()

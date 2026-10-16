@@ -89,6 +89,16 @@ check("directory words kept", call["name"], "Resume: proj evil")
 check("directory of only semicolons", resume_call("C:/;;;")["name"], "Resume:")
 check("no cwd falls back to the repo", resume_call(None)["cwd"], "C:/repo")
 
+print("\nspawn_resume reports whether the launch returned an id, so a failed resume is retried")
+real_spawn = poller.spawn_bg
+try:
+    poller.spawn_bg = lambda *a, **kw: "r35u0000"
+    check("launched -> True", poller.spawn_resume("abcd1234-0000", "C:/repo", "C:/repo"), True)
+    poller.spawn_bg = lambda *a, **kw: None
+    check("no id -> False", poller.spawn_resume("abcd1234-0000", "C:/repo", "C:/repo"), False)
+finally:
+    poller.spawn_bg = real_spawn
+
 print("\nspawn_resume keeps the orphan's own name, read from its transcript")
 
 

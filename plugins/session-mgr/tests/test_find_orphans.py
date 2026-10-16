@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.abspath(os.path.join(HERE, ".."))
@@ -60,16 +61,18 @@ def snapshot(live_running, live_blocked, stopped, other_account_live=None, backu
 
 @contextlib.contextmanager
 def sandbox(agents, active=(), pid_alive=lambda pid: False):
-    """A temp registry, a temp main account dir (plus a backup account dir), a stubbed `claude
-    agents` snapshot, and stubbed cmdline/pid liveness. Yields (registry_seed, write_transcript,
-    backup_dir)."""
+    """A temp registry and wake log, a temp main account dir (plus a backup account dir), a stubbed
+    `claude agents` snapshot, and stubbed cmdline/pid liveness. Yields (registry_seed,
+    write_transcript, backup_dir)."""
     tmp = tempfile.mkdtemp(prefix="test-find-orphans-")
     main_dir = os.path.join(tmp, "main")
     backup_dir = os.path.join(tmp, "backup")
     os.makedirs(main_dir)
     os.makedirs(backup_dir)
     saved = (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
-             bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR)
+             bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
+             bg_session.WAKES_PATH)
+    bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
     find_orphans.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     find_orphans.active_session_ids = lambda: set(active)
     find_orphans.pid_still_claude = pid_alive
@@ -93,8 +96,33 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
         yield seed, write_transcript, backup_dir
     finally:
         (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
-         bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR) = saved
+         bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
+         bg_session.WAKES_PATH) = saved
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def iso(when):
+    return when.isoformat().replace("+00:00", "Z")
+
+
+def ago(**kw):
+    return iso(datetime.now(timezone.utc) - timedelta(**kw))
+
+
+def write_job(account_dir, session_id, state="done", updated=None, flags=None):
+    """A background job record, shaped like the service's jobs/<short id>/state.json."""
+    job_dir = os.path.join(account_dir, "jobs", session_id.split("-")[0])
+    os.makedirs(job_dir, exist_ok=True)
+    with open(os.path.join(job_dir, "state.json"), "w", encoding="utf-8") as f:
+        json.dump({"sessionId": session_id, "state": state, "cwd": "C:/fake/job",
+                   "createdAt": "2026-10-01T00:00:00.000Z", "updatedAt": updated or ago(hours=1),
+                   "respawnFlags": flags or ["--remote-control", "--permission-mode", "manual"],
+                   "backend": "daemon", "template": "bg"}, f)
+
+
+def said(text):
+    """A transcript record of Russell typing `text` into the session."""
+    return {"type": "user", "message": {"role": "user", "content": text}}
 
 
 def ran(command):
@@ -222,12 +250,164 @@ def test_mention_only_not_pruned():
 
 
 def test_agent_session_ids():
-    print("test: agent_session_ids keeps pid-bearing and non-stopped entries, drops stopped/blank")
+    print("test: agent_session_ids keeps pid-bearing and blocked entries, drops stopped/done/blank")
     ids = find_orphans.agent_session_ids([
         {"sessionId": "a", "pid": 1}, {"sessionId": "b", "state": "blocked"},
         {"sessionId": "c", "status": "idle"}, {"sessionId": "d", "state": "stopped"},
-        {"sessionId": "e"}, {"id": "f", "pid": 2}])
-    check("live set", ids == {"a", "b", "c"}, f"got {ids}")
+        {"sessionId": "e"}, {"id": "f", "pid": 2},
+        {"sessionId": "g", "state": "done"}, {"sessionId": "h", "pid": 3, "status": "idle", "state": "done"}])
+    check("live set", ids == {"a", "b", "c", "h"}, f"got {ids}")
+
+
+def test_retired_done_job_is_orphan():
+    print("test: a background job the service retired as done, gone from `claude agents` and the "
+          "registry, is an orphan carrying its retirement time")
+    sid = new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        updated = ago(hours=3)
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=updated)
+        write_transcript(sid, [said("draft it")])
+        orphans = find_orphans.find_confirmed_orphans()
+        match = next((o for o in orphans if o["session_id"] == sid), None)
+        check("orphan present", match is not None, f"got {orphans}")
+        check("cwd from the job", bool(match) and match["cwd"] == "C:/fake/job", match)
+        check("ended_at is the job's last update", bool(match) and match["ended_at"] == updated, match)
+
+
+def test_retired_job_listed_done_without_pid_is_orphan():
+    print("test: a job still listed as done with no pid (retired, not yet settled) is an orphan")
+    sid = new_id()
+    with sandbox([agent(sid, state="done")]) as (_, write_transcript, _b):
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid)
+        write_transcript(sid, [said("hi")])
+        check("orphan present", sid in orphan_ids())
+
+
+def test_running_or_held_jobs_not_orphans():
+    print("test: a job still running (any state), blocked, or stopped is never an orphan")
+    running, blocked, stopped, held = new_id(), new_id(), new_id(), new_id()
+    with sandbox([agent(running, pid=11, status="idle", state="done"),
+                  agent(held, state="blocked")]) as (_, write_transcript, _b):
+        for sid, state in ((running, "done"), (held, "blocked"), (blocked, "blocked"), (stopped, "stopped")):
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state=state)
+            write_transcript(sid, [said("hi")])
+        ids = orphan_ids()
+        for label, sid in (("running done job", running), ("listed blocked job", held),
+                           ("unlisted blocked job", blocked), ("stopped job", stopped)):
+            check(f"{label} not an orphan", sid not in ids, f"got {ids}")
+
+
+def test_job_time_bounds():
+    print("test: a job last touched before JOBS_SINCE, or within the settle grace, is not an orphan")
+    old, fresh = new_id(), new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_job(bg_session.DEFAULT_CONFIG_DIR, old, updated="2026-09-25T16:11:31.291Z")
+        write_job(bg_session.DEFAULT_CONFIG_DIR, fresh, updated=ago(minutes=1))
+        write_transcript(old, [said("hi")])
+        write_transcript(fresh, [said("hi")])
+        ids = orphan_ids()
+        check("pre-cutoff job left alone", old not in ids, f"got {ids}")
+        check("just-touched job waits for the next run", fresh not in ids, f"got {ids}")
+
+
+def test_job_self_closed_or_without_transcript_not_orphan():
+    print("test: a retired job whose transcript ran a self-close, or that has no transcript, is not an orphan")
+    closed, missing = new_id(), new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_job(bg_session.DEFAULT_CONFIG_DIR, closed)
+        write_job(bg_session.DEFAULT_CONFIG_DIR, missing)
+        write_transcript(closed, [ran("claude stop " + closed[:8])])
+        ids = orphan_ids()
+        check("self-closed job left alone", closed not in ids, f"got {ids}")
+        check("job with no transcript left alone", missing not in ids, f"got {ids}")
+
+
+def test_job_in_backup_account_is_orphan():
+    print("test: a retired job held by the backup account is found too")
+    sid = new_id()
+    with sandbox([]) as (_, write_transcript, backup_dir):
+        write_job(backup_dir, sid)
+        write_transcript(sid, [said("hi")], account_dir=backup_dir)
+        check("orphan present", sid in orphan_ids())
+
+
+def test_registry_entry_judged_by_its_job():
+    print("test: a registry entry with a job record is judged by the job - stopped stays closed, "
+          "and a retired one is reported once, with its retirement time")
+    stopped, retired = new_id(), new_id()
+    with sandbox([]) as (seed, write_transcript, _b):
+        seed(stopped)
+        seed(retired)
+        write_job(bg_session.DEFAULT_CONFIG_DIR, stopped, state="stopped")
+        write_job(bg_session.DEFAULT_CONFIG_DIR, retired)
+        write_transcript(stopped, [said("hi")])
+        write_transcript(retired, [said("hi")])
+        orphans = find_orphans.find_confirmed_orphans()
+        ids = [o["session_id"] for o in orphans]
+        check("stopped job's registry entry not an orphan", stopped not in ids, f"got {ids}")
+        check("retired job reported once", ids.count(retired) == 1, f"got {ids}")
+        check("reported with ended_at", all(o.get("ended_at") for o in orphans if o["session_id"] == retired))
+
+
+def test_wake_backoff():
+    print("test: a session woken before and left untouched waits out a doubling backoff; a message "
+          "from Russell lifts it")
+    sid = new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_transcript(sid, [said("one")])
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=3))
+        bg_session.record_wake(sid)
+        check("first wake counted as touched", bg_session.load_wakes()[sid]["untouched"] == 0,
+              bg_session.load_wakes())
+        check("untouched since the wake -> held 12h", sid not in orphan_ids())
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=13))
+        check("past 12h -> orphan again", sid in orphan_ids())
+        bg_session.record_wake(sid)
+        check("second untouched wake counted", bg_session.load_wakes()[sid]["untouched"] == 1,
+              bg_session.load_wakes())
+        check("second round held past 12h", sid not in orphan_ids())
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=25))
+        check("past 24h -> orphan again", sid in orphan_ids())
+        write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=3))
+        write_transcript(sid, [said("one"), said("two")])
+        check("a new message lifts the backoff", sid in orphan_ids())
+        bg_session.record_wake(sid)
+        check("a touched round resets the count", bg_session.load_wakes()[sid]["untouched"] == 0,
+              bg_session.load_wakes())
+
+
+def test_backoff_capped():
+    print("test: the backoff stops doubling at WAKE_BACKOFF_CAP")
+    sid = new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_transcript(sid, [said("one")])
+        wakes = {sid: {"woken_at": ago(days=30), "turns": 1, "untouched": 40}}
+        check("capped", find_orphans.wake_backoff(sid, wakes) == find_orphans.WAKE_BACKOFF_CAP)
+
+
+def test_human_turns_counts_only_typed_messages():
+    print("test: human_turns counts typed messages, not tool results, meta records or bookkeeping")
+    sid = new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_transcript(sid, [
+            said("plain string"),
+            {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "block"}]}},
+            {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "x"}]}},
+            {"type": "user", "isMeta": True, "message": {"role": "user", "content": "skill body"}},
+            {"type": "cost-state", "sessionId": sid},
+            ran("ls")])
+        check("two typed messages", bg_session.human_turns(sid) == 2, bg_session.human_turns(sid))
+        check("no transcript -> 0", bg_session.human_turns(new_id()) == 0)
+
+
+def test_self_close_read_from_tail_of_large_transcript():
+    print("test: the self-close check reads only the tail, and still sees a close at the end of a large transcript")
+    sid = new_id()
+    with sandbox([]) as (seed, write_transcript, _b):
+        seed(sid)
+        filler = [said("x" * 2000) for _ in range(400)]
+        write_transcript(sid, filler + [ran("claude stop " + sid[:8])])
+        check("excluded", sid not in orphan_ids())
 
 
 def test_pid_still_claude_false_for_missing_pid():
@@ -260,6 +440,17 @@ if __name__ == "__main__":
     test_self_close_found_in_other_account()
     test_mention_only_not_pruned()
     test_agent_session_ids()
+    test_retired_done_job_is_orphan()
+    test_retired_job_listed_done_without_pid_is_orphan()
+    test_running_or_held_jobs_not_orphans()
+    test_job_time_bounds()
+    test_job_self_closed_or_without_transcript_not_orphan()
+    test_job_in_backup_account_is_orphan()
+    test_registry_entry_judged_by_its_job()
+    test_wake_backoff()
+    test_backoff_capped()
+    test_human_turns_counts_only_typed_messages()
+    test_self_close_read_from_tail_of_large_transcript()
     test_pid_still_claude_false_for_missing_pid()
     test_cli_prints_json()
     print()

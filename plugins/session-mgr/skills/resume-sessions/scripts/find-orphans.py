@@ -1,28 +1,32 @@
-"""find-orphans.py — the registry-confirmed half of crash-recovery detection.
+"""find-orphans.py - the confirmed half of crash-recovery detection.
 
-Locates Claude Code sessions the live-session registry still lists as open and that aren't
-currently running — either a crash or forced restart (which never fired SessionEnd) or a real
-user tab closed abruptly with the window/tab X (which the SessionEnd hook keeps in the registry
-rather than deregistering, because the user parked it and wants it resumed). Registry-only: this does NOT run the
-resume-sessions skill's fallback scan (every session transcript's tail) — that stays
-exclusive to the interactive skill, which calls it as a separate step. This script is
+The rule it enforces: a session that closed itself on purpose (session-mgr:close, end-session.py,
+an executed `claude stop`) stays closed; a session that ended any other way gets resumed. It finds
+those sessions in two places, as the resume-sessions skill's Step 1 lays out:
+  - The live-session registry: entries still listed as open that aren't running.
+  - The background service's own job records (bg_session.job_records), for the retired background
+    sessions the registry no longer lists.
+This does NOT run the resume-sessions skill's fallback scan (every session transcript's tail) -
+that stays exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
 `claude agents` listing per account and the psutil process scan).
 
 Run directly, prints JSON to stdout:
     python find-orphans.py
     [{"session_id": "...", "cwd": "...", "started_at": "2026-07-20T13:04:11.123456"}, ...]
+A session found through its job record also carries "ended_at", when the service last touched it -
+its retirement.
 
 Shared by two callers:
   - the resume-sessions skill, from its Step 1
   - the drainer's orphan-sessions-adapter.py, via subprocess, resolved to the newest
     installed copy of this plugin (see that adapter's _find_orphans_script())
 """
-import glob
 import json
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 
 import psutil
 
@@ -34,21 +38,39 @@ SESSION_RE = re.compile(r"--(?:resume|session-id)\s+([0-9a-fA-F-]{36})")
 SELF_CLOSE_RE = re.compile(
     r"taskkill\s+/PID\s+\S+\s+/T\s+/F|close-session\.py|end-session\.py|claude\s+stop\b")
 
-# The one `claude agents` state that means a listed session is over. A blocked or parked background
-# session has no pid while it waits, yet the background service still holds it, so it is live.
-STOPPED_STATES = {"stopped"}
+# The `claude agents` states that mean a listed session without a pid is over: stopped, or retired
+# as done (listed only briefly, until the service settles it). A blocked or parked background
+# session also has no pid while it waits, yet the service still holds it, so it is live.
+ENDED_STATES = {"stopped", "done"}
+
+# Job states that are never resumed from the job record. "stopped" is an executed `claude stop` - by
+# the session closing itself or by Russell - so a deliberate close. "blocked" stays listed in `claude
+# agents` and revivable from the app, so it is not lost.
+JOB_STATES_LEFT_ALONE = {"stopped", "blocked"}
+# Job records last touched before this are never resumed. The service's mislabelled retirements
+# began losing sessions on 2026-09-28; everything older predates that and is left where it lies, so
+# older job records aren't mass-resurrected.
+JOBS_SINCE = datetime(2026, 9, 28, tzinfo=timezone.utc)
+# A job touched within this window is left for the next run: a session launched or woken just after
+# `claude agents` was read isn't listed yet, and a retirement may still be settling.
+JOB_SETTLE_GRACE = timedelta(minutes=5)
+# Re-waking a session Russell left untouched since its last wake waits this long after it is retired
+# again, doubling for every further untouched wake up to WAKE_BACKOFF_CAP. Without it, a session
+# nobody answers would be woken, retired after 8 idle hours, and woken again, forever.
+WAKE_BACKOFF_BASE = timedelta(hours=12)
+WAKE_BACKOFF_CAP = timedelta(days=4)
 
 
 def agent_session_ids(agents):
     """Session guids `claude agents` reports as live in any account: running (a pid), or listed
-    with a status or state other than stopped."""
+    with a status or state other than stopped or done."""
     ids = set()
     for agent in agents:
         sid = agent.get("sessionId")
         if not sid:
             continue
         marks = {m for m in (agent.get("status"), agent.get("state")) if m}
-        if agent.get("pid") or (marks and not marks & STOPPED_STATES):
+        if agent.get("pid") or (marks and not marks & ENDED_STATES):
             ids.add(sid)
     return ids
 
@@ -118,12 +140,21 @@ def save_registry(registry):
 def transcript_path(session_id):
     """The session's own .jsonl transcript, in whichever Claude account's projects folder holds it
     (one subfolder per project). None if no account has it."""
-    for config_dir in bg_session.account_config_dirs():
-        root = os.path.expanduser(config_dir or bg_session.DEFAULT_CONFIG_DIR)
-        matches = glob.glob(os.path.join(root, "projects", "*", f"{session_id}.jsonl"))
-        if matches:
-            return matches[0]
-    return None
+    return bg_session.transcript_file(session_id)
+
+
+def _tail_lines(path, count, chunk=512 * 1024):
+    """The last `count` lines of the file at `path`, reading only its final `chunk` bytes - a
+    transcript can run to many MB, and this runs for every candidate on every drainer cycle."""
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(max(0, size - chunk))
+        data = f.read().decode("utf-8", errors="replace")
+    lines = data.splitlines()
+    if size > chunk:
+        lines = lines[1:]  # the first line is cut mid-record
+    return lines[-count:]
 
 
 def _executed_self_close(record):
@@ -158,11 +189,10 @@ def closed_itself_on_purpose(session_id):
     if not path:
         return False
     try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
+        lines = _tail_lines(path, 30)
     except OSError:
         return False
-    for line in lines[-30:]:
+    for line in lines:
         try:
             record = json.loads(line)
         except (ValueError, TypeError):
@@ -172,11 +202,63 @@ def closed_itself_on_purpose(session_id):
     return False
 
 
+def _parse_time(value):
+    """An ISO timestamp from a job record as an aware UTC datetime, or None."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def wake_backoff(session_id, wakes):
+    """How long after its latest retirement `session_id` waits before it is woken again. Zero unless
+    an earlier automated wake (bg_session.record_wake) found it and Russell has typed nothing into it
+    since: then WAKE_BACKOFF_BASE, doubled for each earlier wake he also left untouched, up to
+    WAKE_BACKOFF_CAP. Any message from him resets it to zero."""
+    entry = wakes.get(session_id)
+    if not isinstance(entry, dict):
+        return timedelta(0)
+    if bg_session.human_turns(session_id) > entry.get("turns", 0):
+        return timedelta(0)
+    return min(WAKE_BACKOFF_BASE * (2 ** min(int(entry.get("untouched", 0)), 16)), WAKE_BACKOFF_CAP)
+
+
+def retired_job_orphans(jobs, active, now=None):
+    """Background sessions the service has stopped running without anyone closing them: every job
+    record in `jobs` (bg_session.job_records) whose session isn't live, whose state isn't one left
+    alone (JOB_STATES_LEFT_ALONE), and that the service last touched since JOBS_SINCE and outside
+    the settle grace - minus any whose transcript shows an executed self-close or is missing
+    (nothing to resume from), and any still inside its wake backoff."""
+    now = now or datetime.now(timezone.utc)
+    wakes = bg_session.load_wakes()
+    orphans, seen = [], set()
+    for _, job in jobs:
+        sid = job["sessionId"]
+        if sid in active or sid in seen or job.get("state") in JOB_STATES_LEFT_ALONE:
+            continue
+        ended = _parse_time(job.get("updatedAt") or job.get("lastTerminalAt") or job.get("createdAt"))
+        if ended is None or ended < JOBS_SINCE or now - ended < JOB_SETTLE_GRACE:
+            continue
+        if not transcript_path(sid) or closed_itself_on_purpose(sid):
+            continue
+        if now - ended < wake_backoff(sid, wakes):
+            continue
+        seen.add(sid)
+        orphans.append({
+            "session_id": sid,
+            "cwd": job.get("cwd"),
+            "started_at": job.get("createdAt"),
+            "ended_at": job.get("updatedAt") or ended.isoformat(),
+        })
+    return orphans
+
+
 def find_confirmed_orphans():
-    """Registry entries whose session isn't currently running, minus any that closed
-    themselves on purpose. A session is running when `claude agents` lists it as live in any
-    account, when a claude.exe command line names it, or when its recorded pid is still a
-    claude.exe - any one of those is enough. When `claude agents` can't be read at all, nothing
+    """Registry entries and retired background jobs whose session isn't currently running, minus
+    any that closed themselves on purpose. A session is running when `claude agents` lists it as
+    live in any account, when a claude.exe command line names it, or when its recorded pid is still
+    a claude.exe - any one of those is enough. When `claude agents` can't be read at all, nothing
     is reported: a background session has no process of its own to find, so missing data would
     otherwise resurrect every live one.
     Self-closed entries are pruned from the registry in place (not
@@ -188,11 +270,15 @@ def find_confirmed_orphans():
     if agents is None:
         return []
     active = agent_session_ids(agents) | active_session_ids()
+    jobs = list(bg_session.job_records())
+    job_ids = {job["sessionId"] for _, job in jobs}
     registry = load_registry()
     orphans = []
     to_prune = []
     for session_id, info in registry.items():
-        if session_id in active:
+        # A background session with a job record is judged from that record below, which knows
+        # whether the service stopped it and when it was retired.
+        if session_id in active or session_id in job_ids:
             continue
         if pid_still_claude(info.get("pid")):
             continue
@@ -209,7 +295,7 @@ def find_confirmed_orphans():
         for sid in to_prune:
             registry.pop(sid, None)
         save_registry(registry)
-    return orphans
+    return orphans + retired_job_orphans(jobs, active)
 
 
 def main():
