@@ -1,6 +1,6 @@
 {
   "name": "trello",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "The Trello API client for any board: read or write cards, comments, labels, checklists, and lists, plus the blocked-card dependency model, through trello_utils.py - never the REST API directly. The outreach-funnel process layer over these mechanics is the separate trello-outreach plugin.",
   "author": {
     "name": "Russell Rutledge"
