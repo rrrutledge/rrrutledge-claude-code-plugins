@@ -108,19 +108,30 @@ def test_self_close_fires_session_end_then_kills():
 
 
 def _run_main_headless(ancestor, session_id="6997ef2f-1111-2222-3333-444455556666",
-                       claude_pid="4242", host_pid=None, background=True):
+                       claude_pid="4242", host_pid=None, background=True, pause=False,
+                       blocker=None, rm_returncode=0, rm_output=""):
     """Call end_session.main() in-process, with the background check, the ancestor check, the
-    SessionEnd firing and every subprocess call stubbed. Returns (rc, fired_session_ids,
-    subprocess_argvs)."""
+    SessionEnd firing, the removal guards and every subprocess call stubbed. `blocker` is what the
+    guards report (None = safe to remove); `rm_returncode`/`rm_output` are what `claude rm` answers.
+    Returns (rc, fired_session_ids, subprocess_argvs)."""
     fired, calls = [], []
     real_run = end_session.subprocess.run
     real_fire = end_session.fire_session_end
     real_anc = end_session.pid_is_ancestor
     real_bg = end_session.is_background_session
-    end_session.subprocess.run = lambda argv, **kw: calls.append(argv) or types.SimpleNamespace(returncode=0)
+    real_blocker = end_session.removal_blocker
+
+    def fake_run(argv, **kw):
+        calls.append(argv)
+        if argv[:2] == ["claude", "rm"]:
+            return types.SimpleNamespace(returncode=rm_returncode, stdout=rm_output, stderr="")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    end_session.subprocess.run = fake_run
     end_session.fire_session_end = lambda sid: fired.append(sid)
     end_session.pid_is_ancestor = lambda pid, label: ancestor
     end_session.is_background_session = lambda env=None: background
+    end_session.removal_blocker = lambda sid, p: "--pause was passed" if p else blocker
     saved = {k: os.environ.get(k) for k in ("CLAUDE_HOST_PID", "CLAUDE_PID", "CLAUDE_CODE_SESSION_ID")}
     os.environ.pop("CLAUDE_HOST_PID", None)
     if host_pid is not None:
@@ -130,8 +141,9 @@ def _run_main_headless(ancestor, session_id="6997ef2f-1111-2222-3333-44445555666
         os.environ["CLAUDE_PID"] = claude_pid
     os.environ["CLAUDE_CODE_SESSION_ID"] = session_id
     try:
-        rc = end_session.main()
+        rc = end_session.main(["--pause"] if pause else [])
     finally:
+        end_session.removal_blocker = real_blocker
         end_session.subprocess.run = real_run
         end_session.fire_session_end = real_fire
         end_session.pid_is_ancestor = real_anc
@@ -144,14 +156,79 @@ def _run_main_headless(ancestor, session_id="6997ef2f-1111-2222-3333-44445555666
     return rc, fired, calls
 
 
-def test_headless_branch_fires_then_stops():
-    print("test: headless self-close -> SessionEnd fired, `claude stop <short id>`, no taskkill")
+def test_headless_branch_fires_then_removes():
+    print("test: headless self-close -> SessionEnd fired, `claude rm <short id>`, no stop, no taskkill")
     rc, fired, calls = _run_main_headless(ancestor=True)
     check("exit code 0", rc == 0, f"got {rc}")
     check("fired SessionEnd with the full session id", fired == ["6997ef2f-1111-2222-3333-444455556666"], fired)
-    check("stopped its own session by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
-    check("never taskkilled (headless closes via claude stop)",
+    check("removed its own session by short id", ["claude", "rm", "6997ef2f"] in calls, calls)
+    check("did not stop it", not any(argv[:2] == ["claude", "stop"] for argv in calls), calls)
+    check("never taskkilled (headless closes via claude rm)",
           not any(argv and argv[0] == "taskkill" for argv in calls), calls)
+
+
+def test_pause_stops_instead_of_removing():
+    print("test: --pause -> SessionEnd fired, `claude stop`, never `claude rm`")
+    rc, fired, calls = _run_main_headless(ancestor=True, pause=True)
+    check("exit code 0", rc == 0, f"got {rc}")
+    check("fired SessionEnd", fired == ["6997ef2f-1111-2222-3333-444455556666"], fired)
+    check("stopped by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+    check("never removed", not any(argv[:2] == ["claude", "rm"] for argv in calls), calls)
+
+
+def test_guard_blocker_falls_back_to_stop():
+    print("test: a removal guard fires (dirty or shared worktree) -> stop, no rm")
+    rc, fired, calls = _run_main_headless(ancestor=True, blocker="its worktree has uncommitted files")
+    check("exit code 0", rc == 0, f"got {rc}")
+    check("stopped by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+    check("never removed", not any(argv[:2] == ["claude", "rm"] for argv in calls), calls)
+
+
+def test_rm_refusal_falls_back_to_stop():
+    print("test: `claude rm` refuses (unpushed commits) -> falls back to `claude stop`")
+    rc, fired, calls = _run_main_headless(ancestor=True, rm_returncode=1,
+                                          rm_output="refusing: 2 unpushed commits")
+    check("exit code 0", rc == 0, f"got {rc}")
+    check("tried rm first", ["claude", "rm", "6997ef2f"] in calls, calls)
+    check("then stopped by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+
+
+def _blocker_with(linked, porcelain, agents, pause=False):
+    """Run the real removal_blocker with git and `claude agents` answers stubbed."""
+    real_git, real_linked, real_run = end_session._git, end_session.in_linked_worktree, end_session.subprocess.run
+    end_session._git = lambda args: porcelain
+    end_session.in_linked_worktree = lambda: linked
+    end_session.subprocess.run = lambda argv, **kw: types.SimpleNamespace(
+        returncode=0, stdout=json.dumps(agents), stderr="")
+    try:
+        return end_session.removal_blocker("6997ef2f-1111", pause)
+    finally:
+        end_session._git, end_session.in_linked_worktree = real_git, real_linked
+        end_session.subprocess.run = real_run
+
+
+def test_removal_blocker_rules():
+    print("test: removal_blocker - pause, dirty worktree, shared cwd, clean worktree, main checkout")
+    here = os.getcwd()
+    peer = [{"sessionId": "other-1", "cwd": here}]
+    me_only = [{"sessionId": "6997ef2f-1111", "cwd": here}]
+    check("pause blocks", "--pause" in (_blocker_with(True, "", [], pause=True) or ""))
+    check("dirty linked worktree blocks", "uncommitted" in (_blocker_with(True, "?? x", me_only) or ""))
+    check("shared linked worktree blocks", "another live session" in (_blocker_with(True, "", peer) or ""))
+    check("clean unshared linked worktree is removable", _blocker_with(True, "", me_only) is None)
+    check("main checkout ignores dirt and peers (rm deletes no worktree there)",
+          _blocker_with(False, "?? x", peer) is None)
+
+
+def test_rm_failure_is_not_silent():
+    print("test: a refused `claude rm` prints its reason before falling back")
+    import io
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        _run_main_headless(ancestor=True, rm_returncode=1, rm_output="refusing: 2 unpushed commits")
+    check("reason shown", "refusing: 2 unpushed commits" in buf.getvalue() and "refused" in buf.getvalue(),
+          buf.getvalue())
 
 
 def test_headless_non_ancestor_refuses():
@@ -163,20 +240,20 @@ def test_headless_non_ancestor_refuses():
 
 
 def test_background_with_host_pid_stops_not_kills():
-    print("test: background session carrying an inherited CLAUDE_HOST_PID -> `claude stop`, never taskkill")
+    print("test: background session carrying an inherited CLAUDE_HOST_PID -> `claude rm`, never taskkill")
     rc, fired, calls = _run_main_headless(ancestor=True, host_pid="31337", background=True)
     check("exit code 0", rc == 0, f"got {rc}")
     check("fired SessionEnd", fired == ["6997ef2f-1111-2222-3333-444455556666"], fired)
-    check("stopped its own session by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+    check("removed its own session by short id", ["claude", "rm", "6997ef2f"] in calls, calls)
     check("never taskkilled the inherited host pid",
           not any(argv and argv[0] == "taskkill" for argv in calls), calls)
 
 
 def test_background_without_claude_pid_still_stops():
-    print("test: background session with no CLAUDE_PID -> skips the ancestor check, still `claude stop`")
+    print("test: background session with no CLAUDE_PID -> skips the ancestor check, still `claude rm`")
     rc, fired, calls = _run_main_headless(ancestor=False, claude_pid=None, background=True)
     check("exit code 0", rc == 0, f"got {rc}")
-    check("stopped by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+    check("removed by short id", ["claude", "rm", "6997ef2f"] in calls, calls)
 
 
 def test_terminal_session_takes_tab_branch():
@@ -185,14 +262,14 @@ def test_terminal_session_takes_tab_branch():
     check("exit code 0", rc == 0, f"got {rc}")
     check("fired SessionEnd", fired == ["6997ef2f-1111-2222-3333-444455556666"], fired)
     check("killed the host tree", ["taskkill", "/PID", "31337", "/T", "/F"] in calls, calls)
-    check("did not claude stop", not any(argv[:2] == ["claude", "stop"] for argv in calls), calls)
+    check("did not claude stop or rm", not any(argv[:1] == ["claude"] for argv in calls), calls)
 
 
 def test_headless_fallback_without_job_state():
-    print("test: not background, no host pid, CLAUDE_PID + session id -> `claude stop` fallback")
+    print("test: not background, no host pid, CLAUDE_PID + session id -> `claude rm` fallback")
     rc, fired, calls = _run_main_headless(ancestor=True, background=False)
     check("exit code 0", rc == 0, f"got {rc}")
-    check("stopped by short id", ["claude", "stop", "6997ef2f"] in calls, calls)
+    check("removed by short id", ["claude", "rm", "6997ef2f"] in calls, calls)
 
 
 def test_resolver_forwards():
@@ -206,11 +283,25 @@ def test_resolver_forwards():
           result.stdout + result.stderr)
 
 
+def test_resolver_forwards_pause():
+    print("test: drainer close-session.py forwards --pause (no argparse rejection, exit 1 not 2)")
+    result = subprocess.run([sys.executable, CLOSE_SESSION, "--pause"], env=scrubbed_env(),
+                            capture_output=True, text=True)
+    check("exit code 1 (nothing to close, flag accepted)", result.returncode == 1,
+          f"got {result.returncode}: {result.stderr}")
+
+
 if __name__ == "__main__":
+    test_resolver_forwards_pause()
     test_nothing_to_close_refuses()
     test_non_ancestor_pid_refuses()
     test_self_close_fires_session_end_then_kills()
-    test_headless_branch_fires_then_stops()
+    test_headless_branch_fires_then_removes()
+    test_pause_stops_instead_of_removing()
+    test_guard_blocker_falls_back_to_stop()
+    test_rm_refusal_falls_back_to_stop()
+    test_removal_blocker_rules()
+    test_rm_failure_is_not_silent()
     test_headless_non_ancestor_refuses()
     test_background_with_host_pid_stops_not_kills()
     test_background_without_claude_pid_still_stops()
