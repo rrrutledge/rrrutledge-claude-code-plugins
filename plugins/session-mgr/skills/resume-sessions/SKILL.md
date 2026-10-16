@@ -36,25 +36,8 @@ instructions: |-
      `/exit`, `/clear`, logout, or the plugin's own `self_close` primitive - deregisters the
      session, and a reason-`"other"` end with no `host_pid` (a background or scheduled `claude`
      run) deregisters too, so neither is ever resurrected.
-  3. Reads the background service's own job records (`<account>/jobs/<short id>/state.json`, every
-     account) for the background sessions the registry no longer lists.
-     The service retires an idle background session after 8 hours (sooner when memory is low) and
-     labels its last turn done or blocked.
-     A blocked one stays listed and revivable, but a done one drops out of `claude agents` and its
-     registry entry goes with it - and the label is often wrong, since the session was still
-     waiting on Russell.
-     So every job that isn't live, isn't blocked, and wasn't stopped (an executed `claude stop`,
-     by the session or by Russell) is returned too, whatever the service called it, with an
-     `ended_at` of its retirement.
-     Only jobs the service last touched on or after `JOBS_SINCE` (2026-09-28, when these
-     retirements began losing sessions) are considered, so older job records are never
-     mass-resurrected.
-     A registry entry that has a job record is judged by the job record alone.
-     A session that was woken before and that Russell hasn't typed into since waits out a backoff
-     before it is returned again - `WAKE_BACKOFF_BASE` after its next retirement, doubling for
-     each further untouched wake up to `WAKE_BACKOFF_CAP` - so a session nobody answers isn't
-     woken, retired, and woken again every 8 hours forever.
-     Any message from Russell resets it.
+  3. Adds the background sessions the background service retired without anyone closing them,
+     read from the service's own job records (the rules are in find-orphans.py's docstring).
 
   It also applies the self-close tail check before returning anything: a session that ends
   itself by force-killing its own process dies before the harness can fire `SessionEnd`, so its
@@ -80,11 +63,6 @@ instructions: |-
   id from the registry, the resumed session registers its new id at `SessionStart`, and a later
   clean exit fires `SessionEnd` (removing it) - so nothing needs manual pruning beyond what the
   script already does for self-closed sessions.
-  A retired background session resumed with no follow-up prompt, whose saved launch flags already
-  carry `--remote-control` and `--permission-mode manual`, is instead woken in place - the bare
-  `claude --bg --resume <guid>`, which continues the same job under its own id, name and saved
-  launch flags at no model cost - and the wake is logged in `~/.claude/session-mgr/wakes.json`
-  for the backoff above.
 
   ## Step 2 — Fallback scan for sessions the registry doesn't cover
 
@@ -240,7 +218,7 @@ instructions: |-
     (`spawn-handoff.py`) that finds this launcher, so drainer workers keep one stable path.
   - `--resume <session_id>` continues an existing session by its UUID, carrying the full
     conversation history - under a new session id, or under its own id when a retired background
-    session is woken in place (Step 1).
+    session is woken in place (`spawn_bg` in `bg_session.py`).
   - There are ~1,300 JSONL session files total; the fallback scan reads all of them but only the
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what

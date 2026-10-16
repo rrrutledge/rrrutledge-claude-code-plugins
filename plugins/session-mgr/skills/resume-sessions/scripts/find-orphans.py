@@ -2,10 +2,17 @@
 
 The rule it enforces: a session that closed itself on purpose (session-mgr:close, end-session.py,
 an executed `claude stop`) stays closed; a session that ended any other way gets resumed. It finds
-those sessions in two places, as the resume-sessions skill's Step 1 lays out:
+those sessions in two places:
   - The live-session registry: entries still listed as open that aren't running.
   - The background service's own job records (bg_session.job_records), for the retired background
-    sessions the registry no longer lists.
+    sessions the registry no longer lists. The service retires an idle background session after 8
+    hours (sooner when memory is low) and labels its last turn done or blocked. A blocked one stays
+    listed and revivable, but a done one drops out of `claude agents` and out of the registry -
+    and the label is often wrong, since the session was still waiting on Russell. So every job that
+    isn't live, isn't blocked, and wasn't stopped (an executed `claude stop`) is an orphan too,
+    whatever the service called it - bounded by JOBS_SINCE, and held back by the wake backoff for a
+    session Russell keeps leaving untouched (wake_backoff). A registry entry that has a job record
+    is judged by the job record alone.
 This does NOT run the resume-sessions skill's fallback scan (every session transcript's tail) -
 that stays exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
