@@ -187,8 +187,8 @@ class Provider(ProviderBase):
     def _received(date):
         """The task's due day as the `received` timestamp the poller's cross-source needs-you sort
         reads, so a physical task interleaves with mail, Slack, and Trello cards by date. An item with
-        no `received` sorts below every dated item in its band, which left physical tasks waiting
-        behind the whole neutral band and never dispatching while the worker buffer stayed busy.
+        no `received` sorts below every dated item in its band, so without one a physical task waits
+        behind the whole neutral band and never dispatches while the worker buffer stays busy.
         Local midnight of the due day, in UTC ISO form like the Trello adapter's Start dates, so the
         poller's plain string comparison orders it correctly against the other sources."""
         try:

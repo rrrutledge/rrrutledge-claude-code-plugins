@@ -1,9 +1,9 @@
 """Test that providers/physical-task-adapter.py stamps each task's `received` from its due day.
 
 The poller orders needs-you items across sources by band, then `received`, newest first. A physical
-task used to carry no `received`, so it sorted below every dated item in its band and never got a
-worker while mail, Slack, and Trello kept the buffer busy. This pins that a physical task now sorts by
-its due day among dated items from other sources. No Graph calls - the calendar.js runner is stubbed.
+task with no `received` would sort below every dated item in its band and never get a worker while
+mail, Slack, and Trello keep the buffer busy. This pins that a physical task sorts by its due day among
+dated items from other sources. No Graph calls - the calendar.js runner is stubbed.
 Run directly:
     python plugins/drainer/tests/test_physical_task_received.py
 """

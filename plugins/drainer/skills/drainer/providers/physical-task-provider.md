@@ -38,7 +38,6 @@ A task restricted to particular weekdays only enumerates on one of them, however
 
 **Dated like everything else in the queue.**
 Each task carries its due day as its `received` date (local midnight), so the poller's cross-source dispatch order, newest first, places it among mail, Slack, and Trello cards by that day.
-A task due today goes ahead of yesterday's mail and behind this morning's.
 
 **Prefer the longest task that fits.**
 When several tasks due the same day are eligible at once, a long gap shouldn't get spent on a short task while a longer one could have used it - `enumerate` returns them longest-duration-first, and the dispatch order keeps that order for items with the same date, so it picks the task that best uses the room available.
