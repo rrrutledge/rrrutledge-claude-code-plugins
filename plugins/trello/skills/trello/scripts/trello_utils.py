@@ -24,6 +24,61 @@ BASE_URL = 'https://api.trello.com/1'
 # ordinary, per-cycle request failure the poller already catches and retries next cycle.
 REQUEST_TIMEOUT = 30
 
+# The lists a card may be archived from: the end of every funnel, plus a board's template parking
+# list. The drainer parks the same lists, so a card here is already out of the queue.
+TERMINAL_LIST_SUBSTRS = ('finished', 'abandoned', 'adopted', 'done', 'template')
+
+# Archiving a card that still sits in an active list hides its task: the drainer only reads open
+# cards, nothing on the board shows it, and an archived card also counts as a finished blocker,
+# freeing whatever was waiting on it. So every archive write is checked here, at the one request
+# choke point, and an unfinished card is refused; retire_card() is the auditable alternative.
+# A delete hides the card for good, so it gets the same check.
+_CARD_ARCHIVE_RE = re.compile(r'^/cards/([^/?]+)(/closed)?$')
+_LIST_ARCHIVE_ALL_RE = re.compile(r'^/lists/([^/?]+)/archiveAllCards$')
+
+
+class ArchiveRefused(RuntimeError):
+    """Raised instead of archiving or deleting a card outside a terminal list."""
+
+
+def _is_terminal_list(name):
+    return any(t in (name or '').lower() for t in TERMINAL_LIST_SUBSTRS)
+
+
+def _archive_target(method, path, params, body):
+    """Return ('card', id) or ('list', id) when this request would archive or delete cards, else None."""
+    if method == 'DELETE':
+        m = _CARD_ARCHIVE_RE.match(path)
+        return ('card', m.group(1)) if m and not m.group(2) else None
+    if method == 'POST':
+        m = _LIST_ARCHIVE_ALL_RE.match(path)
+        return ('list', m.group(1)) if m else None
+    if method != 'PUT':
+        return None
+    m = _CARD_ARCHIVE_RE.match(path)
+    if not m:
+        return None
+    fields = {**(params or {}), **(body or {})}
+    value = fields.get('value' if m.group(2) else 'closed')
+    return ('card', m.group(1)) if str(value).lower() == 'true' else None
+
+
+def _refuse_unfinished_archive(target, session):
+    kind, target_id = target
+    if kind == 'card':
+        list_name = trello_request('GET', f'/cards/{target_id}/list', session, params={'fields': 'name'})['name']
+    else:
+        list_name = trello_request('GET', f'/lists/{target_id}', session, params={'fields': 'name'})['name']
+    if _is_terminal_list(list_name):
+        return
+    raise ArchiveRefused(
+        f"Refusing to archive or delete {kind} {target_id}: it sits in '{list_name}', not a terminal "
+        f"list, so this would hide unfinished work from the board and the drainer. To finish a card, move "
+        f"it to Finished; to drop one (a duplicate, or work that moved elsewhere), call "
+        f"retire_card(card_id, reason, session) - it moves the card to Abandoned with a comment saying "
+        f"why and where the work went, and leaves it visible."
+    )
+
 
 def _read_windows_credential(target):
     """Read a credential from Windows Credential Manager via ctypes."""
@@ -70,6 +125,9 @@ def get_trello_session():
 
 
 def trello_request(method, path, session, params=None, body=None):
+    archive = _archive_target(method, path, params, body)
+    if archive:
+        _refuse_unfinished_archive(archive, session)
     api_key, token = session
     url = f'{BASE_URL}{path}'
 
@@ -155,6 +213,22 @@ def update_card(card_id, updates, session):
     if updates.get('start'):
         updates = {**updates, 'start': _start_at_central_midnight(updates['start'])}
     return trello_request('PUT', f'/cards/{card_id}', session, body=updates)
+
+
+def retire_card(card_id, reason, session, outcome='Abandoned'):
+    """Take an unfinished card out of the queue the auditable way.
+
+    Posts `reason` as a comment (say why, and where the work went - another card, a calendar event, a
+    sheet row), then moves the card to the board's `outcome` list (Abandoned by default, Finished when
+    the work is actually done), creating that list if the board lacks one. The card stays open and
+    visible, the drainer skips it like any parked card, and Russell can see at a glance what happened.
+    """
+    if not _is_terminal_list(outcome):
+        raise ValueError(f"retire_card outcome must be a terminal list (e.g. Finished, Abandoned), not '{outcome}'")
+    card = trello_request('GET', f'/cards/{card_id}', session, params={'fields': 'idBoard'})
+    list_id = get_or_create_list(card['idBoard'], outcome, session)
+    add_comment(card_id, reason, session)
+    return trello_request('PUT', f'/cards/{card_id}', session, body={'idList': list_id})
 
 
 def delete_card(card_id, session):
