@@ -59,14 +59,16 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy — the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
-#   👤 Contact (person follow-up) → above neutral   worked ahead of email/Slack and every application
-#   P1 application card            → neutral         interleaves with that day's email/Slack by date
-#   P2/P3 application card         → below neutral   worked once the neutral band is drained
+#   👤 Contact (person follow-up)     → above neutral   worked ahead of email/Slack and every application
+#   P1 people-leadership application → above neutral   same band as 👤 Contact, interleaved by date
+#   P1 IC-level / unscored application→ neutral         interleaves with that day's email/Slack by date
+#   P2/P3 application card            → below neutral   worked once the neutral band is drained
 # Following up with an existing contact is the highest-value move, so person cards sit one band ABOVE
-# neutral, ahead of the inbox (the 👤 Contact pin lives in _priority_band). A P1 (top-fit) application
-# stays AT neutral so a fresh strong-fit role is caught the same day as email; P2/P3 drop below. This is
-# inert for every other board — only the poller-labeled job-search cards and 👤 Contact cards leave the
-# default neutral.
+# neutral, ahead of the inbox (the 👤 Contact pin lives in _priority_band). The job search is the top
+# priority, so a P1 application whose desc line says Director/VP-level (people leadership) joins that
+# band and is worked ahead of all email/Slack regardless of date; a P1 IC-level role, or a P1 card
+# job-board-poll hasn't scored yet, stays AT neutral; P2/P3 drop below. This is inert for every other
+# board — only the poller-labeled job-search cards and 👤 Contact cards leave the default neutral.
 _PRIORITY_BAND = {
     1: NEUTRAL_PRIORITY_BAND,
     2: NEUTRAL_PRIORITY_BAND - 1,
@@ -277,7 +279,8 @@ class Provider(ProviderBase):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
         A 👤 Contact person-follow-up card is pinned one band above neutral first, so it is worked ahead
         of the inbox and every application tier even if it also happens to carry another label. Otherwise
-        the first P1/P2/P3 priority label wins; an application card normally wears exactly one."""
+        the first P1/P2/P3 priority label wins; an application card normally wears exactly one. A P1 card
+        whose desc line names a Director/VP-level (people-leadership) role is lifted to the contact band."""
         labels = card.get("labels", [])
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or ""):
@@ -285,7 +288,10 @@ class Provider(ProviderBase):
         for l in labels:
             m = _PRIORITY_RE.match(l.get("name") or "")
             if m:
-                return _PRIORITY_BAND[int(m.group(1))]
+                band = _PRIORITY_BAND[int(m.group(1))]
+                if int(m.group(1)) == 1 and "Director/VP-level" in (card.get("desc") or ""):
+                    return NEUTRAL_PRIORITY_BAND + 1
+                return band
         return NEUTRAL_PRIORITY_BAND
 
     @staticmethod

@@ -53,6 +53,26 @@ def test_level_band_reads_desc_line():
     check("empty desc -> 0", Provider._level_band(card(None)) == 0)
 
 
+def test_p1_leadership_ahead_of_inbox():
+    print("test: a P1 Director/VP-level card is pinned above neutral; IC-level, unscored, P2 are not")
+    Provider = adapter_mod.Provider
+    neutral = provider_base.NEUTRAL_PRIORITY_BAND
+    p1 = [{"name": "🎯 P1"}]
+    lead = Provider._priority_band(card("Priority: P1 · Eng leadership · Director/VP-level", p1))
+    check("P1 Director/VP-level -> above neutral", lead == neutral + 1, lead)
+    check("same band as a 👤 Contact card",
+          lead == Provider._priority_band(card("", [{"name": "👤 Contact"}])))
+    check("P1 IC-level stays neutral",
+          Provider._priority_band(card("Priority: P1 · Platform · IC-level", p1)) == neutral)
+    check("unscored P1 stays neutral", Provider._priority_band(card("", p1)) == neutral)
+    check("P2 Director/VP-level stays below neutral",
+          Provider._priority_band(card("Priority: P2 · X · Director/VP-level", [{"name": "P2"}])) == neutral - 1)
+    mail = {"_priority_band": neutral, "_level_band": 0, "_referral_band": 0, "_sort_dt": "2026-10-17"}
+    job = {"_priority_band": lead, "_level_band": 0, "_referral_band": 0, "_sort_dt": "2026-01-01"}
+    check("an old P1 leadership card outranks today's email",
+          sorted([mail, job], key=SORT_KEY, reverse=True)[0] is job)
+
+
 def test_referral_band_reads_label():
     print("test: _referral_band reads the Referral label - 1 with, 0 without")
     Provider = adapter_mod.Provider
@@ -175,6 +195,7 @@ def test_priority_band_still_leads_level_band():
 
 if __name__ == "__main__":
     test_level_band_reads_desc_line()
+    test_p1_leadership_ahead_of_inbox()
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_priority_then_level_then_referral()
