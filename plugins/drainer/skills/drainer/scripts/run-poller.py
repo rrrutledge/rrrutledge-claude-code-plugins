@@ -1907,8 +1907,8 @@ def main():
     # --- split: needs-you (globally ordered), auto-handle (own worker, no cap), others (digest) ---
     # Ordered across ALL sources by band_rank (priority, level, referral — the queue policy defined once
     # in provider_base) then `received` date, descending. Only job-search cards carry a non-neutral value
-    # in any band; email/Slack, ordinary Trello cards, and cold Director/VP-level job cards all sit at the
-    # shared neutral ranks, so within a priority band those interleave purely by `received` date (an inbox
+    # in any band; email/Slack and ordinary Trello cards sit at the shared neutral ranks (P1 Director/VP-level
+    # job cards and 👤 Contact cards sit one priority band above), so within a priority band those interleave purely by `received` date (an inbox
     # message's arrival time, a card's Start date, or a Start-less card's creation date). Because level
     # leads referral, an IC-level job card drops below that neutral level and waits (a leadership role
     # without a referral is worked before an IC role even with one); within a level a 🤝 Referral card

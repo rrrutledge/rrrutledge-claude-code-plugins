@@ -40,7 +40,9 @@ Rank is `(priority band, level band, referral band, date)`, all descending - lev
 The order of those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
-An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
+An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`).
+A `P1` card whose desc line says `Director/VP-level` (a people-leadership role) is pinned **one band above** neutral, in the same band as `👤 Contact` cards and interleaved with them by date, so job postings and outreach for the roles Russell wants most are always worked before email/Slack regardless of date.
+A `P1` IC-level card (or one not yet scored) stays **at** the neutral band, while `P2`/`P3` sit **below** it.
 Every other board carries neither label and orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
