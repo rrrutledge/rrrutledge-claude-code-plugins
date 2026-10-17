@@ -37,9 +37,10 @@ Anchor by format:
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
 
-**Represent every person, event, document, or call a message references — never leave it as bare text.**
+**Represent every person, channel, event, document, or call a message references — never leave it as bare text.**
 - **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention via the platform's mention picker, never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @dana", not "Hi Dana") — not only when notifying them is the point.
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
+- **A channel on a platform with channel mentions (Slack, Teams)** — reference it by a real channel mention, never typed text.
 - **An event** — link its name to the event's page.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
@@ -70,6 +71,8 @@ Don't present a menu of options or stack a numbered list of questions.
 - **When asking to change how something works, name who benefits and what friction goes away.**
   Add a plain sentence naming the concrete beneficiary and the obstacle being removed, even when the "why" seems inferable.
   This specifies the change's real-world effect — keep it separate from pitching why your cause deserves it.
+- **When handing a teammate a task or a call to action, explain the purpose and the plan behind it in conversational sentences, not just the deliverable.**
+  Say what the work is for, what has to happen first, and where the result will go, so the reader can act without guessing the strategy.
 - **When asking an external party you're courting for something, lead with the want, not your own org's shortfall.**
   Naming an internal gap (a thin lineup, an unfilled slot) as the reason reads as recruiting a fallback rather than someone wanted.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
