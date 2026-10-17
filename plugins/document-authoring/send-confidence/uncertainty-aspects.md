@@ -31,6 +31,8 @@ On a multi-person thread, which message and which person the reply answers is al
 
 A dictated decision does not settle the framing: when the message declines or redirects something in front of a group, how it acknowledges the other side, how firmly it states the reason, and how it phrases the alternative are all the writer's choices, so that rates 4 or higher even when every fact is supplied.
 
+A message that hands someone a task also carries latitude in the purpose and plan behind it: when the ask names only the deliverable, the writer chooses the audience, the reasoning, and the sequence of steps, and correct supplied facts do not settle them, so that rates 4 or higher.
+
 A long message covering several separate topics or asks also carries latitude: its structure, order, and which details to keep are all the writer's choices, and a complicated subject rates 4 or higher even when every fact is supplied.
 
 - 1 - Russell handed over the actual wording.
