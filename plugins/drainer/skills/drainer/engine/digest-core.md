@@ -51,7 +51,7 @@ A digest ends when the snapshot it opened with is handled, not when the live que
 - **The digest queue:** `node <seen-state.js> queue-list <runtime_dir>` → a JSON array of `{ id, source, item }`.
   Each `item` carries at least `triage` (`fyi` | `junk` | `auto-handle`), `from`, `subject`, and `snippet`, plus whatever else that provider's capture recorded (e.g. a `url` and the ids its CLEAR needs).
   Split it by `item.triage` into **fyi**, **junk**, **auto-handle** (what a worker already did on its own - see step 2b).
-  An entry still tagged `help-needed` is a leftover from before browser gates stopped being queued: Russell already sees every gate in the worker's own open tab, so `queue-clear` it silently (`node <seen-state.js> queue-clear <runtime_dir> <id>`, no provider CLEAR) and leave it out of the digest.
+  An entry tagged `help-needed` is a stale gate record (gates live in the worker's open tab, per `engine/browser-gate.md`): `queue-clear` it silently (`node <seen-state.js> queue-clear <runtime_dir> <id>`, no provider CLEAR) and leave it out of the digest.
 - For richer fyi summaries, read each item's captured body when the provider wrote one (its capture writes the body alongside `items/<id>.json`) - don't summarize from the snippet alone when the full body is right there.
 
 If the queue is empty AND no provider is stuck (step 0), tell Russell there's nothing to digest and stop.

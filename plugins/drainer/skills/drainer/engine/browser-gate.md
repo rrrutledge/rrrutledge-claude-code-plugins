@@ -20,11 +20,11 @@ Park the gate where Russell already looks, the worker's own open session and tab
 3. **Don't queue a digest entry.**
    Russell cycles through every worker's open tab and sees what each one needs, so a digest line would only repeat what he already sees.
    Leave `triage` as it is and skip `queue-add`.
-   The poller's reconcile leaves the item alone while this session stays alive, because a live worker on an unhandled item is not re-dispatched.
+   The poller's reconcile (`engine/poller-core.md`) leaves the item alone while this session stays alive.
 4. **Leave the source item uncleared.**
    The task isn't done, and clearing it here would drop it the way worker-core §2d warns against.
 5. **Keep this session open.**
-   A staged gate is squarely the "waiting on an answer from him" case worker-core §6's session-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact session and clearing the gate, and the open tab is where he finds it.
+   A staged gate is squarely the "waiting on an answer from him" case worker-core §6's session-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact session and clearing the gate.
    Closing the session now would also cost you the browser tab you just left open: a launched session like this one owns its tabs by its own PID (see browser-chauffeur's **Tying tab ownership to a session**), and the sweep reaps an owned tab the moment its owning session ends.
    End your turn here instead of closing up.
 
