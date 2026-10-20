@@ -47,6 +47,10 @@ Every command takes `--account=<name>` for a named account; the listing commands
 - **Copy:** `--copy --file=<id> --title=<new title> [--folder=<id>]` copies into `--folder`, or into the source's own folder when omitted.
 - **Link sharing:** `--share-link --file=<id> --role=reader|commenter|writer` grants "anyone with the link" access and prints the link.
   Link sharing names no person, so Google sends no notification email.
+- **Share with a person:** `--share --file=<id> --email=<address> --role=reader|commenter|writer [--no-notify]` grants that one address access and prints the link.
+  Google emails the person a notification unless `--no-notify` is passed.
+  Sharing is outward-facing and awkward to take back, so a worker runs it only after Russell's explicit per-message say-so for that file and address (for example "share it" on a Drive share-request email); it never shares on the strength of the request alone.
+- **List permissions:** `--permissions --file=<id>` prints each permission's id, type, role, and address, so a worker can confirm a share landed.
 - **Upload:** `--upload --path=<local file> [--folder=<id>] [--title=<name>]`.
 - **Trash:** `--trash --file=<id>` moves the file to Drive's trash, where it stays restorable for 30 days.
 

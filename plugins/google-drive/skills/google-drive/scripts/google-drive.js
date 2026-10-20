@@ -80,6 +80,21 @@ async function shareLink(drive, fileId, role) {
   return { permissionId: perm.data.id, webViewLink: file.data.webViewLink };
 }
 
+async function shareWithPerson(drive, fileId, email, role) {
+  if (!['reader', 'writer', 'commenter'].includes(role)) throw new Error('--role must be reader, commenter, or writer');
+  const perm = await drive.permissions.create({
+    fileId, requestBody: { type: 'user', role, emailAddress: email },
+    sendNotificationEmail: !args['no-notify'], fields: 'id, role, emailAddress', ...ALL_DRIVES,
+  });
+  const file = await drive.files.get({ fileId, fields: 'webViewLink', ...ALL_DRIVES });
+  return { permissionId: perm.data.id, role: perm.data.role, emailAddress: perm.data.emailAddress, webViewLink: file.data.webViewLink };
+}
+
+async function listPermissions(drive, fileId) {
+  const res = await drive.permissions.list({ fileId, fields: 'permissions(id, type, role, emailAddress, displayName)', ...ALL_DRIVES });
+  return res.data.permissions || [];
+}
+
 async function upload(drive, localPath, folderId, title) {
   const ext = path.extname(localPath).toLowerCase();
   const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
@@ -248,6 +263,16 @@ async function setText(slidesApi, deckId) {
   } else if (args['share-link']) {
     const r = await shareLink(drive, need('file'), need('role'));
     console.log(args.json ? JSON.stringify(r, null, 2) : `Anyone with the link: ${args.role}\n${r.webViewLink}`);
+  } else if (args.share) {
+    const r = await shareWithPerson(drive, need('file'), need('email'), need('role'));
+    console.log(args.json ? JSON.stringify(r, null, 2) : `Shared with ${r.emailAddress}: ${r.role}\n${r.webViewLink}`);
+  } else if (args.permissions) {
+    const perms = await listPermissions(drive, need('file'));
+    if (args.json) console.log(JSON.stringify(perms, null, 2));
+    else {
+      for (const p of perms) console.log(`${p.id}  ${p.type}  ${p.role}  ${p.emailAddress || p.displayName || ''}`);
+      if (!perms.length) console.log('(no permissions)');
+    }
   } else if (args.upload) {
     const f = await upload(drive, need('path'), args.folder, args.title);
     console.log(args.json ? JSON.stringify(f, null, 2) : `Uploaded -> ${f.id}  ${f.name}`);
