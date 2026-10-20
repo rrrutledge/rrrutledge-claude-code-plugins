@@ -23,6 +23,8 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import time
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -304,7 +306,99 @@ def canonical_cwd(path):
     return current
 
 
+# A session whose Remote Control bridge fails to connect (the transcript says "Remote Control
+# disconnected - Session creation failed") still runs, but only a local `claude agents` can reach it -
+# not claude.ai/code or the phone. The job's state.json gets a non-null bridgeSessionId once the bridge
+# is up, so spawn_bg polls for it and, when it never appears, continues the same session under a new
+# job (which has connected on its first try by hand).
+BRIDGE_WAIT_SECONDS = 75
+BRIDGE_POLL_SECONDS = 3
+BRIDGE_RETRIES = 2
+RECONNECT_SEED = ("Your Remote Control connection dropped and this session was restarted to restore it. "
+                  "Continue the task you were working on; if it was already finished, say so and stop.")
+# Short id -> the warning for a session whose bridge never connected. spawn_bg prints it too; callers
+# that report a launch (spawn-session.py, run-digest.py) read it to put the warning in their own output.
+BRIDGE_WARNINGS = {}
+
+
+def find_job(short_id):
+    """`(config_dir, state)` of the background job `short_id` across every account, or `(False, None)`."""
+    for d in account_config_dirs():
+        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
+        try:
+            with open(os.path.join(root, "jobs", short_id, "state.json"), encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if isinstance(state, dict):
+            return d, state
+    return False, None
+
+
+def bridge_up(short_id):
+    """True when the job's state.json carries a non-null bridgeSessionId - Remote Control is connected."""
+    return bool((find_job(short_id)[1] or {}).get("bridgeSessionId"))
+
+
+def wait_for_bridge(short_id, timeout=None, interval=None, read=bridge_up, clock=time.monotonic,
+                    sleep=time.sleep):
+    """Poll `read(short_id)` every `interval` seconds until it is true (return True) or `timeout`
+    seconds pass (False). The reader and the clock are injectable so the wait is testable."""
+    timeout = BRIDGE_WAIT_SECONDS if timeout is None else timeout
+    interval = BRIDGE_POLL_SECONDS if interval is None else interval
+    deadline = clock() + timeout
+    while True:
+        if read(short_id):
+            return True
+        if clock() >= deadline:
+            return False
+        sleep(interval)
+
+
+def stop_session(short_id, config_dir):
+    """`claude stop <short_id>` on the account holding the job. Best effort."""
+    try:
+        run_bounded(["claude", "stop", short_id], timeout=60, env=_account_env(config_dir, _launch_env()),
+                    creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _bridge_warn(short_id, detail):
+    msg = (f"WARNING: background session {short_id} is running without Remote Control ({detail}); it "
+           f"will not show in claude.ai/code or the phone app. Reach it with `claude attach {short_id}`, "
+           f"or run /remote-control inside it.")
+    BRIDGE_WARNINGS[short_id] = msg
+    print(msg, file=sys.stderr)
+
+
 def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
+    """Launch a background session (_launch_once) and confirm its Remote Control bridge connected.
+    A bridge that never shows up within BRIDGE_WAIT_SECONDS gets up to BRIDGE_RETRIES retries: the
+    failed job is stopped and its session continued under a new job (RECONNECT_SEED). If it is still
+    not connected, a warning is printed and kept in BRIDGE_WARNINGS and the last short id is returned,
+    since the session itself is running. Returns None when a launch fails. A wake in place skips the
+    check - the job's earlier bridge id is still in its state."""
+    wakes_in_place = bool(resume and not seed and _wake_account(resume) is not False)
+    short_id = _launch_once(seed, model, cwd, name, resume=resume, scratch_only=scratch_only)
+    if not short_id or wakes_in_place:
+        return short_id
+    for attempt in range(BRIDGE_RETRIES + 1):
+        if wait_for_bridge(short_id):
+            return short_id
+        owner, state = find_job(short_id)
+        guid = (state or {}).get("sessionId")
+        if attempt == BRIDGE_RETRIES or not guid:
+            break
+        stop_session(short_id, owner or None)
+        short_id = _launch_once(RECONNECT_SEED, None, cwd, None, resume=guid, scratch_only=scratch_only)
+        if not short_id:
+            return None
+    _bridge_warn(short_id, f"no bridge after {BRIDGE_RETRIES + 1} attempts")
+    return short_id
+
+
+def _launch_once(seed, model, cwd, name, resume=None, scratch_only=False):
     """Launch a headless background Claude session with `claude --bg` and return the short session id
     claude prints (hand it to write_receipt), or None when the launch fails or the id can't be parsed.
 

@@ -37,7 +37,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bg_session import launch, session_name  # noqa: E402
+from bg_session import BRIDGE_WARNINGS, launch, session_name  # noqa: E402
 import worker_job  # noqa: E402
 
 WORKER_DONE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker-done.py")
@@ -169,6 +169,8 @@ def main(argv=None):
         print(f"Registered worker {slug} ({short_id}); its result goes to {worker_job.result_path(folder, slug)}.")
     print(f"Launched in the background: {name or 'resumed session'} - session {short_id} ({receipt}). "
           f"Reach it from claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here.")
+    if short_id in BRIDGE_WARNINGS:
+        print(BRIDGE_WARNINGS[short_id])
     return 0
 
 
