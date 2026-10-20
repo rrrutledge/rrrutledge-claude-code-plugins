@@ -160,7 +160,7 @@ Once you've cleared under this section, step 6 is a no-op for this item - nothin
 
 ## 2e. A browser gate only Russell can clear: report HELP_NEEDED, not a silent stall
 If any browser-chauffeur work this session drives - resolving a pointer (§2b), doing the item's work (step 3), staging a draft (step 4), or a provider's browser-driven CLEAR - hits a gate only Russell can clear (login, CAPTCHA, MFA-to-phone, an in-page action needing a human), do NOT follow browser-chauffeur's live `AskUserQuestion` step or wait on a subagent's `HELP_NEEDED`: a drainer worker runs unattended, so nobody would answer and the item would stall.
-Instead report the gate to the digest and keep this session open, per **`engine/browser-gate.md`** - it covers recording the gate on the item, queuing the `help-needed` digest entry, leaving the source uncleared, keeping this session open, and how Russell resumes.
+Instead park the gate and keep this session open, per **`engine/browser-gate.md`** - it covers recording the gate on the item, leaving the source uncleared, keeping this session and its tab open (Russell sees the gate there, so nothing goes to the digest), and how Russell resumes.
 
 ## 3. Do the action (you do the work WITH the user)
 
