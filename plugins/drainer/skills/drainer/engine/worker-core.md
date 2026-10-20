@@ -121,7 +121,7 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 ## 2b. Resolve a pointer - open the real content yourself
-If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, or a link-less portal notice like "a new document is available, log in to view"; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
+If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
 The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → queue the digest and close the session per §2c).
 Read it and follow it whenever you hit a pointer, then resume these steps where you left off.
 
