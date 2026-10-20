@@ -196,6 +196,19 @@ def job_records():
                 yield d, state
 
 
+def _flags_whole(flags):
+    flags = [str(x) for x in flags or []]
+    manual = any(a == "--permission-mode" and b == "manual" for a, b in zip(flags, flags[1:]))
+    return "--remote-control" in flags and manual
+
+
+def _saved_flags_ok(short_id):
+    """True when the job `short_id`'s saved respawnFlags carry --remote-control and manual mode. A job
+    whose record can't be read yet counts as ok: there is nothing to judge it by."""
+    state = find_job(short_id)[1]
+    return True if state is None else _flags_whole(state.get("respawnFlags"))
+
+
 def _wake_account(session_guid):
     """The config dir (None = main) of the account whose background service holds `session_guid` as
     a job that a bare `claude --bg --resume <guid>` can wake in place, or False when there is no such
@@ -211,9 +224,7 @@ def _wake_account(session_guid):
             continue
         if not isinstance(state, dict) or state.get("sessionId") != session_guid:
             continue
-        flags = [str(x) for x in state.get("respawnFlags") or []]
-        manual = any(a == "--permission-mode" and b == "manual" for a, b in zip(flags, flags[1:]))
-        return d if "--remote-control" in flags and manual else False
+        return d if _flags_whole(state.get("respawnFlags")) else False
     return False
 
 
@@ -379,9 +390,8 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     not connected, a warning is printed and kept in BRIDGE_WARNINGS and the last short id is returned,
     since the session itself is running. Returns None when a launch fails. A wake in place skips the
     check - the job's earlier bridge id is still in its state."""
-    wakes_in_place = bool(resume and not seed and _wake_account(resume) is not False)
     short_id = _launch_once(seed, model, cwd, name, resume=resume, scratch_only=scratch_only)
-    if not short_id or wakes_in_place:
+    if not short_id or (resume and short_id == resume.split("-", 1)[0]):
         return short_id
     for attempt in range(BRIDGE_RETRIES + 1):
         if wait_for_bridge(short_id):
@@ -428,7 +438,8 @@ def _launch_once(seed, model, cwd, name, resume=None, scratch_only=False):
         --resume <guid>`, with no other flag, continues that same job under its own id, name and
         saved launch flags (_wake_account says when the saved flags qualify). It costs no model
         turn, and the wake is logged (record_wake) so find-orphans can tell a session Russell left
-        untouched since its last wake.
+        untouched since its last wake. A wake that comes back as a new job instead (a retired job is
+        copied) saves no flags, so it is stopped and the session continued as below.
       - Anything else - an interactive session, a follow-up seed, or saved flags missing
         --remote-control - starts a continuation under a new session id, because any flag on the
         command makes the service copy the job rather than continue it. The resumed guid then leaves
@@ -438,7 +449,14 @@ def _launch_once(seed, model, cwd, name, resume=None, scratch_only=False):
     if resume and not seed:
         owner = _wake_account(resume)
         if owner is not False:
-            return _wake(resume, owner, cwd)
+            woken = _wake(resume, owner, cwd)
+            # A wake can come back as a new job rather than the same one (a job the service had
+            # already retired is copied), and a copy saves only the flags typed on the wake - none -
+            # so a respawn of it would drop Remote Control. Keep it only when its saved flags are
+            # whole; otherwise stop it and continue the session below with every flag.
+            if woken is None or _saved_flags_ok(woken):
+                return woken
+            stop_session(woken, find_job(woken)[0] or None)
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual"]
     env = _launch_env()
     if resume:

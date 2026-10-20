@@ -232,6 +232,27 @@ def test_resume_copies_when_wake_does_not_fit():
             check(f"{label}: no wake logged", not bg_session.load_wakes(), bg_session.load_wakes())
 
 
+def test_wake_that_copies_the_job_is_replaced():
+    print("test: a wake that comes back as a new job with no saved flags is stopped and the session "
+          "continued with every flag")
+    with sandbox(stdout="backgrounded · deadbeef · name\n") as s:
+        write_transcript(s.main)
+        write_job(s.main)
+        copy = os.path.join(s.main, "jobs", "deadbeef")
+        os.makedirs(copy)
+        with open(os.path.join(copy, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"sessionId": "deadbeef-0", "respawnFlags": ["--model", "sonnet"]}, f)
+        stopped = []
+        bg_session.stop_session = lambda short, cfg: stopped.append(short)
+        bg_session.spawn_bg(None, None, s.tmp, None, resume=GUID)
+        check("the copy is stopped", stopped == ["deadbeef"], stopped)
+        check("two launches: the wake, then the full-flag continuation", len(s.calls) == 2, s.calls)
+        full = s.calls[1][0]
+        check("continuation carries --remote-control and manual mode",
+              "--remote-control" in full and flag_value(full, "--permission-mode") == "manual", full)
+        check("continuation resumes the same guid", flag_value(full, "--resume") == GUID, full)
+
+
 def test_failed_wake_returns_none():
     print("test: a wake that fails returns None and logs nothing")
     with sandbox(returncode=1) as s:
@@ -493,6 +514,7 @@ if __name__ == "__main__":
     test_resume_forgets_old_registry_entry()
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
+    test_wake_that_copies_the_job_is_replaced()
     test_failed_wake_returns_none()
     test_accounts_discovered_not_named()
     test_short_id_parsing()
