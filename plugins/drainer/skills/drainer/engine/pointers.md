@@ -27,6 +27,11 @@ The test is whether Claude can get the content, not whether a login exists: brow
 Open the page in browser-chauffeur, and when it lands on a sign-in, report `HELP_NEEDED` per `engine/browser-gate.md` with the tab left open.
 Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond, staging any reply draft-only.
 **The one time you don't reach that re-triage is content with no browser path at all** - it lives in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
+**A notice with no link is still a pointer.**
+"A new document/message/statement is available, log in to view" (a Sallie Mae "New document from Sallie Mae" email, a bank statement alert) has no URL to follow, so take the destination from the sender's well-known site (salliemae.com for Sallie Mae).
+Open it in browser-chauffeur and follow the sign-in gate above: `HELP_NEEDED` with the tab left open on the sign-in page, then read the content once Russell has signed in (it may already be signed in).
+Never enter credentials, and never tell Russell to "log in and read it yourself" before you have attempted the open.
+
 Attempt the fetch first every time; the hand-back is the fallback for a surface you can't open, not a guess made from the URL and not a substitute for the sign-in gate.
 
 **Exception: LinkedIn/Facebook "X just messaged you" pointers** - the stricter form of that fallback, where you must not even *attempt* the fetch.
