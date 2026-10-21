@@ -14,6 +14,7 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 1. **Draft.**
    Compose against the rules for what you're writing.
    The shared rubric for anything that ships is `authoring-rules`; an outward message also takes the register, warmth, persona, link, and ask rules in `message-rules`.
+   Load the rubric before writing the first line, a one-line edit to an existing doc included, so the rules are in context at the moment each sentence forms.
 
 2. **Review.**
    Dispatch `writing-review` as a fresh subagent that did not write the text, and revise against what it finds.

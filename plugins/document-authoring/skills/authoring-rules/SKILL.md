@@ -36,9 +36,11 @@ Innocent: "used to" as passive voice, where *used* means employed - "the key use
 
 **State guidance positively.**
 Describe the desired behavior directly; a correction names only what to do, not the rejected alternative alongside it.
-Reserve a negative for a real, tempting failure mode a positive instruction won't prevent on its own, and write it as a single standalone guardrail.
+A negative belongs in the text once the positive instruction has shipped and the same mistake recurred anyway; then write it as a single standalone guardrail.
+A mistake you only foresee while writing gets a sharper positive instruction.
 A single-valued fact forecloses its alternatives the moment it's named - stating which branch a PR targets already rules out every other branch, so state it once and let it stand alone.
-**Check:** a "don't do X, do Y" couplet where "do Y" alone would carry it; a definition that says what something is for and then appends what it is not for ("A is for X; not for Y", "goes on X instead, not here"), where the positive half stands alone; a prohibition where a recipe would bind better.
+**Check:** a "don't do X, do Y" couplet where "do Y" alone would carry it; a definition that says what something is for and then appends what it is not for ("A is for X; not for Y", "goes on X instead, not here"), where the positive half stands alone; a trailing or parenthetical clause that rules out the alternative after the right thing is named ("by title, never by id", "(the title only; the id stays hidden)"); a prohibition where a recipe would bind better.
+Innocent: a standalone guardrail that meets the recurrence condition above.
 
 **Frame in the positive affirmative.**
 Describe a subject by what it is and what it did, not by what it lacked or fell short of - "I had to learn it" carries what "I was behind" only concedes, and "it spread because it worked" says positively what "a thing that doesn't work dies" states as the absence of failure.
@@ -119,7 +121,7 @@ Each is resolved by a stated boundary rather than by judgment in the moment, so 
 |---|---|
 | "Explain the why" vs present-tense-only | Rationale (why it behaves this way now) is in scope. Provenance (what it replaced) is not. |
 | "Be useful" vs no helper tail | Usefulness goes in the substance. A closing offer adds nothing the reader doesn't have. |
-| "Be precise about the failure" vs state guidance positively | A negative is allowed when the failure mode is real and tempting, and then only as one standalone guardrail. |
+| "Be precise about the failure" vs state guidance positively | A negative is allowed when the mistake recurred after the positive instruction shipped, and then only as one standalone guardrail. |
 | Concrete examples aid clarity vs make the general statement carry it | Strengthen the general statement until it needs no example; a wanted example is the signal it's still too weak. The Check lines' surface-form evidence is a reviewer's detection cue, not an example illustrating guidance. |
 
 When a rule and an active writing goal pull opposite ways, the goal usually wins by default, because the goal is what you're holding in mind while composing.
