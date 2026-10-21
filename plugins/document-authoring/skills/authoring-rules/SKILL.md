@@ -63,6 +63,13 @@ An offer or invitation to react routed through the reader to someone else is sti
 **Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to"; a final paragraph restating what was already said; unrequested reassurance; an offer or invitation addressed past the reader to a third party.
 Innocent: a genuinely open decision, asked as one direct question and stopped there.
 
+**Skill prose carries only the steps that need the running Claude session.**
+In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
+The prose keeps the steps that need judgment and the calls to harness tools a script can't make.
+A script runs the same way on every invocation and spends no tokens doing it, so the skill's behavior stays fixed across runs.
+**Check:** a numbered step whose body is a CLI command with its flags; consecutive steps that each run a command and branch on its output ("if it reports X, run Y"); a wait or poll described in prose; a fixed command sequence the session runs on every invocation.
+Innocent: one invocation of the skill's own script with its arguments; a reference list of a CLI's commands the session picks among by judgment; a command inside a step that otherwise needs judgment.
+
 **One concept, one canonical place; everywhere else points to it.**
 A concept gets a single home that states it in full; other sections of the same document, and closely-linked docs, reference that home rather than restating it.
 When you name a canonical source - a registry, a config file, another doc - let the pointer carry it; don't also summarize the content you delegated there.
