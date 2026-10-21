@@ -49,7 +49,12 @@
 //                 just-enumerated items live); requires GMAIL_ADDRESS + GMAIL_APP_PASSWORD. Exists for
 //                 the drainer's recurring per-item reads.)
 // Auth headers (IMAP): node gmail.js --auth-imap=<uid>
-//                (same JSON output as --auth, fetched over IMAP by INBOX UID exactly like --show-imap.)
+//                (same JSON output as --auth, fetched over IMAP by INBOX UID exactly like --show-imap.
+//                 Both also carry any List-Unsubscribe value(s), the bulk-mail marker.)
+// Thread:        node gmail.js --thread=<threadId> [--json]
+//                (every message in one thread, oldest first: Gmail id, Message-ID, from, fromMe, sent
+//                 time, isDraft. <threadId> is the hex `threadId` --list-inbox-imap returns per item.
+//                 Read-only; the drainer's acknowledgement sweep reads it.)
 // List drafts:   node gmail.js --list-drafts [--top=30]
 // Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>]
 //                (downloads every attachment on a message to <dir> (default: cwd); looked up in All Mail
@@ -78,7 +83,7 @@
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts — Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
-//                 staged the draft. SENDS REAL MAIL — only invoke on Russ's explicit per-message say-so
+//                 staged the draft; its last line is `sent-id: <Gmail id>` of the sent message. SENDS REAL MAIL — only invoke on Russ's explicit per-message say-so
 //                 after he has reviewed that exact draft.)
 // Delete a draft: node gmail.js --delete-draft=<draft-id>
 //                (discards one staged draft that's no longer wanted — e.g. the outreach it belonged to
@@ -341,12 +346,14 @@ async function listInboxImap() {
       const total = c.mailbox.exists;
       if (total) {
         const start = Math.max(1, total - top + 1);
-        for await (const m of c.fetch(`${start}:*`, { envelope: true, flags: true, internalDate: true })) {
+        for await (const m of c.fetch(`${start}:*`, { envelope: true, flags: true, internalDate: true, threadId: true })) {
           const e = m.envelope || {};
           const d = e.date || m.internalDate || new Date();
           out.push({
             id: e.messageId || `seq-${m.seq}`,
             uid: m.uid,
+            // Gmail's X-GM-THRID arrives in decimal; the REST API names the same thread in hex.
+            threadId: m.threadId ? BigInt(m.threadId).toString(16) : '',
             subject: e.subject || '(no subject)',
             from: fromList(e.from),
             fromAddress: e.from && e.from[0] ? e.from[0].address : '',
@@ -431,7 +438,33 @@ function renderAuth(parsed) {
     fromAddress: parsed.from && parsed.from.value && parsed.from.value[0] ? parsed.from.value[0].address : '',
     authenticationResults: headerValues('authentication-results'),
     receivedSpf: headerValues('received-spf'),
+    listUnsubscribe: headerValues('list-unsubscribe'),
   };
+}
+
+// Every message in one thread, oldest first: Gmail id, From, whether the account owner sent it, the send
+// time, and whether it is a still-unsent draft. The drainer's acknowledgement sweep reads this to tell
+// whether Russell already wrote on the thread after a message arrived. <threadId> is the hex thread id
+// --list-inbox-imap returns.
+async function thread() {
+  const acct = await account();
+  const r = await gmail.users.threads.get({
+    userId: USER_ID, id: String(args.thread), format: 'metadata', metadataHeaders: ['From', 'Message-ID'],
+  });
+  const out = (r.data.messages || []).map(m => {
+    const idx = indexHeaders(m.payload && m.payload.headers);
+    const fromAddrs = parseAddrs(hdr(idx, 'from'));
+    return {
+      uid: m.id,
+      id: hdr(idx, 'message-id'),
+      from: fromList(fromAddrs),
+      fromMe: !!(fromAddrs[0] && (fromAddrs[0].address || '').toLowerCase() === acct),
+      sent: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : '',
+      isDraft: (m.labelIds || []).includes('DRAFT'),
+    };
+  });
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  for (const m of out) console.log(`${m.sent.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
 }
 
 async function show() {
@@ -655,8 +688,9 @@ async function sendDraft() {
     throw new Error(`No draft with id ${draftId} in Drafts. Re-stage the draft and use the draft-id it prints. (${e.message})`);
   }
   if (!rcpt.length) throw new Error('Draft has no recipients; refusing to send.');
-  await gmail.users.drafts.send({ userId: USER_ID, requestBody: { id: draftId } });
+  const sent = await gmail.users.drafts.send({ userId: USER_ID, requestBody: { id: draftId } });
   console.log(`Sent to ${rcpt.join(', ')} (subject: "${clean(subject).slice(0, 60)}"). Draft removed; copy is in Sent.`);
+  if (sent.data && sent.data.id) console.log(`sent-id: ${sent.data.id}`);
 }
 
 async function deleteDraft() {
@@ -718,6 +752,7 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['save-attachments']) return await saveAttachments();
   if (args.show) return await show();
   if (args.auth) return await auth();
+  if (args.thread) return await thread();
   if (args.reply) return await reply();
   if (args['draft-new']) return await draftNew();
   if (args['send-draft']) return await sendDraft();
@@ -726,5 +761,5 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --show-imap, --auth, --auth-imap, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });

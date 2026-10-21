@@ -27,6 +27,7 @@ The captured item is the inbound message at capture time; the conversation may h
    Paginate fully; don't stop at the first page.
 2. **If the user's most recent message on the thread is already a reply to this sender** → the item is done.
    Close it without a new draft.
+   A message the ack ledger lists as a sent acknowledgement is not that reply; check the ledger first, per worker-core §2 "An acknowledgement is not a reply".
 3. **Check for an existing draft** using your provider's draft-list command, to avoid staging a duplicate if a prior session already started one.
 
 ---

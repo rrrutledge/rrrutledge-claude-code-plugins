@@ -123,6 +123,17 @@ The provider capability and the digest's report-on-approval handling live in `pr
 See `providers/slack-provider.md` for both.
 It also holds READ-IN-CONTEXT, which applies before a Slack item is triaged.
 
+## The real-person test - `sender` on every item
+
+Every verdict also records who wrote the item: **`person`** or **`automated`**.
+It feeds the poller's 48-hour acknowledgement sweep, which acks only a real person left waiting.
+
+- **person** - a human wrote these words to Russell.
+  Judge by who wrote the words: a person's message delivered through a notification relay is `person`, the same way the relay rule above triages it.
+- **automated** - a bot, an app, a system notification, a status or transactional notice, or bulk and marketing mail, however personal its tone.
+
+When it's genuinely unclear, use `automated`: a missed ack only delays a reply that still comes.
+
 ## Tie-breakers
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).

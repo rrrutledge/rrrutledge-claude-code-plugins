@@ -142,6 +142,48 @@ class Provider(ProviderBase):
             kept.append(line)
         return "\n".join(kept).strip()[:limit]
 
+    def ack_conversation(self, item):
+        return item.get("threadId") or None
+
+    def ack_thread(self, item):
+        """The thread's messages (Russell's sent replies and any staged draft included, over REST - this
+        runs only for an item already past the 48-hour mark), plus whether the item carries a
+        List-Unsubscribe header (over IMAP by INBOX UID)."""
+        res = run_node([self.gmailjs, f"--thread={item.get('threadId')}", "--json"])
+        if res.returncode != 0:
+            return None
+        try:
+            msgs = json.loads(res.stdout or "[]")
+        except ValueError:
+            return None
+        unsub = False
+        uid = item.get("uid")
+        if uid:
+            auth = run_node([self.gmailjs, f"--auth-imap={uid}"])
+            if auth.returncode != 0:
+                return None
+            try:
+                unsub = bool(json.loads(auth.stdout or "{}").get("listUnsubscribe"))
+            except ValueError:
+                return None
+        return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
+                "listUnsubscribe": unsub, "link": self._web_link(item.get("id") or item.get("messageId"))}
+
+    def ack_send(self, item, body_file):
+        """Stage a reply in the thread (gmail.js appends the account's signature), then send exactly that
+        draft."""
+        message_id = item.get("id") or item.get("messageId")
+        staged = run_node([self.gmailjs, "--reply", f"--message-id={message_id}", f"--body-file={body_file}"])
+        m = re.search(r"^draft-id: (\S+)", staged.stdout or "", re.MULTILINE)
+        if staged.returncode != 0 or not m:
+            raise ProviderError(f"gmail ack draft failed: {(staged.stderr or staged.stdout).strip()[:300]}")
+        sent = run_node([self.gmailjs, "--send-draft", f"--draft-id={m.group(1)}"])
+        if sent.returncode != 0:
+            raise ProviderError(f"gmail ack send failed: {sent.stderr.strip()[:300]}")
+        sent_id = re.search(r"^sent-id: (\S+)", sent.stdout or "", re.MULTILINE)
+        return {"draftId": m.group(1), "sentId": sent_id.group(1) if sent_id else None,
+                "threadId": item.get("threadId")}
+
     def still_in_inbox_ids(self):
         try:
             msgs = self._list_inbox(500)
@@ -188,6 +230,7 @@ class Provider(ProviderBase):
             "triageReason": item.get("_triageReason"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": web_link, "messageId": message_id,
+            "threadId": item.get("threadId"),
             "correspondent": item.get("_correspondent"), "emailFile": email_file,
             "ts": datetime.now(timezone.utc).isoformat(),
         }

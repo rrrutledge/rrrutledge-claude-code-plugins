@@ -33,6 +33,7 @@ instructions: |-
     Situational sub-procedures load by trigger: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear), which worker-core names at the point each trigger fires.
   - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch (act → CLEAR → queue the digest → close up), named directly in the worker's seed so it loads without going through the needs-you flow.
   - **`engine/digest-core.md`** - the slow loop: the once-a-day, interactive EOD digest (`scripts/run-digest.py`) that empties the fyi/junk queue, clearing nothing without Russell's review.
+  - **`engine/ack-review.md`** - the end-of-day acknowledgement batch: a separate session the digest's daily task launches when the poller's sweep found a real person waiting 48 business hours, which sends a short ack only on Russell's approval of the batch.
   - **`engine/provider.md`** - the interface a provider implements.
 
   ### 4. Hard rules (always)

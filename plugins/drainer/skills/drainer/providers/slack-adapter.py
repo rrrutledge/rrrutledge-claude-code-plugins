@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, find_skill_script  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, find_skill_script, received_dt  # noqa: E402
 
 # slack.js's exact wording (see its `call()`) when ITS OWN internal auto-refresh already ran and still
 # didn't clear invalid_auth - the strong signal that a human is needed now, not just another cycle's
@@ -102,6 +102,103 @@ class Provider(ProviderBase):
             cmd.append(f"--thread-ts={thread_ts}")
         res = run_node(cmd)
         return res.returncode == 0
+
+    # ---- the 48-hour acknowledgement sweep ----
+    # A thread item's conversation is its thread. A DM, group DM, or channel item's conversation is the
+    # whole channel: its item id moves to the newest message every time another one arrives. An ack to a
+    # DM posts top-level; an ack to a channel item replies in the thread of the person's message, so it
+    # never lands in the channel's main timeline.
+
+    @staticmethod
+    def _ack_post_thread(item):
+        if item.get("threadTs"):
+            return item["threadTs"]
+        return item.get("ts") if item.get("channelType") == "channel" else ""
+
+    def ack_conversation(self, item):
+        channel = item.get("channel")
+        if not channel:
+            return None
+        return f"{channel}|{item['threadTs']}" if item.get("threadTs") else channel
+
+    def ack_clock_start(self, item):
+        """A span's wait starts at its oldest unread message."""
+        span = [received_dt({"received": m.get("received")}) for m in item.get("unread") or []]
+        span = [dt for dt in span if dt]
+        return min(span) if span else received_dt(item)
+
+    def ack_is_bot(self, item):
+        return bool(item.get("fromBot"))
+
+    def ack_thread(self, item):
+        """The conversation's recent history (Russell's own posts marked), any staged draft on it, and the
+        item's permalink."""
+        channel = item.get("channel")
+        hist_cmd = [self.slackjs, "--history", f"--channel={channel}", "--limit=100", "--json"]
+        drafts_cmd = [self.slackjs, "--list-drafts", f"--channel={channel}", "--json"]
+        post_thread = self._ack_post_thread(item)
+        if item.get("threadTs"):
+            hist_cmd.append(f"--thread-ts={item['threadTs']}")
+        if post_thread:
+            drafts_cmd.append(f"--thread-ts={post_thread}")
+        hist_cmds = [hist_cmd]
+        if post_thread and not item.get("threadTs"):
+            # A channel item: Russell may have answered in the channel or in the thread under the message.
+            hist_cmds.append(hist_cmd + [f"--thread-ts={post_thread}"])
+        history = []
+        for cmd in hist_cmds:
+            hist = run_node(cmd)
+            if hist.returncode != 0:
+                return None
+            try:
+                history.extend(json.loads(hist.stdout or "[]"))
+            except ValueError:
+                return None
+        drafts = run_node(drafts_cmd)
+        if drafts.returncode != 0:
+            return None
+        try:
+            has_draft = bool(json.loads(drafts.stdout or "[]"))
+        except ValueError:
+            return None
+        msgs = [{"fromMe": bool(m.get("isMe")), "sent": m.get("received"), "isDraft": False} for m in history]
+        link = ""
+        show_cmd = [self.slackjs, "--show", f"--channel={channel}", f"--ts={item.get('ts')}", "--json"]
+        if item.get("threadTs"):
+            show_cmd.append(f"--thread-ts={item['threadTs']}")
+        show = run_node(show_cmd)
+        if show.returncode == 0:
+            try:
+                link = json.loads(show.stdout or "{}").get("permalink") or ""
+            except ValueError:
+                pass
+        return {"messages": msgs, "hasDraft": has_draft, "listUnsubscribe": False, "link": link}
+
+    def ack_message_text(self, item):
+        span = item.get("unread") or []
+        if len(span) > 1:
+            return "\n\n".join(f"{m.get('from') or '?'} ({(m.get('received') or '')[:16].replace('T', ' ')}):\n"
+                               f"{m.get('text', '')}" for m in span)
+        return (span[0].get("text") if span else None) or item.get("preview") or ""
+
+    def ack_send(self, item, body_file):
+        """Post the reviewed body into the conversation with --keep-unread, which reads the read cursor
+        before and after the post and puts it back if the post moved it, so the person's message stays
+        unread and dispatches in its normal turn."""
+        cmd = [self.slackjs, "--send", "--keep-unread", "--json", f"--channel={item['channel']}",
+               f"--body-file={body_file}"]
+        post_thread = self._ack_post_thread(item)
+        if post_thread:
+            cmd.append(f"--thread-ts={post_thread}")
+        res = run_node(cmd)
+        if res.returncode != 0:
+            raise ProviderError(f"slack ack send failed: {res.stderr.strip()[:300]}")
+        try:
+            sent = json.loads(res.stdout or "{}")
+        except ValueError:
+            raise ProviderError(f"slack ack sent but its output didn't parse: {res.stdout[:300]}")
+        return {"channel": sent.get("channel"), "ts": sent.get("ts"), "permalink": sent.get("permalink"),
+                "cursor": sent.get("cursor")}
 
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
