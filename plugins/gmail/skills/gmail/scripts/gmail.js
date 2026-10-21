@@ -519,7 +519,8 @@ function inlineList() {
 function inlineImagesHtml() {
   // One <img> per --inline file, referencing its cid attachment, appended after the body text so the
   // images appear in the message body. Each on its own line, at about half the message width by default
-  // (a large photo lands at half size; max-width keeps a small screenshot from being stretched past 480px).  const items = inlineList();
+  // (a large photo lands at half size; max-width keeps a small screenshot from being stretched past 480px).
+  const items = inlineList();
   if (!items.length) return '';
   const size = args['inline-width']
     ? `width:${String(args['inline-width']).replace(/[^0-9a-z.%]/gi, '')};max-width:100%`
