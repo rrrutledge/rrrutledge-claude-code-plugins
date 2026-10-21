@@ -427,6 +427,51 @@ def test_cli_prints_json():
         check("stdout is valid JSON", False, result.stdout[:200])
 
 
+def test_bridgeless_live_sessions_repaired_then_raised():
+    print("test: a live blocked/done session with no bridge is respawned in place; a working one is left; "
+          "one still bridge-less after the attempts is stopped and raised as an orphan")
+    saved = {k: getattr(bg_session, k) for k in ("stop_session", "respawn_session", "find_job")}
+    saved_path = find_orphans.BRIDGE_REPAIRS_PATH
+    tmp = tempfile.mkdtemp(prefix="test-bridgeless-")
+    find_orphans.BRIDGE_REPAIRS_PATH = os.path.join(tmp, "bridge-repairs.json")
+    stopped, resumed = [], []
+    bg_session.stop_session = lambda short, cfg: stopped.append(short)
+    bg_session.find_job = lambda short: (None, {})
+    bg_session.respawn_session = lambda short, cfg: resumed.append(short)
+    try:
+        def job(sid, state, bridge=None, backend="daemon"):
+            return ("", {"sessionId": sid, "state": state, "bridgeSessionId": bridge, "backend": backend,
+                         "cwd": "C:/repo", "createdAt": "2026-10-20T10:00:00Z"})
+        blocked, done, working, bridged, notlive = new_id(), new_id(), new_id(), new_id(), new_id()
+        jobs = [job(blocked, "blocked"), job(done, "done"), job(working, "working"),
+                job(bridged, "blocked", bridge="cse_x"), job(notlive, "blocked")]
+        active = {blocked, done, working, bridged}
+        short = lambda sid: sid.split("-", 1)[0]
+        check("a first sweep raises nothing", find_orphans.bridgeless_orphans(jobs, active) == [])
+        check("blocked and done are respawned in place",
+              sorted(resumed) == sorted([short(blocked), short(done)]), resumed)
+        check("working, already bridged and not-live are untouched",
+              not {short(working), short(bridged), short(notlive)} & set(resumed), resumed)
+        check("nothing is stopped while respawns are still allowed", not stopped, stopped)
+        counts = find_orphans._load_repairs()
+        check("each respawn is counted", counts == {blocked: 1, done: 1}, counts)
+        jobs = [job(blocked, "blocked", bridge="cse_x"), job(done, "done")]
+        check("a session whose bridge came back clears its count and the other is respawned again",
+              find_orphans.bridgeless_orphans(jobs, active) == []
+              and find_orphans._load_repairs() == {done: 2}, find_orphans._load_repairs())
+        resumed.clear()
+        check("still bridge-less after the attempts: raised as an orphan",
+              [o["session_id"] for o in find_orphans.bridgeless_orphans(jobs, active)] == [done])
+        check("the orphan is stopped, not respawned again", stopped == [short(done)] and not resumed,
+              (stopped, resumed))
+        check("count cleared once raised", not find_orphans._load_repairs())
+    finally:
+        for k, v in saved.items():
+            setattr(bg_session, k, v)
+        find_orphans.BRIDGE_REPAIRS_PATH = saved_path
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_confirmed_orphan_returned()
     test_live_bg_sessions_never_orphans()
@@ -453,6 +498,7 @@ if __name__ == "__main__":
     test_self_close_read_from_tail_of_large_transcript()
     test_pid_still_claude_false_for_missing_pid()
     test_cli_prints_json()
+    test_bridgeless_live_sessions_repaired_then_raised()
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

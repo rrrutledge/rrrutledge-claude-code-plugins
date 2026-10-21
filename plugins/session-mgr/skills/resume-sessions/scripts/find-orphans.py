@@ -13,6 +13,9 @@ those sessions in two places:
     whatever the service called it - bounded by JOBS_SINCE, and held back by the wake backoff for a
     session Russell keeps leaving untouched (wake_backoff). A registry entry that has a job record
     is judged by the job record alone.
+It also repairs live blocked or done background sessions whose Remote Control bridge is down (no
+bridgeSessionId in the job record) - see bridgeless_orphans; one still bridge-less after
+BRIDGE_REPAIR_ATTEMPTS cycles comes back as an orphan.
 This does NOT run the resume-sessions skill's fallback scan (every session transcript's tail) -
 that stays exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
@@ -54,6 +57,12 @@ ENDED_STATES = {"stopped", "done"}
 # the session closing itself or by Russell - so a deliberate close. "blocked" stays listed in `claude
 # agents` and revivable from the app, so it is not lost.
 JOB_STATES_LEFT_ALONE = {"stopped", "blocked"}
+# Live background sessions in these states with no Remote Control bridge are repaired by
+# bridgeless_orphans; a working one is left for a later cycle. A session still bridge-less after
+# BRIDGE_REPAIR_ATTEMPTS cycles of failed repair is raised as an orphan.
+BRIDGE_REPAIR_STATES = {"blocked", "done"}
+BRIDGE_REPAIR_ATTEMPTS = 2
+BRIDGE_REPAIRS_PATH = os.path.expanduser("~/.claude/session-mgr/bridge-repairs.json")
 # Job records last touched before this are never resumed. The service's mislabelled retirements
 # began losing sessions on 2026-09-28; everything older predates that and is left where it lies, so
 # older job records aren't mass-resurrected.
@@ -261,6 +270,59 @@ def retired_job_orphans(jobs, active, now=None):
     return orphans
 
 
+def _load_repairs():
+    try:
+        with open(BRIDGE_REPAIRS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_repairs(repairs):
+    try:
+        os.makedirs(os.path.dirname(BRIDGE_REPAIRS_PATH), exist_ok=True)
+        tmp_path = BRIDGE_REPAIRS_PATH + f".tmp.{os.getpid()}"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(repairs, f, indent=2)
+        os.replace(tmp_path, BRIDGE_REPAIRS_PATH)
+    except OSError:
+        pass
+
+
+def bridgeless_orphans(jobs, active):
+    """Live background sessions whose Remote Control bridge is down - the job record has no
+    bridgeSessionId - so claude.ai/code and the phone can't reach them. Only a blocked or done
+    session is touched (never a working one; it is rechecked next cycle). Each is repaired in place
+    with `claude respawn`: the service restarts the same job (same id and name, saved launch flags)
+    and its bridge reconnects. The next cycle finds the bridge id and clears the count; one still
+    bridge-less after BRIDGE_REPAIR_ATTEMPTS cycles is stopped and returned as an orphan, which the
+    drainer then raises as a resume item (resumed through the launcher). `BRIDGE_REPAIRS_PATH` keeps
+    the per-session cycle count."""
+    repairs, orphans, touched = _load_repairs(), [], False
+    for _, job in jobs:
+        sid, short = job["sessionId"], job.get("daemonShort") or job["sessionId"].split("-", 1)[0]
+        if (sid not in active or job.get("state") not in BRIDGE_REPAIR_STATES or job.get("bridgeSessionId")
+                or job.get("backend") != "daemon"):
+            if sid in repairs and (job.get("bridgeSessionId") or sid not in active):
+                repairs.pop(sid)
+                touched = True
+            continue
+        failed = repairs.get(sid, 0)
+        owner = bg_session.find_job(short)[0] or None
+        touched = True
+        if failed >= BRIDGE_REPAIR_ATTEMPTS:
+            bg_session.stop_session(short, owner)
+            repairs.pop(sid, None)
+            orphans.append({"session_id": sid, "cwd": job.get("cwd"), "started_at": job.get("createdAt")})
+            continue
+        bg_session.respawn_session(short, owner)
+        repairs[sid] = failed + 1
+    if touched:
+        _save_repairs(repairs)
+    return orphans
+
+
 def find_confirmed_orphans():
     """Registry entries and retired background jobs whose session isn't currently running, minus
     any that closed themselves on purpose. A session is running when `claude agents` lists it as
@@ -302,7 +364,7 @@ def find_confirmed_orphans():
         for sid in to_prune:
             registry.pop(sid, None)
         save_registry(registry)
-    return orphans + retired_job_orphans(jobs, active)
+    return orphans + retired_job_orphans(jobs, active) + bridgeless_orphans(jobs, active)
 
 
 def main():
