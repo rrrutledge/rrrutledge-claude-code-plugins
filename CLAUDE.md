@@ -12,6 +12,11 @@ and testable; AI judgment is reserved for the steps that genuinely need it (see 
 drainer's `poller-core.md` for the canonical split between what's code and what's a single
 batched AI call per cycle).
 
+**Classify every step before writing a skill's markdown.**
+When authoring, moving, or editing a skill, list each step it performs and mark it script or Claude session, by the test in the `authoring-rules` rule "Skill prose carries only the steps that need the running Claude session".
+The classification covers every step, including steps carried over unchanged from an existing skill and steps the request or brief never mentions.
+A brief that names some steps as scriptable has given a sample, and that test sets the boundary.
+
 ---
 
 ## Contributing
