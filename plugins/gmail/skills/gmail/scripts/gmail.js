@@ -72,8 +72,9 @@
 //                 after the body.)
 //                (--attach takes one path or a comma-separated list; files ride along as attachments.
 //                 --inline takes image paths the same way but embeds them in the body via cid: references
-//                 (rendered after the body text), so they show inline instead of as a file list. Both
-//                 flags may be combined.)
+//                 (rendered after the body text), so they show inline instead of as a file list. Inline
+//                 images render at about half the message width by default; --inline-width=<css width>
+//                 overrides it. Both flags may be combined.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts — Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
@@ -517,11 +518,14 @@ function inlineList() {
 
 function inlineImagesHtml() {
   // One <img> per --inline file, referencing its cid attachment, appended after the body text so the
-  // images appear in the message body. Each on its own line, capped to the message width.
-  const items = inlineList();
+  // images appear in the message body. Each on its own line, at about half the message width by default
+  // (a large photo lands at half size; max-width keeps a small screenshot from being stretched past 480px).  const items = inlineList();
   if (!items.length) return '';
+  const size = args['inline-width']
+    ? `width:${String(args['inline-width']).replace(/[^0-9a-z.%]/gi, '')};max-width:100%`
+    : 'width:50%;max-width:480px';
   return '<br><br>' + items.map(a =>
-    `<div style="margin:8px 0"><img src="cid:${a.cid}" alt="${a.filename}" style="max-width:100%;height:auto"></div>`
+    `<div style="margin:8px 0"><img src="cid:${a.cid}" alt="${a.filename}" style="${size};height:auto"></div>`
   ).join('');
 }
 
