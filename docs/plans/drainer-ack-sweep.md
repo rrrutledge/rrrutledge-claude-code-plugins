@@ -69,10 +69,9 @@ The ledger lives inside `seen.json`, under its own reserved key beside the per-s
 Each entry is keyed by source plus conversation (the email thread, the Slack DM or channel plus thread), and records the item it was raised for, when the ack went out, and a reference to the exact sent message.
 Keying on the conversation rather than the item id matters because a new Slack message, or a follow-up email in the same thread, produces a new item id for the same conversation.
 
-The ledger holds four outcomes:
+The ledger holds three outcomes:
 
 - **Sent** - the ack went out and the real reply is still owed; the sweep skips this conversation.
-- **Completed** - the ack was the whole reply the item needed (see "Items an ack fully answers").
 - **Skipped** - Russell chose not to ack it in the review; the sweep never proposes it again.
 - **Superseded** - Russell has since sent a real reply on the thread, so a later wait starts fresh.
   If the person writes again and that new message waits two business days, it can be acked once more.
@@ -95,12 +94,12 @@ No Trello card, no re-marking unread for email, no change to the item's seen-sta
 The poller's reconcile reads only whether the message is still in the inbox and whether a live worker is on it, so an ack changes nothing it looks at.
 The hold-by-correspondent rule is likewise unaffected.
 
-## Items an ack fully answers
+## Items a short reply fully handles
 
-Some needs-you items need nothing beyond an acknowledgement: a thanks, a "sounds good", a closing note from someone who addressed Russell personally.
-For these the ack is the reply, so the review finishes the item right there.
-After the send it clears the item through its provider's CLEAR (archive or mark read), records it seen so it never dispatches, writes the ledger entry as completed, and lists it in the review's closing summary as done.
-The drafting step makes this call per item when it reads the thread, and shows it beside the draft ("this ack finishes it") so Russell sees which items close on send.
+Some needs-you items need nothing beyond a short reply: a thanks, a "sounds good", a closing note from someone who addressed Russell personally.
+For these the short reply is the item's normal handling, not an ack, so the review handles the item right there and it never reaches the ledger.
+After the send it clears the item through its provider's CLEAR (archive or mark read) and records it seen so it never dispatches, the same completion a worker performs.
+The drafting step makes this call per item when it reads the thread, and marks the entry in the review as a reply that handles the item, so Russell sees which items close on send.
 
 ## The worker-side fix
 
@@ -136,7 +135,7 @@ The session:
    Deeply personal items are set aside here, per Eligibility.
 3. Runs the cold writing review, minting a receipt and a send-confidence score for each body (see Graduation).
 4. Presents one list.
-   Each entry pairs what the person said with the ack that answers it, so Russell can judge whether the ack fits: who, which source, how long they've waited, the thread link, a quote or tight paraphrase of their message (every ask in it, for a multi-message span), then the draft text, marked when the ack finishes the item.
+   Each entry pairs what the person said with the ack that answers it, so Russell can judge whether the ack fits: who, which source, how long they've waited, the thread link, a quote or tight paraphrase of their message (every ask in it, for a multi-message span), then the draft text, marked when it is a reply that handles the item rather than an ack.
    Then the "yours to write" items and the "send by hand" items, each with its link.
 5. Waits for Russell: "send all", or "send all except 3 and 5", or an edit to one draft.
 6. For each approved ack, re-checks eligibility once more (he may have answered while reading), sends it, and writes the ledger entry with the sent message reference.
@@ -200,9 +199,3 @@ Turning it on stays a deliberate change Russell makes to his own global rule.
   The poller re-judges it every cycle it's held, so the sweep always sees a current bucket; an item whose verdict is unavailable this cycle is skipped, the same fail-closed rule dispatch uses.
 - **The review session dies mid-batch.**
   The ledger is written per send, so a rerun skips what already went out and offers the rest.
-
-## Open questions
-
-1. **Do holidays pause the business-day clock?**
-   The plan counts weekends only.
-   Holidays would need a calendar source the drainer doesn't read today.
