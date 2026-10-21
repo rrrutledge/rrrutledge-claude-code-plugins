@@ -9,8 +9,8 @@ engine/screen.md, so a classification call can't crowd out the guardrail), and t
 session (the actual reply/work, draft-only). An item's triage and screen verdicts are cached, so an item
 the dispatch step holds across cycles is judged once; and when the background account is out of usage a
 circuit breaker skips the AI step until the account can serve calls again. Triage also records whether a
-person or a machine wrote each item (`sender`), which the closing acknowledgement sweep (ack_sweep.py) reads
-to list the conversations where a real person has waited 48 business hours - code, no AI call of its own.
+person or a machine wrote each item (`sender`); the once-a-day acknowledgement sweep (ack_sweep.py) reads
+it from the verdict cache.
 
 The orchestration below is **provider-agnostic**: it reads which providers are enabled from
 `.claude/drainer.local.md` and drives each through a small adapter (enumerate / stable_id / capture).
@@ -53,7 +53,6 @@ from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, Provider
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
-import ack_sweep  # noqa: E402  (the 48-hour acknowledgement sweep that runs after dispatch)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 HEALTH_FILE = "provider-health.json"
@@ -1820,8 +1819,6 @@ def main():
 
     if not all_new:
         print("0 new items across all sources. Nothing to dispatch.")
-        if not args.dry_run:
-            ack_sweep.sweep([], {}, cfg["runtime_dir"], set())  # nothing held, so nothing is due an ack
         return
 
     # --- deterministic pre-triage rules ---
@@ -1880,7 +1877,6 @@ def main():
         v = verdicts.get(it["_id"], {"bucket": "needs-you", "kind": "reply"})  # unjudged triage -> act (fail-safe)
         it["_bucket"], it["_kind"] = v.get("bucket", "needs-you"), v.get("kind")
         it["_complexity"] = v.get("complexity", "simple")
-        it["_sender"] = v.get("sender")  # person | automated; read by the acknowledgement sweep, absent = never acked
         it["_triageReason"] = (v.get("reason") or "").strip() or None
         _apply_screen(it, screen_verdicts.get(it["_id"]))  # a flag forces needs-you (strips autonomy)
         _apply_slack_overrides(it)  # known-contact junk -> needs-you; phishing kind cleared (Slack-only)
@@ -1982,14 +1978,11 @@ def main():
                       f"        {it.get('from')} | {it.get('subject')}")
         print("  needs-you (orphan-sessions first, then priority band, then level band, then referral band, then newest-first):")
         slots = open_slots(waiting, total, len(auto), cfg)
-        held_items = []
         for it in needs:
             corr = prov[it["_source"]].correspondent(it)
             corr_held = held_for_correspondent(corr, active_correspondents)
             held = corr_held or slots <= 0
-            if held:
-                held_items.append(it)
-            else:
+            if not held:
                 slots -= 1
                 if corr:
                     active_correspondents.add(corr)
@@ -2017,8 +2010,6 @@ def main():
         if teams_others:
             print(f"  teams mark-read batch (dry-run): {len(teams_others)} conv(s): "
                   + ", ".join(it.get("convId") or it["_id"] for it in teams_others))
-        print("  acknowledgement sweep (dry-run, nothing written):")
-        ack_sweep.sweep(held_items, prov, cfg["runtime_dir"], active_correspondents, dry_run=True)
         return
 
     dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
@@ -2041,7 +2032,6 @@ def main():
     # max_concurrent headroom left after the auto workers just opened. Decremented per dispatch below;
     # 0 when the session scan failed, so a failed scan holds every needs-you item (fail-closed).
     slots = open_slots(waiting, total, auto_dispatched, cfg)
-    held_items = []  # the needs-you items still waiting after dispatch - the acknowledgement sweep's input
     for it in needs:
         provider = prov[it["_source"]]
         iid = it["_id"]
@@ -2053,11 +2043,9 @@ def main():
             # worker has already read the full context.
             held += 1
             held_corr += 1
-            held_items.append(it)
             continue
         if slots <= 0:
             held += 1  # buffer full (or a failed scan held it): leave UNRECORDED -> re-enumerated next cycle, verdicts read back from the cache
-            held_items.append(it)
             continue
         it["_correspondent"] = corr
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
@@ -2131,16 +2119,6 @@ def main():
     teams_others = [it for it in others if it["_source"] == "teams"]
     if teams_others and prov.get("teams"):
         _spawn_teams_mark_read(teams_others, prov["teams"], repo, cfg["runtime_dir"], cfg["worker_model"])
-
-    # The acknowledgement sweep runs last, against the same verdicts and live-session picture dispatch just
-    # used: it writes the due list the end-of-day ack review reads, and sends and drafts nothing. A fault
-    # here never costs the cycle - the due list just keeps its last contents until the next cycle.
-    try:
-        due = ack_sweep.sweep(held_items, prov, cfg["runtime_dir"], active_correspondents)
-        if due:
-            print(f"acknowledgement sweep: {len(due)} conversation(s) due an ack at the next review.")
-    except Exception as e:
-        print(f"acknowledgement sweep FAILED - {e}. The due list is unchanged this cycle.")
 
     buf = ("scan failed" if wcounts is None
            else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")

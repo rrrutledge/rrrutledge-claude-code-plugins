@@ -20,7 +20,7 @@ The drainer runs as a **continuous keeper**: a **poller** runs a short cycle eve
   Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.
-- **A person waiting 48 business hours →** the poller's acknowledgement sweep lists the conversation as due, and an end-of-day review session sends a short ack on the user's approval while the item keeps its place in the queue.
+- **A person waiting 48 business hours →** the once-a-day acknowledgement sweep in the digest's daily task lists the conversation as due, and an end-of-day review session sends a short ack on the user's approval while the item keeps its place in the queue.
 - **The poller never clears.**
   The source is cleared in exactly one place: the worker on completion (needs-you), or the daily digest after the user reviews it (fyi/junk).
 
@@ -29,7 +29,7 @@ The drainer runs as a **continuous keeper**: a **poller** runs a short cycle eve
 The loop - enumerate everything eligible → drop already-seen → dispatch against the worker buffer → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
 There is no per-cycle work cap upstream of that: every source is asked for everything it currently has.
 AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only).
-The acknowledgement sweep is code reading that triage verdict; the acks themselves are drafted in the end-of-day ack review session.
+The once-a-day acknowledgement sweep is code reading that triage verdict from the verdict cache; the acks themselves are drafted in the end-of-day ack review session.
 
 This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets its **own worker** that handles it to completion in a fresh context (its own headless background session), so context stays bounded and nothing is half-done.
 The worker buffer, not a queue, bounds how many face the user at once.
@@ -47,7 +47,7 @@ Without this, config was read from whatever branch a human session left checked 
 
 Two things stay anchored to the **real** repo, on purpose:
 
-- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `ack-thread-cache.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
+- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
 - **Worker/digest cwd** - worker sessions run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
   A worker that must commit branches into its own worktree (per the `git-workflow` skill), so it never disturbs the config worktree.
   Repo-tracked config a worker needs (above all `initiatives/<slug>.md`) is read from the config repo, whose path the worker seed carries.
@@ -78,7 +78,7 @@ Each contract is owned by exactly one file - this doc only points to them:
 - **Poller contract** - enumerate / cap / dispatch / record, seen-state, the source-state reconcile -> `engine/poller-core.md`.
 - **Worker procedure** - read brain → situational-check → do → draft → advance → `engine/worker-core.md`.
 - **Daily digest** - the once-a-day interactive readout and reconciliation sweep → `engine/digest-core.md`.
-- **Acknowledgement review** - the end-of-day session that drafts and, on the user's approval, sends the 48-hour acks the poller's sweep found due → `engine/ack-review.md`, with every deterministic step in `scripts/ack_sweep.py`.
+- **Acknowledgement review** - the end-of-day session that drafts and, on the user's approval, sends the 48-hour acks the once-a-day sweep found due → `engine/ack-review.md`, with every deterministic step in `scripts/ack_sweep.py`.
 - **Provider contract** - the interface a source implements → `engine/provider.md`; to add one, see `docs/writing-a-provider.md`.
 - **Per-machine behavioral and standing rules** - draft-only outbound, delete/archive freely, lead with context, waiting-on-someone → a tracker card, one voice brain - live in `templates/context.example.md`, copied into each machine's `context.md`.
 - **Scheduling** - two Scheduled Tasks (the fast poller and the once-a-day digest), registered version-independently so a routine `claude plugin update` is picked up automatically → `scripts/install-schedule.ps1`, `scripts/install-digest-schedule.ps1`, `scripts/launch-drainer.py`.

@@ -22,10 +22,9 @@ AI is invoked for exactly three things:
 3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
 
-The acknowledgement sweep (step 7) adds no AI call: it reads the `sender` field the triage call already returns.
-Drafting the acks is the end-of-day ack review's job, its own session (`engine/ack-review.md`).
+Triage's `sender` field (person / automated) is cached with the rest of the verdict, where the once-a-day acknowledgement sweep in the digest's daily task reads it (`engine/ack-review.md`).
 
-Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record, the acknowledgement sweep - is code.
+Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record - is code.
 No AI re-implements the loop.
 
 ## What `run-poller.py` does each cycle
@@ -81,12 +80,6 @@ No AI re-implements the loop.
    The worker's own CLEAR for such an item is a harmless no-op.
    A provider with no `clear` (Teams, Trello) is unchanged: its worker clears on completion.
    fyi/junk are archived at triage above (for providers whose CLEAR is a reversible archive); the daily digest still runs its review-gated CLEAR on each one, a harmless no-op for a message already archived here and the real clear for any provider that couldn't archive at triage.
-7. **Acknowledgement sweep** (`scripts/ack_sweep.py`, after dispatch, against the same verdicts and live-session picture dispatch used).
-   It looks at the needs-you items still waiting after dispatch - held by the worker buffer or the hold-by-correspondent rule - from the email providers and Slack, and writes `<runtime_dir>/ack-due.json`: the conversations where a real person has waited 48 business hours (weekdays only) with no word from Russell.
-   The due list is all it writes: the item stays in the source and dispatches in its normal turn.
-   The full eligibility test and its deterministic vetoes are in `ack_sweep.py`'s module docstring and `veto`/`thread_verdict`; the live-thread read runs only for a conversation already past the threshold, and is reused for three hours.
-   The daily digest task launches the ack review session (`engine/ack-review.md`) on a day the due list is non-empty, and that session sends only what Russell approves.
-   Each sent, skipped, or covered ack is recorded in the ack ledger, under the reserved `_acks` key in `seen.json` (`seen-state.js ack-set`); every per-source reader of `seen.json` refuses a `_`-prefixed key.
 
 ## Reconcile: completion is read off the source, not off a receipt
 
@@ -122,7 +115,7 @@ Every cycle records each provider's outcome to `<runtime_dir>/provider-health.js
 Because the poller is headless, this file is how a silently-dead provider becomes visible: the daily digest reads it and surfaces any provider with a sustained failure streak so Russell knows to refresh the credential.
 (Dry-run doesn't write it - it's often run without the live creds.)
 
-**Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended action, including any held at the cap) plus the count of items the reconcile would re-queue and the conversations the acknowledgement sweep finds due, with no spawns, no queueing, no records, no clears, and no re-queues.
+**Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended action, including any held at the cap) plus the count of items the reconcile would re-queue, with no spawns, no queueing, no records, no clears, and no re-queues.
 
 ## Hold by correspondent: one open item per person, so one worker reads them all
 

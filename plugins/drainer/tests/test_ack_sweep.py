@@ -1,5 +1,5 @@
 """Tests for the 48-hour acknowledgement sweep (scripts/ack_sweep.py): the business-hours clock, the
-eligibility vetoes, the live-thread verdict and the ack ledger, the poller-side sweep that writes the due
+eligibility vetoes, the live-thread verdict and the ack ledger, the once-a-day sweep that writes the due
 list, the review's re-check / send / skip / hand-done steps, the worker's ledger lookup, the reserved
 seen.json key, and the digest launcher starting the review only when something is due.
 
@@ -184,10 +184,6 @@ check("the entry carries the link, wait, and send path",
       (written["due"][0]["link"], written["due"][0]["businessHours"] >= 48, written["due"][0]["sendPath"]),
       ("https://x/c-old", True, "api"))
 
-del demo.thread_calls[:]
-ack_sweep.sweep(held, {"demo": demo}, rt, set(), now=NOW + timedelta(minutes=5))
-check("a second cycle within the cache window doesn't re-read the thread", demo.thread_calls, [])
-
 demo = Demo()
 rt = runtime()
 due = ack_sweep.sweep([item("old", "c-old", OLD, corr="pat@example.com")], {"demo": demo}, rt,
@@ -301,6 +297,37 @@ check("a reply Russell sent while reading drops the ack", r.recheck(r.entry("dem
 import contextlib  # noqa: E402
 import io  # noqa: E402
 
+print("\ndaily sweep")
+
+
+def bare(iid, conv, received):
+    """An enumerated item as the source lists it: no verdict fields until the sweep reads the cache."""
+    it = item(iid, conv, received)
+    for k in ("_bucket", "_sender", "_id", "_source"):
+        it.pop(k)
+    return it
+
+
+r, demo = review_for([], [bare("judged", "c-j", OLD), bare("unjudged", "c-u", OLD), bare("done", "c-d", OLD),
+                          bare("bot", "c-b", OLD)])
+with open(os.path.join(r.runtime_dir, ack_sweep.VERDICTS_FILE), "w", encoding="utf-8") as f:
+    json.dump({"judged": {"triage": {"verdict": {"bucket": "needs-you", "sender": "person"}},
+                          "screen": {"verdict": {"flagged": False}}},
+               "done": {"triage": {"verdict": {"bucket": "needs-you", "sender": "person"}},
+                        "screen": {"verdict": {"flagged": False}}},
+               "bot": {"triage": {"verdict": {"bucket": "needs-you", "sender": "automated"}},
+                       "screen": {"verdict": {"flagged": False}}}}, f)
+with open(os.path.join(r.runtime_dir, "seen.json"), "w", encoding="utf-8") as f:
+    json.dump({"demo": {"done": {"triage": "needs-you"}}}, f)
+due = ack_sweep.daily_sweep(r, now=NOW)
+check("the daily sweep acks only the judged, still-waiting person's item", [d["itemId"] for d in due], ["judged"])
+check("it writes the due list", [d["itemId"] for d in ack_sweep.load_due(r.runtime_dir)], ["judged"])
+
+r, demo = review_for([], [bare("judged", "c-j", OLD)])
+r._open = None
+r.open_correspondents = lambda: None
+check("a failed open-worker scan finds nothing due", ack_sweep.daily_sweep(r, now=NOW), [])
+
 r, demo = review_for([due_entry(waiting), due_entry(item("gone", "c-gone", OLD))], [waiting])
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
@@ -397,10 +424,23 @@ launches = []
 digest.spawn_bg = lambda seed, model, cwd, name, **kw: launches.append(name) or "bg-1"
 digest.write_receipt = lambda prompt_file, bg_id: bg_id
 rt = runtime()
-check("no due list: no review session", (digest.launch_ack_review(rt, "R", {"digest_model": "m"}), launches), (None, []))
-with open(os.path.join(rt, ack_sweep.DUE_FILE), "w", encoding="utf-8") as f:
-    json.dump({"due": [due_entry(waiting)]}, f)
-check("a non-empty due list launches the review", digest.launch_ack_review(rt, "R", {"digest_model": "m"}), "bg-1")
+check("nothing due: no review session",
+      (digest.launch_ack_review(rt, "R", {"digest_model": "m"}, sweep=lambda repo: []), launches), (None, []))
+check("something due launches the review",
+      digest.launch_ack_review(rt, "R", {"digest_model": "m"}, sweep=lambda repo: [due_entry(waiting)]), "bg-1")
+real_review = digest.ack_sweep.Review
+
+
+def broken_review(repo):
+    raise RuntimeError("listing blew up")
+
+
+digest.ack_sweep.Review = broken_review
+try:
+    check("a failing sweep launches nothing and never raises",
+          digest.launch_ack_review(rt, "R", {"digest_model": "m"}), None)
+finally:
+    digest.ack_sweep.Review = real_review
 check("named for the session list", launches, ["Drainer ack review"])
 with open(os.path.join(rt, "seeds", "ack-review.prompt.txt"), encoding="utf-8") as f:
     seed = f.read()

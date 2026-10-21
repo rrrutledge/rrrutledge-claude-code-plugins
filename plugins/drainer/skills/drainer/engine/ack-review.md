@@ -1,9 +1,11 @@
 # drainer ack-review - the end-of-day acknowledgement batch (interactive, approved per batch)
 
 A real person who messaged Russell and has waited 48 business hours with no word gets a short acknowledgement, while the real work keeps its place in the queue.
-The poller's sweep found the conversations due an ack; this session drafts the acks, puts them in front of Russell as one batch, and sends exactly what he approves.
+The digest's daily task runs the once-a-day sweep that lists the conversations due an ack, and launches this session when that list is non-empty.
+This session drafts the acks, puts them in front of Russell as one batch, and sends exactly what he approves.
 
-Every deterministic step lives in the ack script your seed names (`ack_sweep.py`, always run with `--repo <repo>`), whose module docstring lists them.
+Every deterministic step, the sweep included, lives in the ack script your seed names (`ack_sweep.py`, always run with `--repo <repo>`), whose module docstring lists them.
+Each sent, skipped, or covered ack is recorded in the ack ledger, under the reserved `_acks` key in `seen.json`, which every per-source reader of `seen.json` refuses.
 This doc holds the judgment and the order of the calls.
 
 ## 1. Re-check the batch

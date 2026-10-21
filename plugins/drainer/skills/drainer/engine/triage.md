@@ -126,7 +126,7 @@ It also holds READ-IN-CONTEXT, which applies before a Slack item is triaged.
 ## The real-person test - `sender` on every item
 
 Every verdict also records who wrote the item: **`person`** or **`automated`**.
-It feeds the poller's 48-hour acknowledgement sweep, which acks only a real person left waiting.
+It feeds the once-a-day 48-hour acknowledgement sweep, which acks only a real person left waiting.
 
 - **person** - a human wrote these words to Russell.
   Judge by who wrote the words: a person's message delivered through a notification relay is `person`, the same way the relay rule above triages it.

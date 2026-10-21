@@ -7,7 +7,8 @@ written down in advance:
   Russell since, not already acked, not screen-flagged, not a self-email), with the deterministic vetoes
   that sit on top of triage's `sender` call;
 - the business-hours clock;
-- the sweep the poller runs at the end of every cycle, which writes the due list and nothing else;
+- the once-a-day sweep the digest launcher runs before it starts the review, which writes the due list
+  and nothing else;
 - the ack ledger reads (writes go through seen-state.js, the one writer of seen.json);
 - the review session's script steps: re-checking each due item, sending an approved ack through the
   source's own send path, writing the ledger, clearing a reply that fully handles its item, and recording
@@ -38,16 +39,12 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (load_ack_ledger, load_seen, received_dt, run_node, self_directed,  # noqa: E402
-                           ProviderError, NO_WINDOW, _plugins_root)
+                           ProviderBase, ProviderError, NO_WINDOW, _plugins_root)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 DUE_FILE = "ack-due.json"
-THREAD_CACHE_FILE = "ack-thread-cache.json"
 VERDICTS_FILE = "judged-verdicts.json"
 ACK_THRESHOLD_HOURS = 48
-# The live-thread read runs only for items already past the threshold, and its answer is reused for this
-# long, so a backlog of old items doesn't re-read every thread every five minutes.
-THREAD_CACHE_TTL = timedelta(hours=3)
 # A message from Russell this long after a ledger entry is a real reply, not the ack itself.
 SUPERSEDE_GRACE = timedelta(minutes=5)
 ENUMERATE_PAGE_SIZE = 500
@@ -164,50 +161,36 @@ def load_due(runtime_dir):
     return _read_json(os.path.join(runtime_dir, DUE_FILE), {}).get("due") or []
 
 
-class ThreadCache:
-    """The last live-thread read per conversation, reused for THREAD_CACHE_TTL while the conversation's
-    newest waiting item is unchanged."""
-
-    def __init__(self, runtime_dir, persist=True):
-        self.path = os.path.join(runtime_dir, THREAD_CACHE_FILE)
-        self.persist = persist
-        self.entries = _read_json(self.path, {})
-
-    def get(self, key, item_id, now):
-        e = self.entries.get(key)
-        if not isinstance(e, dict) or e.get("itemId") != item_id:
-            return None
-        ts = _parse(e.get("ts"))
-        return e.get("info") if ts and now - ts < THREAD_CACHE_TTL else None
-
-    def put(self, key, item_id, info, now):
-        self.entries[key] = {"itemId": item_id, "ts": _iso(now), "info": info}
-
-    def save(self, live_keys):
-        if self.persist:
-            _write_json(self.path, {k: v for k, v in self.entries.items() if k in live_keys})
-
-
-# ---------------------------------------------------------------------------- the sweep (poller)
+# ---------------------------------------------------------------------------- the daily sweep
 
 def _public_item(item):
     """The enumerated item as the due list stores it, for the review to re-check and send from."""
     return {k: v for k, v in item.items() if k not in ("_correspondent",)}
 
 
-def sweep(held, providers_by_name, runtime_dir, active_correspondents, now=None, dry_run=False):
-    """Compute and write the due list from this cycle's held needs-you items. Sends nothing, drafts
-    nothing. Returns the due list.
+def _apply_verdict(item, triage, screen):
+    """Stamp the poller's cached triage and screen verdicts onto an enumerated item, the fields `veto`
+    reads. Returns False when either verdict is missing, so an unjudged item is never acked."""
+    if not triage or not screen:
+        return False
+    item["_bucket"], item["_sender"] = triage.get("bucket"), triage.get("sender")
+    if screen.get("flagged"):
+        item["_screen"] = {"flagged": True}
+    return True
+
+
+def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=None, dry_run=False):
+    """Compute and write the due list from the needs-you items still waiting (enumerated, not yet
+    dispatched). Sends nothing, drafts nothing. Returns the due list.
 
     Only cheap work runs for an item under the threshold: comparing its arrival time to now. The
     live-thread read runs only for a conversation already past 48 business hours that passes every other
-    test. An item whose correspondent has a worker open (or one dispatched this cycle) is skipped: that
-    person's real reply is already in progress."""
+    test. An item whose correspondent has a worker open is skipped: that person's real reply is already in
+    progress."""
     now = now or datetime.now(timezone.utc)
     ledger = load_ack_ledger(runtime_dir)
-    cache = ThreadCache(runtime_dir, persist=not dry_run)
     convs = {}
-    for it in held:
+    for it in waiting:
         p = providers_by_name.get(it.get("_source"))
         key = conversation_key(p, it)
         if not key or veto(p, it):
@@ -227,12 +210,9 @@ def sweep(held, providers_by_name, runtime_dir, active_correspondents, now=None,
             continue
         target, _, corr = max(members, key=lambda m: m[0].get("received") or "")
         p = providers_by_name[target["_source"]]
-        info = cache.get(key, target["_id"], now)
+        info = p.ack_thread(target)
         if info is None:
-            info = p.ack_thread(target)
-            if info is None:
-                continue  # couldn't read the thread this cycle: no ack on a guess
-            cache.put(key, target["_id"], info, now)
+            continue  # couldn't read the thread: no ack on a guess
         relay = is_relay(p, target)
         if thread_verdict(info, clock, ledger.get(key), relay=relay):
             continue
@@ -263,8 +243,34 @@ def sweep(held, providers_by_name, runtime_dir, active_correspondents, now=None,
                   f"business hours ({c['sendPath']})")
     else:
         _write_json(os.path.join(runtime_dir, DUE_FILE), {"updated": _iso(now), "due": due})
-        cache.save({c["key"] for c in candidates})
     return due
+
+
+def daily_sweep(review, now=None, dry_run=False):
+    """The once-a-day sweep the digest launcher runs before it starts the review: every in-scope source's
+    live listing, minus what the poller already dispatched, judged by the verdicts the poller cached for
+    each held item. Returns the due list, or [] (written as empty) when the open-worker scan fails, since
+    that scan is what proves no real reply is already in progress."""
+    opened = review.open_correspondents()
+    if opened is None:
+        return sweep([], review.providers, review.runtime_dir, set(), now=now, dry_run=dry_run)
+    verdicts = _read_json(os.path.join(review.runtime_dir, VERDICTS_FILE), {})
+    waiting = []
+    for name, p in review.providers.items():
+        if type(p).ack_conversation is ProviderBase.ack_conversation:
+            continue  # out of the sweep's scope; skip its listing entirely
+        seen = load_seen(review.runtime_dir, name)
+        try:
+            listing = review.listing(name)
+        except Exception as e:  # one dark source never stops the others' acks
+            print(f"ack sweep: could not list {name} - {e}")
+            continue
+        for it in listing:
+            entry = verdicts.get(it["_id"]) or {}
+            if it["_id"] not in seen and _apply_verdict(it, (entry.get("triage") or {}).get("verdict"),
+                                                        (entry.get("screen") or {}).get("verdict")):
+                waiting.append(it)
+    return sweep(waiting, review.providers, review.runtime_dir, opened, now=now, dry_run=dry_run)
 
 
 # ---------------------------------------------------------------------------- the review (script steps)
@@ -381,13 +387,8 @@ class Review:
             for k in ("_bucket", "_kind", "_sender", "_screen", "_complexity"):
                 if k in prior:
                     current[k] = prior[k]
-        else:
-            triage, screen = _load_verdict(self.runtime_dir, current["_id"])
-            if not triage or not screen:
-                return None, "a newer message hasn't been judged yet", None
-            current["_bucket"], current["_sender"] = triage.get("bucket"), triage.get("sender")
-            if screen.get("flagged"):
-                current["_screen"] = {"flagged": True}
+        elif not _apply_verdict(current, *_load_verdict(self.runtime_dir, current["_id"])):
+            return None, "a newer message hasn't been judged yet", None
         reason = veto(p, current)
         if reason:
             return None, reason, None
