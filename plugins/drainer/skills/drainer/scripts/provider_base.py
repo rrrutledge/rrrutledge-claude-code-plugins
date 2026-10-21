@@ -741,32 +741,13 @@ class ProviderBase:
 
     # ---- conversations: read a thread, reply into it ----
     # A conversational source (the email providers and Slack) overrides these; the defaults mark a source
-    # with no conversation to read or reply into. Each takes either an enumerated item or a captured item
-    # record, which carry the same conversation fields.
-
-    def conversation_id(self, item):
-        """The conversation this item belongs to (an email thread, a Slack DM/channel or thread), as a
-        string unique within this source, or None when the source has no conversations. A follow-up in
-        the same conversation is a new item id with the same conversation id."""
-        return None
-
-    def wait_started(self, item):
-        """When the sender started waiting on this item: its arrival time by default."""
-        return received_dt(item)
-
-    def from_bot(self, item):
-        """True when the source itself marks the sender as a bot or an app."""
-        return False
+    # with no conversation to read or reply into.
 
     def thread_state(self, item):
         """The live state of the item's conversation, read fresh from the source:
         `{"messages": [{"fromMe": bool, "sent": iso, "isDraft": bool}], "hasDraft": bool,
         "listUnsubscribe": bool, "link": str}`. None when the read failed."""
         return None
-
-    def message_text(self, item):
-        """What the sender said, as plain text."""
-        return self.triage_text(item)
 
     def send_reply(self, item, body_file):
         """Send the reviewed body in `body_file` into the item's conversation through the source's own

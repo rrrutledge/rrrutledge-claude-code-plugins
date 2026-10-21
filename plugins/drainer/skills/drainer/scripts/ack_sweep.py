@@ -39,7 +39,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (load_ack_ledger, load_seen, received_dt, run_node, self_directed,  # noqa: E402
-                           ProviderBase, ProviderError, NO_WINDOW, _plugins_root)
+                           ProviderError, NO_WINDOW, _plugins_root)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 DUE_FILE = "ack-due.json"
@@ -87,10 +87,35 @@ def _local(dt):
 
 # ---------------------------------------------------------------------------- eligibility
 
+def _slack_conversation(item):
+    """A Slack thread item's conversation is its thread; a DM, group DM, or channel item's is the whole
+    channel, since its item id moves to the newest message every time another one arrives."""
+    channel = item.get("channel")
+    if not channel:
+        return None
+    return f"{channel}|{item['threadTs']}" if item.get("threadTs") else channel
+
+
+# The sources the sweep covers, each with the item field (on an enumerated item and a captured record
+# alike) naming the conversation the item belongs to.
+CONVERSATIONS = {
+    "outlook-graph": lambda it: it.get("conversationId"),
+    "gmail": lambda it: it.get("threadId"),
+    "slack": _slack_conversation,
+}
+
+
 def conversation_key(provider, item):
     """`<source>|<conversation>`, or None for a source or item the sweep doesn't cover."""
-    conv = provider.conversation_id(item) if provider else None
+    read = CONVERSATIONS.get(provider.name) if provider else None
+    conv = read(item) if read else None
     return f"{provider.name}|{conv}" if conv else None
+
+
+def wait_started(item):
+    """When the person started waiting: the oldest message in a Slack unread span, else the arrival."""
+    span = [dt for dt in (_parse(m.get("received")) for m in item.get("unread") or []) if dt]
+    return min(span) if span else received_dt(item)
 
 
 def is_relay(provider, item):
@@ -111,7 +136,7 @@ def veto(provider, item):
         return "self-email"
     if item.get("_sender") != "person":
         return "sender not judged a person"
-    if provider.from_bot(item):
+    if item.get("fromBot"):
         return "bot or app sender"
     local = (item.get("fromAddress") or "").split("@")[0]
     if local and _NO_REPLY_RX.search(local) and not is_relay(provider, item):
@@ -198,7 +223,7 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
         corr = p.correspondent(it)
         if corr and corr in (active_correspondents or ()):
             continue
-        start = p.wait_started(it)
+        start = wait_started(it)
         if start:
             convs.setdefault(key, []).append((it, start, corr))
 
@@ -257,7 +282,7 @@ def daily_sweep(review, now=None, dry_run=False):
     verdicts = _read_json(os.path.join(review.runtime_dir, VERDICTS_FILE), {})
     waiting = []
     for name, p in review.providers.items():
-        if type(p).conversation_id is ProviderBase.conversation_id:
+        if name not in CONVERSATIONS:
             continue  # out of the sweep's scope; skip its listing entirely
         seen = load_seen(review.runtime_dir, name)
         try:
@@ -401,7 +426,7 @@ class Review:
         info = p.thread_state(current)
         if info is None:
             return None, "could not read the thread", None
-        clock = _parse(entry.get("clockStart")) or p.wait_started(current)
+        clock = _parse(entry.get("clockStart")) or wait_started(current)
         reason = thread_verdict(info, clock, load_ack_ledger(self.runtime_dir).get(entry["key"]),
                                 relay=is_relay(p, current))
         if reason:
@@ -441,7 +466,7 @@ def cmd_prepare(review):
             row.update(status="dropped", reason=reason)
         else:
             p = review.providers[entry["source"]]
-            text = p.message_text(current)
+            text = p.triage_text(current)
             link = info.get("link") or entry.get("link") or ""
             if entry["sendPath"] == "by-hand":
                 m = _LINKEDIN_THREAD_RX.search(text or "")

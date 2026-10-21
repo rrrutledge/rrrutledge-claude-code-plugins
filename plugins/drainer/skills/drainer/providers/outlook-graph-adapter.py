@@ -86,9 +86,6 @@ class Provider(ProviderBase):
         show = run_node([self.mailjs, f"--show={item['id']}"])
         return show.stdout if show.returncode == 0 else ""
 
-    def conversation_id(self, item):
-        return item.get("conversationId") or None
-
     def thread_state(self, item):
         """The conversation's messages across every folder (Russell's sent replies and any staged draft
         included), plus whether the item carries a List-Unsubscribe header."""
@@ -111,9 +108,6 @@ class Provider(ProviderBase):
                 return None
         return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
                 "listUnsubscribe": unsub, "link": item.get("webLink") or item.get("url") or ""}
-
-    def message_text(self, item):
-        return self._fetch_body({"id": item.get("id") or item.get("messageId")})
 
     def send_reply(self, item, body_file):
         """Stage a reply-all draft in the thread, then send exactly that draft."""

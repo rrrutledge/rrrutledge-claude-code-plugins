@@ -142,9 +142,6 @@ class Provider(ProviderBase):
             kept.append(line)
         return "\n".join(kept).strip()[:limit]
 
-    def conversation_id(self, item):
-        return item.get("threadId") or None
-
     def thread_state(self, item):
         """The thread's messages (Russell's sent replies and any staged draft included, over REST, so
         call it per item, never per listing), plus whether the item carries a List-Unsubscribe header

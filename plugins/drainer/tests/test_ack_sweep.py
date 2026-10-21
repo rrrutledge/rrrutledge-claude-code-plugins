@@ -55,17 +55,14 @@ check("an end before the start is zero", ack_sweep.business_hours_between(FRI_9,
 
 
 # --- a fake source -----------------------------------------------------------------------------------------
+ack_sweep.CONVERSATIONS["demo"] = lambda it: it.get("conv")
+
+
 class Demo(ProviderBase):
     name = "demo"
 
     def __init__(self):
         self.thread_calls, self.threads, self.sent, self.cleared, self.listing = [], {}, [], [], []
-
-    def conversation_id(self, item):
-        return item.get("conv")
-
-    def from_bot(self, item):
-        return bool(item.get("bot"))
 
     def correspondent(self, item):
         return item.get("corr")
@@ -77,7 +74,7 @@ class Demo(ProviderBase):
         return self.threads.get(item["conv"], {"messages": [], "hasDraft": False, "listUnsubscribe": False,
                                                "link": f"https://x/{item['conv']}"})
 
-    def message_text(self, item):
+    def triage_text(self, item):
         return f"text of {item['_id']}"
 
     def send_reply(self, item, body_file):
@@ -120,7 +117,7 @@ check("a no-reply address is vetoed even when triage says person",
       ack_sweep.veto(demo, item("a", "c1", OLD, fromAddress="no-reply@shop.example")), "no-reply sender")
 check("a donotreply relay with a person behind it is not vetoed",
       ack_sweep.veto(demo, item("a", "c1", OLD, fromAddress="donotreply@jpay.com", corr="relay|securus|sam rivera")), None)
-check("a bot sender is vetoed", ack_sweep.veto(demo, item("a", "c1", OLD, bot=True)), "bot or app sender")
+check("a bot sender is vetoed", ack_sweep.veto(demo, item("a", "c1", OLD, fromBot=True)), "bot or app sender")
 check("a self-email is vetoed", ack_sweep.veto(demo, item("a", "c1", OLD, fromMe=True, toMe=True)), "self-email")
 check("a screen-flagged item is vetoed",
       ack_sweep.veto(demo, item("a", "c1", OLD, _screen={"flagged": True})), "flagged by the security screen")

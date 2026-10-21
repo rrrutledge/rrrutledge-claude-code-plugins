@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, run_node, find_skill_script, received_dt  # noqa: E402
+from provider_base import ProviderBase, ProviderError, run_node, find_skill_script  # noqa: E402
 
 # slack.js's exact wording (see its `call()`) when ITS OWN internal auto-refresh already ran and still
 # didn't clear invalid_auth - the strong signal that a human is needed now, not just another cycle's
@@ -104,31 +104,14 @@ class Provider(ProviderBase):
         return res.returncode == 0
 
     # ---- conversations: read a thread, reply into it ----
-    # A thread item's conversation is its thread. A DM, group DM, or channel item's conversation is the
-    # whole channel: its item id moves to the newest message every time another one arrives. A reply to a
-    # DM posts top-level; a reply to a channel item goes in the thread of the person's message, so it
-    # never lands in the channel's main timeline.
+    # A reply to a DM posts top-level; a reply to a channel item goes in the thread of the person's
+    # message, so it never lands in the channel's main timeline.
 
     @staticmethod
     def _reply_thread(item):
         if item.get("threadTs"):
             return item["threadTs"]
         return item.get("ts") if item.get("channelType") == "channel" else ""
-
-    def conversation_id(self, item):
-        channel = item.get("channel")
-        if not channel:
-            return None
-        return f"{channel}|{item['threadTs']}" if item.get("threadTs") else channel
-
-    def wait_started(self, item):
-        """A span's wait starts at its oldest unread message."""
-        span = [received_dt({"received": m.get("received")}) for m in item.get("unread") or []]
-        span = [dt for dt in span if dt]
-        return min(span) if span else received_dt(item)
-
-    def from_bot(self, item):
-        return bool(item.get("fromBot"))
 
     def thread_state(self, item):
         """The conversation's recent history (Russell's own posts marked), any staged draft on it, and the
@@ -173,13 +156,6 @@ class Provider(ProviderBase):
             except ValueError:
                 pass
         return {"messages": msgs, "hasDraft": has_draft, "listUnsubscribe": False, "link": link}
-
-    def message_text(self, item):
-        span = item.get("unread") or []
-        if len(span) > 1:
-            return "\n\n".join(f"{m.get('from') or '?'} ({(m.get('received') or '')[:16].replace('T', ' ')}):\n"
-                               f"{m.get('text', '')}" for m in span)
-        return (span[0].get("text") if span else None) or item.get("preview") or ""
 
     def send_reply(self, item, body_file):
         """Post the reviewed body into the conversation with --keep-unread, which reads the read cursor
