@@ -89,7 +89,7 @@ def _local(dt):
 
 def conversation_key(provider, item):
     """`<source>|<conversation>`, or None for a source or item the sweep doesn't cover."""
-    conv = provider.ack_conversation(item) if provider else None
+    conv = provider.conversation_id(item) if provider else None
     return f"{provider.name}|{conv}" if conv else None
 
 
@@ -111,7 +111,7 @@ def veto(provider, item):
         return "self-email"
     if item.get("_sender") != "person":
         return "sender not judged a person"
-    if provider.ack_is_bot(item):
+    if provider.from_bot(item):
         return "bot or app sender"
     local = (item.get("fromAddress") or "").split("@")[0]
     if local and _NO_REPLY_RX.search(local) and not is_relay(provider, item):
@@ -198,7 +198,7 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
         corr = p.correspondent(it)
         if corr and corr in (active_correspondents or ()):
             continue
-        start = p.ack_clock_start(it)
+        start = p.wait_started(it)
         if start:
             convs.setdefault(key, []).append((it, start, corr))
 
@@ -210,7 +210,7 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
             continue
         target, _, corr = max(members, key=lambda m: m[0].get("received") or "")
         p = providers_by_name[target["_source"]]
-        info = p.ack_thread(target)
+        info = p.thread_state(target)
         if info is None:
             continue  # couldn't read the thread: no ack on a guess
         relay = is_relay(p, target)
@@ -257,7 +257,7 @@ def daily_sweep(review, now=None, dry_run=False):
     verdicts = _read_json(os.path.join(review.runtime_dir, VERDICTS_FILE), {})
     waiting = []
     for name, p in review.providers.items():
-        if type(p).ack_conversation is ProviderBase.ack_conversation:
+        if type(p).conversation_id is ProviderBase.conversation_id:
             continue  # out of the sweep's scope; skip its listing entirely
         seen = load_seen(review.runtime_dir, name)
         try:
@@ -398,10 +398,10 @@ class Review:
         corr = p.correspondent(current)
         if corr and corr in opened:
             return None, "a worker is already open for this person", None
-        info = p.ack_thread(current)
+        info = p.thread_state(current)
         if info is None:
             return None, "could not read the thread", None
-        clock = _parse(entry.get("clockStart")) or p.ack_clock_start(current)
+        clock = _parse(entry.get("clockStart")) or p.wait_started(current)
         reason = thread_verdict(info, clock, load_ack_ledger(self.runtime_dir).get(entry["key"]),
                                 relay=is_relay(p, current))
         if reason:
@@ -441,7 +441,7 @@ def cmd_prepare(review):
             row.update(status="dropped", reason=reason)
         else:
             p = review.providers[entry["source"]]
-            text = p.ack_message_text(current)
+            text = p.message_text(current)
             link = info.get("link") or entry.get("link") or ""
             if entry["sendPath"] == "by-hand":
                 m = _LINKEDIN_THREAD_RX.search(text or "")
@@ -474,7 +474,7 @@ def cmd_send(review, key, body_file, handles=False, scored_body=None):
         print(json.dumps({"key": key, "sent": False, "reason": reason}))
         sys.exit(3)
     p = review.providers[entry["source"]]
-    ref = p.ack_send(current, body_file)
+    ref = p.send_reply(current, body_file)
     at = _iso(_now())
     with open(body_file, encoding="utf-8") as f:
         text = f.read().strip()

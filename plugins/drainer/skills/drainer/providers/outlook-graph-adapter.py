@@ -86,10 +86,10 @@ class Provider(ProviderBase):
         show = run_node([self.mailjs, f"--show={item['id']}"])
         return show.stdout if show.returncode == 0 else ""
 
-    def ack_conversation(self, item):
+    def conversation_id(self, item):
         return item.get("conversationId") or None
 
-    def ack_thread(self, item):
+    def thread_state(self, item):
         """The conversation's messages across every folder (Russell's sent replies and any staged draft
         included), plus whether the item carries a List-Unsubscribe header."""
         res = run_node([self.mailjs, f"--thread={item.get('conversationId')}", "--json"])
@@ -112,19 +112,19 @@ class Provider(ProviderBase):
         return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
                 "listUnsubscribe": unsub, "link": item.get("webLink") or item.get("url") or ""}
 
-    def ack_message_text(self, item):
+    def message_text(self, item):
         return self._fetch_body({"id": item.get("id") or item.get("messageId")})
 
-    def ack_send(self, item, body_file):
+    def send_reply(self, item, body_file):
         """Stage a reply-all draft in the thread, then send exactly that draft."""
         message_id = item.get("id") or item.get("messageId")
         staged = run_node([self.mailjs, "--reply", f"--message-id={message_id}", f"--body-file={body_file}"])
         m = re.search(r"^draft-id: (\S+)", staged.stdout or "", re.MULTILINE)
         if staged.returncode != 0 or not m:
-            raise ProviderError(f"outlook-graph ack draft failed: {(staged.stderr or staged.stdout).strip()[:300]}")
+            raise ProviderError(f"outlook-graph reply draft failed: {(staged.stderr or staged.stdout).strip()[:300]}")
         sent = run_node([self.mailjs, "--send-draft", f"--message-id={m.group(1)}"])
         if sent.returncode != 0:
-            raise ProviderError(f"outlook-graph ack send failed: {sent.stderr.strip()[:300]}")
+            raise ProviderError(f"outlook-graph reply send failed: {sent.stderr.strip()[:300]}")
         return {"draftId": m.group(1), "conversationId": item.get("conversationId")}
 
     def clear(self, item):

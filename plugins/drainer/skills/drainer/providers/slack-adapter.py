@@ -103,40 +103,40 @@ class Provider(ProviderBase):
         res = run_node(cmd)
         return res.returncode == 0
 
-    # ---- the 48-hour acknowledgement sweep ----
+    # ---- conversations: read a thread, reply into it ----
     # A thread item's conversation is its thread. A DM, group DM, or channel item's conversation is the
-    # whole channel: its item id moves to the newest message every time another one arrives. An ack to a
-    # DM posts top-level; an ack to a channel item replies in the thread of the person's message, so it
+    # whole channel: its item id moves to the newest message every time another one arrives. A reply to a
+    # DM posts top-level; a reply to a channel item goes in the thread of the person's message, so it
     # never lands in the channel's main timeline.
 
     @staticmethod
-    def _ack_post_thread(item):
+    def _reply_thread(item):
         if item.get("threadTs"):
             return item["threadTs"]
         return item.get("ts") if item.get("channelType") == "channel" else ""
 
-    def ack_conversation(self, item):
+    def conversation_id(self, item):
         channel = item.get("channel")
         if not channel:
             return None
         return f"{channel}|{item['threadTs']}" if item.get("threadTs") else channel
 
-    def ack_clock_start(self, item):
+    def wait_started(self, item):
         """A span's wait starts at its oldest unread message."""
         span = [received_dt({"received": m.get("received")}) for m in item.get("unread") or []]
         span = [dt for dt in span if dt]
         return min(span) if span else received_dt(item)
 
-    def ack_is_bot(self, item):
+    def from_bot(self, item):
         return bool(item.get("fromBot"))
 
-    def ack_thread(self, item):
+    def thread_state(self, item):
         """The conversation's recent history (Russell's own posts marked), any staged draft on it, and the
         item's permalink."""
         channel = item.get("channel")
         hist_cmd = [self.slackjs, "--history", f"--channel={channel}", "--limit=100", "--json"]
         drafts_cmd = [self.slackjs, "--list-drafts", f"--channel={channel}", "--json"]
-        post_thread = self._ack_post_thread(item)
+        post_thread = self._reply_thread(item)
         if item.get("threadTs"):
             hist_cmd.append(f"--thread-ts={item['threadTs']}")
         if post_thread:
@@ -174,29 +174,28 @@ class Provider(ProviderBase):
                 pass
         return {"messages": msgs, "hasDraft": has_draft, "listUnsubscribe": False, "link": link}
 
-    def ack_message_text(self, item):
+    def message_text(self, item):
         span = item.get("unread") or []
         if len(span) > 1:
             return "\n\n".join(f"{m.get('from') or '?'} ({(m.get('received') or '')[:16].replace('T', ' ')}):\n"
                                f"{m.get('text', '')}" for m in span)
         return (span[0].get("text") if span else None) or item.get("preview") or ""
 
-    def ack_send(self, item, body_file):
+    def send_reply(self, item, body_file):
         """Post the reviewed body into the conversation with --keep-unread, which reads the read cursor
-        before and after the post and puts it back if the post moved it, so the person's message stays
-        unread and dispatches in its normal turn."""
+        before and after the post and puts it back if the post moved it, so the item stays unread."""
         cmd = [self.slackjs, "--send", "--keep-unread", "--json", f"--channel={item['channel']}",
                f"--body-file={body_file}"]
-        post_thread = self._ack_post_thread(item)
+        post_thread = self._reply_thread(item)
         if post_thread:
             cmd.append(f"--thread-ts={post_thread}")
         res = run_node(cmd)
         if res.returncode != 0:
-            raise ProviderError(f"slack ack send failed: {res.stderr.strip()[:300]}")
+            raise ProviderError(f"slack reply send failed: {res.stderr.strip()[:300]}")
         try:
             sent = json.loads(res.stdout or "{}")
         except ValueError:
-            raise ProviderError(f"slack ack sent but its output didn't parse: {res.stdout[:300]}")
+            raise ProviderError(f"slack reply sent but its output didn't parse: {res.stdout[:300]}")
         return {"channel": sent.get("channel"), "ts": sent.get("ts"), "permalink": sent.get("permalink"),
                 "cursor": sent.get("cursor")}
 

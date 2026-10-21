@@ -739,41 +739,40 @@ class ProviderBase:
         cycle). The default returns None: this provider dispatches its own items."""
         return None
 
-    # ---- the 48-hour acknowledgement sweep (scripts/ack_sweep.py) ----
-    # A source the sweep covers (the email providers and Slack) overrides these; the defaults leave a
-    # source out of scope, so the sweep never proposes an ack for it. Each takes either an enumerated item
-    # or a captured item record, which carry the same conversation fields.
+    # ---- conversations: read a thread, reply into it ----
+    # A conversational source (the email providers and Slack) overrides these; the defaults mark a source
+    # with no conversation to read or reply into. Each takes either an enumerated item or a captured item
+    # record, which carry the same conversation fields.
 
-    def ack_conversation(self, item):
+    def conversation_id(self, item):
         """The conversation this item belongs to (an email thread, a Slack DM/channel or thread), as a
-        string unique within this source, or None when the source is out of the sweep's scope. The ack
-        ledger keys on it, because a follow-up in the same conversation is a new item id."""
+        string unique within this source, or None when the source has no conversations. A follow-up in
+        the same conversation is a new item id with the same conversation id."""
         return None
 
-    def ack_clock_start(self, item):
-        """When this item's wait began: its arrival time by default."""
+    def wait_started(self, item):
+        """When the sender started waiting on this item: its arrival time by default."""
         return received_dt(item)
 
-    def ack_is_bot(self, item):
-        """True when the source itself marks the sender as a bot or an app (a deterministic veto)."""
+    def from_bot(self, item):
+        """True when the source itself marks the sender as a bot or an app."""
         return False
 
-    def ack_thread(self, item):
+    def thread_state(self, item):
         """The live state of the item's conversation, read fresh from the source:
         `{"messages": [{"fromMe": bool, "sent": iso, "isDraft": bool}], "hasDraft": bool,
-        "listUnsubscribe": bool, "link": str}`. None when the read failed, so the sweep skips the item
-        this cycle rather than acking on a guess."""
+        "listUnsubscribe": bool, "link": str}`. None when the read failed."""
         return None
 
-    def ack_message_text(self, item):
-        """What the person said, for the review to read beside the drafted ack."""
+    def message_text(self, item):
+        """What the sender said, as plain text."""
         return self.triage_text(item)
 
-    def ack_send(self, item, body_file):
-        """Send the reviewed ack in `body_file` into the item's conversation through the source's own
+    def send_reply(self, item, body_file):
+        """Send the reviewed body in `body_file` into the item's conversation through the source's own
         human-in-the-loop send path, leaving the item itself untouched (still in the inbox, still unread).
         Returns a reference to the sent message; raises ProviderError on any failure."""
-        raise ProviderError(f"{self.name} has no acknowledgement send path", kind="config")
+        raise ProviderError(f"{self.name} has no reply send path", kind="config")
 
     def still_in_inbox_ids(self):
         """Optional: the set of this provider's message ids currently sitting in the live Inbox. This

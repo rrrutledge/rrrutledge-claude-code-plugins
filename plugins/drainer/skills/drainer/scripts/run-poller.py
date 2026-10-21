@@ -311,7 +311,8 @@ TRIAGE_INSTRUCTIONS = (
     "no judgment left; when in doubt use needs-you. For EVERY item also give sender = person | automated, "
     "per the rubric's real-person test: person when a human wrote these words to Russell, including a "
     "person's message delivered through a notification relay (judge by who wrote the words, not the "
-    "envelope); automated for a bot, an app, a system notification, or bulk/marketing mail. Return ONLY a "
+    "envelope); automated for a bot, an app, a system notification, or bulk/marketing mail; when unclear, "
+    "person. Return ONLY a "
     "JSON array, one object per input "
     'id: [{"id": "...", "bucket": "needs-you|auto-handle|fyi|junk", '
     '"kind": "reply|work|work-then-reply|phishing|null", '

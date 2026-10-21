@@ -61,26 +61,26 @@ class Demo(ProviderBase):
     def __init__(self):
         self.thread_calls, self.threads, self.sent, self.cleared, self.listing = [], {}, [], [], []
 
-    def ack_conversation(self, item):
+    def conversation_id(self, item):
         return item.get("conv")
 
-    def ack_is_bot(self, item):
+    def from_bot(self, item):
         return bool(item.get("bot"))
 
     def correspondent(self, item):
         return item.get("corr")
 
-    def ack_thread(self, item):
+    def thread_state(self, item):
         self.thread_calls.append(item["_id"])
         if item["conv"] == "unreadable":
             return None
         return self.threads.get(item["conv"], {"messages": [], "hasDraft": False, "listUnsubscribe": False,
                                                "link": f"https://x/{item['conv']}"})
 
-    def ack_message_text(self, item):
+    def message_text(self, item):
         return f"text of {item['_id']}"
 
-    def ack_send(self, item, body_file):
+    def send_reply(self, item, body_file):
         self.sent.append((item["_id"], body_file))
         return {"draftId": f"d-{item['_id']}"}
 

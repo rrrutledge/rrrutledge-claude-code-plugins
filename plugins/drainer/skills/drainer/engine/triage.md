@@ -132,7 +132,7 @@ It feeds the once-a-day 48-hour acknowledgement sweep, which acks only a real pe
   Judge by who wrote the words: a person's message delivered through a notification relay is `person`, the same way the relay rule above triages it.
 - **automated** - a bot, an app, a system notification, a status or transactional notice, or bulk and marketing mail, however personal its tone.
 
-When it's genuinely unclear, use `automated`: a missed ack only delays a reply that still comes.
+When it's genuinely unclear, use `person`: an extra ack to a machine is cheaper than a real person left waiting with no word.
 
 ## Tie-breakers
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.
