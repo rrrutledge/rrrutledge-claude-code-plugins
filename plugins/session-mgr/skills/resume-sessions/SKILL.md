@@ -199,7 +199,7 @@ instructions: |-
 
   ## Step 4 - Confirm
 
-  Tell the user how many sessions were resumed and list the sessions by title (never their short ids), noting how
+  Tell the user how many sessions were resumed and list the sessions by title, noting how
   many came from the registry (confirmed) versus the fallback scan (heuristic). If any sessions were
   skipped because they were already open, mention that count too. The resumed sessions appear in
   the Claude app and at claude.ai/code; `claude agents` lists them here, `claude attach <short id>`

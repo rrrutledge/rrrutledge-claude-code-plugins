@@ -169,7 +169,7 @@ def main(argv=None):
         print(f"Registered worker {slug} ({short_id}); its result goes to {worker_job.result_path(folder, slug)}.")
     print(f"Launched in the background: the '{name or 'resumed session'}' session. "
           f"Reach it from the Claude app or claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here "
-          f"(id {short_id}, {receipt}; name the session to Russell by its title, not the id).")
+          f"(id {short_id}, {receipt}; name the session to Russell by its title).")
     return 0
 
 
