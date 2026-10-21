@@ -53,9 +53,7 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
         "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
-        "REGISTRY_PATH", "WAKES_PATH", "wait_for_bridge", "stop_session")}
-    bg_session.BRIDGE_WARNINGS.clear()
-    bg_session.wait_for_bridge = lambda *a, **k: True
+        "REGISTRY_PATH", "WAKES_PATH", "stop_session")}
     bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
     bg_session.ACCOUNTS_PATH = os.path.join(tmp, "accounts.json")
@@ -253,6 +251,16 @@ def test_wake_that_copies_the_job_is_replaced():
         check("continuation resumes the same guid", flag_value(full, "--resume") == GUID, full)
 
 
+def test_respawn_session_runs_claude_respawn():
+    print("test: respawn_session runs `claude respawn <short id>` on the job's account")
+    with sandbox() as s:
+        bg_session.respawn_session(SHORT, s.backup)
+        args, kw = s.calls[0]
+        check("respawn command", args == ["claude", "respawn", SHORT], args)
+        check("on the job's account", kw["env"].get("CLAUDE_CONFIG_DIR") == s.backup,
+              kw["env"].get("CLAUDE_CONFIG_DIR"))
+
+
 def test_failed_wake_returns_none():
     print("test: a wake that fails returns None and logs nothing")
     with sandbox(returncode=1) as s:
@@ -421,91 +429,7 @@ def test_spawn_session_cli():
             check("receipt written beside the prompt file", f.read() == SHORT)
 
 
-def test_wait_for_bridge_is_bounded():
-    print("test: wait_for_bridge polls until the reader is true or the timeout passes, on an injected clock")
-    now = [0.0]
-    sleeps = []
-
-    def fake_sleep(n):
-        sleeps.append(n)
-        now[0] += n
-    reads = []
-
-    def reader_true_on(k):
-        def read(short):
-            reads.append(short)
-            return len(reads) >= k
-        return read
-    real_wait = bg_session.wait_for_bridge
-    with sandbox():
-        got = real_wait(SHORT, timeout=30, interval=5, read=reader_true_on(3), clock=lambda: now[0],
-                        sleep=fake_sleep)
-        check("connects on the third read", got is True and len(reads) == 3 and sleeps == [5, 5],
-              (got, reads, sleeps))
-        now[0], reads[:], sleeps[:] = 0.0, [], []
-        got = real_wait(SHORT, timeout=30, interval=5, read=lambda s: False, clock=lambda: now[0],
-                        sleep=fake_sleep)
-        check("never connects -> False after the timeout", got is False and sum(sleeps) == 30,
-              (got, sleeps))
-
-
-def test_bridge_up_reads_job_state():
-    print("test: bridge_up is true only for a non-null bridgeSessionId in the job's state.json")
-    with sandbox() as s:
-        check("no job -> False", bg_session.bridge_up(SHORT) is False)
-        write_job(s.backup)
-        check("job without bridgeSessionId -> False", bg_session.bridge_up(SHORT) is False)
-        job = os.path.join(s.backup, "jobs", SHORT, "state.json")
-        for value, want in ((None, False), ("cse_abc", True)):
-            with open(job, "w", encoding="utf-8") as f:
-                json.dump({"sessionId": GUID, "bridgeSessionId": value}, f)
-            check(f"bridgeSessionId {value!r} -> {want}", bg_session.bridge_up(SHORT) is want)
-
-
-def test_bridge_retry_then_warn():
-    print("test: a bridge that never connects is retried through a continuation, the failed job stopped, "
-          "and a warning kept when retries run out")
-    cases = {"connects on retry": ([False, True], 2, False),
-             "never connects": ([False] * 3, 3, True)}
-    for label, (answers, launches, warned) in cases.items():
-        with sandbox() as s:
-            write_job(s.main)
-            stopped = []
-            queue = list(answers)
-            bg_session.wait_for_bridge = lambda *a, **k: queue.pop(0)
-            bg_session.stop_session = lambda short, cfg: stopped.append(short)
-            short = bg_session.spawn_bg("seed", "m", s.tmp, "n")
-            bgs = [c[0] for c in s.calls]
-            check(f"{label}: returns the short id", short == SHORT, short)
-            check(f"{label}: {launches} launches", len(bgs) == launches, bgs)
-            if launches > 1:
-                retry = bgs[1]
-                check(f"{label}: retry resumes the same guid with the reconnect seed",
-                      flag_value(retry, "--resume") == GUID and retry[-1] == bg_session.RECONNECT_SEED, retry)
-                check(f"{label}: retry keeps --remote-control", "--remote-control" in retry, retry)
-            check(f"{label}: failed job stopped before each retry", len(stopped) == launches - 1, stopped)
-            check(f"{label}: warning " + ("kept" if warned else "absent"),
-                  (SHORT in bg_session.BRIDGE_WARNINGS) == warned, bg_session.BRIDGE_WARNINGS)
-
-
-def test_bridge_check_skips_wakes_and_failed_launches():
-    print("test: no bridge wait for a wake in place or a launch that returned no id")
-    with sandbox() as s:
-        write_transcript(s.main)
-        write_job(s.main)
-        bg_session.wait_for_bridge = lambda *a, **k: (_ for _ in ()).throw(AssertionError("waited"))
-        check("wake in place returns without waiting",
-              bg_session.spawn_bg(None, None, s.tmp, None, resume=GUID) == SHORT)
-    with sandbox(returncode=1) as s:
-        bg_session.wait_for_bridge = lambda *a, **k: (_ for _ in ()).throw(AssertionError("waited"))
-        check("failed launch returns None without waiting", bg_session.spawn_bg("x", "m", s.tmp, "n") is None)
-
-
 if __name__ == "__main__":
-    test_wait_for_bridge_is_bounded()
-    test_bridge_up_reads_job_state()
-    test_bridge_retry_then_warn()
-    test_bridge_check_skips_wakes_and_failed_launches()
     test_fresh_launch_flags()
     test_notify_sound_absent_when_unset()
     test_scratch_only_turns_off_worktree_guard()
@@ -515,6 +439,7 @@ if __name__ == "__main__":
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
     test_wake_that_copies_the_job_is_replaced()
+    test_respawn_session_runs_claude_respawn()
     test_failed_wake_returns_none()
     test_accounts_discovered_not_named()
     test_short_id_parsing()

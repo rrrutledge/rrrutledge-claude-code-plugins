@@ -24,7 +24,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 from provider_base import (run_node, spawn_bg, prompt_seed, write_receipt, load_providers,  # noqa: E402
-                           ProviderError, load_seen, bg_session)  # shared subprocess + background-session launch + adapter loader + seen-state reader
+                           ProviderError, load_seen)  # shared subprocess + background-session launch + adapter loader + seen-state reader
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -261,9 +261,6 @@ def main():
     receipt = write_receipt(prompt_file, bg_id)
     print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
           f"for {runtime_dir}.")
-    warning = getattr(bg_session, "BRIDGE_WARNINGS", {}).get(bg_id)
-    if warning:
-        print(warning)
 
 
 if __name__ == "__main__":

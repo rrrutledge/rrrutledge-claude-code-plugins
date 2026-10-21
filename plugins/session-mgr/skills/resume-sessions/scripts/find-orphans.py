@@ -293,11 +293,12 @@ def _save_repairs(repairs):
 def bridgeless_orphans(jobs, active):
     """Live background sessions whose Remote Control bridge is down - the job record has no
     bridgeSessionId - so claude.ai/code and the phone can't reach them. Only a blocked or done
-    session is touched (never a working one; it is rechecked next cycle). Each is repaired in place:
-    the job is stopped and the session continued through bg_session.spawn_bg (every launch flag,
-    bridge confirmed), and counted as repaired when the new job has a bridge id. One that is still
+    session is touched (never a working one; it is rechecked next cycle). Each is repaired in place
+    with `claude respawn`: the service restarts the same job (same id and name, saved launch flags)
+    and its bridge reconnects. The next cycle finds the bridge id and clears the count; one still
     bridge-less after BRIDGE_REPAIR_ATTEMPTS cycles is stopped and returned as an orphan, which the
-    drainer then raises as a resume item. `BRIDGE_REPAIRS_PATH` keeps the per-session cycle count."""
+    drainer then raises as a resume item (resumed through the launcher). `BRIDGE_REPAIRS_PATH` keeps
+    the per-session cycle count."""
     repairs, orphans, touched = _load_repairs(), [], False
     for _, job in jobs:
         sid, short = job["sessionId"], job.get("daemonShort") or job["sessionId"].split("-", 1)[0]
@@ -309,18 +310,14 @@ def bridgeless_orphans(jobs, active):
             continue
         failed = repairs.get(sid, 0)
         owner = bg_session.find_job(short)[0] or None
-        bg_session.stop_session(short, owner)
+        touched = True
         if failed >= BRIDGE_REPAIR_ATTEMPTS:
+            bg_session.stop_session(short, owner)
             repairs.pop(sid, None)
-            touched = True
             orphans.append({"session_id": sid, "cwd": job.get("cwd"), "started_at": job.get("createdAt")})
             continue
-        new_short = bg_session.spawn_bg(None, None, job.get("cwd") or os.getcwd(), None, resume=sid)
-        if new_short and bg_session.wait_for_bridge(new_short):
-            repairs.pop(sid, None)
-        else:
-            repairs[sid] = failed + 1
-        touched = True
+        bg_session.respawn_session(short, owner)
+        repairs[sid] = failed + 1
     if touched:
         _save_repairs(repairs)
     return orphans
