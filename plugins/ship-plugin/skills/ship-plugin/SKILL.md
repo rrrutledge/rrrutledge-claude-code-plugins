@@ -5,55 +5,22 @@ description: Merge a rrrutledge-claude-code-plugins PR and roll it out to this m
 
 # ship-plugin
 
-One command takes a plugin change from open PR to running on this machine.
-Invoking this skill **is** Russell's authorization to merge the named PR: confirm which PR, then drive the whole chain without asking for step-by-step approval.
-
-Run gh commands with `--repo rrrutledge/rrrutledge-claude-code-plugins`; the marketplace is `rrrutledge-claude-code-plugins`.
-The rollout script is `scripts/ship.py` under this skill's base directory, the path shown when the skill loads.
-
-## Why every step is needed
-
-The plugin cache is **version-pinned**: a new Claude session keeps loading the cached version until the version number bumps *and* the local cache is refreshed.
-A merge on its own changes nothing on this machine, so the skill closes both gaps.
+Invoking this skill **is** Russell's authorization to merge the PR and mark it ready if it's a draft.
+`scripts/ship.py`, under this skill's base directory, runs the whole chain; its docstring lists every step.
 
 ## Steps
 
-1. **Identify the PR.**
-   Use the PR number or URL if given; otherwise resolve the open PR for the current branch (`gh pr view --json number,headRefName,files,title`).
-   State the PR title and which `plugins/<name>` it touches, so the target is unambiguous before anything merges.
+1. **Run the script.**
+   `python "<base directory>/scripts/ship.py" --pr <n>`, or with no `--pr` for the open PR on the current branch.
+   Add `--admin` only when Russell explicitly says to override branch protection.
+2. **On exit code 3, leave the worktree and rerun.**
+   The script has printed `EXIT_WORKTREE remove` or `EXIT_WORKTREE keep` (docstring steps 2 and 5 say why).
+   Call `ExitWorktree` with that action; for `remove`, also pass `discard_changes: true`, because the squash merge gives the branch's commit a new hash and the tool reports it as unmerged.
+   Then run the `then rerun:` command it printed, which resumes after the merge.
+3. **On exit code 1, handle the `ERR` line.**
+   A merge conflict is resolved by merging `origin/main` into the branch, fixing the conflicts, and pushing; then rerun.
+   Any other `ERR` goes to Russell as printed.
+4. **Relay the result.**
+   Pass on the script's `PR`, `version`, `live`, and `note` lines.
 
-2. **Make the branch mergeable.**
-   - If `main` has advanced past the PR's base, merge `origin/main` into the branch and push, so the merge itself meets no conflicts.
-   - **Ship the version the PR already carries.**
-     The `version-bump.yml` workflow patch-bumps every changed plugin in a `chore: auto-bump` commit straight to `main` once the PR merges, and leaves a plugin alone whose version the PR already moved, so shipping needs no edit to `plugin.json`.
-   - Wait for any required checks to go green (`gh pr checks <n> --watch`).
-     A plugin-content PR usually reports none, so an empty check list is expected.
-
-3. **Merge.**
-   `gh pr merge <n> --squash --delete-branch`.
-   If branch protection reports the PR isn't mergeable until checks finish, use `--auto`; the script in step 5 waits for it to land.
-   Reserve `--admin` for when Russell explicitly says to override.
-
-4. **Return to the main checkout.**
-   The script pulls `main` in the repo's main checkout, and the harness refuses a worktree-isolated session's writes there.
-   So a session isolated in a worktree it entered first calls `ExitWorktree` with `action: "remove"` and `discard_changes: true`, which returns it to the main checkout.
-   The discard is safe and needed: the squash merge gives the branch's commit a new hash, so the tool reports it as unmerged even though its content is on `main`.
-   A worktree the session did not enter is removed with `git -C <repo> worktree remove <path> --force`.
-   The remote branch was deleted at merge.
-
-5. **Roll out.**
-   From the main checkout, run `python "<base directory>/scripts/ship.py" --pr <n>`; pass `--repo <path>` when the working directory isn't a checkout of the plugins repo.
-   The script waits for the merge and rolls the result out to the cache; its docstring lists the steps.
-   Read its output and surface every line starting `ERR`.
-
-6. **Report and hand off.**
-   State what merged and the new version the script printed for each touched plugin.
-   The change goes live on a **restart of Claude Code or `/reload-plugins`** - the update lands the new cache, and a fresh session loads it.
-   If a `local` or `project` scoped plugin was updated, mention that it takes effect only in that project.
-
-## Notes
-
-- **The merge is the one shared-repo action.**
-  The auto-bump commit follows it onto `main` on its own, and the rollout in steps 4-6 is reversible machine state, so it runs without asking.
-- **This skill is the rollout trigger.**
-  A plugin PR merged outside this skill leaves the cache stale until it's refreshed: run `python "<base directory>/scripts/ship.py" --sync-only`, or `/ship-plugin` on that PR, to catch up.
+A plugin PR merged outside this skill leaves the cache stale; `python "<base directory>/scripts/ship.py" --sync-only` refreshes it.

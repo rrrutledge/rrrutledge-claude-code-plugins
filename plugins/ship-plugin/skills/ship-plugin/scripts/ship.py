@@ -1,24 +1,34 @@
 #!/usr/bin/env python
-"""Roll a merged rrrutledge-claude-code-plugins PR out to this machine's Claude Code plugin cache.
+"""Merge a rrrutledge-claude-code-plugins PR and roll it out to this machine's Claude Code plugin cache.
 
-This is the deterministic tail of the ship-plugin skill; its SKILL.md explains why each step is needed
-and when to run this.
+This is the whole ship-plugin chain; its SKILL.md covers the two calls a script can't make for itself.
+Every step checks the PR's current state first, so rerunning after any stop resumes where it left off.
 
-  1. wait until the PR is merged (covers `gh pr merge --auto`),
-  2. wait for the version-bump workflow run on the merge commit to finish,
-  3. check out main in the repo's main checkout and fast-forward it from origin,
-  4. refresh the marketplace and `claude plugin update` every installed plugin at its recorded scope,
-     then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher),
-  5. print the new version of each plugin the PR touched.
+  1. Resolve the PR (`--pr`, else the open PR for the current branch) and print its title and the
+     plugins it touches.
+  2. If the session sits in a worktree on the PR's branch, require it clean and pushed, since the
+     worktree is discarded after the merge.
+  3. Mark a draft ready, merge `main` into the branch on GitHub if it's behind, and wait for checks.
+  4. Squash-merge (falling back to `--auto` when branch protection holds it), wait for the merge, and
+     delete the remote branch.
+  5. From inside a worktree, stop with exit code 3 and an `EXIT_WORKTREE` line: the pull writes to the
+     main checkout, which a worktree-isolated session leaves to be rerun from there. The line says
+     `remove` when the worktree is on the merged branch and `keep` when it's on any other branch.
+  6. Remove any other clean worktree on the merged branch and the local branch itself.
+  7. Wait for the version-bump run on the merge commit, then fast-forward `main` in the main checkout.
+  8. Refresh the marketplace and `claude plugin update` every installed plugin at its recorded scope,
+     then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher).
+  9. Print each touched plugin's new version and how the change goes live.
 
 Usage:
-  python ship.py --pr <n> [--repo <path>]   wait, pull, sync, report
-  python ship.py --sync-only                 refresh the plugin cache, with no wait or pull
+  python ship.py [--pr <n>] [--repo <path>] [--admin]   the whole chain
+  python ship.py --sync-only                             step 8 alone
 
-The repo is resolved at runtime: `--repo` if given, else the main checkout of the git repo holding the
-current directory, provided its origin is this repo.
+`--admin` passes through to `gh pr merge` to override branch protection.
+The repo is `--repo` if given, else the main checkout of the git repo holding the current directory,
+provided its origin is this repo.
 
-Every line that needs attention starts with `ERR`.
+Exit codes: 0 shipped, 1 a line starting `ERR` needs attention, 3 `EXIT_WORKTREE` (see step 5).
 """
 import argparse
 import json
@@ -37,8 +47,15 @@ PLUGINS_HOME = HOME / '.claude' / 'plugins'
 INSTALLED = PLUGINS_HOME / 'installed_plugins.json'
 CACHE = PLUGINS_HOME / 'cache' / MARKETPLACE
 POLL_SECONDS = 10
+CHECKS_TIMEOUT = 30 * 60
 MERGE_TIMEOUT = 30 * 60
 BUMP_TIMEOUT = 10 * 60
+EXIT_WORKTREE = 3
+PR_FIELDS = 'number,title,state,isDraft,headRefName,headRefOid,baseRefName,mergeCommit,files'
+
+
+class ShipError(Exception):
+    """A stop that needs attention; its message is printed after `ERR: `."""
 
 
 def run(cmd, cwd=None):
@@ -48,6 +65,19 @@ def run(cmd, cwd=None):
 def last_line(r):
     lines = ((r.stdout or '') + (r.stderr or '')).strip().splitlines()
     return lines[-1] if lines else 'error'
+
+
+def git(*args, cwd=None):
+    """stdout of a git command, or None when it fails."""
+    r = run(['git', *args], cwd=cwd)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def gh_json(*args):
+    r = run(['gh', *args, '--repo', GH_REPO])
+    if r.returncode != 0:
+        raise ShipError(f'gh {" ".join(args[:2])}: {last_line(r)}')
+    return json.loads(r.stdout or 'null')
 
 
 def version_key(name):
@@ -67,36 +97,6 @@ def newest_cached_file(plugin, relative):
     return max(hits, key=lambda p: version_key(p.relative_to(base).parts[0])) if hits else None
 
 
-# --- repo resolution and the wait-pull steps -------------------------------------------------------
-
-def origin_is_this_repo(url):
-    url = url.strip().lower()
-    if url.endswith('.git'):
-        url = url[:-4]
-    return url.endswith('/' + GH_REPO) or url.endswith(':' + GH_REPO)
-
-
-def main_worktree(porcelain):
-    """The main checkout's path from `git worktree list --porcelain` output - always the first entry."""
-    for line in porcelain.splitlines():
-        if line.startswith('worktree '):
-            return line[len('worktree '):].strip()
-    return None
-
-
-def resolve_repo(explicit):
-    if explicit:
-        return Path(explicit)
-    r = run(['git', 'worktree', 'list', '--porcelain'])
-    path = main_worktree(r.stdout) if r.returncode == 0 else None
-    if not path:
-        return None
-    origin = run(['git', '-C', path, 'remote', 'get-url', 'origin'])
-    if origin.returncode != 0 or not origin_is_this_repo(origin.stdout):
-        return None
-    return Path(path)
-
-
 def wait_for(probe, timeout, what):
     """Poll `probe()` until it returns a non-None value or `timeout` seconds pass. Returns the value."""
     deadline = time.time() + timeout
@@ -105,21 +105,155 @@ def wait_for(probe, timeout, what):
         if value is not None:
             return value
         if time.time() >= deadline:
-            raise TimeoutError(f'timed out after {timeout // 60} min waiting for {what}')
+            raise ShipError(f'timed out after {timeout // 60} min waiting for {what}')
         time.sleep(POLL_SECONDS)
 
 
-def merged_pr(pr):
-    """Probe: the PR's {sha, files} once it's merged; raises if it was closed unmerged."""
-    r = run(['gh', 'pr', 'view', str(pr), '--repo', GH_REPO, '--json', 'state,mergeCommit,files'])
+# --- where the session is ---------------------------------------------------------------------------
+
+def origin_is_this_repo(url):
+    url = url.strip().lower()
+    if url.endswith('.git'):
+        url = url[:-4]
+    return url.endswith('/' + GH_REPO) or url.endswith(':' + GH_REPO)
+
+
+def worktree_entries(porcelain):
+    """[{'path', 'branch'}] from `git worktree list --porcelain`; the main checkout is always first."""
+    entries = []
+    for line in porcelain.splitlines():
+        if line.startswith('worktree '):
+            entries.append({'path': line[len('worktree '):].strip(), 'branch': None})
+        elif line.startswith('branch refs/heads/') and entries:
+            entries[-1]['branch'] = line[len('branch refs/heads/'):].strip()
+    return entries
+
+
+def resolve_repo(explicit):
+    if explicit:
+        return Path(explicit)
+    entries = worktree_entries(git('worktree', 'list', '--porcelain') or '')
+    if not entries:
+        return None
+    path = entries[0]['path']
+    origin = git('-C', path, 'remote', 'get-url', 'origin')
+    return Path(path) if origin and origin_is_this_repo(origin) else None
+
+
+def linked_worktree_branch():
+    """The current branch when the working directory is a linked worktree (not the main checkout), else
+    None."""
+    git_dir = git('rev-parse', '--path-format=absolute', '--git-dir')
+    common = git('rev-parse', '--path-format=absolute', '--git-common-dir')
+    if not git_dir or not common or Path(git_dir) == Path(common):
+        return None
+    return git('rev-parse', '--abbrev-ref', 'HEAD')
+
+
+def require_pushed(pr):
+    """The worktree on the PR's branch is discarded after the merge, so everything in it must already be
+    on the PR."""
+    if git('status', '--porcelain'):
+        raise ShipError('this worktree has uncommitted changes - commit and push them, then rerun')
+    if git('rev-parse', 'HEAD') != pr['headRefOid']:
+        raise ShipError("this worktree's HEAD differs from the PR's head - push (or pull) it, then rerun")
+
+
+# --- the PR ------------------------------------------------------------------------------------------
+
+def resolve_pr(number):
+    if number is None:
+        r = run(['gh', 'pr', 'view', '--json', 'number'])
+        if r.returncode != 0:
+            raise ShipError('no --pr given and no open PR for the current branch')
+        number = json.loads(r.stdout)['number']
+    return gh_json('pr', 'view', str(number), '--json', PR_FIELDS)
+
+
+def plugins_touched(files):
+    return sorted({f.split('/')[1] for f in files if f.startswith('plugins/') and f.count('/') >= 2})
+
+
+def behind_by(pr):
+    r = run(['gh', 'api', f'repos/{GH_REPO}/compare/{pr["baseRefName"]}...{pr["headRefName"]}'])
     if r.returncode != 0:
+        raise ShipError(f'comparing the branch with {pr["baseRefName"]}: {last_line(r)}')
+    return json.loads(r.stdout).get('behind_by', 0)
+
+
+def checks_settled(pr):
+    """Probe: None while any check is pending; [] when all passed or there are none; else the names of
+    failed checks."""
+    r = run(['gh', 'pr', 'checks', str(pr['number']), '--repo', GH_REPO, '--json', 'name,bucket'])
+    if 'no checks reported' in (r.stderr or '') + (r.stdout or ''):
+        return []
+    try:
+        checks = json.loads(r.stdout or '[]')
+    except ValueError:
         return None
-    data = json.loads(r.stdout)
+    if any(c.get('bucket') == 'pending' for c in checks):
+        return None
+    return [c['name'] for c in checks if c.get('bucket') in ('fail', 'cancel')]
+
+
+def make_mergeable(pr):
+    n = str(pr['number'])
+    if pr.get('isDraft'):
+        r = run(['gh', 'pr', 'ready', n, '--repo', GH_REPO])
+        if r.returncode != 0:
+            raise ShipError(f'marking ready: {last_line(r)}')
+        print('ready: marked the draft ready for review')
+    behind = behind_by(pr)
+    if behind:
+        r = run(['gh', 'pr', 'update-branch', n, '--repo', GH_REPO])
+        if r.returncode != 0:
+            raise ShipError(f'merging {pr["baseRefName"]} into the branch failed ({last_line(r)}) - '
+                            'resolve the conflicts in the branch, push, and rerun')
+        print(f'updated: merged {behind} new {pr["baseRefName"]} commit(s) into the branch')
+        time.sleep(POLL_SECONDS)
+    failed = wait_for(lambda: checks_settled(pr), CHECKS_TIMEOUT, 'checks')
+    if failed:
+        raise ShipError(f'checks failed: {", ".join(failed)}')
+    print('checks: green')
+
+
+def merge(pr, admin):
+    base = ['gh', 'pr', 'merge', str(pr['number']), '--repo', GH_REPO, '--squash']
+    r = run(base + (['--admin'] if admin else []))
+    if r.returncode == 0:
+        print('merge: squash-merged')
+        return
+    first = last_line(r)
+    r = run(base + ['--auto'])
+    if r.returncode != 0:
+        raise ShipError(f'merge refused: {first}')
+    print('merge: queued with --auto until branch protection allows it')
+
+
+def merged_pr(number):
+    """Probe: the PR once merged; raises if it was closed unmerged."""
+    data = gh_json('pr', 'view', str(number), '--json', PR_FIELDS)
     if data.get('state') == 'CLOSED':
-        raise RuntimeError(f'PR #{pr} was closed without merging')
-    if data.get('state') != 'MERGED' or not data.get('mergeCommit'):
-        return None
-    return {'sha': data['mergeCommit']['oid'], 'files': [f['path'] for f in data.get('files', [])]}
+        raise ShipError(f'PR #{number} was closed without merging')
+    return data if data.get('state') == 'MERGED' and data.get('mergeCommit') else None
+
+
+def delete_remote_branch(branch):
+    run(['gh', 'api', '-X', 'DELETE', f'repos/{GH_REPO}/git/refs/heads/{branch}'])
+
+
+def clean_up_local(repo, branch):
+    """Remove each clean worktree still on the merged branch, then the local branch. A worktree with
+    changes in it stays, and is reported."""
+    for entry in worktree_entries(git('worktree', 'list', '--porcelain', cwd=str(repo)) or '')[1:]:
+        if entry['branch'] != branch:
+            continue
+        if git('-C', entry['path'], 'status', '--porcelain'):
+            print(f'kept: worktree {entry["path"]} has uncommitted changes')
+        elif git('worktree', 'remove', entry['path'], cwd=str(repo)) is not None:
+            print(f'removed: worktree {entry["path"]}')
+    if git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}', cwd=str(repo)):
+        git('branch', '-D', branch, cwd=str(repo))
 
 
 def bump_run(sha):
@@ -134,8 +268,12 @@ def bump_run(sha):
     return runs[0].get('conclusion') or 'unknown'
 
 
-def plugins_touched(files):
-    return sorted({f.split('/')[1] for f in files if f.startswith('plugins/') and f.count('/') >= 2})
+def pull_main(repo):
+    for cmd in (['fetch', 'origin'], ['checkout', 'main'], ['pull', '--ff-only', 'origin', 'main']):
+        r = run(['git', *cmd], cwd=str(repo))
+        if r.returncode != 0:
+            raise ShipError(f'pulling main in {repo}: git {" ".join(cmd)}: {last_line(r)}')
+    print(f'pulled: main in {repo}')
 
 
 def plugin_version(repo, name):
@@ -144,16 +282,6 @@ def plugin_version(repo, name):
                           .read_text(encoding='utf-8')).get('version')
     except (OSError, ValueError):
         return None
-
-
-def pull_main(repo):
-    """Check out main in the main checkout and fast-forward it. Returns an error string or None."""
-    for cmd in (['git', 'fetch', 'origin'], ['git', 'checkout', 'main'],
-                ['git', 'pull', '--ff-only', 'origin', 'main']):
-        r = run(cmd, cwd=str(repo))
-        if r.returncode != 0:
-            return f'{" ".join(cmd)}: {last_line(r)}'
-    return None
 
 
 # --- the cache sync ---------------------------------------------------------------------------------
@@ -283,51 +411,73 @@ def sync():
     return rows
 
 
+def print_sync(rows):
+    for name, scope, status in rows:
+        print(f'{status}: {name} [{scope}]')
+    if not rows:
+        print(f'no plugins installed from {MARKETPLACE}')
+
+
 # --- entry point ------------------------------------------------------------------------------------
 
-def ship(pr, repo_arg):
+def ship(number, repo_arg, admin):
     repo = resolve_repo(repo_arg)
     if not repo:
-        print(f'ERR: run from a checkout of {GH_REPO}, or pass --repo <path>')
-        return 1
-    try:
-        merged = wait_for(lambda: merged_pr(pr), MERGE_TIMEOUT, f'PR #{pr} to merge')
-        print(f'merged: PR #{pr} as {merged["sha"][:7]}')
-        conclusion = wait_for(lambda: bump_run(merged['sha']), BUMP_TIMEOUT, 'the version-bump run')
-    except (TimeoutError, RuntimeError) as e:
-        print(f'ERR: {e}')
-        return 1
-    if conclusion == 'success':
-        print('version-bump: success')
-    else:
+        raise ShipError(f'run from a checkout of {GH_REPO}, or pass --repo <path>')
+    pr = resolve_pr(number)
+    touched = plugins_touched([f['path'] for f in pr.get('files', [])])
+    print(f'PR #{pr["number"]}: {pr["title"]}')
+    print(f'plugins: {", ".join(touched) or "none"}')
+    in_worktree = linked_worktree_branch()
+
+    if pr['state'] == 'OPEN':
+        if in_worktree == pr['headRefName']:
+            require_pushed(pr)
+        make_mergeable(pr)
+        merge(pr, admin)
+    elif pr['state'] == 'CLOSED':
+        raise ShipError(f'PR #{pr["number"]} was closed without merging')
+    pr = wait_for(lambda: merged_pr(pr['number']), MERGE_TIMEOUT, 'the merge')
+    print(f'merged: as {pr["mergeCommit"]["oid"][:7]}')
+    delete_remote_branch(pr['headRefName'])
+
+    if in_worktree:
+        action = 'remove' if in_worktree == pr['headRefName'] else 'keep'
+        print(f'EXIT_WORKTREE {action}')
+        print(f'then rerun: python "{os.path.abspath(__file__)}" --pr {pr["number"]}')
+        return EXIT_WORKTREE
+
+    clean_up_local(repo, pr['headRefName'])
+    conclusion = wait_for(lambda: bump_run(pr['mergeCommit']['oid']), BUMP_TIMEOUT, 'the version-bump run')
+    if conclusion != 'success':
         print(f'ERR: version-bump run concluded {conclusion} - the version may not have moved')
-    err = pull_main(repo)
-    if err:
-        print(f'ERR: pulling main in {repo}: {err}')
-        return 1
-    print(f'pulled: main in {repo}')
-    for name, scope, status in sync():
-        print(f'{status}: {name} [{scope}]')
-    for name in plugins_touched(merged['files']):
+    pull_main(repo)
+    rows = sync()
+    print_sync(rows)
+    for name in touched:
         print(f'version: {name} {plugin_version(repo, name) or "unknown"}')
-    return 0
+    print('live: after a restart of Claude Code or /reload-plugins')
+    for name, scope, status in rows:
+        if name in touched and scope in ('local', 'project') and status == 'ok':
+            print(f'note: {name} is {scope}-scoped, so it takes effect only in that project')
+    return 1 if conclusion != 'success' or any(s.startswith('ERR') for _, _, s in rows) else 0
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    mode = p.add_mutually_exclusive_group(required=True)
-    mode.add_argument('--pr', type=int, help='merged (or auto-merging) PR number to roll out')
-    mode.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
+    p.add_argument('--pr', type=int, help='PR number (default: the open PR for the current branch)')
     p.add_argument('--repo', help='path to a checkout of the plugins repo (default: from cwd)')
+    p.add_argument('--admin', action='store_true', help='override branch protection when merging')
+    p.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
     args = p.parse_args(argv)
     if args.sync_only:
-        rows = sync()
-        for name, scope, status in rows:
-            print(f'{status}: {name} [{scope}]')
-        if not rows:
-            print(f'no plugins installed from {MARKETPLACE}')
+        print_sync(sync())
         return 0
-    return ship(args.pr, args.repo)
+    try:
+        return ship(args.pr, args.repo, args.admin)
+    except ShipError as e:
+        print(f'ERR: {e}')
+        return 1
 
 
 if __name__ == '__main__':
