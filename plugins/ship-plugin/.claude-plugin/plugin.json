@@ -1,0 +1,9 @@
+{
+  "name": "ship-plugin",
+  "version": "1.0.0",
+  "description": "Merge a rrrutledge-claude-code-plugins PR and roll it out to this machine - waits for the auto-bump on main, pulls the main checkout, and updates every installed plugin from the marketplace at its recorded scope, with plugin-specific post-steps.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
