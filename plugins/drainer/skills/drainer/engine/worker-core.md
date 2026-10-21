@@ -85,6 +85,13 @@ The state at capture time is stale by the time you act on it: the contact may ha
 Before drafting or deciding the move, pull the full recent thread/history, not just the linked message, and check both directions - the draft's content has to come *from* that thread, not just get checked against it afterward: don't hand the contact information the user's own last message already gave them (a follow-up that opens by repeating news the contact was already told is a sign the thread got read for its shape, not for what's actually in it), and don't miss another of the user's own asks to that same contact sitting a few messages back that never got answered (§4's "one active ask per person" covers what that means for the current draft).
 If the user's most recent message on the thread is already a reply to this sender, the item is done - close it without a new draft.
 If it's a question of theirs still unanswered, the item is blocked on the other party, not ready to act.
+
+**An acknowledgement is not a reply.**
+A real person left waiting 48 business hours gets a short ack from the user (`engine/ack-review.md`), and the item keeps its place in the queue, so the ack can be the user's most recent message on the thread when you arrive.
+Before applying the rule above, run `python <drainer-skill>/scripts/ack_sweep.py lookup --repo . --item <the captured item json>`: it prints the ack ledger's entry for this conversation (`status`, the `at` send time, and the ack's `text`), or `{}`.
+A message from the user that matches a `sent` entry's text and time does not count as the user having replied; the thread still owes the real reply, so carry on with the item.
+When you draft that real reply, thread it off the newest real message as usual (which may be the ack), and skip repeating the ack's thanks.
+This section is the one statement of the rule; every provider SITUATIONAL-CHECK and the digest point here.
 Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full context for that source (for email: search sent + inbox in both directions; for Slack: `slack.js --history`, not just `--show` on the one linked message).
 **When you DO draft (a reply or a follow-up nudge), thread it off the most recent real message in the thread - even when that latest message is one the user sent.**
 A follow-up answers where the conversation actually stands, so quote and thread on the newest message, not an older inbound one; provider DRAFT-MODE notes how to target a sent message.
@@ -276,7 +283,7 @@ So before you CLEAR, confirm every ask you grouped out of the span in §2 is com
 If any remains open, do not clear: handle or track it first, or leave the item un-cleared so it comes back around.
 Clearing is the last act after the whole span is handled, never a per-message step.
 
-If the situational check finds nothing to do right now - a thread where they replied and the user already answered, or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: bump the Start date / clear without surfacing anything to Russell.
+If the situational check finds nothing to do right now - a thread where they replied and the user already answered (an acknowledgement from the ack sweep is not that answer, per §2), or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: bump the Start date / clear without surfacing anything to Russell.
 For an outreach card, "not yet time to follow up" means exactly that cadence window, and the interval is defined in the trello provider's CLEAR → Nudge cadence - read it there rather than guessing.
 A card whose Start has arrived, still unanswered, and past its cadence has crossed into "time to follow up": that is a nudge to draft, so keep it needs-you and present it normally, never a silent bump.
 Bumping such a card's Start again instead of drafting the nudge is what turns it into one that gets pushed forever without a follow-up ever going out.

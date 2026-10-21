@@ -58,7 +58,11 @@ Under `scripts/` (run with `node`):
     the channel/DM/group-DM timeline (`conversations.history`). Use this for a situational check — a
     captured item's `url`/`ts` points at one message, not the whole conversation, so pull the history
     around it to see anything posted after capture, in either direction (the contact's reply, or your
-    own follow-up). `--json` emits an array of `{ts,threadTs,replyCount,from,fromId,received,text}`.
+    own follow-up). `--json` emits an array of `{ts,threadTs,replyCount,from,fromId,isMe,received,text}`,
+    where `isMe` marks a message you posted.
+  - Read cursor: `node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]` - your `last_read`
+    ts on the conversation, plus on the thread when `--thread-ts` is given.
+    Read-only.
   - Mark read: `node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]` — `conversations.mark`
     up to `<ts>`, or `subscriptions.thread.mark` when `--thread-ts` is given (the conversation/thread's
     "gone"; reversible — re-reading re-surfaces it, never deletes).
@@ -75,6 +79,11 @@ Under `scripts/` (run with `node`):
     Same gate, same say-so - `--file` only changes how the reviewed body reaches Slack.
     Add `--broadcast` to a `--thread-ts` reply to tick "Also send to #channel" (`reply_broadcast=true`).
     It does not combine with `--file`.
+    A plain-text send marks the conversation read up to the sent message.
+    Add `--keep-unread` to leave it exactly as unread as it was: the send reads the read cursors before and
+    after the post and puts back any the post moved (the drainer's acknowledgement sends use this, so an ack
+    never marks the person's still-unhandled message read).
+    `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.

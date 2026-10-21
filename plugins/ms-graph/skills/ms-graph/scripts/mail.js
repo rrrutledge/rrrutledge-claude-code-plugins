@@ -24,9 +24,15 @@
 //                (emits a JSON object with the message's envelope-authentication headers as the
 //                 receiving system stamped them — the raw Authentication-Results value(s) and any
 //                 Received-SPF value(s), plus the From. This is the SPF/DKIM/DMARC provenance the
-//                 spoofable From: line can't give; the drainer's security screen reads it per item.)
+//                 spoofable From: line can't give; the drainer's security screen reads it per item.
+//                 Also carries any List-Unsubscribe value(s), the bulk-mail marker.)
+// Thread:        node mail.js --thread=<conversationId> [--json]
+//                (every message in the conversation across all folders, oldest first: id, from, fromMe,
+//                 sent time, isDraft. Read-only; the drainer's acknowledgement sweep reads it to see
+//                 whether Russell already wrote on the thread.)
 // Draft a reply: node mail.js --reply --message-id=<id> --body-file=reply.md [--attach=file1.pdf,file2.png]
-//                (creates a DRAFT reply-all in the thread; never sends. --body-file is Markdown —
+//                (creates a DRAFT reply-all in the thread; never sends; its last line is
+//                 `draft-id: <id>`, the full id --send-draft takes. --body-file is Markdown —
 //                 blank-line paragraphs, lists, **bold**, and links all render as HTML; raw HTML
 //                 passes through. --attach adds file attachments, same syntax as --draft-new.)
 // Draft new:     node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md \
@@ -367,6 +373,7 @@ async function auth(client) {
     fromAddress: m.from?.emailAddress?.address || '',
     authenticationResults: all('authentication-results'),
     receivedSpf: all('received-spf'),
+    listUnsubscribe: all('list-unsubscribe'),
   }, null, 2));
 }
 
@@ -414,6 +421,33 @@ async function reply(client) {
   }
   const extra = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
+  console.log(`draft-id: ${draft.id}`);
+}
+
+async function thread(client) {
+  // Every message in one conversation, across all folders (inbox, sent, archive, drafts), oldest first.
+  // The drainer's acknowledgement sweep reads this to tell whether Russell already wrote on the thread
+  // after a message arrived, and whether a draft is already staged on it.
+  const id = String(args.thread).replace(/'/g, "''");
+  const data = await client.api('/me/messages')
+    .filter(`conversationId eq '${id}'`)
+    .select('id,from,sentDateTime,receivedDateTime,isDraft')
+    .top(100)
+    .get();
+  let myAddr = '';
+  try {
+    const me = await client.api('/me').select('mail,userPrincipalName').get();
+    myAddr = (me.mail || me.userPrincipalName || '').toLowerCase();
+  } catch { /* leave myAddr empty */ }
+  const out = (data.value || []).map(m => ({
+    id: m.id,
+    from: addr(m.from),
+    fromMe: !!myAddr && (m.from?.emailAddress?.address || '').toLowerCase() === myAddr,
+    sent: m.sentDateTime || m.receivedDateTime,
+    isDraft: !!m.isDraft,
+  })).sort((a, b) => String(a.sent).localeCompare(String(b.sent)));
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  for (const m of out) console.log(`${m.sent?.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
 }
 
 // Reusable: create a draft message (never sends). Returns the created draft.
@@ -579,6 +613,7 @@ if (require.main === module) {
     if (args.search) return search(client);
     if (args.show) return show(client);
     if (args.auth) return auth(client);
+    if (args.thread) return thread(client);
     if (args.reply) return reply(client);
     if (args['draft-new']) return draftNew(client);
     if (args['send-self']) return sendSelf(client);
@@ -592,6 +627,6 @@ if (require.main === module) {
     if (args['create-rule']) return createRule(client);
     if (args['append-rule']) return appendRule(client);
     if (args['delete-rule']) return deleteRule(client);
-    throw new Error('Specify --list-unread, --list-inbox, --list-junk, --list-drafts, --search, --show, --auth, --reply, --draft-new, --send-self, --send-draft, --delete, --not-junk, --report-phish, --unsubscribe, --get-attachments, --list-rules, --create-rule, --append-rule, or --delete-rule');
+    throw new Error('Specify --list-unread, --list-inbox, --list-junk, --list-drafts, --search, --show, --auth, --thread, --reply, --draft-new, --send-self, --send-draft, --delete, --not-junk, --report-phish, --unsubscribe, --get-attachments, --list-rules, --create-rule, --append-rule, or --delete-rule');
   })().catch(e => { console.error('Error:', e.message); process.exit(1); });
 }

@@ -103,6 +103,78 @@ class Provider(ProviderBase):
         res = run_node(cmd)
         return res.returncode == 0
 
+    # ---- conversations: read a thread, reply into it ----
+    # A reply to a DM posts top-level; a reply to a channel item goes in the thread of the person's
+    # message, so it never lands in the channel's main timeline.
+
+    @staticmethod
+    def _reply_thread(item):
+        if item.get("threadTs"):
+            return item["threadTs"]
+        return item.get("ts") if item.get("channelType") == "channel" else ""
+
+    def thread_state(self, item):
+        """The conversation's recent history (Russell's own posts marked), any staged draft on it, and the
+        item's permalink."""
+        channel = item.get("channel")
+        hist_cmd = [self.slackjs, "--history", f"--channel={channel}", "--limit=100", "--json"]
+        drafts_cmd = [self.slackjs, "--list-drafts", f"--channel={channel}", "--json"]
+        post_thread = self._reply_thread(item)
+        if item.get("threadTs"):
+            hist_cmd.append(f"--thread-ts={item['threadTs']}")
+        if post_thread:
+            drafts_cmd.append(f"--thread-ts={post_thread}")
+        hist_cmds = [hist_cmd]
+        if post_thread and not item.get("threadTs"):
+            # A channel item: Russell may have answered in the channel or in the thread under the message.
+            hist_cmds.append(hist_cmd + [f"--thread-ts={post_thread}"])
+        history = []
+        for cmd in hist_cmds:
+            hist = run_node(cmd)
+            if hist.returncode != 0:
+                return None
+            try:
+                history.extend(json.loads(hist.stdout or "[]"))
+            except ValueError:
+                return None
+        drafts = run_node(drafts_cmd)
+        if drafts.returncode != 0:
+            return None
+        try:
+            has_draft = bool(json.loads(drafts.stdout or "[]"))
+        except ValueError:
+            return None
+        msgs = [{"fromMe": bool(m.get("isMe")), "sent": m.get("received"), "isDraft": False} for m in history]
+        link = ""
+        show_cmd = [self.slackjs, "--show", f"--channel={channel}", f"--ts={item.get('ts')}", "--json"]
+        if item.get("threadTs"):
+            show_cmd.append(f"--thread-ts={item['threadTs']}")
+        show = run_node(show_cmd)
+        if show.returncode == 0:
+            try:
+                link = json.loads(show.stdout or "{}").get("permalink") or ""
+            except ValueError:
+                pass
+        return {"messages": msgs, "hasDraft": has_draft, "listUnsubscribe": False, "link": link}
+
+    def send_reply(self, item, body_file):
+        """Post the reviewed body into the conversation with --keep-unread, which reads the read cursor
+        before and after the post and puts it back if the post moved it, so the item stays unread."""
+        cmd = [self.slackjs, "--send", "--keep-unread", "--json", f"--channel={item['channel']}",
+               f"--body-file={body_file}"]
+        post_thread = self._reply_thread(item)
+        if post_thread:
+            cmd.append(f"--thread-ts={post_thread}")
+        res = run_node(cmd)
+        if res.returncode != 0:
+            raise ProviderError(f"slack reply send failed: {res.stderr.strip()[:300]}")
+        try:
+            sent = json.loads(res.stdout or "{}")
+        except ValueError:
+            raise ProviderError(f"slack reply sent but its output didn't parse: {res.stdout[:300]}")
+        return {"channel": sent.get("channel"), "ts": sent.get("ts"), "permalink": sent.get("permalink"),
+                "cursor": sent.get("cursor")}
+
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
         # to a filesystem-safe id and keep it stable across cycles so seen-state dedups on it.

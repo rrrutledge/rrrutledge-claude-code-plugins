@@ -7,6 +7,7 @@ dynamically and drives it through the `ProviderBase` interface — it contains n
 """
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -85,6 +86,41 @@ class Provider(ProviderBase):
         show = run_node([self.mailjs, f"--show={item['id']}"])
         return show.stdout if show.returncode == 0 else ""
 
+    def thread_state(self, item):
+        """The conversation's messages across every folder (Russell's sent replies and any staged draft
+        included), plus whether the item carries a List-Unsubscribe header."""
+        res = run_node([self.mailjs, f"--thread={item.get('conversationId')}", "--json"])
+        if res.returncode != 0:
+            return None
+        try:
+            msgs = json.loads(res.stdout or "[]")
+        except ValueError:
+            return None
+        unsub = False
+        message_id = item.get("id") or item.get("messageId")
+        if message_id:
+            auth = run_node([self.mailjs, f"--auth={message_id}"])
+            if auth.returncode != 0:
+                return None
+            try:
+                unsub = bool(json.loads(auth.stdout or "{}").get("listUnsubscribe"))
+            except ValueError:
+                return None
+        return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
+                "listUnsubscribe": unsub, "link": item.get("webLink") or item.get("url") or ""}
+
+    def send_reply(self, item, body_file):
+        """Stage a reply-all draft in the thread, then send exactly that draft."""
+        message_id = item.get("id") or item.get("messageId")
+        staged = run_node([self.mailjs, "--reply", f"--message-id={message_id}", f"--body-file={body_file}"])
+        m = re.search(r"^draft-id: (\S+)", staged.stdout or "", re.MULTILINE)
+        if staged.returncode != 0 or not m:
+            raise ProviderError(f"outlook-graph reply draft failed: {(staged.stderr or staged.stdout).strip()[:300]}")
+        sent = run_node([self.mailjs, "--send-draft", f"--message-id={m.group(1)}"])
+        if sent.returncode != 0:
+            raise ProviderError(f"outlook-graph reply send failed: {sent.stderr.strip()[:300]}")
+        return {"draftId": m.group(1), "conversationId": item.get("conversationId")}
+
     def clear(self, item):
         """Archive an fyi/junk message at triage time (the provider CLEAR: `mail.js --delete` moves it to
         Archive, reversible and still searchable). Returns True on success, False on failure - see
@@ -115,6 +151,7 @@ class Provider(ProviderBase):
             "triageReason": item.get("_triageReason"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": item.get("webLink"), "messageId": item["id"],
+            "conversationId": item.get("conversationId"),
             "correspondent": item.get("_correspondent"), "emailFile": email_file,
             "ts": datetime.now(timezone.utc).isoformat(),
         }
