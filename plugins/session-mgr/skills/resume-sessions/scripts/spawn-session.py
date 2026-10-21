@@ -167,8 +167,9 @@ def main(argv=None):
     if slug:
         worker_job.register_worker(folder, slug, short_id)
         print(f"Registered worker {slug} ({short_id}); its result goes to {worker_job.result_path(folder, slug)}.")
-    print(f"Launched in the background: {name or 'resumed session'} - session {short_id} ({receipt}). "
-          f"Reach it from claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here.")
+    print(f"Launched in the background: the '{name or 'resumed session'}' session. "
+          f"Reach it from the Claude app or claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here "
+          f"(id {short_id}, {receipt}; name the session to Russell by its title).")
     return 0
 
 
