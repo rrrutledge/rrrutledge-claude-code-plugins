@@ -626,7 +626,7 @@ class ProviderBase:
         The default reads it straight off `enumerate(limit)` - the same envelope-only candidate listing
         the poller starts a cycle from, which captures no bodies, so this adds no body-fetch cost. Each
         listed item whose `stable_id` is NOT in `exclude_ids` counts as pending; `exclude_ids` is the set
-        of this provider's ids already parked in the digest queue (fyi/junk/auto-handle/help-needed items
+        of this provider's ids already parked in the digest queue (fyi/junk/auto-handle items
         intentionally awaiting the digest), so those never inflate the needs-you barometer. `oldest_received`
         is the earliest real arrival time among the pending items (via `received_dt`, which skips items with
         no timestamp), rendered ISO-8601 UTC; it is None when no pending item carries one. `capped` is True
