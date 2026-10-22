@@ -17,7 +17,8 @@ Every step checks the PR's current state first, so rerunning after any stop resu
   6. Remove any other clean worktree on the merged branch and the local branch itself.
   7. Wait for the version-bump run on the merge commit, then fast-forward `main` in the main checkout.
   8. Refresh the marketplace and `claude plugin update` every installed plugin at its recorded scope,
-     then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher).
+     then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher) and
+     install Node dependencies in the local clone, where the drainer hands workers their skill paths.
   9. Print each touched plugin's new version and how the change goes live.
 
 Usage:
@@ -351,6 +352,22 @@ def ensure_node_deps(name):
     return 'ok' if all(s == 'ok' for s in statuses) else '; '.join(statuses)
 
 
+def ensure_checkout_node_deps(repo):
+    """Install Node dependencies in the local clone, for the plugins that resolve them by Node's upward
+    node_modules walk (a package.json with no setup.js beside it). The drainer hands workers the clone's
+    skill paths instead of the blocked cache, and those scripts need node_modules beside their
+    package.json. A plugin with a setup.js keeps its dependencies in a per-user store that resolves from
+    anywhere. Returns (plugin, 'checkout-deps', status) rows."""
+    rows = []
+    plugins = Path(repo) / 'plugins'
+    for pkg_dir in pkg_dirs_with_deps(plugins):
+        if (pkg_dir / 'setup.js').exists():
+            continue
+        ok, tail = npm_install(pkg_dir)
+        rows.append((pkg_dir.relative_to(plugins).parts[0], 'checkout-deps', 'ok' if ok else f'ERR (npm install: {tail})'))
+    return rows
+
+
 def browser_chauffeur_reshim():
     """browser-chauffeur's scripts resolve helpers through a shim that hardcodes a version path, so re-run
     the newest cached setup.js to re-point it at the new version."""
@@ -452,7 +469,7 @@ def ship(number, repo_arg, admin):
     if conclusion != 'success':
         print(f'ERR: version-bump run concluded {conclusion} - the version may not have moved')
     pull_main(repo)
-    rows = sync()
+    rows = sync() + ensure_checkout_node_deps(repo)
     print_sync(rows)
     for name in touched:
         print(f'version: {name} {plugin_version(repo, name) or "unknown"}')
@@ -471,7 +488,8 @@ def main(argv=None):
     p.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
     args = p.parse_args(argv)
     if args.sync_only:
-        print_sync(sync())
+        repo = resolve_repo(args.repo)
+        print_sync(sync() + (ensure_checkout_node_deps(repo) if repo else []))
         return 0
     try:
         return ship(args.pr, args.repo, args.admin)

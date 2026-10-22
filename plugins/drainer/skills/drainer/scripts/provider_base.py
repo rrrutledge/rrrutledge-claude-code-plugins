@@ -259,12 +259,67 @@ def resolve_skill_dirs(start_file):
         return {}
     names = {n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n))}
     names.update(os.path.basename(p) for p in glob.glob(os.path.join(root, "cache", "*", "*")))
+    checkout = find_plugins_checkout()
     dirs = {}
     for name in sorted(names):
         skill_md = find_skill_script(start_file, name, "SKILL.md")
         if skill_md:
             dirs[name] = os.path.dirname(skill_md)
+            local = _checkout_skill_dir(checkout, name)
+            if local and _under_cache(dirs[name], root):
+                dirs[name] = local
     return dirs
+
+
+def _under_cache(path, plugins_root):
+    return os.path.abspath(path).startswith(os.path.join(os.path.abspath(plugins_root), "cache") + os.sep)
+
+
+def find_plugins_checkout():
+    """The `plugins/` directory of this machine's local clone of the plugin marketplace repo, or None.
+
+    A worker reads and edits plugin source in the clone because the installed cache is blocked to the
+    Bash hook and overwritten on every update. The clone is found by looking for a git repo two levels
+    under `~/Dev` (`~/Dev/<org>/<repo>`) whose origin names the marketplace repo, so no location is
+    hardcoded.
+    """
+    for repo in sorted(glob.glob(os.path.join(os.path.expanduser("~"), "Dev", "*", "*"))):
+        cfg = os.path.join(repo, ".git", "config")
+        plugins = os.path.join(repo, "plugins")
+        if not (os.path.isfile(cfg) and os.path.isdir(plugins)):
+            continue
+        try:
+            with open(cfg, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        if re.search(r"url\s*=.*[/:]rrrutledge/rrrutledge-claude-code-plugins(\.git)?\s*$", text, re.M):
+            return plugins
+    return None
+
+
+def _checkout_skill_dir(checkout, name):
+    """`<checkout>/<name>/skills/<name>` when it exists and its Node dependencies resolve there, else None.
+
+    A plugin whose package.json sits at the plugin root resolves its dependencies by Node's upward
+    node_modules walk, so the clone needs `node_modules` beside that package.json (ship-plugin's sync
+    installs it); a skill that installs into a per-user store resolves them from anywhere.
+    """
+    if not checkout:
+        return None
+    skill_dir = os.path.join(checkout, name, "skills", name)
+    if not os.path.isfile(os.path.join(skill_dir, "SKILL.md")):
+        return None
+    pkg = os.path.join(checkout, name, "package.json")
+    if os.path.isfile(pkg):
+        try:
+            with open(pkg, encoding="utf-8") as f:
+                has_deps = bool(json.load(f).get("dependencies"))
+        except (OSError, ValueError):
+            has_deps = False
+        if has_deps and not os.path.isdir(os.path.join(checkout, name, "node_modules")):
+            return None
+    return skill_dir
 
 
 # ------------------------------------------------------------------------------ session launching
