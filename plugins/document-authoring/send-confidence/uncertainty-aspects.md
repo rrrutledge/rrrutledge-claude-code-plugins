@@ -74,6 +74,7 @@ The signals of stakes:
 ## Familiarity
 
 How established Russell's voice already is with this recipient.
-Code measures it from his prior-sent count to the recipient, on a log curve that saturates at 20.
+Code measures it from the number of other sessions that staged a draft to the same recipient, on a log curve that saturates at 20.
+A stage that names no recipient (a reply carries its thread, not its addressee) leaves familiarity unmeasured.
 
 A high count assumes an established register, so it misses warmth risk: one especially warm or appreciative reply to a familiar recipient can still need a heavier rewrite than the count predicts.

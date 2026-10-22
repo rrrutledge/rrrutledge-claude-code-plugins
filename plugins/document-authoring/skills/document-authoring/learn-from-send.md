@@ -1,6 +1,6 @@
 # Learn from the send
 
-Every draft Russell sends or discards answers one question: what did the difference between the draft and what he actually sent teach us?
+Every staged draft Russell sends or discards answers one question: what did the difference between the draft and what he actually sent teach us?
 It has two possible answers, both read off the same diff:
 
 - **The rules had a gap.** They were silent on a choice the draft had to make, or could be read more than one way, and his edit shows how he resolves it; the lesson fills that gap in `message-rules`, `authoring-rules`, or this skill's drafting loop.
@@ -11,19 +11,20 @@ The drafting session's part is short and mechanical; the learning session, spawn
 
 ## The drafting session's part
 
-After Russell sends a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
+This part covers a draft the stage gate scored - every draft that went through a stage command, per `send-confidence.md`.
+After Russell sends such a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
 
-1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Jira via the API, Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
+1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
    Never reconstruct that text from anything the session already believes, remembers, or infers, even when a different version seems like the obviously correct one: a plausible guess recorded as the sent text fabricates the diff this whole procedure runs on.
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --sent-file <file>
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --discarded --reason "<text>" [--moot]
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
-   If the session no longer has the draft id handy, `--body-file <staged body>` finds it by rehashing that file against the log.
+   `--body-file` finds the draft's scored row by rehashing the staged body against the log.
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
@@ -31,12 +32,12 @@ After Russell sends a draft (he edited it in the app and clicked Send, or said "
 
 **Record `--discarded` when Russell discards a staged draft outright**, with `--reason` naming why in one phrase - except in the replacement case below.
 
-**Skip `--discarded` when you're about to score a replacement for the same thread and recipient - the facts moved, not the draft.**
-Just build the context and mint the replacement: scoring it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
+**Skip `--discarded` when you're about to stage a replacement for the same thread and recipient - the facts moved, not the draft.**
+Review, mint, and stage the replacement: the gate's score of it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
 Calling `--discarded` on the stale draft first flags it as over-confident by the same mechanical rule that catches a genuinely bad draft, spawning a learning session for a lesson that doesn't exist.
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
-There's no replacement to score, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise flag a well-scored draft as over-confident just because it never got the chance to go out.
+There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise flag a well-scored draft as over-confident just because it never got the chance to go out.
 
 ## When a learning session spawns
 

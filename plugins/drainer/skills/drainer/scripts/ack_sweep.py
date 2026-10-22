@@ -331,6 +331,34 @@ def has_receipt(body_file):
     return bool(gate) and _python(gate, "check", body_file).returncode == 0
 
 
+# The send-confidence channel each source's ack is scored under.
+_SCORE_CHANNELS = {"outlook-graph": "outlook-personal", "gmail": "gmail", "slack": "slack"}
+
+ACK_ASK = ("Acknowledge this message in Russell's voice: one short positive line that responds to the "
+           "substance of what the person said, then one light line saying Russell will take a look. "
+           "No date, no commitment, and no answer to their asks.")
+
+
+def stage_for_scoring(runtime_dir, entry, current, body_file, inputs, verb):
+    """Record and score the ack draft Russell reviewed, the way the stage gate does for a staged
+    draft. The send runs inside this script, out of the gate's sight, so the script hands the gate
+    its stage itself - with the ack's ask and the message it answers as the scoring context.
+    Fail-open."""
+    gate = _doc_authoring_script(os.path.join("hooks", "verify_gate.py"))
+    if not gate:
+        return "send-confidence: not installed; stage not recorded."
+    meta = {"channel": _SCORE_CHANNELS.get(entry.get("source"), "other"),
+            "recipient": current.get("fromAddress") or current.get("channel"),
+            "thread_ref": current.get("_id"), "stage_kind": "draft",
+            "script": "ack_sweep.py", "verb": verb,
+            "session_kind": "background" if os.environ.get("CLAUDE_JOB_DIR") else "live",
+            "ask": ACK_ASK, "inputs": inputs}
+    meta_path = os.path.join(runtime_dir, "ack-stage-meta.tmp.json")
+    _write_json(meta_path, meta)
+    res = _python(gate, "stage", body_file, "--meta", meta_path)
+    return (res.stdout + res.stderr).strip()
+
+
 def record_outcome(*args):
     """Record a send-confidence outcome; returns the command's output (it may print a learning-session
     spawn command for the session to run). Fail-open, like every send-confidence step."""
@@ -440,16 +468,6 @@ class Review:
         raise SystemExit(f"no due entry {key} (re-run prepare)")
 
 
-# The send-confidence `--channel` each source's ack is scored under.
-_SCORE_CHANNELS = {"outlook-graph": "outlook-personal", "gmail": "gmail", "slack": "slack"}
-
-
-def score_channel(entry, linkedin=False):
-    if entry.get("sendPath") == "by-hand":
-        return "linkedin" if linkedin else "other"
-    return _SCORE_CHANNELS.get(entry.get("source"), "other")
-
-
 def _waited(hours):
     return f"{hours / 24:.1f} business days"
 
@@ -473,7 +491,7 @@ def cmd_prepare(review):
                 link = m.group(0) if m else link
             linkedin = "linkedin.com" in (current.get("fromAddress") or "").lower()
             row.update(status="ready", link=link, hasDraft=bool(info.get("hasDraft")), message=text,
-                       linkedin=linkedin, channel=score_channel(entry, linkedin))
+                       linkedin=linkedin)
         out.append(row)
     print(json.dumps(out, indent=2))
 
@@ -514,7 +532,10 @@ def cmd_send(review, key, body_file, handles=False, scored_body=None):
         ledger_set(review.runtime_dir, key, {"status": "sent", "itemId": current["_id"], "at": at,
                                              "ref": ref, "text": text})
         _cover_entries(review, entry, at)
-    result["sendConfidence"] = record_outcome("--body-file", scored_body or body_file, "--sent-file", body_file)
+    staged = stage_for_scoring(review.runtime_dir, entry, current, scored_body or body_file,
+                               p.triage_text(current), "send")
+    result["sendConfidence"] = "\n".join(filter(None, [
+        staged, record_outcome("--body-file", scored_body or body_file, "--sent-file", body_file)]))
     print(json.dumps(result, indent=2))
 
 
@@ -523,8 +544,10 @@ def cmd_skip(review, key, body_file=None):
     ledger_set(review.runtime_dir, key, {"status": "skipped", "itemId": entry["itemId"], "at": _iso(_now())})
     result = {"key": key, "skipped": True}
     if body_file:
-        result["sendConfidence"] = record_outcome("--body-file", body_file, "--discarded", "--moot",
-                                                  "--reason", "ack skipped in review (about the recipient, not the text)")
+        staged = stage_for_scoring(review.runtime_dir, entry, {"_id": entry["itemId"]}, body_file, None, "skip")
+        result["sendConfidence"] = "\n".join(filter(None, [staged, record_outcome(
+            "--body-file", body_file, "--discarded", "--moot",
+            "--reason", "ack skipped in review (about the recipient, not the text)")]))
     print(json.dumps(result, indent=2))
 
 
