@@ -538,11 +538,32 @@ def load_seen(runtime_dir, source):
     so exactly the not-yet-started items are the ones absent from this map. `collect_new` in the poller
     reads it to drop already-seen items from a cycle; the digest reads it to count the not-yet-started
     backlog the same way, off persisted state rather than any live-process scan. Stdlib-only, so both the
-    headless poller and the digest launcher share it without a Node round-trip."""
+    headless poller and the digest launcher share it without a Node round-trip.
+
+    A key starting with `_` is reserved (the acknowledgement ledger lives under `_acks`, see
+    `load_ack_ledger`) and is never a source, so asking for one reads as nothing seen."""
+    if not source or source.startswith("_"):
+        return {}
     try:
         with open(os.path.join(runtime_dir, "seen.json"), encoding="utf-8") as f:
             return (json.load(f) or {}).get(source, {})
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+ACK_LEDGER_KEY = "_acks"
+
+
+def load_ack_ledger(runtime_dir):
+    """The acknowledgement ledger, `{conversation key: entry}`, read from the reserved `_acks` key in
+    seen.json. Writes go through `seen-state.js ack-set`, the one writer of seen.json. A missing or corrupt
+    file reads as `{}`; the live-thread check still blocks a second ack then, because the first ack is a
+    message from Russell sent after the item arrived."""
+    try:
+        with open(os.path.join(runtime_dir, "seen.json"), encoding="utf-8") as f:
+            ledger = (json.load(f) or {}).get(ACK_LEDGER_KEY, {})
+        return ledger if isinstance(ledger, dict) else {}
+    except (OSError, ValueError, AttributeError):
         return {}
 
 
@@ -717,6 +738,22 @@ class ProviderBase:
         True on success, False on failure (the poller leaves a failed item unrecorded and retries next
         cycle). The default returns None: this provider dispatches its own items."""
         return None
+
+    # ---- conversations: read a thread, reply into it ----
+    # A conversational source (the email providers and Slack) overrides these; the defaults mark a source
+    # with no conversation to read or reply into.
+
+    def thread_state(self, item):
+        """The live state of the item's conversation, read fresh from the source:
+        `{"messages": [{"fromMe": bool, "sent": iso, "isDraft": bool}], "hasDraft": bool,
+        "listUnsubscribe": bool, "link": str}`. None when the read failed."""
+        return None
+
+    def send_reply(self, item, body_file):
+        """Send the reviewed body in `body_file` into the item's conversation through the source's own
+        human-in-the-loop send path, leaving the item itself untouched (still in the inbox, still unread).
+        Returns a reference to the sent message; raises ProviderError on any failure."""
+        raise ProviderError(f"{self.name} has no reply send path", kind="config")
 
     def still_in_inbox_ids(self):
         """Optional: the set of this provider's message ids currently sitting in the live Inbox. This

@@ -98,7 +98,11 @@ Under `scripts/` (run with `node`):
     angle brackets, e.g. `<abc@mail.gmail.com>`)
   - Envelope-auth headers: `node gmail.js --auth=<message-id>` (JSON with the message's
     `Authentication-Results` and `Received-SPF` values — the SPF/DKIM/DMARC provenance Gmail stamped on
-    arrival, which the `From:` line can't give; read by the drainer's security screen)
+    arrival, which the `From:` line can't give; read by the drainer's security screen; also any
+    `List-Unsubscribe` values, the bulk-mail marker)
+  - Thread: `node gmail.js --thread=<threadId> [--json]` (every message in one thread, oldest first, with
+    `fromMe`, the send time, and `isDraft`; `<threadId>` is the hex `threadId` `--list-inbox-imap` returns.
+    Read by the drainer's acknowledgement sweep)
   - List drafts: `node gmail.js --list-drafts [--top=30]`
   - Draft reply (never sends): `node gmail.js --reply --message-id=<id> --body-file=reply.md`
     (stages a threaded draft with In-Reply-To/References set + the quoted original).
@@ -128,6 +132,8 @@ Under `scripts/` (run with `node`):
     `--inline` combines with `--attach` for regular files.
     **Default to `--inline` for illustrative screenshots** - a screenshot that illustrates or proves a point the body text is making belongs next to that point.
   - **`--to=<addr>` (with `--reply`)** — override the computed recipient, for threading a reply off a no-reply relay whose real correspondent is in `Reply-To` (e.g. a Google "shared a file" notification) so the reply reaches the person, not the no-reply box.
+  - **`--exclude=<addr[,addr]>` (with `--reply`)** - remove those addresses from the computed To and CC, so a reply-all leaves those people off.
+    Matching is case-insensitive and uses the bare address, ignoring any display name.
   - Draft new (never sends): `node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z]`
     (`--reply` and `--draft-new` each print a `draft-id:` line — the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
