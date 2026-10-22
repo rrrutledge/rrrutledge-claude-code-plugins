@@ -13,7 +13,7 @@ These rules are the Draft-step rubric of the three-step flow in `writing-flow` (
 Each rule states the behavior, then a **Check** giving the surface forms that usually indicate it was broken, and where those forms are innocent.
 The forms are evidence, not the rule: one appearing is not automatically a violation, and a violation that uses none of them is still a violation.
 
-Rules that constrain *how you get there* rather than what lands (draft then revisit, verify line by line, run the overlap search before adding a bullet) are writer-only and live in `document-authoring`.
+Rules that constrain *how you get there* rather than what lands (draft then revisit, verify line by line, run the overlap search before adding a bullet, re-read the whole file after a removal) are writer-only and live in `writing-flow` and `document-authoring`.
 A reviewer holding only the output cannot evaluate them.
 
 Medium-specific rules - register, warmth, asks, links, personas, emoji, sign-offs, nudges - live in `message-rules`, the companion rubric.
@@ -31,8 +31,15 @@ Where the text lands decides which applies, not how useful the history feels.
 Rationale is in scope; provenance is not.
 "Deletes the entry so a later run doesn't re-litigate it" is a why with no history in it.
 This bars a second kind of provenance too: the artifact narrating **its own earlier drafts**. The reader has never seen a prior version, so "an earlier draft summed these to $4,250" or "this section previously said" or "now corrected to" describes something invisible to them. A correction lands as the current fact, stated once, as if the text had always read that way - not as a diff against a draft only the author saw.
+A change that removes something gets the same treatment: write each touched file as if the removed thing had never existed, describing what this artifact does now in the words that behavior alone would call for.
+Removal residue usually carries no history words, so the test is existence rather than parsing: would this sentence, step, label, or reason be written if the removed thing had never been here?
+A mention elsewhere that still assumes the removed thing is the drift case of "One concept, one canonical place".
 **Check:** does the sentence parse without knowing a previous state - of the system, or of this document? Watch for "used to", "no longer", "instead of the old", "we tried X", "this replaces", "formerly", "previously", "by hand", "what X did before", and the self-referential forms "an earlier/previous draft", "an earlier version", "this used to say", "now corrected/fixed/updated", "we've since revised".
-Innocent: "used to" as passive voice, where *used* means employed - "the key used to sign the token", "a script used to validate input". The test is whether the sentence needs a previous state *of the system or of the document itself* to parse.
+For a change that removes something, also apply the removal test above to every sentence in each touched file, changed or not.
+Watch for a step or clause whose only job is to say an action doesn't happen here ("leaves X alone", "doesn't touch X", "skips X"); a statement that another process now owns, handles, or decides what this one dropped; a label, heading, or qualifier that only distinguished the removed sibling (an "X facet" or "X step" name with no sibling beside it, "both", "either", "each of the two", "one PR carrying" where one kind remains); and a reason that defends this artifact against the removed alternative.
+Innocent: "used to" as passive voice, where *used* means employed - "the key used to sign the token", "a script used to validate input".
+The test is whether the sentence needs a previous state *of the system or of the document itself* to parse.
+A boundary that a reader would otherwise get wrong today, stated as this artifact's own scope, is current behavior rather than residue.
 
 **State guidance positively.**
 Describe the desired behavior directly; a correction names only what to do, not the rejected alternative alongside it.
@@ -133,7 +140,7 @@ Each is resolved by a stated boundary rather than by judgment in the moment, so 
 
 | Tension | Boundary that resolves it |
 |---|---|
-| "Explain the why" vs present-tense-only | Rationale (why it behaves this way now) is in scope. Provenance (what it replaced) is not. |
+| "Explain the why" vs present-tense-only | Rationale (why it behaves this way now) is in scope. Provenance (what it replaced) is not, and removal residue offered as rationale counts as provenance, per the present-tense rule's removal test. |
 | "Be useful" vs no helper tail | Usefulness goes in the substance. A closing offer adds nothing the reader doesn't have. |
 | "Be precise about the failure" vs state guidance positively | Sharpen the positive instruction first, and again on each recurrence; a standalone negative guardrail is a rare last resort for a mistake that survives repeated sharpening. |
 | Concrete examples aid clarity vs make the general statement carry it | Strengthen the general statement until it needs no example; a wanted example is the signal it's still too weak. The Check lines' surface-form evidence is a reviewer's detection cue, not an example illustrating guidance. |

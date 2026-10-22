@@ -1,10 +1,7 @@
 # Learn from the send
 
 Every staged draft Russell sends or discards answers one question: what did the difference between the draft and what he actually sent teach us?
-A single send can teach one thing: the rules had a gap.
-They were silent on a choice the draft had to make, or could be read more than one way, and his edit shows how he resolves it; the lesson fills that gap in `message-rules`, `authoring-rules`, or this skill's drafting loop.
-
-The outcome records whether the estimate was over- or under-confident and leaves the score's numbers alone.
+A send teaches something when the rules had a gap: they were silent on a choice the draft had to make, or could be read more than one way, and his edit shows how he resolves it; the lesson fills that gap in `message-rules`, `authoring-rules`, or this skill's drafting loop.
 
 The drafting session's part is short and mechanical; the learning session, spawned right away while the send is fresh, does the thinking.
 
@@ -24,7 +21,7 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 
    (run the newest cached copy if several exist).
    `--body-file` finds the draft's scored row by rehashing the staged body against the log.
-   The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), and decides whether the send has anything to teach.
+   The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), logs whether the estimate was over- or under-confident, and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
    No printed command means nothing to learn from this send.
@@ -32,18 +29,17 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 **Record `--discarded` when Russell discards a staged draft outright**, with `--reason` naming why in one phrase - except in the replacement case below.
 
 **Skip `--discarded` when you're about to stage a replacement for the same thread and recipient - the facts moved, not the draft.**
-Review, mint, and stage the replacement: the gate's score of it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
-Calling `--discarded` on the stale draft first logs it as an over-confident estimate by the same mechanical rule that catches a genuinely bad draft, a miss that doesn't exist.
+Review, mint, and stage the replacement: the gate's score of it auto-supersedes the still-pending original, which correctly records no miss for the original.
+Calling `--discarded` on the stale draft first logs an over-confident miss that never happened, by the same mechanical rule that catches a genuinely bad draft.
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
 There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise log a well-scored draft as over-confident just because it never got the chance to go out.
 
 ## When a learning session spawns
 
-The outcome command decides this in code: a session spawns when Russell made a voice edit (`tone-voice` or `structural-rewrite`), whether or not the estimate saw it coming.
-A low score on a draft that then got a voice edit means the estimate correctly sensed a gap in the rules, and that gap stays open for the next draft until it's filled.
+The outcome command decides this in code: a session spawns when Russell made a voice edit (`tone-voice` or `structural-rewrite`).
+Nothing spawns for a draft sent as-is, a factual correction, or a discard.
 
-Nothing spawns for a draft sent as-is, a factual correction, or a discard, moot or not.
 ## The learning session
 
 The session runs rooted in the plugins repo clone, from the brief the outcome command wrote: why it spawned, each labelled change, what the estimate thought (every factor, the judge's rationales and claims, and the reviewer's rule coverage with the spots it found the rules didn't settle), the draft and the sent text in full, and the diff.
@@ -67,7 +63,6 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    **State the rule crisply as a single imperative bullet: a bold lead phrase plus one sentence, no before/after quote.**
    Add a short concrete pointer only when the rule is genuinely unclear without one, built from invented names and details; default to none.
    The goal is fewer, broader, crisper rules.
-   A filled gap raises rule coverage on the next similar draft by itself.
 4. **Open one PR carrying the rule changes.**
    Branch from `main` in the clone, never editing the installed snapshot under `~/.claude/plugins/`, which is thrown away on the next plugin update.
    Before opening the PR, run the `writing-review` loop on every changed prose file - a fresh reviewer that reads the *whole* file, confirming the new text isn't already covered elsewhere and obeys the rules in step 3 - then mint each file's receipt, since `gh pr create` is gated on it.
