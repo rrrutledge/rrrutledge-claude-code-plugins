@@ -89,6 +89,8 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    A session whose diagnosis finds nothing to learn still reports that finding, and a session that finds the process itself at fault fixes the process instead.
 6. **Report in one line** what was learned and changed, with the PR link.
    The terminal session is where Russell sees the draft and sent text side by side, so quote them here when the change needs them to make sense.
+   Always include the brief's Redline section in this reply: one merged text with removed words struck through and added words in bold italics, so Russell reads what changed in one pass and judges the PR against it.
+   The redline carries real correspondence, so it stays in the reply and out of the PR.
 
 ## Convergence
 
