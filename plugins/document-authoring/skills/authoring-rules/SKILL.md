@@ -79,6 +79,13 @@ The same drift runs the other way too: when the canonical spot itself changes, a
 **Check:** the same concept asserted independently in two sections, or across two closely-linked docs, with neither deferring to the other - including two lists or definitions of the same thing whose wording already differs; a sentence naming a source as authoritative for X ("see Y for Z", "Y is the source of truth for Z") followed by an inline restatement of that same X; or any mention elsewhere in the document - a cross-reference, a heading pointer, a pronoun, a worked example, a restated detail - that assumed a fact, section, or heading a change just altered or removed.
 Innocent: a brief cross-reference or a one-line recap that points to the canonical explanation rather than re-deriving it; naming in a few words what a source covers; quoting one specific value the reader needs right now while pointing to the source for the rest.
 
+**Keep a collaborator's exact wording.**
+When incorporating text a named collaborator wrote, use their words as written - it acknowledges the effort they put in.
+Change it only for a concrete, nameable reason (it doesn't fit the space, it is factually wrong, it duplicates other copy, it reads as genuinely awkward), and name that reason when presenting the change.
+A gap they left goes back to them as a flagged gap, so the copy stays theirs.
+**Check:** a collaborator's sentence merged into a document with different wording and no stated reason; copy invented to fill a place their text left empty.
+Innocent: trimming or reformatting that leaves their words intact; a change whose reason is named alongside it.
+
 **No em dash.**
 Use a spaced hyphen ` - ` instead.
 **Check:** the character U+2014 anywhere in authored text.
