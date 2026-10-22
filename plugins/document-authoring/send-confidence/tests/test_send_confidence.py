@@ -442,6 +442,14 @@ def test_cli_outcome_moot_flag_suppresses_dispatch(tmp_path):
 
 # --- the brief ---
 
+def test_redline_strikes_removed_words_and_bolds_added_ones():
+    merged = sc.redline("Hi Pooi - great news.\n\nEnjoy!", "Hi Pooi - great news.\n\nWe are on it now.\n\nEnjoy!")
+    assert "***We are on it now.***" in merged
+    assert "~~" not in merged
+    swapped = sc.redline("sounds good", "sounds great")
+    assert swapped == "sounds ~~good~~***great***"
+
+
 def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     factors = {**NEUTRAL, "rule_coverage": 90}
     draft_id = _seed_scored("d-brief", "Hi there.\nThe draft line.", factors, score=60,

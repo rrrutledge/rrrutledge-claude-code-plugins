@@ -668,6 +668,23 @@ def _reason_lines(outcome_event, scored):
     return lines
 
 
+def redline(draft_text, sent_text):
+    """One merged text: words Russell removed struck through, words he added in bold italics."""
+    a, b = re.findall(r"\S+|\s+", draft_text), re.findall(r"\S+|\s+", sent_text)
+    out = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            out.append("".join(a[i1:i2]))
+            continue
+        for tokens, mark in ((a[i1:i2], "~~"), (b[j1:j2], "***")):
+            text = "".join(tokens)
+            if text.strip():
+                lead = text[:len(text) - len(text.lstrip())]
+                tail = text[len(text.rstrip()):]
+                out.append(f"{lead}{mark}{text.strip()}{mark}{tail}")
+    return "".join(out)
+
+
 def _write_brief(draft_id, scored, outcome_event, sent_text):
     os.makedirs(briefs_dir(), exist_ok=True)
     draft_text = _read_draft_text(draft_id)
@@ -728,6 +745,8 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
     lines += ["", "## Draft (as staged)", "```text", draft_text.rstrip(), "```"]
     if sent_text is not None:
         lines += ["", "## Sent", "```text", sent_text.rstrip(), "```"]
+    if sent_text is not None:
+        lines += ["", "## Redline (removed ~~struck~~, added ***bold italic***)", redline(draft_text, sent_text).rstrip()]
     lines += [
         "",
         "## Diff (draft -> sent)",
