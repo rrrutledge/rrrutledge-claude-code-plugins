@@ -66,7 +66,9 @@
 //                 most recent message in the thread, even one the user sent; a reply to the user's own
 //                 message keeps its recipients instead of self. --to overrides the computed recipient (for
 //                 threading off a no-reply relay whose real correspondent is in Reply-To, e.g. a Google
-//                 "shared a file" notification). --body-file is Markdown — bold, links, lists all work;
+//                 "shared a file" notification). --exclude=<addr[,addr]> removes those addresses from the
+//                 computed To and CC (case-insensitive, matched on the bare address), to reply-all
+//                 without someone. --body-file is Markdown — bold, links, lists all work;
 //                 HTML tags pass through. Appends GMAIL_SIGNATURE_HTML, if set, after the body and before
 //                 the quoted original. --no-quote suppresses the auto-appended quoted original (threading
 //                 still set), for an interleaved reply where --body-file supplies its own quote with
@@ -110,6 +112,7 @@ const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
+const { excludeAddresses } = require('./recipients');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -651,8 +654,11 @@ async function reply() {
   const ccList = args.cc
     ? [...new Set([args.cc, ...allRecips])].join(', ')
     : allRecips.join(', ');
+  // --exclude drops the listed addresses from the computed To and CC (a reply-all that leaves someone off).
+  const toFinal = args.exclude ? excludeAddresses(to, args.exclude) : to;
+  const ccFinal = args.exclude ? excludeAddresses(ccList, args.exclude) : ccList;
   const raw = await buildMime({
-    to, cc: ccList || undefined, subject, html: withSignature(html + inlineImagesHtml()) + (args['no-quote'] ? '' : quoted),
+    to: toFinal, cc: ccFinal || undefined, subject, html: withSignature(html + inlineImagesHtml()) + (args['no-quote'] ? '' : quoted),
     inReplyTo: orig.messageId, references: refs,
   });
   const draftId = await createDraft(raw, threadId);
