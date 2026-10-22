@@ -128,6 +128,8 @@ Under `scripts/` (run with `node`):
     `--inline` combines with `--attach` for regular files.
     **Default to `--inline` for illustrative screenshots** - a screenshot that illustrates or proves a point the body text is making belongs next to that point.
   - **`--to=<addr>` (with `--reply`)** — override the computed recipient, for threading a reply off a no-reply relay whose real correspondent is in `Reply-To` (e.g. a Google "shared a file" notification) so the reply reaches the person, not the no-reply box.
+  - **`--exclude=<addr[,addr]>` (with `--reply`)** — remove those addresses from the computed To and CC, to reply-all without someone (e.g. taking one person off the thread).
+    Matching is case-insensitive on the bare address, so `Dan <dan@x.com>` is dropped by `--exclude=dan@x.com`.
   - Draft new (never sends): `node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z]`
     (`--reply` and `--draft-new` each print a `draft-id:` line — the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
