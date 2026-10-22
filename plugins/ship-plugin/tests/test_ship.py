@@ -313,6 +313,20 @@ class Sync(Base):
             (root / rel / 'package.json').write_text(json.dumps({'dependencies': deps}))
         self.assertEqual(ship.pkg_dirs_with_deps(root), [root / 'a'])
 
+    def test_checkout_deps_install_only_where_no_setup_js(self):
+        repo = self.tmp / 'clone'
+        for name, setup in (('rooted', False), ('stored', True)):
+            plugin = repo / 'plugins' / name
+            plugin.mkdir(parents=True)
+            (plugin / 'package.json').write_text(json.dumps({'dependencies': {'x': '1'}}))
+            if setup:
+                (plugin / 'setup.js').write_text('')
+        installed = []
+        ship.npm_install = lambda cwd: (installed.append(cwd) or (True, ''))
+        rows = ship.ensure_checkout_node_deps(repo)
+        self.assertEqual(rows, [('rooted', 'checkout-deps', 'ok')])
+        self.assertEqual(installed, [repo / 'plugins' / 'rooted'])
+
 
 if __name__ == '__main__':
     unittest.main()
