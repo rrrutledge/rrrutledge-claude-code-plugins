@@ -319,9 +319,11 @@ def test_factual_correction_implicates_fact_support(tmp_path):
                                 discarded=False, edit_nature=["factual-correction"], reason=None)
     assert result["disposition"] == "edited"
     assert result["implicated"] == ["fact_support"]
-    assert result["learn_reasons"] == ["over"]
-    assert result["dispatch"] is not None
-    assert os.path.isfile(_brief(draft_id))
+    assert result["direction"] == "over"
+    assert result["miscalibrated"] is True
+    assert result["learn_reasons"] == []
+    assert result["dispatch"] is None
+    assert not os.path.isfile(_brief(draft_id))
 
 
 def test_factual_correction_implicates_content_latitude(tmp_path):
@@ -338,7 +340,8 @@ def test_tone_voice_implicates_rule_coverage_and_familiarity(tmp_path):
     result = sc.record_outcome(draft_id, "Rewritten in a rather different voice entirely.",
                                 discarded=False, edit_nature=["tone-voice"], reason=None)
     assert set(result["implicated"]) == {"rule_coverage", "familiarity"}
-    assert result["learn_reasons"] == ["over", "voice"]
+    assert result["direction"] == "over"
+    assert result["learn_reasons"] == ["voice"]
 
 
 def test_structural_rewrite_implicates_rule_coverage(tmp_path):
@@ -378,7 +381,7 @@ def test_composite_high_fallback(tmp_path):
     assert result["direction"] == "over"
 
 
-def test_under_confident_sent_as_is_spawns(tmp_path):
+def test_under_confident_sent_as_is_is_logged_without_spawning(tmp_path):
     factors = {"familiarity": 20, "stakes": 30, "content_latitude": 30, "fact_support": 90, "rule_coverage": 20}
     body = "Body text used for the under-confidence test today."
     draft_id = _seed_scored("d-under", body, factors, score=38)
@@ -386,11 +389,10 @@ def test_under_confident_sent_as_is_spawns(tmp_path):
     assert result["disposition"] == "sent-as-is"
     assert result["direction"] == "under"
     assert result["miscalibrated"] is True
-    assert result["learn_reasons"] == ["under"]
+    assert result["learn_reasons"] == []
     assert set(result["under_factors"]) == {"familiarity", "stakes", "content_latitude", "rule_coverage"}
-    assert result["dispatch"] is not None
-    with open(_brief(draft_id), encoding="utf-8") as fh:
-        assert "Under-confident" in fh.read()
+    assert result["dispatch"] is None
+    assert not os.path.isfile(_brief(draft_id))
 
 
 def test_sent_as_is_above_composite_low_logs_under_factors_without_spawning(tmp_path):
@@ -460,10 +462,12 @@ def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     assert "This repo is public." in brief
     assert f"Follow `{sc.PROCEDURE_PATH}`" in brief
     assert "The draft line." in brief and "The sent line." in brief
-    assert "Over-confident" in brief and "Voice edit" in brief
+    assert "Voice edit" in brief
+    assert "Over-confident" not in brief and "Under-confident" not in brief
     assert "- the second line" in brief
     assert "authoring-rules/SKILL.md" in brief
-    assert "uncertainty-aspects.md" in brief
+    assert "weights.json" not in brief and "weights-suggest" not in brief
+    assert "uncertainty-aspects.md" not in brief.split("## Files you may change")[1]
     assert '--title "Learn from send: slack to a@b.com"' in result["dispatch"]
 
 

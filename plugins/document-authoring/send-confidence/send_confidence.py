@@ -662,13 +662,6 @@ def _spawn_title(scored):
 def _reason_lines(outcome_event, scored):
     lines = []
     reasons = outcome_event["learn_reasons"]
-    if "over" in reasons:
-        lines.append(f"- **Over-confident:** the estimate ({scored.get('score')}) expected the draft to go "
-                     f"out untouched, and it was {outcome_event['disposition']}. "
-                     f"Implicated: {', '.join(outcome_event['implicated'])}.")
-    if "under" in reasons:
-        lines.append(f"- **Under-confident:** the estimate ({scored.get('score')}) expected an edit, and "
-                     "Russell sent the draft as-is.")
     if "voice" in reasons:
         lines.append("- **Voice edit:** Russell changed the wording, tone, or structure, so a rule may "
                      "have left that choice unsettled.")
@@ -765,11 +758,8 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
         "- plugins/document-authoring/skills/message-rules/SKILL.md",
         "- plugins/document-authoring/skills/authoring-rules/SKILL.md",
         "- plugins/document-authoring/skills/document-authoring/SKILL.md",
-        "- plugins/document-authoring/send-confidence/uncertainty-aspects.md",
-        "- plugins/document-authoring/send-confidence/weights.json",
         "",
         "## Commands",
-        "- `python plugins/document-authoring/send-confidence/send_confidence.py weights-suggest`",
         f"- log directory: `{data_dir()}`",
     ]
     brief_path = os.path.join(briefs_dir(), f"{draft_id}.md")
@@ -784,8 +774,9 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     does, write the learning-session brief. Returns the outcome event plus "dispatch" (the
     spawn command string, or None) and "label_error".
 
-    A learning session spawns when the estimate was wrong in either direction (confident and
-    then edited or discarded, or expecting an edit and then sent as-is) and on any voice edit.
+    A learning session spawns on a voice edit only. Whether the estimate was wrong in either
+    direction is still logged (`direction`, `miscalibrated`), and nothing here changes the
+    score's numbers.
     `moot` (discards only - what it does and when to pass it live in learn-from-send.md)."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
@@ -841,9 +832,6 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         under_factors = [f for f, s in factors.items() if s is not None and s < factor_low]
         if score is not None and score < composite_low:
             direction = "under"
-
-    if direction:
-        learn_reasons.insert(0, direction)
 
     event = {
         "event": "outcome", "v": 2, "draft_id": draft_id,
