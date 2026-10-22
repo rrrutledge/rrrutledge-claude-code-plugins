@@ -1,6 +1,6 @@
 # Learn from the send
 
-Every draft Russell sends or discards answers one question: what did the difference between the draft and what he actually sent teach us?
+Every staged draft Russell sends or discards answers one question: what did the difference between the draft and what he actually sent teach us?
 It has two possible answers, both read off the same diff:
 
 - **The rules had a gap.** They were silent on a choice the draft had to make, or could be read more than one way, and his edit shows how he resolves it; the lesson fills that gap in `message-rules`, `authoring-rules`, or this skill's drafting loop.
@@ -11,9 +11,10 @@ The drafting session's part is short and mechanical; the learning session, spawn
 
 ## The drafting session's part
 
-After Russell sends a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
+This part covers a draft the stage gate scored - every draft that went through a stage command, per `send-confidence.md`.
+After Russell sends such a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
 
-1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Jira via the API, Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
+1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
    Never reconstruct that text from anything the session already believes, remembers, or infers, even when a different version seems like the obviously correct one: a plausible guess recorded as the sent text fabricates the diff this whole procedure runs on.
 2. **Record the outcome:**
 
