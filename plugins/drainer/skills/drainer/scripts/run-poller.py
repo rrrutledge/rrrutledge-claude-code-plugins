@@ -8,7 +8,9 @@ call per new item triage didn't already bucket as junk (a separate input-guardra
 engine/screen.md, so a classification call can't crowd out the guardrail), and the per-item **worker**
 session (the actual reply/work, draft-only). An item's triage and screen verdicts are cached, so an item
 the dispatch step holds across cycles is judged once; and when the background account is out of usage a
-circuit breaker skips the AI step until the account can serve calls again.
+circuit breaker skips the AI step until the account can serve calls again. Triage also records whether a
+person or a machine wrote each item (`sender`); the once-a-day acknowledgement sweep (ack_sweep.py) reads
+it from the verdict cache.
 
 The orchestration below is **provider-agnostic**: it reads which providers are enabled from
 `.claude/drainer.local.md` and drives each through a small adapter (enumerate / stable_id / capture).
@@ -306,10 +308,15 @@ TRIAGE_INSTRUCTIONS = (
     "note) set kind = phishing so it gets the report-phishing disposition; otherwise a junk/fyi item's "
     "kind is null. Use bucket = auto-handle ONLY when a provider "
     "AUTO-HANDLE rule (in the world-knowledge / provider docs) plainly matches — a standing decision with "
-    "no judgment left; when in doubt use needs-you. Return ONLY a JSON array, one object per input "
+    "no judgment left; when in doubt use needs-you. For EVERY item also give sender = person | automated, "
+    "per the rubric's real-person test: person when a human wrote these words to Russell, including a "
+    "person's message delivered through a notification relay (judge by who wrote the words, not the "
+    "envelope); automated for a bot, an app, a system notification, or bulk/marketing mail; when unclear, "
+    "person. Return ONLY a "
+    "JSON array, one object per input "
     'id: [{"id": "...", "bucket": "needs-you|auto-handle|fyi|junk", '
     '"kind": "reply|work|work-then-reply|phishing|null", '
-    '"complexity": "simple|complex", "reason": "<short>"}] — no prose, no code fence.'
+    '"complexity": "simple|complex", "sender": "person|automated", "reason": "<short>"}] — no prose, no code fence.'
 )
 
 # The security screen is a SEPARATE claude -p pass from triage, not a field folded into it — a guardrail

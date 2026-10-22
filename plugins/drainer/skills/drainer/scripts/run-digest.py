@@ -6,7 +6,9 @@ and approves. So this launcher is deliberately thin: it launches a single backgr
 (reachable from claude.ai/code and the phone) seeded to follow `engine/digest-core.md`. All the judgment (summarize fyi, group junk
 with source-stop proposals, and clearing on Russell's OK) happens inside that interactive session.
 
-The daily Scheduled Task (see `install-digest-schedule.ps1`) runs this once a day.
+The daily Scheduled Task (see `install-digest-schedule.ps1`) runs this once a day. The same run then does
+the once-a-day acknowledgement sweep (`ack_sweep.daily_sweep`), and on a day it finds a real person waiting
+48 business hours it launches the separate ack review session (`engine/ack-review.md`).
 
 Usage:
     python run-digest.py --repo C:/Users/russe/Dev/personal-ai-pod              # launch the digest session
@@ -25,6 +27,7 @@ sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 from provider_base import (run_node, spawn_bg, prompt_seed, write_receipt, load_providers,  # noqa: E402
                            ProviderError, load_seen)  # shared subprocess + background-session launch + adapter loader + seen-state reader
+import ack_sweep  # noqa: E402  (the once-a-day acknowledgement sweep)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -192,7 +195,7 @@ def _print_heartbeat(hb):
     print(f"  Poller heartbeat: last drained {_fmt_local(hb.get('last_drained_ts'))}.")
 
 
-def print_brief(runtime_dir, cfg):
+def print_brief(runtime_dir, cfg, repo):
     """Deterministic preview (no AI, no session): provider health + queue counts + backlog depth. For the
     dry-run ramp."""
     q = _load_queue(runtime_dir)
@@ -223,6 +226,12 @@ def print_brief(runtime_dir, cfg):
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
     print(measure_backlog(runtime_dir, cfg) or "Backlog depth: turned off (show_backlog_depth: false).")
+    try:
+        due = ack_sweep.daily_sweep(ack_sweep.Review(repo), dry_run=True)
+        print(f"  Acknowledgements due: {len(due)} conversation(s)"
+              + (" -> the ack review session would launch." if due else "."))
+    except Exception as e:
+        print(f"  Acknowledgements due: unavailable this run ({e}).")
     print("Nothing cleared (dry-run).")
 
 
@@ -241,7 +250,7 @@ def main():
     runtime_dir = cfg["runtime_dir"]
 
     if args.dry_run:
-        print_brief(runtime_dir, cfg)
+        print_brief(runtime_dir, cfg, repo)
         return
 
     prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg))
@@ -261,6 +270,56 @@ def main():
     receipt = write_receipt(prompt_file, bg_id)
     print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
           f"for {runtime_dir}.")
+    launch_ack_review(runtime_dir, repo, cfg)
+
+
+def write_ack_review_seed(runtime_dir, repo, due):
+    """The ack review session's prompt file: a pointer to engine/ack-review.md, the script it runs, and
+    how many conversations the day's sweep found due."""
+    seeds = os.path.join(runtime_dir, "seeds")
+    os.makedirs(seeds, exist_ok=True)
+    prompt_file = os.path.join(seeds, "ack-review.prompt.txt")
+    with open(prompt_file, "w", encoding="utf-8") as f:
+        f.write(
+            "You are the drainer end-of-day acknowledgement review session. Read `~/.claude/CLAUDE.md`, "
+            f"then follow `{os.path.join(SKILL_DIR, 'engine', 'ack-review.md')}`.\n\n"
+            "Runtime facts for this run:\n"
+            f"- Today's sweep found {len(due)} conversation(s) due an acknowledgement.\n"
+            f"- ack script: `{os.path.join(SCRIPT_DIR, 'ack_sweep.py')}` (run with python, always with "
+            f"`--repo {repo}`).\n"
+            f"- runtime_dir: `{runtime_dir}`.\n"
+            "Nothing goes out without Russell's say-so on the batch you present.\n"
+        )
+    return prompt_file
+
+
+def run_ack_sweep(repo):
+    """Run the once-a-day acknowledgement sweep, which rewrites the due list. A failure is reported and
+    leaves no review today; it never affects the digest."""
+    try:
+        return ack_sweep.daily_sweep(ack_sweep.Review(repo))
+    except Exception as e:
+        print(f"run-digest: the acknowledgement sweep failed ({e}); no ack review today.")
+        return []
+
+
+def launch_ack_review(runtime_dir, repo, cfg, sweep=run_ack_sweep):
+    """Run the acknowledgement sweep, then launch the review as its own background session, only when the
+    sweep found something due. It stays out of the digest so the digest keeps its never-send rule and its
+    size; a failed launch is reported and never affects the digest."""
+    due = sweep(repo)
+    if not due:
+        print("No conversations due an acknowledgement; no ack review today.")
+        return None
+    prompt_file = write_ack_review_seed(runtime_dir, repo, due)
+    summary = "Drainer ack review"
+    bg_id = spawn_bg(prompt_seed(prompt_file, summary), cfg["digest_model"], repo, summary, scratch_only=True)
+    if not bg_id:
+        print("run-digest: the ack review launch returned no id; it did not start.")
+        return None
+    receipt = write_receipt(prompt_file, bg_id)
+    print(f"Launched the ack review ({len(due)} due) as background session {receipt}.")
+    return receipt
 
 
 if __name__ == "__main__":

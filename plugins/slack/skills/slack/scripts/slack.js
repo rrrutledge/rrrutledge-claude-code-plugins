@@ -21,15 +21,19 @@
 //                 from/received/text — so a conversation that accreted several distinct asks between
 //                 reads exposes every one, not only its newest message. Each item also carries
 //                 `knownContact`: true when the DM/group DM/thread's history already has a message from
-//                 you — channel items always get false, since a per-sender lookup there is too costly)
+//                 you — channel items always get false, since a per-sender lookup there is too costly —
+//                 and `fromBot`: true when the newest unread message came from a bot user or an app)
 // Show one:      node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]
 //                (the message text + a chat.getPermalink url; pass --thread-ts for a threaded reply)
 // History:       node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]
 //                (recent messages, oldest first — a whole thread when --thread-ts is given, else the
 //                 channel/DM/group-DM timeline; use this before deciding a move so you see anything
 //                 posted after the one message a captured item happens to link to, including your own
-//                 follow-up)
-// React:         node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
+//                 follow-up; each --json entry's `isMe` marks a message you posted)
+// Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
+//                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
+//                 read-only)
+// React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
@@ -46,7 +50,10 @@
 //                 A comma-separated --file=a.png,b.png uploads each file's bytes, then one
 //                 completeUploadExternal call posts the body and every file as a single message.
 //                 --broadcast (thread replies only, not with --file) ticks "Also send to <channel>":
-//                 chat.postMessage with reply_broadcast=true.)
+//                 chat.postMessage with reply_broadcast=true.
+//                 A plain-text send marks the conversation read up to the sent message. --keep-unread
+//                 instead leaves it as unread as it was: it reads the read cursors before and after the
+//                 post and puts back any the post moved. --json prints {channel, ts, permalink, cursor}.)
 // List drafts:   node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]
 //                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
@@ -186,17 +193,28 @@ const fileMeta = (files) => (files || []).map(f => ({
 
 // ---- name/info resolution (cached within one run) ----
 const userCache = new Map();
-async function userName(id) {
-  if (!id) return '?';
+async function userInfo(id) {
   if (userCache.has(id)) return userCache.get(id);
-  let name = id;
+  let info = { name: id, isBot: false };
   try {
     const r = await call('users.info', { user: id });
     const u = r.user || {};
-    name = u.real_name || (u.profile && u.profile.real_name) || u.name || id;
+    info = { name: u.real_name || (u.profile && u.profile.real_name) || u.name || id,
+             isBot: !!u.is_bot || id === 'USLACKBOT' };
   } catch { /* fall back to the id */ }
-  userCache.set(id, name);
-  return name;
+  userCache.set(id, info);
+  return info;
+}
+async function userName(id) {
+  if (!id) return '?';
+  return (await userInfo(id)).name;
+}
+
+// Whether a message came from a bot user or an app integration rather than a person: the message's own
+// bot/app markers, else the author's users.info is_bot flag.
+async function fromBot(m) {
+  if (m.bot_id || m.app_id || m.bot_profile || m.subtype === 'bot_message') return true;
+  return m.user ? (await userInfo(m.user)).isBot : false;
 }
 
 const convCache = new Map();
@@ -341,7 +359,7 @@ async function listUnread() {
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject, channelName,
         received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
         preview: await previewText(msgs), unread: await unreadSpan(msgs),
-        knownContact: await hasMeMessage(c.id, me),
+        knownContact: await hasMeMessage(c.id, me), fromBot: await fromBot(latest),
       });
     }
   }
@@ -372,7 +390,7 @@ async function listUnread() {
           received: tsToIso(m.ts), isRead: false, unreadCount: 1,
           preview: rendered.slice(0, 600),
           unread: [unreadEntry],
-          knownContact: false,
+          knownContact: false, fromBot: await fromBot(m),
         });
       }
     } else {
@@ -383,7 +401,7 @@ async function listUnread() {
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
         preview: await previewText(msgs), unread: await unreadSpan(msgs),
-        knownContact: false,
+        knownContact: false, fromBot: await fromBot(latest),
       });
     }
   }
@@ -417,7 +435,7 @@ async function listUnread() {
         subject: mentioned ? `@mention in thread in ${chName}` : `Thread reply in ${chName}`,
         channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: unread.length,
         preview: await previewText(unread), unread: await unreadSpan(unread),
-        knownContact: await hasMeMessage(channel, me, threadTs),
+        knownContact: await hasMeMessage(channel, me, threadTs), fromBot: await fromBot(latest),
       });
     }
   } catch { /* threads view unavailable — DMs/mentions still enumerate */ }
@@ -487,11 +505,12 @@ async function history() {
     const r = await call('conversations.history', { channel: args.channel, limit });
     msgs = (r.messages || []).slice().reverse();
   }
+  const me = (await call('auth.test')).user_id;
   const out = [];
   for (const m of msgs) {
     const entry = {
       ts: m.ts, threadTs: m.thread_ts || '', replyCount: m.reply_count || 0,
-      from: await userName(m.user || m.bot_id), fromId: m.user,
+      from: await userName(m.user || m.bot_id), fromId: m.user, isMe: !!m.user && m.user === me,
       received: tsToIso(m.ts), text: await messageText(m),
     };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
@@ -523,6 +542,35 @@ async function markRead(channel, ts, threadTs) {
     return;
   }
   await call('conversations.mark', { channel, ts });
+}
+
+// Russell's read cursor (`last_read` ts) on a conversation, or on one thread when threadTs is given; ''
+// when Slack reports none. conversations.info carries a channel/DM's cursor for a user token, and the
+// parent message conversations.replies returns carries a subscribed thread's.
+async function readCursor(channel, threadTs) {
+  if (threadTs) {
+    const r = await call('conversations.replies', { channel, ts: threadTs, limit: '1' });
+    return ((r.messages || [])[0] || {}).last_read || '';
+  }
+  const info = (await call('conversations.info', { channel })).channel || {};
+  return info.last_read || '';
+}
+
+// Both cursors a post can touch: the conversation's own, and the thread's when the post is a thread reply.
+async function cursors(channel, threadTs) {
+  const out = { channel: await readCursor(channel, '') };
+  if (threadTs) {
+    try { out.thread = await readCursor(channel, threadTs); } catch { out.thread = ''; }
+  }
+  return out;
+}
+
+async function readCursorCmd() {
+  if (!args.channel) throw new Error('--read-cursor requires --channel');
+  const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
+  const c = await cursors(args.channel, threadTs);
+  if (args.json) { console.log(JSON.stringify(c, null, 2)); return; }
+  console.log(`channel last_read: ${c.channel || '(none)'}${threadTs ? `\nthread last_read: ${c.thread || '(none)'}` : ''}`);
 }
 
 async function mark() {
@@ -625,20 +673,50 @@ async function send() {
   const params = { channel: args.channel, text };
   if (args['thread-ts']) params.thread_ts = args['thread-ts'];
   if (args.broadcast) params.reply_broadcast = 'true';
+  // --keep-unread leaves the conversation exactly as unread as it was: it reads the read cursors before
+  // the post and again after, and puts back any cursor the post moved. The drainer's acknowledgement
+  // sweep sends with it, because its ack must not mark the person's still-unhandled message read.
+  const keepUnread = !!args['keep-unread'];
+  if (keepUnread && args.file && args.file !== true) {
+    throw new Error('--keep-unread applies to a plain-text send, not --file');
+  }
+  const before = keepUnread ? await cursors(args.channel, params.thread_ts) : null;
   const r = await call('chat.postMessage', params);
-  // A post doesn't advance the read cursor the way the Slack client does, so the conversation
-  // stays bold forever with our own reply as the only "unread" message. Mark it ourselves —
-  // best-effort: the send already succeeded, so a mark failure is a warning, never a retry/fail.
-  try {
-    await markRead(r.channel, r.ts, params.thread_ts);
-  } catch (e) {
-    console.error(`Warning: sent, but failed to mark read: ${e.message}`);
+  let cursor = null;
+  if (keepUnread) {
+    const after = await cursors(r.channel, params.thread_ts);
+    const restored = [];
+    for (const which of Object.keys(before)) {
+      if (before[which] && after[which] && after[which] !== before[which]) {
+        await markRead(r.channel, before[which], which === 'thread' ? params.thread_ts : '');
+        restored.push(which);
+      }
+    }
+    cursor = { before, after, restored };
+  } else {
+    // A post doesn't advance the read cursor the way the Slack client does, so the conversation
+    // stays bold forever with our own reply as the only "unread" message. Mark it ourselves —
+    // best-effort: the send already succeeded, so a mark failure is a warning, never a retry/fail.
+    try {
+      await markRead(r.channel, r.ts, params.thread_ts);
+    } catch (e) {
+      console.error(`Warning: sent, but failed to mark read: ${e.message}`);
+    }
   }
   let permalink = '';
   try {
     permalink = (await call('chat.getPermalink', { channel: r.channel, message_ts: r.ts })).permalink || '';
   } catch { /* permalink optional — the send already succeeded */ }
+  if (args.json) {
+    console.log(JSON.stringify({ channel: r.channel, ts: r.ts, permalink, ...(cursor ? { cursor } : {}) }, null, 2));
+    return;
+  }
   console.log(`Sent to ${r.channel} at ts ${r.ts}.${permalink ? ` Link: ${permalink}` : ''}`);
+  if (cursor) {
+    console.log(cursor.restored.length
+      ? `Read cursor moved on send and was put back (${cursor.restored.join(', ')}).`
+      : 'Read cursor did not move on send.');
+  }
 }
 
 // Read a --body-file the same way --send does: normalized newlines, trimmed, never empty.
@@ -851,6 +929,7 @@ async function findByDomain() {
   if (args.history) return await history();
   if (args.react) return await react();
   if (args.mark) return await mark();
+  if (args['read-cursor']) return await readCursorCmd();
   if (args.send) return await send();
   if (args['list-drafts']) return await listDrafts();
   if (args['create-draft']) return await createDraft();
@@ -858,5 +937,5 @@ async function findByDomain() {
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
