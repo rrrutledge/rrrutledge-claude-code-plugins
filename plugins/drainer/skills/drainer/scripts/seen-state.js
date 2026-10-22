@@ -1,12 +1,17 @@
 // Drainer seen-state helper - fail-safe processed-id store and digest queue.
 //
 // State lives under the project's runtime_dir (e.g. ~/Dev/personal-ai-pod/.tmp/drainer/):
-//   seen.json         { "<source>": { "<id>": { "triage" } } }
+//   seen.json         { "<source>": { "<id>": { "triage" } }, "_acks": { "<conversation key>": {...} } }
 //   digest-queue.json [ { "id", "source", "item": {...} }, ... ]
 //
 // seen.json answers one question - has this id been dispatched? - so an entry's presence is the whole
 // signal and `triage` rides along as a human-readable label of how it was classified. Whether the work
 // finished is read off the source object itself by the poller's reconcile, never tracked here.
+//
+// The reserved `_acks` key holds the acknowledgement ledger: one entry per conversation that got a
+// 48-hour acknowledgement (status sent), was skipped in review (skipped), or was folded into another
+// thread's ack to the same person (covered). Every key starting with `_` is reserved, and is never a
+// source, so every per-source reader and writer here refuses one.
 //
 // Fail-safe: a missing or corrupt file reads as "nothing seen / empty queue" — never throws,
 // so the worst case is reprocessing an item, never silently dropping one. Writes are atomic
@@ -19,12 +24,21 @@
 //   node seen-state.js queue-list  <runtimeDir>                          -> prints the queue as JSON
 //   node seen-state.js queue-clear <runtimeDir> <id>                     -> removes one item from the queue
 //   node seen-state.js requeue     <runtimeDir> <source> <id>            -> drop the seen key so the item re-enumerates and re-dispatches a fresh worker session
+//   node seen-state.js ack-list    <runtimeDir>                          -> prints the ack ledger as JSON
+//   node seen-state.js ack-set     <runtimeDir> <key> <json-file>        -> writes one ledger entry (replacing any earlier one for that conversation)
 
 const fs = require('fs');
 const path = require('path');
 
 const SEEN_FILE = 'seen.json';
 const QUEUE_FILE = 'digest-queue.json';
+const ACK_KEY = '_acks';
+
+function assertSource(source) {
+  if (!source || String(source).startsWith('_')) {
+    throw new Error(`"${source}" is not a source: keys starting with "_" are reserved in seen.json`);
+  }
+}
 
 function readJson(file, fallback) {
   try {
@@ -55,11 +69,13 @@ function loadQueue(runtimeDir) {
 }
 
 function isSeen(runtimeDir, source, id) {
+  assertSource(source);
   const seen = loadSeen(runtimeDir);
   return Boolean(seen[source] && seen[source][id]);
 }
 
 function record(runtimeDir, source, id, triage) {
+  assertSource(source);
   const seen = loadSeen(runtimeDir);
   if (!seen[source]) seen[source] = {};
   // Idempotent: an id already recorded keeps the triage it was first dispatched under.
@@ -93,6 +109,7 @@ function queueClear(runtimeDir, id) {
 // (A still-relevant source item re-enumerates and re-dispatches; one that's no longer present simply
 // doesn't come back.)
 function requeue(runtimeDir, source, id) {
+  assertSource(source);
   const seen = loadSeen(runtimeDir);
   if (seen[source] && seen[source][id]) {
     delete seen[source][id];
@@ -100,8 +117,21 @@ function requeue(runtimeDir, source, id) {
   }
 }
 
+function ackList(runtimeDir) {
+  const ledger = loadSeen(runtimeDir)[ACK_KEY];
+  return (ledger && typeof ledger === 'object' && !Array.isArray(ledger)) ? ledger : {};
+}
+
+function ackSet(runtimeDir, key, entry) {
+  if (!key) throw new Error('ack-set needs a conversation key');
+  if (!entry || typeof entry !== 'object' || !entry.status) throw new Error('ack-set entry needs a status');
+  const seen = loadSeen(runtimeDir);
+  seen[ACK_KEY] = { ...ackList(runtimeDir), [key]: entry };
+  writeJsonAtomic(seenPath(runtimeDir), seen);
+}
+
 module.exports = {
-  isSeen, record, queueAdd, queueList, queueClear, requeue,
+  isSeen, record, queueAdd, queueList, queueClear, requeue, ackList, ackSet,
 };
 
 if (require.main === module) {
@@ -133,8 +163,18 @@ if (require.main === module) {
         requeue(rest[0], rest[1], rest[2]);
         console.log(`requeued ${rest[2]}`);
         break;
+      case 'ack-list':
+        console.log(JSON.stringify(ackList(rest[0]), null, 2));
+        break;
+      case 'ack-set': {
+        const entry = readJson(rest[2], null);
+        if (entry === null) throw new Error(`could not read ledger entry JSON file: ${rest[2]}`);
+        ackSet(rest[0], rest[1], entry);
+        console.log(`ledger ${rest[1]} -> ${entry.status}`);
+        break;
+      }
       default:
-        throw new Error('Usage: seen-state.js <seen|record|queue-add|queue-list|queue-clear|requeue> ...');
+        throw new Error('Usage: seen-state.js <seen|record|queue-add|queue-list|queue-clear|requeue|ack-list|ack-set> ...');
     }
   } catch (e) {
     console.error('Error:', e.message);

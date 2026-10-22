@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const {
-  isSeen, record, queueAdd, queueList, queueClear, requeue,
+  isSeen, record, queueAdd, queueList, queueClear, requeue, ackList, ackSet,
 } = require('./seen-state');
 
 function tmpDir() {
@@ -88,4 +88,37 @@ test('requeue on an unknown id is a no-op (no throw)', () => {
   const dir = tmpDir();
   requeue(dir, 'trello', 'nope');
   assert.strictEqual(isSeen(dir, 'trello', 'nope'), false);
+});
+
+test('ack ledger set / list round-trips beside the per-source maps', () => {
+  const dir = tmpDir();
+  record(dir, 'gmail', 'g1', 'needs-you');
+  ackSet(dir, 'gmail|t1', { status: 'sent', itemId: 'g1', at: '2026-10-20T15:00:00+00:00' });
+  ackSet(dir, 'slack|C1', { status: 'skipped', itemId: 's1', at: '2026-10-20T16:00:00+00:00' });
+  assert.deepStrictEqual(Object.keys(ackList(dir)).sort(), ['gmail|t1', 'slack|C1']);
+  assert.strictEqual(ackList(dir)['gmail|t1'].status, 'sent');
+  assert.strictEqual(isSeen(dir, 'gmail', 'g1'), true);
+  record(dir, 'gmail', 'g2', 'needs-you');
+  assert.strictEqual(ackList(dir)['slack|C1'].status, 'skipped');
+});
+
+test('ack-set replaces the earlier entry for the same conversation', () => {
+  const dir = tmpDir();
+  ackSet(dir, 'gmail|t1', { status: 'sent', at: 'a' });
+  ackSet(dir, 'gmail|t1', { status: 'skipped', at: 'b' });
+  assert.deepStrictEqual(ackList(dir)['gmail|t1'], { status: 'skipped', at: 'b' });
+});
+
+test('ack ledger reads as empty on a missing or corrupt seen file', () => {
+  const dir = tmpDir();
+  assert.deepStrictEqual(ackList(dir), {});
+  fs.writeFileSync(path.join(dir, 'seen.json'), '{ nope');
+  assert.deepStrictEqual(ackList(dir), {});
+});
+
+test('the reserved ledger key is never treated as a source', () => {
+  const dir = tmpDir();
+  assert.throws(() => record(dir, '_acks', 'x', 'needs-you'), /reserved/);
+  assert.throws(() => requeue(dir, '_acks', 'x'), /reserved/);
+  assert.throws(() => isSeen(dir, '_acks', 'x'), /reserved/);
 });
