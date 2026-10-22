@@ -18,12 +18,12 @@ After Russell sends a draft (he edited it in the app and clicked Send, or said "
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --sent-file <file>
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --draft-id <id> --discarded --reason "<text>" [--moot]
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
-   If the session no longer has the draft id handy, `--body-file <staged body>` finds it by rehashing that file against the log.
+   An auto-scored draft takes the `--body-file` form (see `send-confidence.md`), which finds the row by rehashing that file against the log.
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.

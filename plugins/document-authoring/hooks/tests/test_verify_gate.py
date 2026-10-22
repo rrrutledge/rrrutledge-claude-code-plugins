@@ -8,8 +8,21 @@ import json
 import os
 import subprocess
 import sys
+import time
+
+import pytest
 
 HOOK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "verify_gate.py")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_send_confidence(tmp_path, monkeypatch):
+    """Every passed stage now logs to send-confidence and launches a scorer, so point that
+    log at a per-test dir and keep the judge off."""
+    monkeypatch.setenv("SEND_CONFIDENCE_DIR", str(tmp_path / "sc-data"))
+    monkeypatch.setenv("SEND_CONFIDENCE_JUDGE", "off")
+    monkeypatch.delenv("SEND_CONFIDENCE_AUTO", raising=False)
+    monkeypatch.delenv("SEND_CONFIDENCE_AUTO_DELAY", raising=False)
 
 
 def run(args, stdin=None, cwd=None, receipt_dir=None):
@@ -603,3 +616,157 @@ def test_pr_create_after_compound_command_gated(tmp_path):
     r = run([], stdin=bash_payload("git push -u origin feature && gh pr create --base main"),
             cwd=str(repo), receipt_dir=receipts)
     assert decision(r.stdout) == "DENY"
+
+
+# --- every passed stage is logged and auto-scored (send-confidence) ---
+
+def sc_events(tmp_path, kind=None):
+    events = []
+    for path in (tmp_path / "sc-data").glob("log-*.jsonl"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                events.append(json.loads(line))
+    return [e for e in events if kind is None or e.get("event") == kind]
+
+
+def wait_for(predicate, timeout=30):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def stage_payload(command, session_id="sess-1"):
+    return json.dumps({"tool_name": "Bash", "session_id": session_id,
+                       "tool_input": {"command": command}})
+
+
+def minted_body(tmp_path, name, text):
+    body = write_body(tmp_path, name, text)
+    run(["mint", str(body)], receipt_dir=str(tmp_path / "receipts"))
+    return body
+
+
+def test_passed_stage_logs_staged_event_and_auto_scores(tmp_path):
+    minted_body(tmp_path, "reply.md", "Hi Dana - Tuesday at 2pm works for me.")
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=M1 --account=isc --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DEFER"
+    staged = sc_events(tmp_path, "staged")
+    assert len(staged) == 1
+    s = staged[0]
+    assert (s["channel"], s["account"], s["thread_ref"], s["session_id"], s["stage_kind"]) == \
+        ("gmail", "isc", "M1", "sess-1", "draft")
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+    scored = sc_events(tmp_path, "scored")
+    assert len(scored) == 1
+    assert scored[0]["source"] == "auto"
+    assert scored[0]["sha256"] == s["sha256"]
+    assert scored[0]["factors"]["content_latitude"] is None
+    assert scored[0]["factors"]["fact_support"] is None
+    assert wait_for(lambda: not list((tmp_path / "sc-data" / "pending").glob("*.json")))
+
+
+def test_scorer_outlives_the_hook(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEND_CONFIDENCE_AUTO_DELAY", "3")
+    minted_body(tmp_path, "reply.md", "Thanks - I'll send the deck over tomorrow morning.")
+    started = time.time()
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=M2 --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    elapsed = time.time() - started
+    assert decision(r.stdout) == "DEFER"
+    assert elapsed < 3, "the hook waited on the scorer"
+    assert not sc_events(tmp_path, "scored")
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+
+
+def test_session_scored_draft_is_not_rescored(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    m = run(["mint", str(body), "--score-context", write_ctx(tmp_path)], receipt_dir=receipts)
+    assert m.returncode == 0
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=M3 --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=receipts)
+    assert decision(r.stdout) == "DEFER"
+    assert len(sc_events(tmp_path, "staged")) == 1
+    assert not list((tmp_path / "sc-data" / "pending").glob("*.json"))
+    time.sleep(1)
+    scored = sc_events(tmp_path, "scored")
+    assert [e["source"] for e in scored] == ["session"]
+
+
+def test_denied_stage_logs_nothing(tmp_path):
+    write_body(tmp_path, "reply.md", "Unreviewed text.")
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=X --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DENY"
+    assert not sc_events(tmp_path)
+
+
+def test_slack_send_is_a_direct_send_stage(tmp_path):
+    minted_body(tmp_path, "msg.md", "Shipped - the fix is live now.")
+    r = run([], stdin=stage_payload("node slack.js --send --channel=C123 --thread-ts=171.5 --body-file=msg.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DEFER"
+    s = sc_events(tmp_path, "staged")[0]
+    assert (s["channel"], s["recipient"], s["thread_ref"], s["stage_kind"]) == ("slack", "C123", "171.5", "send")
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+    assert sc_events(tmp_path, "scored")[0]["stage_kind"] == "send"
+
+
+def test_outlook_work_reply_reads_recipient_and_scores_the_body(tmp_path):
+    payload = {"comment": "<p>Happy to join on Thursday.</p>", "to": ["pat@corp.com"]}
+    minted_body(tmp_path, "reply.json", json.dumps(payload))
+    r = run([], stdin=stage_payload("node outlook-mail.js create-reply AAMk123 --json reply.json"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DEFER"
+    s = sc_events(tmp_path, "staged")[0]
+    assert (s["channel"], s["recipient"], s["thread_ref"]) == ("outlook-work", "pat@corp.com", "AAMk123")
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+    draft_id = sc_events(tmp_path, "scored")[0]["draft_id"]
+    snapshot = (tmp_path / "sc-data" / "drafts" / f"{draft_id}.txt").read_text(encoding="utf-8")
+    assert snapshot == "Happy to join on Thursday."
+
+
+def test_teams_composer_stage_is_logged_as_teams(tmp_path):
+    minted_body(tmp_path, "teams.md", "Sounds good, I'll take that one.")
+    r = run([], stdin=stage_payload("node teams-compose.js --cdp-port=9222 --body-file=teams.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DEFER"
+    assert sc_events(tmp_path, "staged")[0]["channel"] == "teams"
+
+
+def test_revised_restage_supersedes_the_earlier_draft(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    cmd = "node gmail.js --reply --message-id=M9 --body-file=reply.md"
+    minted_body(tmp_path, "reply.md", "First version of the reply.")
+    run([], stdin=stage_payload(cmd), cwd=str(tmp_path), receipt_dir=receipts)
+    assert wait_for(lambda: len(sc_events(tmp_path, "scored")) == 1)
+    first_id = sc_events(tmp_path, "scored")[0]["draft_id"]
+    minted_body(tmp_path, "reply.md", "Second, revised version of the reply.")
+    run([], stdin=stage_payload(cmd), cwd=str(tmp_path), receipt_dir=receipts)
+    assert wait_for(lambda: len(sc_events(tmp_path, "scored")) == 2)
+    outcomes = sc_events(tmp_path, "outcome")
+    assert [(o["draft_id"], o["disposition"]) for o in outcomes] == [(first_id, "superseded")]
+
+
+def test_auto_off_logs_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEND_CONFIDENCE_AUTO", "off")
+    minted_body(tmp_path, "reply.md", "Hi - all set on my end.")
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=X --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert decision(r.stdout) == "DEFER"
+    assert not sc_events(tmp_path)
+
+
+def test_unwritable_log_still_passes_the_stage(tmp_path, monkeypatch):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("SEND_CONFIDENCE_DIR", str(blocker))
+    minted_body(tmp_path, "reply.md", "Hi - all set on my end.")
+    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=X --body-file=reply.md"),
+            cwd=str(tmp_path), receipt_dir=str(tmp_path / "receipts"))
+    assert r.returncode == 0
+    assert decision(r.stdout) == "DEFER"

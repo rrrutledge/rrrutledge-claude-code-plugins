@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -151,6 +152,13 @@ def test_judge_ratings_and_latitude_turn_penalty(monkeypatch):
     assert r3["features"]["latitude_turn_penalty"] == 15
     assert r3["factors"]["content_latitude"] == 10
 
+    auto = sc.score_draft(body, {"channel": "gmail", "source": "auto"},
+                           weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert auto["factors"]["stakes"] == 50
+    assert auto["factors"]["content_latitude"] is None
+    assert auto["factors"]["fact_support"] is None
+    assert auto["score"] == 50
+
     r10 = sc.score_draft(body, {"channel": "gmail", "sent_count": None, "turns_before_draft": 10},
                           weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
     assert r10["features"]["latitude_turn_penalty"] == 20  # capped, not 5*10=50
@@ -197,6 +205,40 @@ def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
     drafts = sc.fold_drafts()
     assert drafts[id1]["outcome"]["disposition"] == "superseded"
     assert drafts[id2]["outcome"] is None
+
+
+def test_auto_scored_revision_supersedes_session_scored_draft_in_same_thread(tmp_path):
+    id1, _ = _score(tmp_path, thread_ref="thread-y", recipient="a@b.com",
+                     body="Session-scored first draft of the reply, with full context.")
+    id2, _ = _score(tmp_path, thread_ref="thread-y", recipient=None, source="auto",
+                     body="Auto-scored revision of that reply after Russell asked for a change.")
+    drafts = sc.fold_drafts()
+    assert drafts[id1]["outcome"]["disposition"] == "superseded"
+    assert drafts[id2]["outcome"] is None
+
+
+def test_new_message_to_unknown_recipient_supersedes_nothing(tmp_path):
+    id1, _ = _score(tmp_path, thread_ref=None, recipient=None,
+                     body="A brand-new message with no recipient on the command line.")
+    _score(tmp_path, thread_ref=None, recipient=None,
+           body="Another brand-new message with no recipient on the command line.")
+    assert sc.fold_drafts()[id1]["outcome"] is None
+
+
+def test_direct_send_is_never_superseded(tmp_path):
+    id1, _ = _score(tmp_path, thread_ref=None, recipient="C123", stage_kind="send",
+                     body="Posted straight to the channel, first message of the day.")
+    _score(tmp_path, thread_ref=None, recipient="C123",
+           body="A later draft to the same channel, a different message entirely.")
+    assert sc.fold_drafts()[id1]["outcome"] is None
+
+
+def test_direct_send_supersedes_nothing(tmp_path):
+    id1, _ = _score(tmp_path, thread_ref=None, recipient="C123",
+                     body="A pending draft to the channel that hasn't gone out yet.")
+    _score(tmp_path, thread_ref=None, recipient="C123", stage_kind="send",
+           body="An unrelated message posted straight to the same channel.")
+    assert sc.fold_drafts()[id1]["outcome"] is None
 
 
 def test_fold_renames_legacy_factors_and_drops_stylometric():
@@ -632,3 +674,103 @@ def test_weights_suggest_leaves_an_unfitted_factor_at_its_current_share(monkeypa
     proposed = result["proposed"]["weights"]
     assert proposed["stakes"] > proposed["familiarity"]
     assert proposed["rule_coverage"] > proposed["familiarity"]
+
+
+# --- record_stage + auto-score ---
+
+STAGE_META = {"channel": "gmail", "account": None, "recipient": None, "thread_ref": "M1",
+              "stage_kind": "draft", "script": "gmail.js", "verb": "--reply",
+              "session_id": "s1", "session_kind": "live", "body_format": "text"}
+
+
+def _capture_spawns(monkeypatch):
+    spawns = []
+    monkeypatch.setattr(sc, "_spawn_detached", lambda args: spawns.append(args))
+    return spawns
+
+
+def test_record_stage_logs_and_queues_one_scorer(monkeypatch):
+    spawns = _capture_spawns(monkeypatch)
+    body = "Thanks - Tuesday works."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    job = sc.record_stage(body, sha, STAGE_META)
+    assert job and os.path.isfile(job)
+    assert spawns == [[sys.executable, os.path.abspath(sc.__file__), "auto-score", job]]
+    staged = [e for e in sc.load_events() if e["event"] == "staged"]
+    assert len(staged) == 1 and staged[0]["sha256"] == sha and staged[0]["session_id"] == "s1"
+
+    assert sc.record_stage(body, sha, STAGE_META) is None
+    assert len(spawns) == 1
+    assert len([e for e in sc.load_events() if e["event"] == "staged"]) == 2
+
+
+def test_record_stage_takes_over_a_stale_job(monkeypatch):
+    spawns = _capture_spawns(monkeypatch)
+    body = "A draft whose earlier scorer crashed."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    job = sc.record_stage(body, sha, STAGE_META)
+    old = os.path.getmtime(job) - sc.STALE_JOB_SECONDS - 10
+    os.utime(job, (old, old))
+    assert sc.record_stage(body, sha, STAGE_META) == job
+    assert len(spawns) == 2
+
+
+def test_record_stage_skips_an_already_scored_hash(tmp_path, monkeypatch):
+    spawns = _capture_spawns(monkeypatch)
+    draft_id, body = _score(tmp_path)
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    assert sc.record_stage(body, sha, STAGE_META) is None
+    assert spawns == []
+
+
+def test_auto_score_job_scores_and_cleans_up(monkeypatch):
+    _capture_spawns(monkeypatch)
+    body = "Confirmed for Tuesday."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    job = sc.record_stage(body, sha, STAGE_META)
+    assert run_cli(["auto-score", job]).returncode == 0
+    assert not os.path.exists(job)
+    scored = [e for e in sc.load_events() if e["event"] == "scored"]
+    assert len(scored) == 1
+    assert (scored[0]["source"], scored[0]["session_id"], scored[0]["thread_ref"]) == ("auto", "s1", "M1")
+
+
+def test_auto_score_skips_when_a_row_landed_meanwhile(tmp_path, monkeypatch):
+    _capture_spawns(monkeypatch)
+    body = "This is a test draft confirming the meeting on Tuesday at 2pm."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    job = sc.record_stage(body, sha, STAGE_META)
+    _score(tmp_path, body=body)
+    assert sc.cmd_auto_score(job) == 0
+    assert [e["source"] for e in sc.load_events() if e["event"] == "scored"] == ["session"]
+    assert not os.path.exists(job)
+
+
+def test_auto_score_with_a_missing_job_exits_0():
+    assert sc.cmd_auto_score("does-not-exist.json") == 0
+
+
+def test_scoring_body_extracts_outlook_json():
+    assert sc.scoring_body(json.dumps({"body": "<p>Hi &amp; bye</p>"}), "outlook-json") == "Hi & bye"
+    assert sc.scoring_body(json.dumps({"comment": "Plain reply"}), "outlook-json") == "Plain reply"
+    assert sc.scoring_body("not json", "outlook-json") == "not json"
+    assert sc.scoring_body("Plain body", "text") == "Plain body"
+
+
+def test_spawn_detached_outlives_its_parent(tmp_path):
+    marker = tmp_path / "marker.txt"
+    child = tmp_path / "child.py"
+    child.write_text(
+        "import sys, time\ntime.sleep(1)\nopen(sys.argv[1], 'w').write('done')\n", encoding="utf-8")
+    parent = tmp_path / "parent.py"
+    parent.write_text(
+        "import sys\nsys.path.insert(0, sys.argv[1])\nimport send_confidence as sc\n"
+        "sc._spawn_detached([sys.executable, sys.argv[2], sys.argv[3]])\n", encoding="utf-8")
+    r = subprocess.run([sys.executable, str(parent), PACKAGE_DIR, str(child), str(marker)],
+                       capture_output=True, text=True, timeout=10)
+    assert r.returncode == 0
+    assert not marker.exists()
+    deadline = time.time() + 15
+    while not marker.exists() and time.time() < deadline:
+        time.sleep(0.2)
+    assert marker.read_text() == "done"

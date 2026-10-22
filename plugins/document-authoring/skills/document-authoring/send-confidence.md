@@ -7,6 +7,13 @@ Stage 1 only measures: no draft is gated on its score, and no score reaches Russ
 Everything here is fail-open: a failed judge call or a scorer exception never blocks staging or the review receipt.
 What happens once he sends or discards the draft is `learn-from-send.md`.
 
+## What the stage gate scores on its own
+
+The stage gate logs every stage it lets through and scores any draft whose content has no score yet, in a background process, so the stage goes through immediately.
+That process runs outside the session, so the session records an auto-scored draft's outcome by its body file, per `learn-from-send.md`.
+The auto-scored row reads the channel, recipient, thread, and account off the stage command and rates the body's stakes; the ask, the inputs, the familiarity count, and the reviewer's rule coverage come from the context built below.
+A draft minted with that context already carries its richer score when it reaches the gate, so the gate keeps that row and adds only the stage record.
+
 ## Get the familiarity count
 
 `sent_count` is a prior-sent count to this exact recipient, read before building the context below:

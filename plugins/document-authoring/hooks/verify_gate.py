@@ -38,7 +38,16 @@ this draft will go out untouched and appends a row to its own log for the weekly
 This runs after the receipt is written, so a scoring failure never blocks the receipt, and it
 prints only the draft id - the score itself never surfaces in a per-draft reply, only in the
 weekly trend. A mint with no `--score-context` (PR prose, this plugin's own SKILL.md edits)
-writes no log row, exactly as before this feature existed.
+writes no log row of its own.
+
+Every message stage the gate lets through is also logged and scored, whether or not the
+session minted with `--score-context`. The hook appends a `staged` event (the body hash, the
+channel and recipient the command carries, the session id) to the send-confidence log, and
+when that hash has no `scored` row yet it launches a detached scorer and returns at once - the
+scorer derives what it can from the command alone and logs an auto-scored row. A session that
+minted with `--score-context` already wrote the richer row for that hash, so the scorer skips
+it. Both steps are fail-open and add no API call to the hook itself.
+`SEND_CONFIDENCE_AUTO=off` switches both off.
 
 Why the binding is exact: the reviewer reviews a file, the flow mints on that file, and the
 gate rehashes that same file - the message body the stage command consumes, or the
@@ -132,7 +141,14 @@ def has_fresh_receipt(h):
 # --- command parsing ---
 
 def find_body_file(command):
-    """Return the body-file path if `command` is a recognized stage command, else None.
+    """Return the body-file path if `command` is a recognized stage command, else None."""
+    stage = find_stage(command)
+    return stage["body_path"] if stage else None
+
+
+def find_stage(command):
+    """Return {"script", "verb", "args", "tokens", "body_path"} if `command` is a recognized
+    stage command, else None. `script` is None for a browser-chauffeur composer run.
 
     Two shapes count as a stage command. A named script (gmail.js / mail.js /
     outlook-mail.js / slack.js) carrying its compose verb and body flag is one. A browser-chauffeur
@@ -152,15 +168,18 @@ def find_body_file(command):
         if not spec:
             continue
         rest = tokens[i + 1:]
-        if not any(v in rest for v in spec["verbs"]):
+        verb = next((t for t in rest if t in spec["verbs"]), None)
+        if not verb:
             continue
         path = extract_flag_value(rest, spec["body_flag"])
         if path:
-            return path
+            return {"script": base, "verb": verb, "args": rest, "tokens": tokens,
+                    "body_path": path}
     if any(t == "--cdp-port" or t.startswith("--cdp-port=") for t in tokens):
         path = extract_flag_value(tokens, "--body-file")
         if path:
-            return path
+            return {"script": None, "verb": None, "args": tokens, "tokens": tokens,
+                    "body_path": path}
     return None
 
 
@@ -404,12 +423,13 @@ MCP_REDIRECT_REASON = (
 )
 
 
-def message_stage_deny_reason(command):
-    """Deny-reason for a message stage command lacking a fresh receipt, else None (defer):
-    not a stage command, its body file is missing, a pure reaction, or already reviewed."""
-    body_path = find_body_file(command)
-    if not body_path:
+def resolve_stage(command):
+    """The stage command's parsed shape plus its body's text and hash, or None when the
+    command is not a stage, its body file is missing, or the body is a pure reaction."""
+    stage = find_stage(command)
+    if not stage:
         return None
+    body_path = stage["body_path"]
     if not os.path.isabs(body_path):
         body_path = os.path.join(os.getcwd(), body_path)
     if not os.path.isfile(body_path):
@@ -417,10 +437,84 @@ def message_stage_deny_reason(command):
     text = normalized_text(body_path)
     if not has_prose(text):
         return None
-    h = content_hash(text)
-    if has_fresh_receipt(h):
+    return {**stage, "body_path": body_path, "text": text, "sha256": content_hash(text)}
+
+
+def message_stage_deny_reason(stage):
+    """Deny-reason for a resolved stage lacking a fresh receipt, else None (defer)."""
+    if not stage or has_fresh_receipt(stage["sha256"]):
         return None
-    return stage_block_reason(body_path, h)
+    return stage_block_reason(stage["body_path"], stage["sha256"])
+
+
+# --- send-confidence: every stage that passes is logged and scored ---
+
+# The channel each stage script reaches, in send-confidence's channel vocabulary.
+STAGE_CHANNELS = {
+    "gmail.js": "gmail",
+    "mail.js": "outlook-personal",
+    "outlook-mail.js": "outlook-work",
+    "slack.js": "slack",
+}
+
+# Verbs that post the body directly rather than leaving a draft for Russell to send.
+DIRECT_SEND_VERBS = {("slack.js", "--send"), ("mail.js", "--send-self")}
+
+
+def stage_meta(stage, payload):
+    """What the stage command itself says about the draft: channel, account, recipient, and
+    thread, read off its arguments (and, for work Outlook, its JSON payload). Anything the
+    command doesn't carry comes back None rather than being guessed."""
+    script, verb, args = stage["script"], stage["verb"], stage["args"]
+    meta = {
+        "script": script, "verb": verb,
+        "channel": STAGE_CHANNELS.get(script, "other"),
+        "account": None, "recipient": None, "thread_ref": None,
+        "stage_kind": "send" if (script, verb) in DIRECT_SEND_VERBS else "draft",
+        "body_format": "text",
+        "session_id": payload.get("session_id"),
+        "session_kind": "background" if os.environ.get("CLAUDE_JOB_DIR") else "live",
+    }
+    if script in ("gmail.js", "mail.js"):
+        meta["account"] = extract_flag_value(args, "--account")
+        meta["recipient"] = extract_flag_value(args, "--to")
+        meta["thread_ref"] = extract_flag_value(args, "--message-id")
+        if verb == "--send-self":
+            meta["recipient"] = "self"
+    elif script == "slack.js":
+        meta["recipient"] = extract_flag_value(args, "--channel")
+        meta["thread_ref"] = extract_flag_value(args, "--thread-ts")
+    elif script == "outlook-mail.js":
+        meta["body_format"] = "outlook-json"
+        i = args.index(verb)
+        if verb == "create-reply" and i + 1 < len(args) and not args[i + 1].startswith("-"):
+            meta["thread_ref"] = args[i + 1]
+        try:
+            to = json.loads(stage["text"]).get("to")
+            if isinstance(to, list) and to:
+                meta["recipient"] = ",".join(str(t) for t in to)
+            elif isinstance(to, str) and to:
+                meta["recipient"] = to
+        except Exception:
+            pass
+    else:
+        joined = " ".join(stage["tokens"]).lower()
+        meta["channel"] = "teams" if "teams" in joined else "slack" if "slack" in joined else "other"
+    return meta
+
+
+def record_stage(stage, payload):
+    """Log the stage to send-confidence and queue a background score when the draft has no
+    scored row yet. Fail-open: any error here leaves the stage untouched."""
+    if os.environ.get("SEND_CONFIDENCE_AUTO") == "off":
+        return
+    try:
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "send-confidence"))
+        import send_confidence
+        send_confidence.record_stage(stage["text"], stage["sha256"], stage_meta(stage, payload))
+    except Exception:
+        pass
 
 
 def pr_prose_deny_reason(command):
@@ -476,11 +570,14 @@ def run_hook():
     try:
         if tool == "Bash":
             command = tool_input.get("command", "") or ""
-            reason = message_stage_deny_reason(command)
+            stage = resolve_stage(command)
+            reason = message_stage_deny_reason(stage)
             if reason is None:
                 reason = pr_prose_deny_reason(command)
             if reason:
                 deny(reason)
+            if stage:
+                record_stage(stage, data)
             defer()
         elif tool.startswith("mcp__"):
             if tool in GMAIL_MCP_WRITE:

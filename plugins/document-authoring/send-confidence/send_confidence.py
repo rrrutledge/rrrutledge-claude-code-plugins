@@ -3,9 +3,14 @@
 before Russell sends it, and decides when a sent draft has something to teach.
 
 Stage 1 is score-and-measure only: nothing here gates or auto-sends a message, and no score
-is shown per draft. `verify_gate.py mint --score-context` calls `score_and_log` right after
-the review receipt is minted; scoring is fail-open (a scorer exception never blocks the
-receipt), so this module must never raise past its own CLI entry points.
+is shown per draft. A draft is scored one of two ways. `verify_gate.py mint --score-context`
+calls `score_and_log` right after the review receipt is minted, with the session's judgment
+(the ask, the inputs, the reviewer's rule coverage) in the context; that row's `source` is
+`session`. And the stage gate calls `record_stage` for every stage it lets through: it logs a
+`staged` event and, when the hash has no `scored` row yet, launches a detached `auto-score`
+process that scores from what the command carried alone; that row's `source` is `auto`.
+Scoring is fail-open (a scorer exception never blocks the receipt or the stage), so this
+module must never raise past its own CLI entry points.
 
 Five factors, each 0-100 where higher means "more likely to go out untouched", one per aspect
 of uncertainty described in `uncertainty-aspects.md`: rule coverage (the writing reviewer's
@@ -30,6 +35,7 @@ CLI:
         --discarded [--reason "<text>"] [--moot]
     python send_confidence.py weights-suggest
     python send_confidence.py show <draft_id>
+    python send_confidence.py auto-score <job.json>   (launched by the stage gate, not by hand)
 
 `context` is the deterministic half of staging a scored draft: it builds the context JSON
 `score_and_log` expects, writes it to a scratch file, and prints the exact `verify_gate.py
@@ -55,6 +61,8 @@ import difflib
 import hashlib
 import tempfile
 import datetime
+import subprocess
+import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -278,6 +286,10 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
         factors["stakes"] = round(100 * (5 - rating_s) / 4)
         features["stakes_rating"] = rating_s
 
+    # An auto-scored draft carries no ask and no inputs, so the judge has nothing to measure
+    # latitude against and every claim would read as unsupported; those two factors stay null
+    # and the composite re-weights over the rest.
+    if judge and ctx.get("source") != "auto":
         rating_c = judge["content_latitude"]["rating"]
         turns = ctx.get("turns_before_draft") or 0
         penalty = min(20, 5 * turns)
@@ -292,7 +304,7 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
         features["claims_total"] = total
         features["claims_unsupported"] = total - supported
     else:
-        factors["stakes"] = None
+        factors.setdefault("stakes", None)
         factors["content_latitude"] = None
         factors["fact_support"] = None
 
@@ -380,15 +392,30 @@ def _read_draft_text(draft_id):
         return _plain_text(fh.read())
 
 
+def _same_conversation(scored, thread_ref, recipient):
+    """True when a pending row is an earlier version of the draft at (thread_ref, recipient).
+    Within one thread a recipient the row or the new draft doesn't know (an auto-scored reply
+    carries the thread but not the addressee) still matches, so a session-scored draft is
+    superseded by its auto-scored revision; outside a thread the recipient must match exactly."""
+    if thread_ref:
+        if scored.get("thread_ref") != thread_ref:
+            return False
+        other = scored.get("recipient")
+        return other == recipient or other is None or recipient is None
+    return not scored.get("thread_ref") and recipient is not None and scored.get("recipient") == recipient
+
+
 def _supersede_pending(thread_ref, recipient):
+    """Mark every pending draft for the same conversation superseded. A direct send (a Slack
+    `--send`) went out as written, so it is never an earlier version of a later draft."""
     if not thread_ref and not recipient:
         return
     ts = datetime.datetime.now().astimezone().isoformat()
     for draft_id, d in fold_drafts().items():
         scored = d["scored"]
-        if not scored or d["outcome"] is not None:
+        if not scored or d["outcome"] is not None or scored.get("stage_kind") == "send":
             continue
-        if scored.get("thread_ref") == thread_ref and scored.get("recipient") == recipient:
+        if _same_conversation(scored, thread_ref, recipient):
             _append_event({
                 "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
                 "disposition": "superseded", "edit_distance": None, "edit_nature": [],
@@ -403,7 +430,11 @@ def score_and_log(body, sha256, ctx_path):
     same thread_ref + recipient; append the scored event; return the draft_id."""
     with open(ctx_path, "r", encoding="utf-8") as fh:
         ctx = json.load(fh)
+    return score_and_log_ctx(body, sha256, ctx)
 
+
+def score_and_log_ctx(body, sha256, ctx):
+    """`score_and_log` over an already-loaded context dict."""
     weights = _load_weights()
     aspects, aspects_sha = _load_aspects()
     api_key = _anthropic_api_key()
@@ -417,11 +448,14 @@ def score_and_log(body, sha256, ctx_path):
     with open(os.path.join(drafts_dir(), f"{draft_id}.txt"), "w", encoding="utf-8") as fh:
         fh.write(body)
 
-    _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
+    if ctx.get("stage_kind") != "send":
+        _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 2, "draft_id": draft_id,
+        "event": "scored", "v": 3, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
+        "source": ctx.get("source") or "session", "stage_kind": ctx.get("stage_kind"),
+        "session_id": ctx.get("session_id"),
         "channel": ctx.get("channel"), "account": ctx.get("account"),
         "recipient": ctx.get("recipient"), "thread_ref": ctx.get("thread_ref"),
         "iid": ctx.get("iid"), "session_kind": ctx.get("session_kind"),
@@ -435,6 +469,117 @@ def score_and_log(body, sha256, ctx_path):
     }
     _append_event(event)
     return draft_id
+
+
+# --- auto-scoring at stage time ---
+
+STALE_JOB_SECONDS = 3600
+
+
+def pending_dir():
+    return os.path.join(data_dir(), "pending")
+
+
+def has_scored(sha256):
+    return any(e.get("event") == "scored" and e.get("sha256") == sha256 for e in load_events())
+
+
+def scoring_body(text, body_format):
+    """The message text to score. A work-Outlook stage hashes its whole JSON payload, so the
+    body (or a reply's comment) is pulled out of it and stripped of markup."""
+    if body_format == "outlook-json":
+        try:
+            spec = json.loads(text)
+            return _plain_text(spec.get("body") or spec.get("comment") or "")
+        except Exception:
+            return text
+    return text
+
+
+def _spawn_detached(args):
+    """Start `args` so it outlives the hook that launched it, with no console and no handle
+    on the hook's pipes. On Windows it leaves the hook's job object when the job permits
+    breakaway, so the harness closing that job can't take the scorer with it."""
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+              "stderr": subprocess.DEVNULL, "close_fds": True}
+    if os.name == "nt":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        try:
+            return subprocess.Popen(args, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
+        except OSError:
+            return subprocess.Popen(args, creationflags=flags, **kwargs)
+    return subprocess.Popen(args, start_new_session=True, **kwargs)
+
+
+def _claim_job(path, job):
+    """Write the job file only if no live job holds that hash, so two quick stages of the
+    same draft launch one scorer. A job left behind by a crashed scorer goes stale after an
+    hour and is taken over."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        fh = open(path, "x", encoding="utf-8")
+    except FileExistsError:
+        try:
+            if time.time() - os.path.getmtime(path) < STALE_JOB_SECONDS:
+                return False
+        except OSError:
+            return False
+        fh = open(path, "w", encoding="utf-8")
+    with fh:
+        json.dump(job, fh)
+    return True
+
+
+def record_stage(text, sha256, meta):
+    """The stage gate's call for every stage it lets through: append a `staged` event, and
+    when that hash has no `scored` row yet, queue a detached auto-scorer. Returns the job
+    path when a scorer launched, else None."""
+    ts = datetime.datetime.now().astimezone().isoformat()
+    _append_event({
+        "event": "staged", "v": 1, "ts": ts, "machine": socket.gethostname(),
+        "sha256": sha256, "channel": meta.get("channel"), "account": meta.get("account"),
+        "recipient": meta.get("recipient"), "thread_ref": meta.get("thread_ref"),
+        "stage_kind": meta.get("stage_kind"), "script": meta.get("script"),
+        "verb": meta.get("verb"), "session_id": meta.get("session_id"),
+        "session_kind": meta.get("session_kind"),
+    })
+    if has_scored(sha256):
+        return None
+    ctx = {
+        "source": "auto", "channel": meta.get("channel"), "account": meta.get("account"),
+        "recipient": meta.get("recipient"), "thread_ref": meta.get("thread_ref"),
+        "iid": None, "session_kind": meta.get("session_kind"),
+        "session_id": meta.get("session_id"), "stage_kind": meta.get("stage_kind"),
+        "ask": None, "inputs": None, "turns_before_draft": None, "sent_count": None,
+        "rule_coverage": None, "uncertain_spots": None,
+    }
+    job = {"sha256": sha256, "body": scoring_body(text, meta.get("body_format")), "ctx": ctx}
+    path = os.path.join(pending_dir(), f"{sha256}.json")
+    if not _claim_job(path, job):
+        return None
+    _spawn_detached([sys.executable, os.path.abspath(__file__), "auto-score", path])
+    return path
+
+
+def cmd_auto_score(job_path):
+    """The detached scorer: score the queued draft unless a row for its hash landed in the
+    meantime, then remove the job. Always exits 0 - nobody is waiting on it."""
+    try:
+        with open(job_path, "r", encoding="utf-8") as fh:
+            job = json.load(fh)
+        delay = os.environ.get("SEND_CONFIDENCE_AUTO_DELAY")
+        if delay:
+            time.sleep(float(delay))
+        if not has_scored(job["sha256"]):
+            score_and_log_ctx(job["body"], job["sha256"], job["ctx"])
+    except Exception:
+        pass
+    finally:
+        try:
+            os.remove(job_path)
+        except OSError:
+            pass
+    return 0
 
 
 def _edit_distance(draft_text, sent_text):
@@ -869,6 +1014,8 @@ def main():
         return cmd_context(rest)
     if verb == "outcome":
         return cmd_outcome(rest)
+    if verb == "auto-score":
+        return cmd_auto_score(rest[0]) if rest else 0
     if verb == "weights-suggest":
         print(json.dumps(suggest_weights(), indent=2))
         return 0
