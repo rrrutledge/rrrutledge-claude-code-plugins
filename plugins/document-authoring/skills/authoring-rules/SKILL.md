@@ -81,8 +81,8 @@ Innocent: a brief cross-reference or a one-line recap that points to the canonic
 
 **Keep a collaborator's exact wording.**
 When incorporating text a named collaborator wrote, use their words as written - it acknowledges the effort they put in.
-Change it only for a concrete, nameable reason (it doesn't fit the space, it is factually wrong, it duplicates other copy, it reads as genuinely awkward), and name that reason when presenting the change.
-A gap they left goes back to them as a flagged gap, so the copy stays theirs.
+Change it when you can name a concrete reason, and name that reason when presenting the change.
+A gap they left goes back to them to fill, so the copy stays theirs.
 **Check:** a collaborator's sentence merged into a document with different wording and no stated reason; copy invented to fill a place their text left empty.
 Innocent: trimming or reformatting that leaves their words intact; a change whose reason is named alongside it.
 
