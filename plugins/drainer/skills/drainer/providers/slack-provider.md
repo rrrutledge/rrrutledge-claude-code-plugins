@@ -47,6 +47,7 @@ The captured item is the message as it arrived; the conversation may have moved 
 Re-read the full surrounding context with `node slack.js --history --channel=<C>` (add `--thread-ts=<threadTs>` for a thread item) - not `--show` alone, which returns only the single captured message.
 `--history` surfaces everything posted since, in both directions: the counterparty may have already replied, or - easy to miss - Russell may have posted his own follow-up that's still unanswered, which means the item is blocked on them, not ready to act on.
 Confirm there's not already a reply and the ask is still open before drafting.
+A post the ack ledger lists as a sent acknowledgement is not a reply; check the ledger first, per worker-core §2 "An acknowledgement is not a reply".
 The `message-draft` slack mode stages drafts in the Slack composer - check the conversation in Slack so you don't stack a second draft.
 Reply only to what is still open.
 
