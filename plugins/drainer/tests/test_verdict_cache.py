@@ -268,6 +268,18 @@ rt = tempfile.mkdtemp()
 cycle([item("a")], rt, persist=False)
 check("no cache file is created", os.path.exists(os.path.join(rt, poller.VERDICTS_FILE)), False)
 
+# --- the sender field rides in the cached verdict ------------------------------------------------------------
+print("\nthe triage verdict's sender field is cached with the bucket")
+reset()
+rt = tempfile.mkdtemp()
+triage_verdict["p"] = {"id": "p", "bucket": "needs-you", "kind": "reply", "complexity": "simple", "sender": "person"}
+cycle([item("p")], rt)
+del triage_calls[:]
+verdicts, _, _, _ = cycle([item("p")], rt)
+check("a held item's cached verdict still says sender=person", verdicts["p"].get("sender"), "person")
+check("and was read back, not re-judged", triage_calls, [])
+check("the triage instructions ask for the sender field", "sender = person | automated" in poller.TRIAGE_INSTRUCTIONS, True)
+
 # --- a corrupt file reads as empty --------------------------------------------------------------------------
 print("\ncorrupt cache file")
 rt = tempfile.mkdtemp()

@@ -22,6 +22,8 @@ AI is invoked for exactly three things:
 3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
 
+Triage's `sender` field (person / automated) is cached with the rest of the verdict, where the once-a-day acknowledgement sweep in the digest's daily task reads it (`engine/ack-review.md`).
+
 Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record - is code.
 No AI re-implements the loop.
 
@@ -37,7 +39,7 @@ No AI re-implements the loop.
    There is no per-cycle work cap: every cycle asks every source for everything it currently has to offer (`ENUMERATE_PAGE_SIZE`, a generous constant in `run-poller.py`, bounds only how many rows one API call requests - a technical page size, not a throttle; a backlog bigger than that one page just carries into the next cycle).
    Compute each item's stable id and drop any already in seen-state (`scripts/seen-state.js`).
    Whatever remains all becomes triage/dispatch input this cycle; the worker buffer in step 5 is what actually limits how much of it gets worked on at once.
-4. **Triage** each new item with its own `claude -p` call → bucket (needs-you / auto-handle / fyi / junk) + kind + complexity (simple / complex).
+4. **Triage** each new item with its own `claude -p` call → bucket (needs-you / auto-handle / fyi / junk) + kind + complexity (simple / complex) + sender (person / automated, the real-person test in `engine/triage.md`).
    Every call this cycle shares one prompt prefix - `engine/triage.md`, the local `context.md`, and each enabled provider's AUTO-HANDLE section (so the model can recognize a standing-rule item; the rules live in the provider docs, surfaced here at triage time) - with only the one item's payload varying per call, so the model spends its full attention on that item instead of a whole cycle's batch at once.
 4b. **Screen** each new item - except one step 4 already bucketed junk - with its own separate `claude -p` call (`engine/screen.md` + `context.md`) → `{flagged, reason}`.
     On a flag, the item's bucket is forced to needs-you and the flag is stamped onto the captured item, so it can never be auto-handled or digested and its worker leads with the warning.
