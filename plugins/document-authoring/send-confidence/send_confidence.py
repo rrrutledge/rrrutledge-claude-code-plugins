@@ -756,8 +756,8 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     spawn command string, or None) and "label_error".
 
     A learning session spawns on a voice edit only. Whether the estimate was wrong in either
-    direction is still logged (`direction`, `miscalibrated`) for the weekly refit, which is the
-    only thing that changes the score's numbers.
+    direction is still logged (`direction`, `miscalibrated`), and nothing here changes the
+    score's numbers.
     `moot` (discards only - what it does and when to pass it live in learn-from-send.md)."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:

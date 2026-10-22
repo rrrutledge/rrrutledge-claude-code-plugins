@@ -4,8 +4,7 @@ Every staged draft Russell sends or discards answers one question: what did the 
 A single send can teach one thing: the rules had a gap.
 They were silent on a choice the draft had to make, or could be read more than one way, and his edit shows how he resolves it; the lesson fills that gap in `message-rules`, `authoring-rules`, or this skill's drafting loop.
 
-The score's numbers (the weights, the thresholds, the aspect descriptions) move only through the weekly refit, which reads every recorded outcome together.
-One send is too small a sample to move them, so the outcome records whether the estimate was over- or under-confident and leaves the numbers alone.
+The outcome records whether the estimate was over- or under-confident and leaves the score's numbers alone.
 
 The drafting session's part is short and mechanical; the learning session, spawned right away while the send is fresh, does the thinking.
 
@@ -34,7 +33,7 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 
 **Skip `--discarded` when you're about to stage a replacement for the same thread and recipient - the facts moved, not the draft.**
 Review, mint, and stage the replacement: the gate's score of it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
-Calling `--discarded` on the stale draft first logs it as an over-confident estimate by the same mechanical rule that catches a genuinely bad draft, feeding the weekly refit a miss that doesn't exist.
+Calling `--discarded` on the stale draft first logs it as an over-confident estimate by the same mechanical rule that catches a genuinely bad draft, a miss that doesn't exist.
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
 There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise log a well-scored draft as over-confident just because it never got the chance to go out.
