@@ -1,56 +1,33 @@
 # Send-confidence: scoring an outward draft
 
-This is the procedure the drafting loop's Verify step points to for an outward message: mint with `--score-context` instead of a plain mint.
-Every outward message that will have a sent version gets scored this way, on every surface - email, Slack, Teams, a Jira or GitHub comment, or anything else.
+The stage gate scores every outward draft it lets through; the drafting session's one part is the rule coverage it records at mint, below.
 The scorer estimates how likely the draft is to need a change before Russell sends it, from the aspects of uncertainty described in `send-confidence/uncertainty-aspects.md`: how well the writing rules cover it, how much of its content the ask left open, whether its facts are backed, what's at stake, and how familiar the recipient is.
 Stage 1 only measures: no draft is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
 Everything here is fail-open: a failed judge call or a scorer exception never blocks staging or the review receipt.
 What happens once he sends or discards the draft is `learn-from-send.md`.
 
-## What the stage gate scores on its own
+## How the gate scores a draft
 
-The stage gate logs every stage it lets through and scores any draft whose content has no score yet, in a background process, so the stage goes through immediately.
-That process runs outside the session, so the session records an auto-scored draft's outcome by its body file, per `learn-from-send.md`.
-The auto-scored row reads the channel, recipient, thread, and account off the stage command and rates the body's stakes; the ask, the inputs, the familiarity count, and the reviewer's rule coverage come from the context built below.
-A draft minted with that context already carries its richer score when it reaches the gate, so the gate keeps that row and adds only the stage record.
+The gate logs every stage it lets through and scores any draft whose content has no score yet, in a background process, so the stage goes through immediately.
+That process builds the whole context itself:
 
-## Get the familiarity count
+- **From the stage command:** the channel, recipient, thread, and account.
+- **From the review receipt:** the final `writing-review` round's rule coverage rating and the spots the rules didn't settle.
+- **From the session transcript:** the ask (every message Russell or the seed typed), the inputs (the tool results the session saw), and the count of his turns after the first.
+- **From the send-confidence log:** familiarity, as the number of other sessions that staged a draft to the same recipient.
 
-`sent_count` is a prior-sent count to this exact recipient, read before building the context below:
+The scored row's draft id stays in the log, so the session records the outcome by the staged body file, per `learn-from-send.md`.
+A script that sends from inside itself, out of the hook's sight, hands its stage to the gate with `verify_gate.py stage <body-file> --meta <meta.json>`, which scores before returning so the script can record the outcome right after; the drainer's acknowledgement sweep does this for every ack.
+A message that reaches Russell through no stage command (a Jira or GitHub comment, LinkedIn text handed over in chat) has nothing for the gate to see, so it goes unscored.
 
-- **gmail**: `node gmail.js --search="to:<addr>" --folder=sent --top=20 --json` (add `--account=` for a non-default account), counting the results.
-- **outlook-personal**: `node mail.js --search="to:<addr>" --folder=sent --top=20`, counting the results.
-- **outlook-work, slack, teams, jira, github, linkedin, other**: no count source in Stage 1 - omit `--sent-count` below.
+## The session's part: rate coverage at mint
 
-This lookup is the one manual step: because it calls another plugin's tool, the session runs it by hand.
-
-## Build the context and mint
-
-One command builds the context file and prints the exact mint command to run next - it also enforces the 12,000-character cap on `inputs`:
+The one input only the session holds is the reviewer's rule coverage rating and uncertain spots, so they ride on the mint that already ends the review loop:
 
 ```
-python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py context \
-  --channel <c> --recipient <r> --session-kind <k> \
-  (--ask "<text>" | --ask-file <file>) (--inputs "<text>" | --inputs-file <file>) \
-  [--account <a>] [--thread-ref <t>] [--iid <i>] [--turns-before-draft <n>] [--sent-count <n>] \
-  [--rule-coverage <1-5>] [--uncertain-spots-file <file>]
+python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <body-file> --rule-coverage <1-5> --uncertain-spots-file <file>
 ```
 
 (run the newest cached copy if several exist).
-
-- **`--channel`** is one of `gmail`, `outlook-personal`, `outlook-work`, `slack`, `teams`, `jira`, `github`, `linkedin`, `other`.
-- **`--ask`** is the originating ask, verbatim: the seed item's content, or Russell's own instruction in a live session.
-- **`--inputs`** is the facts the draft may draw on: the thread, Russell's supplied facts, lookup results.
-- **`--turns-before-draft`** counts Russell's turns between the ask and this mint - every human turn so far in a drainer worker, or the turns since he gave this particular ask in a live session. Defaults to `0`.
-- **`--thread-ref`** is the Message-ID, Slack ts, or Teams chat id; **`--iid`** is the drainer item id, when one exists.
-- **`--rule-coverage`** and **`--uncertain-spots-file`** carry the final `writing-review` round's rule coverage rating and its list of spots the rules didn't settle (write the list to a file first).
-- Prefer `--ask-file`/`--inputs-file` (write them with the Write tool first) over the inline `--ask`/`--inputs` forms for anything beyond a short one-liner, the same way a staged body already goes through a file rather than a shell argument.
-
-Run the mint command exactly as printed:
-
-```
-python ~/.claude/plugins/cache/*/document-authoring/*/hooks/verify_gate.py mint <body-file> --score-context <ctx.json>
-```
-
-This writes the receipt and, in the same step, scores and logs the draft.
-It prints the draft id, never the score; keep the id for recording the outcome after the send.
+`--rule-coverage` is the final round's rule coverage rating, and `--uncertain-spots-file` holds its list of spots the rules didn't settle (write the list to a file first).
+The gate reads both off the receipt when the draft is staged.

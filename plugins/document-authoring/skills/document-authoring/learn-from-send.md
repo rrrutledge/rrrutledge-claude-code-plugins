@@ -18,12 +18,12 @@ After Russell sends a draft (he edited it in the app and clicked Send, or said "
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) --sent-file <file>
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) --discarded --reason "<text>" [--moot]
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
-   An auto-scored draft takes the `--body-file` form (see `send-confidence.md`), which finds the row by rehashing that file against the log.
+   `--body-file` finds the draft's scored row by rehashing the staged body against the log.
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
@@ -31,12 +31,12 @@ After Russell sends a draft (he edited it in the app and clicked Send, or said "
 
 **Record `--discarded` when Russell discards a staged draft outright**, with `--reason` naming why in one phrase - except in the replacement case below.
 
-**Skip `--discarded` when you're about to score a replacement for the same thread and recipient - the facts moved, not the draft.**
-Just build the context and mint the replacement: scoring it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
+**Skip `--discarded` when you're about to stage a replacement for the same thread and recipient - the facts moved, not the draft.**
+Review, mint, and stage the replacement: the gate's score of it auto-supersedes the still-pending original, which correctly leaves the original unflagged.
 Calling `--discarded` on the stale draft first flags it as over-confident by the same mechanical rule that catches a genuinely bad draft, spawning a learning session for a lesson that doesn't exist.
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
-There's no replacement to score, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise flag a well-scored draft as over-confident just because it never got the chance to go out.
+There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise flag a well-scored draft as over-confident just because it never got the chance to go out.
 
 ## When a learning session spawns
 

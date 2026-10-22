@@ -254,6 +254,9 @@ print("\nreview")
 sent_outcomes = []
 ack_sweep.has_receipt = lambda body: "unreviewed" not in body
 ack_sweep.record_outcome = lambda *a: sent_outcomes.append(a) or "recorded"
+staged_calls = []
+ack_sweep.stage_for_scoring = lambda rt, entry, current, body, inputs, verb: (
+    staged_calls.append((body, inputs, verb, len(sent_outcomes))) or "staged")
 
 
 def review_for(due_entries, listing, opened=frozenset()):
@@ -333,12 +336,6 @@ rows = json.loads(buf.getvalue())
 check("prepare marks the waiting entry ready and the vanished one dropped",
       [(row["key"], row["status"]) for row in rows], [("demo|c-w", "ready"), ("demo|c-gone", "dropped")])
 check("a ready row carries what the person said", rows[0]["message"], "text of w")
-check("score channels map per source and send path",
-      (ack_sweep.score_channel({"source": "outlook-graph", "sendPath": "api"}),
-       ack_sweep.score_channel({"source": "slack", "sendPath": "api"}),
-       ack_sweep.score_channel({"source": "gmail", "sendPath": "by-hand"}, linkedin=True),
-       ack_sweep.score_channel({"source": "gmail", "sendPath": "by-hand"})),
-      ("outlook-personal", "slack", "linkedin", "other"))
 
 body_dir = tempfile.mkdtemp()
 body = os.path.join(body_dir, "ack.md")
@@ -360,6 +357,8 @@ check("the person's other waiting thread is written as covered", ledger["demo|c-
 check("the item itself is left alone (not cleared, not recorded seen)",
       (demo.cleared, load_seen(r.runtime_dir, "demo")), ([], {}))
 check("the send-confidence outcome is recorded as sent", sent_outcomes[-1][-2:], ("--sent-file", body))
+check("the ack is staged for scoring, with the message it answers, before the outcome",
+      staged_calls[-1], (body, "text of w", "send", len(sent_outcomes) - 1))
 
 r, demo = review_for([due_entry(waiting)], [waiting])
 ack_sweep.cmd_send(r, "demo|c-w", body, handles=True)
@@ -401,6 +400,8 @@ ack_sweep.cmd_skip(r, "demo|c-w", body)
 check("skip writes a skipped ledger entry", load_ack_ledger(r.runtime_dir)["demo|c-w"]["status"], "skipped")
 check("and records the draft as discarded and moot", ("--moot" in sent_outcomes[-1], "--discarded" in sent_outcomes[-1]),
       (True, True))
+check("and stages the skipped draft for scoring before that outcome",
+      staged_calls[-1][::2], (body, "skip"))
 
 
 # --- the worker's ledger lookup ----------------------------------------------------------------------------

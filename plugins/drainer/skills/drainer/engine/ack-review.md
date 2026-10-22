@@ -33,7 +33,7 @@ An ack's shape: one short positive line that responds to the substance of what t
 It carries no date and no commitment, and answers none of their asks; for a multi-message span it acknowledges every ask together.
 A Slack body is Slack mrkdwn; an email body is Markdown, and the ISC Gmail send appends the Executive Director signature itself.
 
-Run the cold `writing-review` on every body, then mint each with a send-confidence score context per `send-confidence.md`, passing the row's `channel` as `--channel`.
+Run the cold `writing-review` on every body, then mint each with the reviewer's rule coverage and uncertain spots per `send-confidence.md`.
 
 ## 3. Present one list
 

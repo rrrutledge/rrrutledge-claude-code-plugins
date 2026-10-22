@@ -529,72 +529,53 @@ def test_pr_create_base_uses_remote_not_stale_local(tmp_path):
     assert decision(r2.stdout) == "DEFER"
 
 
-# --- mint --score-context (send-confidence) ---
+# --- mint: review metadata on the receipt ---
 
-def write_ctx(tmp_path, **overrides):
-    ctx = {
-        "channel": "gmail", "account": "isc", "recipient": "person@example.org",
-        "thread_ref": "thread-1", "iid": None, "session_kind": "live",
-        "ask": "Reply confirming the meeting.", "inputs": "Meeting is Tuesday at 2pm.",
-        "turns_before_draft": 0, "sent_count": 5,
-    }
-    ctx.update(overrides)
-    p = tmp_path / "score-ctx.json"
-    p.write_text(json.dumps(ctx), encoding="utf-8")
-    return str(p)
+def read_receipt_for_test(receipts, body):
+    h = content_hash_for_test(normalized_text_for_test(body))
+    with open(os.path.join(receipts, h + ".json"), encoding="utf-8") as fh:
+        return json.load(fh)
 
 
-def test_mint_with_score_context_writes_receipt_and_log_row(tmp_path):
+def test_mint_records_rule_coverage_and_uncertain_spots(tmp_path):
     receipts = str(tmp_path / "receipts")
-    data_dir = str(tmp_path / "send-confidence-data")
-    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm, looking forward to it.")
-    ctx_path = write_ctx(tmp_path)
-    env = dict(os.environ)
-    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
-    env["SEND_CONFIDENCE_DIR"] = data_dir
-    env["SEND_CONFIDENCE_JUDGE"] = "off"
-    r = subprocess.run(
-        [sys.executable, HOOK, "mint", str(body), "--score-context", ctx_path],
-        env=env, capture_output=True, text=True,
-    )
-    assert r.returncode == 0
-    assert "writing-review receipt minted" in r.stdout
-    assert "send-confidence: logged" in r.stdout
-    log_files = list((tmp_path / "send-confidence-data").glob("log-*.jsonl"))
-    assert len(log_files) == 1
-    assert "\"event\": \"scored\"" in log_files[0].read_text(encoding="utf-8")
-
-
-def test_mint_without_score_context_writes_no_log_row(tmp_path):
-    receipts = str(tmp_path / "receipts")
-    data_dir = str(tmp_path / "send-confidence-data")
     body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
-    env = dict(os.environ)
-    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
-    env["SEND_CONFIDENCE_DIR"] = data_dir
-    r = subprocess.run([sys.executable, HOOK, "mint", str(body)], env=env, capture_output=True, text=True)
+    spots = write_body(tmp_path, "spots.txt", "- whether to thank them twice\n")
+    r = run(["mint", str(body), "--rule-coverage", "4", "--uncertain-spots-file", str(spots)],
+            receipt_dir=receipts)
+    assert r.returncode == 0
+    receipt = read_receipt_for_test(receipts, body)
+    assert receipt["rule_coverage"] == 4
+    assert receipt["uncertain_spots"] == "- whether to thank them twice"
+
+
+def test_plain_mint_writes_no_log_row_and_null_review_fields(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    r = run(["mint", str(body)], receipt_dir=receipts)
     assert r.returncode == 0
     assert "send-confidence" not in r.stdout
-    assert not os.path.isdir(data_dir)
+    assert not (tmp_path / "sc-data").exists()
+    receipt = read_receipt_for_test(receipts, body)
+    assert receipt["rule_coverage"] is None and receipt["uncertain_spots"] is None
 
 
-def test_mint_score_context_exception_still_exits_0_with_receipt(tmp_path):
+def test_mint_rejects_out_of_range_rule_coverage(tmp_path):
+    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    r = run(["mint", str(body), "--rule-coverage", "7"], receipt_dir=str(tmp_path / "receipts"))
+    assert r.returncode == 2
+    assert "1-5" in r.stderr
+
+
+def test_mint_ignores_score_context_and_still_mints(tmp_path):
     receipts = str(tmp_path / "receipts")
     body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
-    env = dict(os.environ)
-    env["WRITING_REVIEW_RECEIPT_DIR"] = receipts
-    # A nonexistent context file makes send_confidence.score_and_log raise - mint must still
-    # succeed and the receipt must still exist.
-    r = subprocess.run(
-        [sys.executable, HOOK, "mint", str(body), "--score-context", str(tmp_path / "missing-ctx.json")],
-        env=env, capture_output=True, text=True,
-    )
+    r = run(["mint", str(body), "--score-context", str(tmp_path / "ctx.json")], receipt_dir=receipts)
     assert r.returncode == 0
     assert "writing-review receipt minted" in r.stdout
-    assert "send-confidence: not logged" in r.stderr
-    text = normalized_text_for_test(body)
-    h = content_hash_for_test(text)
-    assert os.path.isfile(os.path.join(receipts, h + ".json"))
+    assert "--score-context is ignored" in r.stderr
+    assert not (tmp_path / "sc-data").exists()
+    read_receipt_for_test(receipts, body)
 
 
 def normalized_text_for_test(path):
@@ -618,7 +599,7 @@ def test_pr_create_after_compound_command_gated(tmp_path):
     assert decision(r.stdout) == "DENY"
 
 
-# --- every passed stage is logged and auto-scored (send-confidence) ---
+# --- every passed stage is logged and scored (send-confidence) ---
 
 def sc_events(tmp_path, kind=None):
     events = []
@@ -662,7 +643,7 @@ def test_passed_stage_logs_staged_event_and_auto_scores(tmp_path):
     assert wait_for(lambda: sc_events(tmp_path, "scored"))
     scored = sc_events(tmp_path, "scored")
     assert len(scored) == 1
-    assert scored[0]["source"] == "auto"
+    assert scored[0]["source"] == "gate"
     assert scored[0]["sha256"] == s["sha256"]
     assert scored[0]["factors"]["content_latitude"] is None
     assert scored[0]["factors"]["fact_support"] is None
@@ -682,19 +663,63 @@ def test_scorer_outlives_the_hook(tmp_path, monkeypatch):
     assert wait_for(lambda: sc_events(tmp_path, "scored"))
 
 
-def test_session_scored_draft_is_not_rescored(tmp_path):
+def test_same_draft_staged_twice_scores_once(tmp_path):
     receipts = str(tmp_path / "receipts")
-    body = write_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
-    m = run(["mint", str(body), "--score-context", write_ctx(tmp_path)], receipt_dir=receipts)
-    assert m.returncode == 0
-    r = run([], stdin=stage_payload("node gmail.js --reply --message-id=M3 --body-file=reply.md"),
-            cwd=str(tmp_path), receipt_dir=receipts)
-    assert decision(r.stdout) == "DEFER"
-    assert len(sc_events(tmp_path, "staged")) == 1
-    assert not list((tmp_path / "sc-data" / "pending").glob("*.json"))
+    minted_body(tmp_path, "reply.md", "Confirmed - see you Tuesday at 2pm.")
+    cmd = "node gmail.js --reply --message-id=M3 --body-file=reply.md"
+    run([], stdin=stage_payload(cmd), cwd=str(tmp_path), receipt_dir=receipts)
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+    run([], stdin=stage_payload(cmd), cwd=str(tmp_path), receipt_dir=receipts)
+    assert len(sc_events(tmp_path, "staged")) == 2
     time.sleep(1)
+    assert len(sc_events(tmp_path, "scored")) == 1
+
+
+def test_stage_scores_with_receipt_coverage_and_transcript(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    body = write_body(tmp_path, "reply.md", "Tuesday at 2pm works - see you then.")
+    run(["mint", str(body), "--rule-coverage", "5"], receipt_dir=receipts)
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text("\n".join(json.dumps(e) for e in [
+        {"type": "user", "message": {"role": "user", "content": "Reply to Dana confirming Tuesday."}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t", "content": "Dana: Tuesday at 2pm?"}]}},
+    ]) + "\n", encoding="utf-8")
+    payload = json.dumps({"tool_name": "Bash", "session_id": "s9", "transcript_path": str(transcript),
+                          "tool_input": {"command": "node gmail.js --reply --message-id=M4 --body-file=reply.md"}})
+    r = run([], stdin=payload, cwd=str(tmp_path), receipt_dir=receipts)
+    assert decision(r.stdout) == "DEFER"
+    assert wait_for(lambda: sc_events(tmp_path, "scored"))
+    scored = sc_events(tmp_path, "scored")[0]
+    assert scored["factors"]["rule_coverage"] == 100
+    assert scored["turns_before_draft"] == 0
+
+
+def test_stage_mode_scores_before_returning(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    body = write_body(tmp_path, "ack.md", "Thanks for sending this - I'll take a look.")
+    run(["mint", str(body), "--rule-coverage", "3"], receipt_dir=receipts)
+    meta = tmp_path / "meta.json"
+    meta.write_text(json.dumps({"channel": "slack", "recipient": "C1", "thread_ref": "i1",
+                                "stage_kind": "draft", "script": "ack_sweep.py", "verb": "send",
+                                "ask": "Acknowledge it.", "inputs": "Here is the deck."}), encoding="utf-8")
+    r = run(["stage", str(body), "--meta", str(meta)], receipt_dir=receipts)
+    assert r.returncode == 0
+    assert "send-confidence: staged" in r.stdout
+    staged = sc_events(tmp_path, "staged")
+    assert [(s["channel"], s["script"]) for s in staged] == [("slack", "ack_sweep.py")]
     scored = sc_events(tmp_path, "scored")
-    assert [e["source"] for e in scored] == ["session"]
+    assert len(scored) == 1 and scored[0]["factors"]["rule_coverage"] == 50
+
+
+def test_stage_mode_never_fails_the_caller(tmp_path):
+    r = run(["stage", str(tmp_path / "missing.md"), "--meta", str(tmp_path / "nope.json")],
+            receipt_dir=str(tmp_path / "receipts"))
+    assert r.returncode == 0
+    body = write_body(tmp_path, "ack.md", "Thanks - on it.")
+    r = run(["stage", str(body), "--meta", str(tmp_path / "nope.json")], receipt_dir=str(tmp_path / "receipts"))
+    assert r.returncode == 0
+    assert "not staged" in r.stderr
 
 
 def test_denied_stage_logs_nothing(tmp_path):

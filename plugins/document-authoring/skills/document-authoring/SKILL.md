@@ -36,7 +36,7 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
    This step is a cold, independent check, not a self-walk - for why a separate dispatched reviewer is required rather than a re-read of the rules, see `writing-review`.
    Revise against what it finds, then dispatch a **fresh** reviewer on the revised text; repeat until it returns clean, a finding stands that you genuinely disagree with, or you've run three rounds — see `writing-review` for the disagreement and convergence rules.
    When the loop converges, mint the review receipt on the exact body file you'll stage (see `writing-review`'s **The stage gate**): the mail-staging commands are gated and refuse a draft that has no fresh receipt for its content, which is what makes this step contractual rather than a documented "should."
-   For an outward message, mint with `--score-context`, per `send-confidence.md`.
+   For an outward message, pass the reviewer's rule coverage and uncertain spots on that mint, per `send-confidence.md`; the gate scores the draft when it's staged.
    **This step applies every time this skill is used to draft or edit a message, in every caller** — a provider doc or another skill that says "invoke document-authoring" gets Verify as part of that, with no separate reminder needed at the call site.
 4. **Stage, never send** — a draft that survives verify is staged for Russell's approval; by default he sends it himself.
    Put the text into the real UI where it'll be sent — the ticket comment box, the Teams compose box, the email reply — via `browser-chauffeur`, so he sees it in context, edits inline, and clicks the app's own Send.

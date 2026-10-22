@@ -37,7 +37,7 @@ def run_cli(args):
                            env=dict(os.environ), capture_output=True, text=True)
 
 
-def _write_ctx(tmp_path, **overrides):
+def _ctx(**overrides):
     ctx = {
         "channel": "gmail", "account": "isc", "recipient": "person@example.org",
         "thread_ref": "thread-1", "iid": None, "session_kind": "live",
@@ -45,16 +45,13 @@ def _write_ctx(tmp_path, **overrides):
         "turns_before_draft": 0, "sent_count": 5,
     }
     ctx.update(overrides)
-    path = tmp_path / f"ctx-{overrides.get('thread_ref', 'default')}-{len(ctx)}-{id(overrides)}.json"
-    path.write_text(json.dumps(ctx), encoding="utf-8")
-    return str(path)
+    return ctx
 
 
 def _score(tmp_path, body=None, **ctx_overrides):
     body = body or "This is a test draft confirming the meeting on Tuesday at 2pm."
-    ctx_path = _write_ctx(tmp_path, **ctx_overrides)
     sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    draft_id = sc.score_and_log(body, sha, ctx_path)
+    draft_id = sc.score_and_log(body, sha, _ctx(**ctx_overrides))
     return draft_id, body
 
 
@@ -141,25 +138,28 @@ def test_judge_ratings_and_latitude_turn_penalty(monkeypatch):
     monkeypatch.setattr(sc, "run_judge", fake_judge)
     body = "word " * 30
 
-    r0 = sc.score_draft(body, {"channel": "gmail", "sent_count": None, "turns_before_draft": 0},
+    r0 = sc.score_draft(body, {"channel": "gmail", "ask": "Reply.", "sent_count": None,
+                               "turns_before_draft": 0},
                          weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
     assert r0["factors"]["stakes"] == 50
     assert r0["factors"]["content_latitude"] == 25
     assert r0["factors"]["fact_support"] == 50
 
-    r3 = sc.score_draft(body, {"channel": "gmail", "sent_count": None, "turns_before_draft": 3},
+    r3 = sc.score_draft(body, {"channel": "gmail", "ask": "Reply.", "sent_count": None,
+                               "turns_before_draft": 3},
                          weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
     assert r3["features"]["latitude_turn_penalty"] == 15
     assert r3["factors"]["content_latitude"] == 10
 
-    auto = sc.score_draft(body, {"channel": "gmail", "source": "auto"},
-                           weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
-    assert auto["factors"]["stakes"] == 50
-    assert auto["factors"]["content_latitude"] is None
-    assert auto["factors"]["fact_support"] is None
-    assert auto["score"] == 50
+    blind = sc.score_draft(body, {"channel": "gmail", "ask": None, "inputs": None},
+                            weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert blind["factors"]["stakes"] == 50
+    assert blind["factors"]["content_latitude"] is None
+    assert blind["factors"]["fact_support"] is None
+    assert blind["score"] == 50
 
-    r10 = sc.score_draft(body, {"channel": "gmail", "sent_count": None, "turns_before_draft": 10},
+    r10 = sc.score_draft(body, {"channel": "gmail", "ask": "Reply.", "sent_count": None,
+                                "turns_before_draft": 10},
                           weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
     assert r10["features"]["latitude_turn_penalty"] == 20  # capped, not 5*10=50
     assert r10["factors"]["content_latitude"] == 5
@@ -207,11 +207,11 @@ def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
     assert drafts[id2]["outcome"] is None
 
 
-def test_auto_scored_revision_supersedes_session_scored_draft_in_same_thread(tmp_path):
+def test_reply_with_unknown_recipient_supersedes_earlier_draft_in_same_thread(tmp_path):
     id1, _ = _score(tmp_path, thread_ref="thread-y", recipient="a@b.com",
-                     body="Session-scored first draft of the reply, with full context.")
-    id2, _ = _score(tmp_path, thread_ref="thread-y", recipient=None, source="auto",
-                     body="Auto-scored revision of that reply after Russell asked for a change.")
+                     body="First draft of the reply, staged with its addressee known.")
+    id2, _ = _score(tmp_path, thread_ref="thread-y", recipient=None,
+                     body="Revision of that reply, staged with only the thread on the command.")
     drafts = sc.fold_drafts()
     assert drafts[id1]["outcome"]["disposition"] == "superseded"
     assert drafts[id2]["outcome"] is None
@@ -519,83 +519,65 @@ def test_cli_outcome_body_file_lookup(tmp_path):
     assert draft_id in r.stdout
 
 
-# --- context ---
+# --- transcript context + familiarity ---
 
-def test_build_context_truncates_inputs():
-    ctx = sc.build_context(channel="gmail", recipient="a@b.com", session_kind="live",
-                            ask="do the thing", inputs="x" * 20000)
-    assert len(ctx["inputs"]) == sc.INPUTS_CHAR_CAP
-    assert ctx["account"] is None
-    assert ctx["sent_count"] is None
-    assert ctx["turns_before_draft"] == 0
-    assert ctx["rule_coverage"] is None
-    assert ctx["uncertain_spots"] is None
+def _write_transcript(tmp_path, entries):
+    path = tmp_path / "transcript.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
+    return str(path)
 
 
-def test_cli_context_inline_writes_usable_ctx_file(tmp_path):
-    spots = tmp_path / "spots.txt"
-    spots.write_text("- whether to thank them twice", encoding="utf-8")
-    r = run_cli([
-        "context", "--channel", "gmail", "--recipient", "person@example.org",
-        "--session-kind", "live", "--ask", "Reply confirming the meeting.",
-        "--inputs", "Meeting is Tuesday at 2pm.", "--account", "isc",
-        "--thread-ref", "thread-1", "--turns-before-draft", "2", "--sent-count", "5",
-        "--rule-coverage", "4", "--uncertain-spots-file", str(spots),
+def _human(text, **extra):
+    return {"type": "user", "message": {"role": "user", "content": text}, **extra}
+
+
+def _tool_result(text):
+    return {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": text}]}}
+
+
+def test_transcript_context_reads_ask_inputs_and_turns(tmp_path):
+    path = _write_transcript(tmp_path, [
+        {"type": "system", "sessionKind": "bg"},
+        _human("Reply to Dana confirming Tuesday."),
+        _tool_result("From: Dana\nCan we meet Tuesday at 2pm?"),
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "Drafting."}]}},
+        _human([{"type": "text", "text": "Base directory for this skill: ..."}], isMeta=True),
+        _human("<system-reminder>hook context</system-reminder>Make it shorter."),
+        _human("<task-notification>agent done</task-notification>"),
     ])
-    assert r.returncode == 0
-    lines = r.stdout.strip().splitlines()
-    ctx_path = lines[0].split("context written: ", 1)[1].strip()
-    with open(ctx_path, encoding="utf-8") as fh:
-        ctx = json.load(fh)
-    assert ctx["channel"] == "gmail"
-    assert ctx["account"] == "isc"
-    assert ctx["turns_before_draft"] == 2
-    assert ctx["sent_count"] == 5
-    assert ctx["rule_coverage"] == 4
-    assert ctx["uncertain_spots"] == "- whether to thank them twice"
-
-    assert f"mint: python {sc.VERIFY_GATE_PATH} mint" in lines[1]
-    assert os.path.isfile(sc.VERIFY_GATE_PATH)
-
-    # The written ctx file is exactly what score_and_log expects.
-    body = "Confirmed - see you Tuesday at 2pm, looking forward to it."
-    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    draft_id = sc.score_and_log(body, sha, ctx_path)
-    scored = sc.fold_drafts()[draft_id]["scored"]
-    assert scored["channel"] == "gmail"
-    assert scored["factors"]["rule_coverage"] == 75
+    found = sc.transcript_context(path)
+    assert found["ask"] == "Reply to Dana confirming Tuesday.\n\nMake it shorter."
+    assert found["inputs"] == "From: Dana\nCan we meet Tuesday at 2pm?"
+    assert found["turns_before_draft"] == 1
+    assert found["session_kind"] == "background"
 
 
-def test_cli_context_rejects_out_of_range_rule_coverage():
-    r = run_cli(["context", "--channel", "gmail", "--recipient", "a@b.com", "--session-kind", "live",
-                 "--ask", "x", "--inputs", "y", "--rule-coverage", "7"])
-    assert r.returncode == 2
-    assert "1-5" in r.stderr
+def test_transcript_context_caps_inputs_keeping_the_latest(tmp_path):
+    path = _write_transcript(tmp_path, [_human("Go."), _tool_result("old " * 5000), _tool_result("newest result")])
+    found = sc.transcript_context(path)
+    assert len(found["inputs"]) == sc.INPUTS_CHAR_CAP
+    assert found["inputs"].endswith("newest result")
 
 
-def test_cli_context_reads_ask_and_inputs_from_files(tmp_path):
-    ask_file = tmp_path / "ask.txt"
-    ask_file.write_text("Reply confirming the meeting.", encoding="utf-8")
-    inputs_file = tmp_path / "inputs.txt"
-    inputs_file.write_text("Meeting is Tuesday at 2pm.", encoding="utf-8")
-
-    r = run_cli([
-        "context", "--channel", "slack", "--recipient", "U123", "--session-kind", "drainer-worker",
-        "--ask-file", str(ask_file), "--inputs-file", str(inputs_file),
-    ])
-    assert r.returncode == 0
-    ctx_path = r.stdout.strip().splitlines()[0].split("context written: ", 1)[1].strip()
-    with open(ctx_path, encoding="utf-8") as fh:
-        ctx = json.load(fh)
-    assert ctx["ask"] == "Reply confirming the meeting."
-    assert ctx["inputs"] == "Meeting is Tuesday at 2pm."
-    assert ctx["sent_count"] is None
+def test_transcript_context_missing_file_is_all_none():
+    assert sc.transcript_context("nope.jsonl") == {
+        "ask": None, "inputs": None, "turns_before_draft": None, "session_kind": None}
+    assert sc.transcript_context(None)["ask"] is None
 
 
-def test_cli_context_missing_required_fields_errors():
-    r = run_cli(["context", "--channel", "gmail", "--ask", "x", "--inputs", "y"])
-    assert r.returncode == 2
-    assert "required" in r.stderr
+def test_prior_session_count_counts_other_sessions_once_each():
+    events = [
+        {"event": "staged", "recipient": "a@b.com", "session_id": "s1"},
+        {"event": "staged", "recipient": "a@b.com", "session_id": "s1"},
+        {"event": "staged", "recipient": "a@b.com", "session_id": "s2"},
+        {"event": "staged", "recipient": "a@b.com", "session_id": "now"},
+        {"event": "staged", "recipient": "c@d.com", "session_id": "s3"},
+    ]
+    assert sc.prior_session_count("a@b.com", "now", events) == 2
+    assert sc.prior_session_count("new@x.com", "now", events) == 0
+    assert sc.prior_session_count(None, "now", events) is None
+    assert sc.prior_session_count("self", "now", events) is None
 
 
 # --- weights-suggest ---
@@ -676,7 +658,7 @@ def test_weights_suggest_leaves_an_unfitted_factor_at_its_current_share(monkeypa
     assert proposed["rule_coverage"] > proposed["familiarity"]
 
 
-# --- record_stage + auto-score ---
+# --- record_stage + the detached scorer ---
 
 STAGE_META = {"channel": "gmail", "account": None, "recipient": None, "thread_ref": "M1",
               "stage_kind": "draft", "script": "gmail.js", "verb": "--reply",
@@ -732,7 +714,40 @@ def test_auto_score_job_scores_and_cleans_up(monkeypatch):
     assert not os.path.exists(job)
     scored = [e for e in sc.load_events() if e["event"] == "scored"]
     assert len(scored) == 1
-    assert (scored[0]["source"], scored[0]["session_id"], scored[0]["thread_ref"]) == ("auto", "s1", "M1")
+    assert (scored[0]["source"], scored[0]["session_id"], scored[0]["thread_ref"]) == ("gate", "s1", "M1")
+
+
+def test_auto_score_builds_context_from_transcript_receipt_and_log(tmp_path, monkeypatch):
+    _capture_spawns(monkeypatch)
+    seen = {}
+
+    def fake_judge(ctx, body, aspects, key):
+        seen.update(ctx)
+        return {"stakes": {"rating": 2, "rationale": "x"},
+                "content_latitude": {"rating": 2, "rationale": "y"},
+                "claims": [{"text": "Tuesday", "supported": True}]}, None
+    monkeypatch.setattr(sc, "run_judge", fake_judge)
+    transcript = _write_transcript(tmp_path, [
+        _human("Reply to Dana confirming Tuesday."),
+        _tool_result("Dana: does Tuesday at 2pm work?"),
+        _human("Shorter, please."),
+    ])
+    sc._append_event({"event": "staged", "recipient": "dana@x.com", "session_id": "earlier"})
+    meta = {**STAGE_META, "recipient": "dana@x.com", "transcript_path": transcript,
+            "rule_coverage": 4, "uncertain_spots": "- the sign-off"}
+    body = "Tuesday at 2pm works - see you then."
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    job = sc.record_stage(body, sha, meta)
+    assert sc.cmd_auto_score(job) == 0
+    assert seen["ask"] == "Reply to Dana confirming Tuesday.\n\nShorter, please."
+    assert seen["inputs"] == "Dana: does Tuesday at 2pm work?"
+    scored = [e for e in sc.load_events() if e["event"] == "scored"][0]
+    assert scored["turns_before_draft"] == 1
+    assert scored["features"]["sent_count"] == 1
+    assert scored["factors"]["rule_coverage"] == 75
+    assert scored["factors"]["fact_support"] == 100
+    assert scored["factors"]["content_latitude"] == 75 - 5
+    assert scored["uncertain_spots"] == "- the sign-off"
 
 
 def test_auto_score_skips_when_a_row_landed_meanwhile(tmp_path, monkeypatch):
@@ -742,7 +757,7 @@ def test_auto_score_skips_when_a_row_landed_meanwhile(tmp_path, monkeypatch):
     job = sc.record_stage(body, sha, STAGE_META)
     _score(tmp_path, body=body)
     assert sc.cmd_auto_score(job) == 0
-    assert [e["source"] for e in sc.load_events() if e["event"] == "scored"] == ["session"]
+    assert len([e for e in sc.load_events() if e["event"] == "scored"]) == 1
     assert not os.path.exists(job)
 
 

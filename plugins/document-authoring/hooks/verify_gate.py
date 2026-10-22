@@ -19,34 +19,30 @@ Two surfaces reach Russell, and the hook gates both against one receipt store:
     already-open PR whose prose he has already seen - readying and merging are the
     time-to-merge step, not a fresh prose-reaches-Russell moment.
 
-Three modes in one file (single source of truth for the hash + receipt layout, so the
+Four modes in one file (single source of truth for the hash + receipt layout, so the
 minting side and the gating side can never drift apart):
 
   * hook mode  - no args, reads a PreToolUse payload on stdin. Vetoes (deny) a stage
                  command whose body file has no fresh receipt, or a PR-open whose changed
                  prose files have no fresh receipt; defers otherwise.
-  * mint <f>   - the review flow's final step: hash file <f>, write its receipt. An
-                 optional `--score-context <ctx.json>` also logs the draft to send-confidence
-                 (see below); scoring never affects the receipt.
+  * mint <f>   - the review flow's final step: hash file <f>, write its receipt. Optional
+                 `--rule-coverage <1-5>` and `--uncertain-spots-file <file>` record the final
+                 review round's rating and unsettled spots on the receipt, for scoring.
   * check <f>  - exit 0 if <f> has a fresh receipt (or is a pure reaction), else exit 1.
                  For surfaces the hook can't see (Teams/Slack composers), where the flow
                  asserts the receipt itself rather than a stage command triggering the gate.
+  * stage <f> --meta <m.json>
+               - the hook's stage recording, for a script that sends from inside itself
+                 where the hook can't see it: logs the stage and scores it before returning.
 
-Mint's optional `--score-context <ctx.json>` hands the just-reviewed body to send-confidence
-(`plugins/document-authoring/send-confidence/send_confidence.py`), which estimates whether
-this draft will go out untouched and appends a row to its own log for the weekly rollup.
-This runs after the receipt is written, so a scoring failure never blocks the receipt, and it
-prints only the draft id - the score itself never surfaces in a per-draft reply, only in the
-weekly trend. A mint with no `--score-context` (PR prose, this plugin's own SKILL.md edits)
-writes no log row of its own.
-
-Every message stage the gate lets through is also logged and scored, whether or not the
-session minted with `--score-context`. The hook appends a `staged` event (the body hash, the
-channel and recipient the command carries, the session id) to the send-confidence log, and
-when that hash has no `scored` row yet it launches a detached scorer and returns at once - the
-scorer derives what it can from the command alone and logs an auto-scored row. A session that
-minted with `--score-context` already wrote the richer row for that hash, so the scorer skips
-it. Both steps are fail-open and add no API call to the hook itself.
+The gate is also the one place send-confidence
+(`plugins/document-authoring/send-confidence/send_confidence.py`) scores a draft. For every
+message stage it lets through, the hook appends a `staged` event (the body hash, the channel
+and recipient the command carries, the session id) to the send-confidence log, and when that
+hash has no `scored` row yet it launches a detached scorer and returns at once. The scorer
+takes the reviewer's rule coverage and uncertain spots off the receipt and the ask and inputs
+from the session transcript the payload names. Both steps are fail-open and add no API call to
+the hook itself; the score never surfaces per draft, only in the weekly trend.
 `SEND_CONFIDENCE_AUTO=off` switches both off.
 
 Why the binding is exact: the reviewer reviews a file, the flow mints on that file, and the
@@ -474,7 +470,11 @@ def stage_meta(stage, payload):
         "body_format": "text",
         "session_id": payload.get("session_id"),
         "session_kind": "background" if os.environ.get("CLAUDE_JOB_DIR") else "live",
+        "transcript_path": payload.get("transcript_path"),
     }
+    receipt = read_receipt(stage["sha256"])
+    meta["rule_coverage"] = receipt.get("rule_coverage")
+    meta["uncertain_spots"] = receipt.get("uncertain_spots")
     if script in ("gmail.js", "mail.js"):
         meta["account"] = extract_flag_value(args, "--account")
         meta["recipient"] = extract_flag_value(args, "--to")
@@ -593,10 +593,21 @@ def run_hook():
 
 # --- mint / check subcommands ---
 
-def cmd_mint(path, verdict, score_context=None):
+def cmd_mint(path, verdict, rule_coverage=None, uncertain_spots_file=None):
     if not path or not os.path.isfile(path):
         print(f"mint: body file not found: {path}", file=sys.stderr)
         return 2
+    if rule_coverage is not None and rule_coverage not in {"1", "2", "3", "4", "5"}:
+        print("mint: --rule-coverage must be 1-5", file=sys.stderr)
+        return 2
+    uncertain_spots = None
+    if uncertain_spots_file:
+        try:
+            with open(uncertain_spots_file, "r", encoding="utf-8") as fh:
+                uncertain_spots = fh.read().strip() or None
+        except OSError as e:
+            print(f"mint: could not read --uncertain-spots-file ({e})", file=sys.stderr)
+            return 2
     text = normalized_text(path)
     h = content_hash(text)
     os.makedirs(RECEIPT_DIR, exist_ok=True)
@@ -606,21 +617,52 @@ def cmd_mint(path, verdict, score_context=None):
         "created_at": datetime.datetime.now().astimezone().isoformat(),
         "verdict": verdict or "reviewed",
         "chars": len(text),
+        "rule_coverage": int(rule_coverage) if rule_coverage is not None else None,
+        "uncertain_spots": uncertain_spots,
     }
     with open(receipt_path(h), "w", encoding="utf-8") as fh:
         json.dump(receipt, fh, indent=2)
     print(f"writing-review receipt minted: {h[:12]}... for {path}")
-
-    if score_context:
-        try:
-            sys.path.insert(0, os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "send-confidence"))
-            import send_confidence
-            draft_id = send_confidence.score_and_log(text, h, score_context)
-            print(f"send-confidence: logged {draft_id}")
-        except Exception as e:
-            print(f"send-confidence: not logged ({e})", file=sys.stderr)
     return 0
+
+
+def cmd_stage(path, meta_path):
+    """Record a stage for a script that sends from inside itself, out of the hook's sight, and
+    score it before returning so the script can record the outcome next. `meta_path` is a JSON
+    file of what the script knows: channel, recipient, thread_ref, stage_kind, session_id, and
+    optionally the ask and inputs. Exit 0 always - scoring never blocks the send."""
+    try:
+        if os.environ.get("SEND_CONFIDENCE_AUTO") == "off" or not path or not os.path.isfile(path):
+            return 0
+        text = normalized_text(path)
+        if not has_prose(text):
+            return 0
+        meta = {}
+        if meta_path:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                meta = json.load(fh)
+        h = content_hash(text)
+        receipt = read_receipt(h)
+        meta.setdefault("body_format", "text")
+        meta["rule_coverage"] = receipt.get("rule_coverage")
+        meta["uncertain_spots"] = receipt.get("uncertain_spots")
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "send-confidence"))
+        import send_confidence
+        send_confidence.record_stage(text, h, meta, wait=True)
+        print(f"send-confidence: staged {h[:12]}...")
+    except Exception as e:
+        print(f"send-confidence: not staged ({e})", file=sys.stderr)
+    return 0
+
+
+def read_receipt(h):
+    """The receipt's JSON, or {} when it is missing or unreadable."""
+    try:
+        with open(receipt_path(h), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
 
 
 def cmd_check(path):
@@ -646,18 +688,26 @@ def cmd_check(path):
 def main():
     argv = sys.argv[1:]
     if argv and argv[0] == "mint":
-        verdict = None
-        score_context = None
         rest = argv[1:]
-        if "--verdict" in rest:
-            i = rest.index("--verdict")
-            verdict = rest[i + 1] if i + 1 < len(rest) else None
+        values = {}
+        for flag in ("--verdict", "--rule-coverage", "--uncertain-spots-file", "--score-context"):
+            if flag in rest:
+                i = rest.index(flag)
+                values[flag] = rest[i + 1] if i + 1 < len(rest) else None
+                rest = rest[:i] + rest[i + 2:]
+        if "--score-context" in values:
+            print("mint: --score-context is ignored - the stage gate scores every staged draft",
+                  file=sys.stderr)
+        sys.exit(cmd_mint(rest[0] if rest else None, values.get("--verdict"),
+                          values.get("--rule-coverage"), values.get("--uncertain-spots-file")))
+    if argv and argv[0] == "stage":
+        rest = argv[1:]
+        meta_path = None
+        if "--meta" in rest:
+            i = rest.index("--meta")
+            meta_path = rest[i + 1] if i + 1 < len(rest) else None
             rest = rest[:i] + rest[i + 2:]
-        if "--score-context" in rest:
-            i = rest.index("--score-context")
-            score_context = rest[i + 1] if i + 1 < len(rest) else None
-            rest = rest[:i] + rest[i + 2:]
-        sys.exit(cmd_mint(rest[0] if rest else None, verdict, score_context))
+        sys.exit(cmd_stage(rest[0] if rest else None, meta_path))
     if argv and argv[0] == "check":
         sys.exit(cmd_check(argv[1] if len(argv) > 1 else None))
     run_hook()
