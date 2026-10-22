@@ -81,6 +81,8 @@ Has it already moved or been handled?
 (PR merged? request done? they replied and the user already answered?)
 That changes the right action.
 For an unknown mechanism internal to the user's organization, consult the user's designated internal knowledge source first (if their `context.md` names one) before asking the user directly.
+The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
+Work out which system would hold the record before a turn ends on that question.
 
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
