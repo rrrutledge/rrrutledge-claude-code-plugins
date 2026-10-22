@@ -6,9 +6,9 @@ Everything below is identical across sources.
 
 Throughout this file, `<skill>` means this drainer skill's root folder - the directory containing the `engine/` folder this file lives in.
 Your seed prompt pointed you at `<skill>/engine/worker-core.md` by absolute path, so you already have it; substitute it into the `<skill>/scripts/...` commands below.
-Every other plugin's skill folder is listed with its resolved path in your seed prompt; take a helper script's path from there.
+Every other plugin's skill folder is listed with its resolved path in your seed prompt, pointing at the local checkout wherever one resolves; take a helper script's path from there.
 The Bash hook blocks any command that touches the installed plugin cache (`~/.claude/plugins/cache/...`), and Claude Code prompts Russell on every edit under it.
-The seed lists the local checkout's path for every plugin that resolves there; when a listed path still sits under the cache, find where that plugin's source repo is checked out on this machine and use the same `plugins/<plugin>/skills/<skill>/...` path inside it, spelled out in full: run plugin scripts, read plugin source, and make any plugin edit there.
+When a listed path still sits under the cache, find where that plugin's source repo is checked out on this machine and use the same `plugins/<plugin>/skills/<skill>/...` path inside it, spelled out in full: run plugin scripts, read plugin source, and make any plugin edit there.
 The cache is overwritten on every plugin update, so an edit to a plugin lands in the checkout through a handoff (§3) or a lesson (§7), as a PR.
 
 You are working ONE item to completion in your own context.
