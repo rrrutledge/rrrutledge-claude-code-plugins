@@ -504,6 +504,9 @@ def is_start_safe(seg):
     if not args:
         return False
     target = args[-1].strip('"\'')
+    # A "#fragment" (e.g. deck.html#/keynotes) never changes which file opens,
+    # but its "/" would hide the real extension from splitext.
+    target = target.split('#', 1)[0]
     if target.startswith('http://') or target.startswith('https://'):
         return True
     if os.path.isdir(target):
