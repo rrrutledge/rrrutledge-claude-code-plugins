@@ -507,6 +507,12 @@ class TestStartSafe:
     def test_unsafe_extension_still_rejected_with_redirect(self):
         assert is_start_safe(strip_safe_redirections('start evil.exe 2>&1')) is False
 
+    def test_url_fragment_does_not_hide_extension(self):
+        assert is_start_safe('start "" "C:\\x\\deck.html#/keynotes"') is True
+
+    def test_fragment_cannot_smuggle_safe_extension(self):
+        assert is_start_safe('start "" "C:\\x\\evil.exe#a.html"') is False
+
 
 class TestMcp:
     def test_read(self):
