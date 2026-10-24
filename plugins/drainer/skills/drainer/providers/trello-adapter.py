@@ -60,14 +60,14 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)        → above neutral   worked ahead of email/Slack and every application
-#   card on an in-progress list          → above neutral   a live application never waits behind the inbox
+#   card on an in-progress list          → above neutral   a live application is worked ahead of the inbox
 #   people manager, posted pay >= floor  → above neutral   the role Russell needs, whatever its title
 #   P1 application card                  → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card               → below neutral   worked once the neutral band is drained
 # The three above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
 # fresh strong-fit role is caught the same day as email; P2/P3 drop below. This is inert for every other
-# board — only the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
-# `in_progress_lists` in the registry leave the default neutral.
+# board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
+# `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
     1: NEUTRAL_PRIORITY_BAND,
     2: NEUTRAL_PRIORITY_BAND - 1,

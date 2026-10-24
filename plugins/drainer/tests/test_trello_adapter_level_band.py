@@ -193,7 +193,7 @@ def test_priority_band_above_inbox_pins():
     check("IC-level at $300K -> its P-tier band (pay lifts people managers only)",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr", p1))
           == adapter_mod._PRIORITY_BAND[1])
-    check("Director/VP-level with no Comp line -> P1 neutral, as before",
+    check("Director/VP-level with no Comp line -> P1 neutral",
           Provider._priority_band(card("Priority: P1 · x · Director/VP-level", p1)) == adapter_mod._PRIORITY_BAND[1])
     check("a dollar figure outside a Comp: line is ignored",
           Provider._priority_band(card("Priority: P3 · x · Manager-level\nnotes: $300K budget", p3))
