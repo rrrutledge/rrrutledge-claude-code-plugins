@@ -59,19 +59,30 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy — the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
-#   👤 Contact (person follow-up) → above neutral   worked ahead of email/Slack and every application
-#   P1 application card            → neutral         interleaves with that day's email/Slack by date
-#   P2/P3 application card         → below neutral   worked once the neutral band is drained
-# Following up with an existing contact is the highest-value move, so person cards sit one band ABOVE
-# neutral, ahead of the inbox (the 👤 Contact pin lives in _priority_band). A P1 (top-fit) application
-# stays AT neutral so a fresh strong-fit role is caught the same day as email; P2/P3 drop below. This is
-# inert for every other board — only the poller-labeled job-search cards and 👤 Contact cards leave the
-# default neutral.
+#   👤 Contact (person follow-up)        → above neutral   worked ahead of email/Slack and every application
+#   card on an in-progress list          → above neutral   a live application is worked ahead of the inbox
+#   people manager, posted pay >= floor  → above neutral   the role Russell needs, whatever its title
+#   P1 application card                  → neutral         interleaves with that day's email/Slack by date
+#   P2/P3 application card               → below neutral   worked once the neutral band is drained
+# The three above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
+# fresh strong-fit role is caught the same day as email; P2/P3 drop below. This is inert for every other
+# board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
+# `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
     1: NEUTRAL_PRIORITY_BAND,
     2: NEUTRAL_PRIORITY_BAND - 1,
     3: NEUTRAL_PRIORITY_BAND - 2,
 }
+
+# The pay-band floor: a people-manager card (desc level `Director/VP-level` or `Manager-level`) whose
+# `Comp:` desc line tops out at or above this annual USD figure ranks above neutral at any P-tier. The
+# personal-ai-pod job-board poller writes both lines; its job-search initiative's Priority section holds
+# the policy this number comes from.
+_PAY_BAND_FLOOR = 250_000
+_PEOPLE_MANAGER_LEVELS = ("Director/VP-level", "Manager-level")
+# A `Comp:` desc line's dollar figures: "$260K", "$262,500", "$262.5k".
+_COMP_LINE_RE = re.compile(r"^Comp:(.*)$", re.MULTILINE)
+_DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 
 class Provider(ProviderBase):
@@ -95,6 +106,9 @@ class Provider(ProviderBase):
         # Board name → default initiative slug (from a board's `initiative:` field in the registry);
         # applies to every card on that board when no per-card initiative label is present.
         self.board_initiatives = {}
+        # Board name → lowercased names of its in-progress lists (a board's `in_progress_lists:` field in
+        # the registry); a card on one of them ranks above neutral (see _PRIORITY_BAND).
+        self.board_in_progress_lists = {}
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
 
@@ -167,6 +181,9 @@ class Provider(ProviderBase):
             self.boards = boards
             self.board_initiatives = {
                 b["name"]: b["initiative"] for b in boards if b.get("initiative")}
+            self.board_in_progress_lists = {
+                b["name"]: {n.lower() for n in b["in_progress_lists"]}
+                for b in boards if b.get("in_progress_lists")}
 
     @staticmethod
     def _parse_registry(text):
@@ -174,12 +191,18 @@ class Provider(ProviderBase):
         two-space indent with an `id:` field at four-space indent. Anchoring on those exact indents
         keeps the parse robust against deeper nested fields (per-board `purpose`, `template_cards`, …)
         without needing a full YAML library (none ships with the poller's stdlib runtime). The
-        optional four-space `initiative:` field is captured as a board's default initiative slug."""
+        optional four-space `initiative:` field is captured as a board's default initiative slug, and the
+        optional four-space inline list `in_progress_lists: [A, B]` as the board's in-progress list names."""
         boards, cur = [], None
         for line in text.splitlines():
             m_name = re.match(r"^  -\s*name\s*:\s*(.+?)\s*$", line)
             m_id = re.match(r"^    id\s*:\s*(.+?)\s*$", line)
             m_init = re.match(r"^    initiative\s*:\s*(.+?)\s*$", line)
+            m_prog = re.match(r"^    in_progress_lists\s*:\s*\[(.*)\]\s*$", line)
+            if m_prog and cur is not None:
+                cur["in_progress_lists"] = [
+                    x.strip().strip('"\'') for x in m_prog.group(1).split(",") if x.strip()]
+                continue
             if m_name:
                 if cur:
                     boards.append(cur)
@@ -273,12 +296,16 @@ class Provider(ProviderBase):
         return channel, feats, contacts, initiative
 
     @staticmethod
-    def _priority_band(card):
+    def _priority_band(card, in_progress=False):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        A 👤 Contact person-follow-up card is pinned one band above neutral first, so it is worked ahead
-        of the inbox and every application tier even if it also happens to carry another label. Otherwise
-        the first P1/P2/P3 priority label wins; an application card normally wears exactly one."""
+        Three pins put a card one band above neutral, ahead of the inbox and every application tier,
+        whatever other labels it wears: a 👤 Contact person-follow-up card; a card on one of its board's
+        in-progress lists (`in_progress`, resolved by the caller from the card's list); and a
+        people-manager card whose posted pay reaches _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3
+        priority label wins; an application card normally wears exactly one."""
         labels = card.get("labels", [])
+        if in_progress or Provider._pays_people_manager_floor(card):
+            return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or ""):
                 return NEUTRAL_PRIORITY_BAND + 1
@@ -287,6 +314,32 @@ class Provider(ProviderBase):
             if m:
                 return _PRIORITY_BAND[int(m.group(1))]
         return NEUTRAL_PRIORITY_BAND
+
+    @staticmethod
+    def _comp_max(card):
+        """Return the highest annual USD figure on a card's `Comp:` desc line, or None when the card has
+        no such line or it names no dollar figure."""
+        m = _COMP_LINE_RE.search(card.get("desc") or "")
+        if not m:
+            return None
+        figures = []
+        for num, k in _DOLLAR_RE.findall(m.group(1)):
+            try:
+                value = float(num.replace(",", ""))
+            except ValueError:
+                continue
+            figures.append(value * 1000 if k else value)
+        return max(figures) if figures else None
+
+    @staticmethod
+    def _pays_people_manager_floor(card):
+        """True for a people-manager card (desc level `Director/VP-level` or `Manager-level`) whose
+        `Comp:` line reaches _PAY_BAND_FLOOR."""
+        desc = card.get("desc") or ""
+        if not any(level in desc for level in _PEOPLE_MANAGER_LEVELS):
+            return False
+        comp = Provider._comp_max(card)
+        return comp is not None and comp >= _PAY_BAND_FLOOR
 
     @staticmethod
     def _referral_band(card):
@@ -305,14 +358,15 @@ class Provider(ProviderBase):
     def _level_band(card):
         """Return a card's level rank from its 'Priority: ... · <level>' desc line — 0 for
         Director/VP-level, every non-job-search card, and a job-search card job-board-poll hasn't
-        scored yet; -1 for an IC-level job-search card. Level leads referral in band_rank, so within a
-        fit tier the level decides before referral. Zero is the shared neutral level that email/Slack and
-        ordinary Trello cards also carry by default, so a Director/VP-level lead interleaves with today's
-        mail by date within its priority band; only an IC-level posting drops below and waits for that
-        neutral level to clear. Still mirrors job-board-poll's tiers.js PREVIEW_LEVEL_RANK's relative
-        order (lead ahead of ic)."""
+        scored yet; -1 for an IC-level or Manager-level (people manager below director) job-search
+        card. Level leads referral in band_rank, so within a fit tier the level decides before referral.
+        Zero is the shared neutral level that email/Slack and ordinary Trello cards also carry by
+        default, so a Director/VP-level lead interleaves with today's mail by date within its priority
+        band; an IC-level or Manager-level posting drops below and waits for that neutral level to clear,
+        unless its posted pay lifts it a whole band (see _priority_band). Mirrors job-board-poll's
+        tiers.js PREVIEW_LEVEL_RANK's relative order (lead ahead of manager and ic)."""
         desc = card.get("desc") or ""
-        if "IC-level" in desc:
+        if "IC-level" in desc or "Manager-level" in desc:
             return -1
         return 0
 
@@ -436,7 +490,8 @@ class Provider(ProviderBase):
                 # its creation date (always in the past), so it sorts by age alongside email/Slack.
                 sort_dt = start_dt or self._created_dt(card["id"])
                 # The three band values; band_rank (provider_base) defines the order they sort in.
-                priority_band = self._priority_band(card)  # see _PRIORITY_BAND
+                in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
+                priority_band = self._priority_band(card, in_progress)  # see _PRIORITY_BAND
                 referral_band = self._referral_band(card)  # see _referral_band
                 level_band = self._level_band(card)        # see _level_band
                 channel, feats, contacts, initiative_label = self._classify_labels(card)
@@ -480,7 +535,7 @@ class Provider(ProviderBase):
         # (run-poller.py's `needs` list) is what decides how much actually gets
         # dispatched. Truncating
         # here instead would share one board-local budget across only Trello's own boards: once the OTHER
-        # boards' neutral-band cards alone outnumbered it, every job-search card (always ranked below
+        # boards' neutral-band cards alone outnumbered it, every P2/P3 job-search card (ranked below
         # neutral — see _PRIORITY_BAND) would be cut before the poller's real throttle ever saw it,
         # regardless of how many worker slots were actually free.
         return items

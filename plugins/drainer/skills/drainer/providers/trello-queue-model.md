@@ -23,6 +23,8 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
     The four-space `initiative:` field is parsed by the adapter alongside `id`.
     The adapter writes the resolved slug as `initiative` on the item.
     See `trello-provider.md`'s INITIATIVE-LOOKUP for how the worker loads the content and STAGE-PLAYBOOK for the generic per-stage activity.
+- **In-progress lists:** a four-space inline list `in_progress_lists: [A, B, ...]` on a board entry in `trello-boards.yaml` names that board's in-progress lists, matched case-insensitively against the card's list name.
+  A card on one of them is pinned above neutral (see ENUMERATE).
 - Drainer knobs in `.claude/drainer.local.md` → `providers.trello`:
   - `skip_lists` - terminal/parking lists to ignore (e.g. Abandoned, Finished, Adopted, Templates).
   - `skip_labels` - labels whose cards are suppressed (default `[Blocked]` → hides ⛔ Blocked cards).
@@ -40,12 +42,14 @@ Rank is `(priority band, level band, referral band, date)`, all descending - lev
 The order of those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
+A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
+A **people-manager card whose posted pay reaches the floor** is pinned there too: its desc level is `Director/VP-level` or `Manager-level` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
-Every other board carries neither label and orders purely by date.
+A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
-A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores.
-Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; only a card whose desc contains `IC-level` drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
+A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level`, `· Manager-level`, or `· IC-level` line into every Job Search Outreach card it scores, plus a `Comp: up to $<N>K/yr (posted)` line when the posting states pay.
+Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; a card whose desc contains `IC-level` or `Manager-level` drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
 
 The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
 See the adapter's `_referral_band`.
