@@ -110,8 +110,7 @@ Under `scripts/` (run with `node`):
     off the **newest non-draft, non-emoji-reaction message in it**, printing which one it chose (subject,
     sender, send time in Central). A search shows only the messages that match it, so a
     correspondent-filtered `--search` hides later replies (including the user's own); the `<id>` for
-    `--reply` comes from `--thread=<threadId>` (oldest first, newest last) or from this resolution, never
-    from the newest hit of a filtered search. Read the printed "threading off" line before reviewing the
+    `--reply` comes from `--thread=<threadId>` (oldest first, newest last) or from this resolution. Read the printed "threading off" line before reviewing the
     draft. `--exact-message` threads off the given id as-is.
     When the chosen message is the user's own, the reply keeps its recipients (To/CC)
     instead of addressing back to the user; otherwise it's a reply-all to the sender + other recipients.
