@@ -7,7 +7,6 @@ The scoring judge reads the whole file for every draft, and the writing reviewer
 Every aspect here describes the situation a draft is in, never whether the draft follows a writing rule.
 Catching a broken rule is the reviewer's job, so a draft that breaks a clear rule is a review finding, not a sign of uncertainty.
 
-A learning session (see `learn-from-send.md`) changes this file only by sharpening an aspect's description or anchors, never by adding a past case.
 Nothing here names a person, an organization, or quotes a real message.
 
 ## Rule coverage

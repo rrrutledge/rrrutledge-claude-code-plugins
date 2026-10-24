@@ -5,6 +5,7 @@ The scorer estimates how likely the draft is to need a change before Russell sen
 Stage 1 only measures: no draft is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
 Everything here is fail-open: a failed judge call or a scorer exception never blocks staging or the review receipt.
 What happens once he sends or discards the draft is `learn-from-send.md`.
+
 ## How the gate scores a draft
 
 The gate logs every stage it lets through and scores any draft whose content has no score yet, in a background process, so the stage goes through immediately.
