@@ -60,7 +60,8 @@ class ShipError(Exception):
 
 
 def run(cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    # gh and git emit UTF-8 (PR bodies carry emoji); the Windows default code page would fail to decode it.
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding='utf-8', errors='replace')
 
 
 def last_line(r):
@@ -321,9 +322,9 @@ def npm_install(cwd):
     command string."""
     args = 'npm install --omit=dev --no-audit --no-fund'
     if os.name == 'nt':
-        r = subprocess.run(args, cwd=str(cwd), shell=True, capture_output=True, text=True)
+        r = subprocess.run(args, cwd=str(cwd), shell=True, capture_output=True, text=True, encoding='utf-8', errors='replace')
     else:
-        r = subprocess.run(args.split(), cwd=str(cwd), capture_output=True, text=True)
+        r = subprocess.run(args.split(), cwd=str(cwd), capture_output=True, text=True, encoding='utf-8', errors='replace')
     return r.returncode == 0, last_line(r)
 
 
