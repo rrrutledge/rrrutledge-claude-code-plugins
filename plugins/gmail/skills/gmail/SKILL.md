@@ -106,14 +106,16 @@ Under `scripts/` (run with `node`):
   - List drafts: `node gmail.js --list-drafts [--top=30]`
   - Draft reply (never sends): `node gmail.js --reply --message-id=<id> --body-file=reply.md`
     (stages a threaded draft with In-Reply-To/References set + the quoted original).
-    `<id>` is looked up across **All Mail**, so pass the **most recent** message in the
-    thread to thread off — even one the user sent. When that message is the user's own, the reply keeps its recipients (To/CC)
+    `<id>` is looked up across **All Mail**, and `--reply` then resolves that message's thread and threads
+    off the **newest non-draft, non-emoji-reaction message in it**, printing which one it chose (subject,
+    sender, send time in Central). A search shows only the messages that match it, so a
+    correspondent-filtered `--search` hides later replies (including the user's own); the `<id>` for
+    `--reply` comes from `--thread=<threadId>` (oldest first, newest last) or from this resolution. Read the printed "threading off" line before reviewing the
+    draft. `--exact-message` threads off the given id as-is.
+    When the chosen message is the user's own, the reply keeps its recipients (To/CC)
     instead of addressing back to the user; otherwise it's a reply-all to the sender + other recipients.
-    **Skip a Gmail emoji-reaction email as the threading target** — a bare 👍/❤️ sent via Gmail's
-    in-app reaction feature is a real message with a real Message-ID, but Gmail renders it specially and
-    shows blank when opened, so a reply threaded off it looks empty to the recipient in the Gmail UI even
-    though the draft itself is fine. When the most recent message in the thread is a reaction, thread off
-    the nearest message before it that carries real content instead.
+    Gmail emoji-reaction emails (a bare 👍/❤️ sent via Gmail's in-app reaction feature) are skipped
+    automatically: Gmail shows them blank when opened, so a reply threaded off one looks empty.
   - **`--body-file` is Markdown** — write the body in Markdown (`**bold**`, `[text](url)`, paragraphs,
     lists) and the script converts it to HTML via `marked`. HTML tags in the source pass through
     unchanged. The draft carries that HTML as its body, so a `[text](url)` link reaches the reader as

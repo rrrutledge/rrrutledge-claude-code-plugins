@@ -62,9 +62,11 @@
 //                 "attachment-N".)
 // Draft a reply: node gmail.js --reply --message-id=<id> --body-file=reply.md [--attach=a.pdf,b.png] [--inline=s1.png,s2.png] [--no-quote]
 //                (stages a DRAFT reply in the thread; never sends; replaces any prior draft on the same
-//                 thread; prints a draft-id for --send-draft. <id> is looked up across All Mail — pass the
-//                 most recent message in the thread, even one the user sent; a reply to the user's own
-//                 message keeps its recipients instead of self. --to overrides the computed recipient (for
+//                 thread; prints a draft-id for --send-draft. <id> is looked up across All Mail, then the
+//                 reply threads off the NEWEST non-draft, non-emoji-reaction message in that message's
+//                 thread (it prints which one: subject, sender, send time), so a stale id from a filtered
+//                 search is corrected; --exact-message threads off the given id as-is. A reply to the
+//                 user's own message keeps its recipients instead of self. --to overrides the computed recipient (for
 //                 threading off a no-reply relay whose real correspondent is in Reply-To, e.g. a Google
 //                 "shared a file" notification). --exclude=<addr[,addr]> removes those addresses from the
 //                 computed To and CC (case-insensitive, matched on the bare address), to reply-all
@@ -113,6 +115,7 @@ const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
+const { pickLatest } = require('./threading');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -620,10 +623,27 @@ async function reply() {
     throw new Error('--reply requires --message-id and --body-file');
   }
   const html = marked.parse(fs.readFileSync(args['body-file'], 'utf8'));
-  const gid = await findMessageId(args['message-id']);
+  let gid = await findMessageId(args['message-id']);
   if (!gid) throw new Error('Original message not found in inbox or All Mail.');
-  const { parsed: orig, threadId } = await getParsed(gid);
+  const givenGid = gid;
+  const given = await getParsed(gid);
+  const threadId = given.threadId;
   const acct = await account();
+  // Thread off the newest real message in the thread, not the id handed in: a correspondent-filtered search
+  // hides later messages (including our own), so the given id is often stale. --exact-message keeps the given id.
+  if (!args['exact-message']) {
+    const t = await gmail.users.threads.get({ userId: USER_ID, id: threadId, format: 'full' });
+    const latest = pickLatest(t.data.messages);
+    if (latest && latest.id !== gid) {
+      gid = latest.id;
+      const idx = indexHeaders(latest.payload && latest.payload.headers);
+      const sent = new Date(Number(latest.internalDate)).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' });
+      console.log(`Given message is not the newest in its thread; threading off the newest instead: "${clean(decodeMimeWords(hdr(idx, 'subject'))).slice(0, 60)}" from ${fromList(parseAddrs(hdr(idx, 'from')))} sent ${sent} Central (${hdr(idx, 'message-id')}). Pass --exact-message to thread off the given id.`);
+    } else {
+      console.log('Threading off the given message (it is the newest in its thread).');
+    }
+  }
+  const { parsed: orig } = gid === givenGid ? given : await getParsed(gid);
 
   const when = orig.date ? orig.date.toUTCString() : '';
   const quoted = `<br><br>On ${when}, ${orig.from ? orig.from.text : ''} wrote:<br>` +
