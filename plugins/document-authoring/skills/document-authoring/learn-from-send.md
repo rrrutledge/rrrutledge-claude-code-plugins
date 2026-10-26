@@ -15,12 +15,13 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file> [--recipient "<the sent item's To>"]
    python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
    `--body-file` finds the draft's scored row by rehashing the staged body against the log.
+   `--recipient` names who the sent item went to, read from the same sent item as the text; a reply's stage command carries no addressee, so without it the learning session's title reads "to unknown".
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), logs whether the estimate was over- or under-confident, and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
