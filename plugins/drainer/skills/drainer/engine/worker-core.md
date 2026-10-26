@@ -240,6 +240,7 @@ This applies whether Trello is your own source or you found the card from anothe
 
 ## 4. Contact the person (draft-only by default)
 **After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all composer mechanics, leaving the draft un-sent.
+The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
 Show the draft text in your reply, then tell the user to review it and either send it themselves or tell you to send it.
 Don't send on your own initiative - only on Russell's explicit per-message instruction this turn, reviewing this exact draft (per the send exception in §0's framing above); silence or a generic go-ahead earlier in the conversation doesn't count.
 
