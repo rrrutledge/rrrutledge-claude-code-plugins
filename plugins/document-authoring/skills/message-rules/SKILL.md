@@ -470,7 +470,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — when their reply also volunteers something beyond what you asked** (a genuine extra contribution they weren't prompted for, not just a passing pleasantry): that part still gets its own named reaction, per **Answer the question first** — running through the full **Thanking a volunteer** effusive register when it qualifies, since the unprompted extra is usually the bigger contribution even when the asked-for part stays a bare acknowledgment.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
   Once the observation that's the actual reason for the outreach is solid enough to build the ask around (e.g. a pattern in someone's behavior prompting a meeting request), state it as a plain fact, not a hedged impression.
-- **Warm exclamations used genuinely, not as hype** — a direct reaction to someone else's news, not a description dressed up: "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!", "Wow, that is amazing 🎉"
+- **Warm exclamations used genuinely, not as hype** — a direct reaction to someone else's news, not a description dressed up: "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!", "Wow, that is amazing 🎉"; a congratulation on someone's accomplishment is one of these reactions and closes with an exclamation mark
 - **Two spaces after a period** — a real typing habit.
 
 ### Emoji
