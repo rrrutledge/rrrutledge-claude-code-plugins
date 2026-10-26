@@ -1,0 +1,9 @@
+{
+  "name": "google-photos",
+  "version": "1.0.0",
+  "description": "Download photos the account owner picks from their Google Photos library, via the Photos Picker API - no browser automation. Serves several Google accounts side by side with --account, each with its own token.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}

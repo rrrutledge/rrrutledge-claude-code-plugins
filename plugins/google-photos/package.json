@@ -1,0 +1,9 @@
+{
+  "name": "google-photos",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Google Photos Picker API helper scripts (OAuth via google-auth-library). Deps live here at the plugin root so Claude Code installs them automatically on every plugin install/update; the scripts under skills/google-photos/scripts resolve them via Node's normal upward node_modules walk.",
+  "dependencies": {
+    "google-auth-library": "^9.15.0"
+  }
+}
