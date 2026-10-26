@@ -30,6 +30,7 @@ CLI:
         --sent-file <file> [--edit-nature a,b]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --discarded [--reason "<text>"] [--moot]
+    python send_confidence.py sweep [--dry-run] [--json]
     python send_confidence.py weights-suggest
     python send_confidence.py show <draft_id>
     python send_confidence.py auto-score <job.json>   (launched by the stage gate, not by hand)
@@ -403,12 +404,16 @@ def _supersede_pending(thread_ref, recipient):
         if not scored or d["outcome"] is not None or scored.get("stage_kind") == "send":
             continue
         if _same_conversation(scored, thread_ref, recipient):
-            _append_event({
-                "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
-                "disposition": "superseded", "edit_distance": None, "edit_nature": [],
-                "reason": None, "miscalibrated": False, "direction": None,
-                "implicated": [], "under_factors": [], "learn_reasons": [],
-            })
+            _append_event(_superseded_event(draft_id, ts))
+
+
+def _superseded_event(draft_id, ts):
+    return {
+        "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
+        "disposition": "superseded", "edit_distance": None, "edit_nature": [],
+        "reason": None, "miscalibrated": False, "direction": None,
+        "implicated": [], "under_factors": [], "learn_reasons": [],
+    }
 
 
 def score_and_log(body, sha256, ctx):
@@ -768,7 +773,8 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
     return brief_path
 
 
-def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False):
+def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False,
+                   sweep=None):
     """Compute disposition + edit_distance, label the edits (unless `edit_nature` overrides),
     decide whether the send has something to teach, append the outcome event, and when it
     does, write the learning-session brief. Returns the outcome event plus "dispatch" (the
@@ -777,7 +783,11 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     A learning session spawns on a voice edit only. Whether the estimate was wrong in either
     direction is still logged (`direction`, `miscalibrated`), and nothing here changes the
     score's numbers.
-    `moot` (discards only - what it does and when to pass it live in learn-from-send.md)."""
+    `moot` (discards only - what it does and when to pass it live in learn-from-send.md).
+    `sweep` is the outcome sweep's own record of the match ({"edit_distance", "sent_ref"} for a
+    send, {} for a draft that never went out): the distance it measured stands in for the
+    plain one, the edits stay unlabelled, no learning session spawns, and the event carries
+    `source: "sweep"` so the report can tell swept outcomes from recorded ones."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
         raise ValueError(f"no scored draft found for {draft_id}")
@@ -798,12 +808,15 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         edit_distance = None
     else:
         draft_text = _read_draft_text(draft_id)
-        edit_distance = _edit_distance(draft_text, sent_text)
+        if sweep is not None:
+            edit_distance = sweep["edit_distance"]
+        else:
+            edit_distance = _edit_distance(draft_text, sent_text)
         disposition = "sent-as-is" if edit_distance <= sent_as_is_max else "edited"
         os.makedirs(drafts_dir(), exist_ok=True)
         with open(os.path.join(drafts_dir(), f"{draft_id}.sent.txt"), "w", encoding="utf-8") as fh:
             fh.write(sent_text or "")
-        if disposition == "edited" and not edit_nature:
+        if disposition == "edited" and not edit_nature and sweep is None:
             edit_nature, changes, label_error = label_edits(draft_text, sent_text, _anthropic_api_key())
 
     factors = scored.get("factors", {})
@@ -842,10 +855,13 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         "implicated": implicated, "under_factors": under_factors,
         "learn_reasons": learn_reasons,
     }
+    if sweep is not None:
+        event["source"] = "sweep"
+        event["sent_ref"] = sweep.get("sent_ref")
     _append_event(event)
 
     dispatch = None
-    if learn_reasons:
+    if learn_reasons and sweep is None:
         brief_path = _write_brief(draft_id, scored, event, sent_text)
         dispatch = (
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
@@ -867,6 +883,306 @@ def _find_draft_id_by_body_file(path):
         return None
     matches.sort(key=lambda e: e.get("ts", ""))
     return matches[-1]["draft_id"]
+
+
+# --- the outcome sweep ---
+#
+# Plain code, no model calls. Every scored draft with no outcome is matched against what Russell
+# actually sent - Gmail and personal Outlook Sent folders and his Slack posts, read through those
+# plugins' own read-only `--sent-since` listings - and the match is written as an ordinary outcome
+# event. A draft whose window closes with no match is logged as discarded with no reason, the
+# same as a voluntary discard with no cause given.
+
+SWEEP_WINDOW_DAYS = 7
+# A sent message can carry a timestamp a little before the draft's scored row: a direct Slack
+# send posts while its scorer is still running.
+SWEEP_EARLY_SLACK = datetime.timedelta(hours=1)
+# Farthest a match may sit from the draft: looser when the thread or recipient confirms it is the
+# same conversation, stricter when the draft carries nothing to check that against.
+SWEEP_MAX_DISTANCE_CONFIRMED = 0.6
+SWEEP_MAX_DISTANCE_UNCONFIRMED = 0.35
+
+# Channel -> (plugin, script) whose `--sent-since <day> --json` lists the sent messages.
+SWEEP_CLIENTS = {
+    "gmail": ("gmail", "gmail.js"),
+    "outlook-personal": ("ms-graph", "mail.js"),
+    "slack": ("slack", "slack.js"),
+}
+GMAIL_NAMED_ACCOUNTS = {"christina"}
+
+_QUOTE_MARKERS = [
+    re.compile(r"^\s*On [^\n]{0,300}?(\n[^\n]{0,300}?)?wrote:\s*$", re.M),
+    re.compile(r"^\s*-{2,}\s*Original Message\s*-{2,}", re.M | re.I),
+    re.compile(r"^\s*_{10,}\s*$", re.M),
+    re.compile(r"^\s*From: [^\n]+\n\s*(Sent|Date): ", re.M),
+    re.compile(r"^-- $", re.M),
+]
+_SLACK_CHANNEL = re.compile(r"^[CDG][A-Z0-9]{6,}$")
+_SLACK_ITEM_REF = re.compile(r"^slack-([CDG][A-Z0-9]{6,})-")
+
+
+def _client_script(plugin, script):
+    """The newest copy of a sibling plugin's script: the repo layout (plugins/<plugin>/skills/...)
+    or the installed cache layout (<marketplace>/<plugin>/<version>/skills/...)."""
+    patterns = [
+        os.path.join(SCRIPT_DIR, "..", "..", plugin, "skills", plugin, "scripts", script),
+        os.path.join(SCRIPT_DIR, "..", "..", "..", plugin, "*", "skills", plugin, "scripts", script),
+    ]
+    found = [p for pat in patterns for p in glob.glob(pat)]
+    return max(found, key=os.path.getmtime) if found else None
+
+
+def fetch_sent(channel, since_day):
+    """Run one client's read-only `--sent-since` listing and return its JSON. Raises on any
+    failure, so a source that can't be read leaves its drafts pending rather than unsent."""
+    plugin, script = SWEEP_CLIENTS[channel]
+    path = _client_script(plugin, script)
+    if not path:
+        raise RuntimeError(f"{plugin} client {script} not found")
+    args = ["node", path, f"--sent-since={since_day}", "--json"]
+    r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError(f"{plugin} {script} exited {r.returncode}: {(r.stderr or '').strip()[-300:]}")
+    return json.loads(r.stdout or "[]")
+
+
+def _source_key(scored):
+    """The channel a draft would have gone out on, or None when the sweep can't read it: a
+    channel with no client, or a second Gmail mailbox, since the Gmail listing reads the
+    default mailbox over IMAP."""
+    channel = scored.get("channel")
+    if channel not in SWEEP_CLIENTS:
+        return None
+    if channel == "gmail" and scored.get("account") in GMAIL_NAMED_ACCOUNTS:
+        return None
+    return channel
+
+
+def _sent_items(channel, raw):
+    """A client's listing in one shape: ref, sent (aware datetime), text, and the thread and
+    recipient keys a draft can be checked against."""
+    items = []
+    for m in raw or []:
+        sent = _parse_ts(m.get("sent"))
+        if sent is None:
+            continue
+        if channel == "slack":
+            items.append({"ref": f"{m.get('channel')}/{m.get('ts')}", "sent": sent, "text": m.get("text") or "",
+                          "threads": {m.get("ts"), m.get("threadTs")} - {None, ""},
+                          "recipients": {m.get("channel")} - {None, ""}})
+        else:
+            threads = set(m.get("references") or [])
+            threads |= {m.get("inReplyTo"), m.get("threadId")} - {None, ""}
+            items.append({"ref": m.get("id"), "sent": sent, "text": m.get("text") or "",
+                          "threads": threads,
+                          "recipients": {a.lower() for a in (m.get("to") or []) + (m.get("cc") or []) if a}})
+    return items
+
+
+def _draft_keys(scored):
+    """What a sent message is checked against: its thread ids, its recipient addresses or
+    channel, and the words of a recipient given by name rather than address.
+
+    A Gmail thread_ref is either the RFC822 Message-ID the reply threads off, which the sent
+    reply's References chain carries, or the hex Gmail thread id. An Outlook thread_ref is a
+    Graph message id the sent item doesn't expose, so Outlook checks recipients only. A Slack
+    draft's conversation is its channel id, from the recipient or from a drainer item ref
+    (`slack-<channel>-<sec>-<frac>`), and its thread is the ts that ref or a bare thread ts
+    names. That ts can be a reply inside the thread rather than its root, so for Slack a
+    thread match confirms and a thread miss proves nothing (`thread_vetoes`)."""
+    channel = scored.get("channel")
+    thread_ref = scored.get("thread_ref") or ""
+    recipient = scored.get("recipient") or ""
+    keys = {"threads": set(), "recipients": set(), "names": set(), "thread_vetoes": channel != "slack"}
+    if channel == "slack":
+        m = _SLACK_ITEM_REF.match(thread_ref)
+        chan = recipient if _SLACK_CHANNEL.match(recipient) else (m.group(1) if m else None)
+        keys["recipients"] = {chan} if chan else set()
+        ts = re.search(r"(\d{9,})[-.](\d+)$", thread_ref)
+        keys["threads"] = {f"{ts.group(1)}.{ts.group(2)}"} if ts else set()
+        return keys
+    if channel == "gmail" and re.match(r"^(<[^>]+@[^>]+>|[0-9a-f]{16})$", thread_ref):
+        keys["threads"] = {thread_ref}
+    keys["recipients"] = {a.strip().lower() for a in recipient.split(",") if "@" in a}
+    if not keys["recipients"]:
+        keys["names"] = {w for w in re.findall(r"[a-z]{3,}", recipient.lower())}
+    return keys
+
+
+def _conversation(keys, item):
+    """True when the thread, recipients, or recipient name confirm the item belongs to the
+    draft's conversation, False when everything both sides know disagrees, None when there is
+    nothing to compare. A name confirms when two of its words are words of one recipient
+    address's local part ("Rob Tuley" and rob.tuley@...), and never disagrees, since a name can
+    be partial."""
+    checks = []
+    if keys["threads"] and item["threads"]:
+        if keys["threads"] & item["threads"]:
+            return True
+        if keys["thread_vetoes"]:
+            checks.append(False)
+    if keys["recipients"] and item["recipients"]:
+        checks.append(bool(keys["recipients"] & item["recipients"]))
+    if keys["names"] and any(len(keys["names"] & set(re.split(r"[^a-z]+", a.split("@")[0]))) >= 2
+                             for a in item["recipients"]):
+        return True
+    if not checks:
+        return None
+    return any(checks)
+
+
+def _signature_text():
+    """The Gmail signature gmail.js appends at send, reduced the way comparable_text reduces a
+    body, so it can be cut from a sent message the staged draft never carried it in."""
+    sig = os.environ.get("GMAIL_SIGNATURE_HTML")
+    return comparable_text(sig) if sig else ""
+
+
+def comparable_text(text, signature=""):
+    """The part of a message a draft can be compared with: the quoted original and the
+    signature (itself already reduced by this function) cut off, and Markdown, Slack mrkdwn,
+    and links reduced to their words, so a staged `[anchor](url)` and a sent `anchor <url>`
+    read the same."""
+    # Slack's `<url|label>` and a mail client's `<url>` go before the markup strip, which would
+    # read them as tags and drop the label with them.
+    text = re.sub(r"<(?:https?|mailto):[^|>]*\|([^>]+)>", r"\1", text or "")
+    text = re.sub(r"<(?:https?|mailto):[^>]*>", " ", text)
+    text = _plain_text(text).replace("\r\n", "\n")
+    cut = min((m.start() for m in (p.search(text) for p in _QUOTE_MARKERS) if m), default=len(text))
+    text = "\n".join(line for line in text[:cut].split("\n") if not line.lstrip().startswith(">"))
+    text = re.sub(r"\[image:[^\]]*\]", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\((?:[^)]+)\)", r"\1", text)
+    text = re.sub(r"\((?:https?|mailto):[^)]*\)|(?:https?|mailto):\S+", " ", text)
+    text = re.sub(r"(?m)^\s*(?:[-*+•]|\d+[.)])\s+", "", text)
+    text = re.sub(r"[*_~`]+", "", text)
+    text = " ".join(text.split())
+    if signature:
+        at = text.rfind(signature)
+        if at >= 0:
+            text = (text[:at] + text[at + len(signature):]).strip()
+    return text
+
+
+def _parse_ts(value):
+    if not value:
+        return None
+    try:
+        ts = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.astimezone()
+
+
+def match_pending(pending, items_by_source, now, signature=""):
+    """Pair pending drafts with sent messages. `pending` is [(draft_id, scored, draft_text)];
+    `items_by_source` maps a source key to its sent items, or to None when that source could not
+    be read. Returns {"matched", "superseded", "unsent", "waiting", "unchecked"}, each a list.
+
+    Each draft's candidates are the messages from its own source sent between just before it
+    was scored and SWEEP_WINDOW_DAYS after, whose conversation doesn't contradict it, within the
+    distance limit for how well the conversation is confirmed. Pairs are taken closest first and
+    each sent message settles one draft, plus any other row scored on the same body. A draft
+    whose only candidates went to closer drafts is an earlier version of one of them
+    (superseded). A draft with no candidate is unsent once its window has closed, and waiting
+    until then."""
+    window = datetime.timedelta(days=SWEEP_WINDOW_DAYS)
+    pairs, checked = [], []
+    out = {"matched": [], "superseded": [], "unsent": [], "waiting": [], "unchecked": []}
+    for draft_id, scored, draft_text in pending:
+        key = _source_key(scored)
+        items = items_by_source.get(key) if key else None
+        if items is None:
+            out["unchecked"].append(draft_id)
+            continue
+        checked.append((draft_id, scored))
+        staged = _parse_ts(scored.get("ts"))
+        keys = _draft_keys(scored)
+        draft_cmp = comparable_text(draft_text, signature)
+        for i, item in enumerate(items):
+            if not (staged - SWEEP_EARLY_SLACK <= item["sent"] <= staged + window):
+                continue
+            same = _conversation(keys, item)
+            if same is False:
+                continue
+            limit = SWEEP_MAX_DISTANCE_CONFIRMED if same else SWEEP_MAX_DISTANCE_UNCONFIRMED
+            sent_cmp = comparable_text(item["text"], signature)
+            distance = _edit_distance(draft_cmp, sent_cmp)
+            if distance <= limit:
+                pairs.append((distance, draft_id, (key, i), item, sent_cmp, same))
+
+    taken_drafts, taken_items = set(), set()
+    for distance, draft_id, item_key, item, sent_cmp, same in sorted(pairs, key=lambda p: p[0]):
+        if draft_id in taken_drafts or item_key in taken_items:
+            continue
+        taken_drafts.add(draft_id)
+        taken_items.add(item_key)
+        out["matched"].append({"draft_id": draft_id, "edit_distance": distance, "sent_ref": item["ref"],
+                               "sent_ts": item["sent"].isoformat(), "sent_text": sent_cmp,
+                               "confirmed": bool(same)})
+    # The same body scored twice (two stages of one draft) is one draft: a send settles both rows.
+    by_sha = {}
+    for draft_id, scored in checked:
+        by_sha.setdefault(scored.get("sha256"), []).append(draft_id)
+    for m in list(out["matched"]):
+        sha = next(s.get("sha256") for d, s in checked if d == m["draft_id"])
+        for twin in by_sha.get(sha, []) if sha else []:
+            if twin not in taken_drafts:
+                taken_drafts.add(twin)
+                out["matched"].append({**m, "draft_id": twin})
+    # A draft whose send was claimed by a closer draft is an earlier version of that one.
+    had_pair = {p[1] for p in pairs}
+    for draft_id, scored in checked:
+        if draft_id in taken_drafts:
+            continue
+        if draft_id in had_pair:
+            out["superseded"].append(draft_id)
+            continue
+        staged = _parse_ts(scored.get("ts"))
+        out["unsent" if now - staged > window else "waiting"].append(draft_id)
+    return out
+
+
+def sweep_outcomes(*, fetch=fetch_sent, now=None, dry_run=False):
+    """Run the sweep over the whole log. Reads every source the pending drafts need once, from
+    the day before the oldest pending draft, then writes an outcome for each match and each
+    closed-window miss unless `dry_run`. Returns the match_pending result plus "errors" and
+    "match_rate" (matched over matched plus unsent)."""
+    now = now or datetime.datetime.now().astimezone()
+    pending = []
+    for draft_id, d in fold_drafts().items():
+        scored = d["scored"]
+        if not scored or d["outcome"] is not None or not _parse_ts(scored.get("ts")):
+            continue
+        try:
+            text = _read_draft_text(draft_id)
+        except OSError:
+            continue
+        pending.append((draft_id, scored, text))
+
+    items_by_source, errors = {}, {}
+    keys = {k for k in (_source_key(s) for _, s, _ in pending) if k}
+    if pending:
+        since = (min(_parse_ts(s["ts"]) for _, s, _ in pending) - datetime.timedelta(days=1)).date().isoformat()
+        for key in sorted(keys):
+            try:
+                items_by_source[key] = _sent_items(key, fetch(key, since))
+            except Exception as e:
+                items_by_source[key] = None
+                errors[key] = str(e)
+
+    result = match_pending(pending, items_by_source, now, _signature_text())
+    if not dry_run:
+        for m in result["matched"]:
+            record_outcome(m["draft_id"], m["sent_text"], discarded=False, edit_nature=[], reason=None,
+                           sweep={"edit_distance": m["edit_distance"], "sent_ref": m["sent_ref"]})
+        for draft_id in result["superseded"]:
+            _append_event({**_superseded_event(draft_id, now.isoformat()), "source": "sweep"})
+        for draft_id in result["unsent"]:
+            record_outcome(draft_id, None, discarded=True, edit_nature=[], reason=None, sweep={})
+    settled = len(result["matched"]) + len(result["unsent"])
+    result["match_rate"] = round(len(result["matched"]) / settled, 4) if settled else None
+    result["errors"] = errors
+    return result
 
 
 # --- weight fitting ---
@@ -994,6 +1310,27 @@ def cmd_outcome(argv):
     return 0
 
 
+def cmd_sweep(argv):
+    dry_run = "--dry-run" in argv
+    result = sweep_outcomes(dry_run=dry_run)
+    if "--json" in argv:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    rate = result["match_rate"]
+    print(f"outcome sweep{' (dry run - nothing written)' if dry_run else ''}: "
+          f"{len(result['matched'])} sent, {len(result['superseded'])} superseded by a later version, "
+          f"{len(result['unsent'])} not sent, "
+          f"{len(result['waiting'])} inside the {SWEEP_WINDOW_DAYS}-day window, "
+          f"{len(result['unchecked'])} unchecked")
+    print(f"match rate: {'n/a' if rate is None else f'{rate:.0%}'} of settled drafts matched a send")
+    for source, error in result["errors"].items():
+        print(f"could not read {source}: {error}")
+    for m in result["matched"]:
+        print(f"  {m['draft_id']} -> {m['sent_ref']} (edit_distance {m['edit_distance']}"
+              f"{'' if m['confirmed'] else ', unconfirmed conversation'})")
+    return 0
+
+
 def cmd_show(draft_id):
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
@@ -1006,13 +1343,15 @@ def cmd_show(draft_id):
 def main():
     argv = sys.argv[1:]
     if not argv:
-        print("usage: send_confidence.py outcome|weights-suggest|show|auto-score ...", file=sys.stderr)
+        print("usage: send_confidence.py outcome|sweep|weights-suggest|show|auto-score ...", file=sys.stderr)
         return 2
     verb, rest = argv[0], argv[1:]
     if verb == "outcome":
         return cmd_outcome(rest)
     if verb == "auto-score":
         return cmd_auto_score(rest[0]) if rest else 0
+    if verb == "sweep":
+        return cmd_sweep(rest)
     if verb == "weights-suggest":
         print(json.dumps(suggest_weights(), indent=2))
         return 0
