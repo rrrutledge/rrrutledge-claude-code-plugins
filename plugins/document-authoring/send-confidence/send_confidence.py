@@ -12,13 +12,16 @@ count from the session transcript; familiarity from earlier stages in this log -
 `score_and_log`. Scoring is fail-open (a scorer exception never blocks the stage), so this
 module must never raise past its own CLI entry points.
 
-Five factors, each 0-100 where higher means "more likely to go out untouched", one per aspect
-of uncertainty described in `uncertainty-aspects.md`: rule coverage (the writing reviewer's
-rating, carried on the receipt), content latitude and stakes (one cold Haiku call per draft,
-which reads that file whole), fact support (the same call's claim audit against the
-transcript), and familiarity (how many distinct drafts this log has seen staged to the same
-recipient). The composite is the weighted mean over whichever factors came back non-null -
-see `weights.json` for the weights and thresholds.
+The scored event stores each attribute's raw value (`attributes`), the raw inputs a model fit
+reads: claim count and unsupported claim count, content latitude, stakes, and kind from a
+cold Haiku judge that reads `uncertainty-aspects.md` whole and runs three times at temperature
+1, so each judged attribute keeps three readings (kind keeps its majority label and how many
+readings agreed); rule coverage is the writing reviewer's one rating, carried on the receipt;
+turn count, familiarity, word count, and channel come from plain code and are exact.
+
+The logged `score` is the weighted composite of five 0-100 factors under `weights.json`,
+taken from the median judge reading: rule coverage, content latitude, stakes, fact support,
+and familiarity.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
 (`~/OneDrive/Claude/send-confidence` by default - see the module-level path helpers). Nothing
@@ -53,6 +56,9 @@ import hashlib
 import datetime
 import subprocess
 import time
+import statistics
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -66,6 +72,16 @@ INPUTS_CHAR_CAP = 12000
 DIFF_CHAR_CAP = 20000
 
 JUDGE_MODEL = "claude-haiku-4-5"
+# The judge runs three times at temperature 1, so every draft carries a measure of the judge's
+# self-disagreement on each judged attribute.
+JUDGE_RUNS = 3
+JUDGE_TEMPERATURE = 1
+
+# The reply types the judge labels; the weekly report's kind table uses the same six.
+MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge", "substantive-reply")
+
+# Gmail and both Outlooks are one "email" value in the scored attributes.
+CHANNEL_CLASSES = {"gmail": "email", "outlook-personal": "email", "outlook-work": "email", "slack": "slack"}
 
 RESOLVED_DISPOSITIONS = {"sent-as-is", "edited", "discarded"}
 FACTOR_NAMES = ["familiarity", "stakes", "content_latitude", "fact_support", "rule_coverage"]
@@ -136,14 +152,14 @@ def _anthropic_api_key():
 
 # --- the Haiku calls ---
 
-def _call_model(system, user, api_key, max_tokens):
+def _call_model(system, user, api_key, max_tokens, temperature=0):
     """One JSON-answering Haiku call. Returns (parsed_dict, error)."""
     if os.environ.get("SEND_CONFIDENCE_JUDGE") == "off":
         return None, "judge disabled (SEND_CONFIDENCE_JUDGE=off)"
     if not api_key:
         return None, "no API key"
     payload = json.dumps({
-        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": 0,
+        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": temperature,
         "system": system, "messages": [{"role": "user", "content": user}],
     }).encode("utf-8")
     req = Request(
@@ -174,28 +190,52 @@ The aspects of uncertainty, with their rating scales:
 
 {aspects}
 
-Rate Content latitude and Stakes on their 1-5 scales, and list every factual claim in the \
-draft for Fact support. The other aspects are measured elsewhere; ignore them.
+Rate Content latitude and Stakes on their 1-5 scales, list every factual claim in the \
+draft for Fact support, and label the draft's Kind. The other aspects are measured elsewhere; \
+ignore them.
 
 Respond with ONLY this JSON, no other text:
 {{"content_latitude": {{"rating": 1-5, "rationale": "..."}}, "stakes": {{"rating": 1-5, \
-"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}]}}"""
+"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}], \
+"kind": "{kinds}"}}"""
+
+
+def _rating(reading, key):
+    """A reading's 1-5 rating for `key`, or None when it's missing or off the scale."""
+    block = reading.get(key)
+    value = block.get("rating") if isinstance(block, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5 else None
 
 
 def run_judge(ctx, body, aspects, api_key):
-    """One Haiku call rating content latitude and stakes and auditing claim support.
-    Returns (result_dict, error) - result is None and error is set on any failure, so the
-    three judged factors fall out as null and scoring continues on the others."""
+    """One Haiku call rating content latitude and stakes, auditing claim support, and labelling
+    the kind. Returns (result_dict, error) - result is None and error is set on any failure.
+    A kind outside MESSAGE_KINDS comes back as None rather than failing the reading."""
     user = json.dumps({
         "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
         "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
     })
-    parsed, error = _call_model(JUDGE_SYSTEM.format(aspects=aspects or ""), user, api_key, 2048)
+    system = JUDGE_SYSTEM.format(aspects=aspects or "", kinds="|".join(MESSAGE_KINDS))
+    parsed, error = _call_model(system, user, api_key, 2048, temperature=JUDGE_TEMPERATURE)
     if error:
         return None, error
-    if not all(k in parsed for k in ("content_latitude", "stakes", "claims")):
+    if not (all(_rating(parsed, k) for k in ("content_latitude", "stakes"))
+            and isinstance(parsed.get("claims"), list)):
         return None, "judge response missing expected fields"
+    parsed["claims"] = [c for c in parsed["claims"] if isinstance(c, dict)]
+    kind = str(parsed.get("kind") or "").strip().lower()
+    parsed["kind"] = kind if kind in MESSAGE_KINDS else None
     return parsed, None
+
+
+def run_judges(ctx, body, aspects, api_key):
+    """JUDGE_RUNS independent judge readings, made in parallel. Returns (readings, errors):
+    the readings that succeeded in run order, and each distinct error the failed runs hit."""
+    with ThreadPoolExecutor(max_workers=JUDGE_RUNS) as pool:
+        results = list(pool.map(lambda _: run_judge(ctx, body, aspects, api_key), range(JUDGE_RUNS)))
+    readings = [r for r, _ in results if r]
+    errors = list(dict.fromkeys(e for _, e in results if e))
+    return readings, errors
 
 
 LABEL_SYSTEM = """You compare a draft message with the version Russell actually sent, and \
@@ -228,6 +268,7 @@ def label_edits(draft_text, sent_text, api_key):
 
 
 def _judge_log_shape(judge):
+    """The first judge reading's rationales and claim list, for the learning brief to show."""
     if not judge:
         return None
     return {
@@ -242,9 +283,56 @@ def _judge_log_shape(judge):
 
 # --- scoring ---
 
+def _claim_counts(reading):
+    claims = reading.get("claims") or []
+    return len(claims), sum(1 for c in claims if not c.get("supported"))
+
+
+def _kind_majority(readings):
+    """The kind most readings agree on, and how many agree. The earliest reading's label wins
+    a tie, so three different labels keep the first with an agreement of 1."""
+    labels = [r.get("kind") for r in readings if r.get("kind")]
+    if not labels:
+        return {"label": None, "agreement": 0}
+    counts = Counter(labels)
+    top = max(counts.values())
+    label = next(lbl for lbl in labels if counts[lbl] == top)
+    return {"label": label, "agreement": top}
+
+
+def measure_attributes(body, ctx, readings):
+    """Every attribute's raw value at scoring time, the raw inputs a model fit reads.
+    Judged attributes keep one value per judge reading so their noise can be measured; they
+    are None when no reading succeeded. Latitude and both claim counts are also None when the
+    judge had no ask or inputs to measure against. Plain-code attributes are exact."""
+    grounded = bool(ctx.get("ask") or ctx.get("inputs"))
+    sent_count = ctx.get("sent_count")
+    coverage = ctx.get("rule_coverage")
+    coverage = coverage if isinstance(coverage, int) and 1 <= coverage <= 5 else None
+    counts = [_claim_counts(r) for r in readings] if readings and grounded else None
+    return {
+        "claims_total": [t for t, _ in counts] if counts else None,
+        "claims_unsupported": [u for _, u in counts] if counts else None,
+        "content_latitude": [_rating(r, "content_latitude") for r in readings] if readings and grounded else None,
+        "stakes": [_rating(r, "stakes") for r in readings] if readings else None,
+        "kind": _kind_majority(readings) if readings else None,
+        "turn_count": ctx.get("turns_before_draft"),
+        "familiarity": sent_count,
+        "familiarity_missing": sent_count is None,
+        "rule_coverage": coverage,
+        "rule_coverage_missing": coverage is None,
+        "word_count": len(_plain_text(body).split()),
+        "channel": CHANNEL_CLASSES.get(ctx.get("channel")),
+    }
+
+
 def score_draft(body, ctx, *, weights, aspects, api_key):
-    """Pure scoring: returns {"score", "factors", "features", "judge", "errors"}. No I/O
-    besides the judge call."""
+    """Pure scoring: returns {"score", "factors", "features", "attributes", "judge", "errors"}.
+    No I/O besides the judge calls.
+
+    `attributes` holds the raw values (see measure_attributes). `score`, `factors`, and
+    `features` are the weighted composite under weights.json, computed from the median of the
+    judge readings."""
     errors = []
     features = {}
     factors = {}
@@ -264,32 +352,31 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     else:
         factors["rule_coverage"] = None
 
-    judge, judge_error = run_judge(ctx, body, aspects, api_key)
-    if judge_error:
-        errors.append(judge_error)
+    readings, judge_errors = run_judges(ctx, body, aspects, api_key)
+    errors.extend(judge_errors)
+    attributes = measure_attributes(body, ctx, readings)
 
-    if judge:
-        rating_s = judge["stakes"]["rating"]
+    if readings:
+        rating_s = statistics.median(attributes["stakes"])
         factors["stakes"] = round(100 * (5 - rating_s) / 4)
         features["stakes_rating"] = rating_s
 
     # With no ask and no inputs (the transcript was unreadable), the judge has nothing to
     # measure latitude against and every claim would read as unsupported; those two factors
     # stay null and the composite re-weights over the rest.
-    if judge and (ctx.get("ask") or ctx.get("inputs")):
-        rating_c = judge["content_latitude"]["rating"]
+    if attributes["content_latitude"]:
+        rating_c = statistics.median(attributes["content_latitude"])
         turns = ctx.get("turns_before_draft") or 0
         penalty = min(20, 5 * turns)
         factors["content_latitude"] = max(0, round(100 * (5 - rating_c) / 4) - penalty)
         features["latitude_rating"] = rating_c
         features["latitude_turn_penalty"] = penalty
 
-        claims = judge.get("claims") or []
-        total = len(claims)
-        supported = sum(1 for c in claims if c.get("supported"))
-        factors["fact_support"] = 100 if total == 0 else round(100 * supported / total)
-        features["claims_total"] = total
-        features["claims_unsupported"] = total - supported
+        shares = [1 if t == 0 else (t - u) / t
+                  for t, u in zip(attributes["claims_total"], attributes["claims_unsupported"])]
+        factors["fact_support"] = round(100 * statistics.median(shares))
+        features["claims_total"] = statistics.median(attributes["claims_total"])
+        features["claims_unsupported"] = statistics.median(attributes["claims_unsupported"])
     else:
         factors.setdefault("stakes", None)
         factors["content_latitude"] = None
@@ -303,7 +390,8 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     else:
         score = None
 
-    return {"score": score, "factors": factors, "features": features, "judge": judge, "errors": errors}
+    return {"score": score, "factors": factors, "features": features, "attributes": attributes,
+            "judge": readings[0] if readings else None, "errors": errors}
 
 
 # --- the log ---
@@ -432,7 +520,7 @@ def score_and_log(body, sha256, ctx):
         _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 3, "draft_id": draft_id,
+        "event": "scored", "v": 4, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
         "source": "gate", "stage_kind": ctx.get("stage_kind"),
         "session_id": ctx.get("session_id"),
@@ -443,6 +531,7 @@ def score_and_log(body, sha256, ctx):
         "score": result["score"], "weights_version": weights.get("version"),
         "aspects_sha": aspects_sha,
         "factors": result["factors"], "features": result["features"],
+        "attributes": result["attributes"],
         "judge": _judge_log_shape(result["judge"]),
         "uncertain_spots": ctx.get("uncertain_spots"),
         "errors": result["errors"],

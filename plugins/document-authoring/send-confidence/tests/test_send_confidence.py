@@ -168,7 +168,7 @@ def test_judge_ratings_and_latitude_turn_penalty(monkeypatch):
 def test_judge_prompt_carries_the_aspects_file(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, api_key, max_tokens):
+    def fake_call(system, user, api_key, max_tokens, temperature=0):
         seen["system"] = system
         return None, "stubbed"
     monkeypatch.setattr(sc, "_call_model", fake_call)
@@ -178,8 +178,144 @@ def test_judge_prompt_carries_the_aspects_file(monkeypatch):
 
 def test_aspects_file_exists_and_names_every_aspect():
     text, _ = sc._load_aspects()
-    for heading in ("## Rule coverage", "## Content latitude", "## Fact support", "## Stakes", "## Familiarity"):
+    for heading in ("## Rule coverage", "## Content latitude", "## Fact support", "## Stakes", "## Familiarity",
+                    "## Kind"):
         assert heading in text
+    for kind in sc.MESSAGE_KINDS:
+        assert f"- {kind} - " in text
+
+
+# --- three judge readings + raw attributes ---
+
+def _reading(stakes, latitude, claims, kind):
+    return {"stakes": {"rating": stakes, "rationale": "s"},
+            "content_latitude": {"rating": latitude, "rationale": "l"},
+            "claims": claims, "kind": kind}
+
+
+def _queue_judge(monkeypatch, answers):
+    queue = list(answers)
+    monkeypatch.setattr(sc, "run_judge", lambda ctx, body, aspects, key: queue.pop(0))
+
+
+def test_three_readings_are_stored_and_the_score_uses_their_median(monkeypatch):
+    sup, unsup = {"text": "a", "supported": True}, {"text": "b", "supported": False}
+    _queue_judge(monkeypatch, [
+        (_reading(2, 3, [sup], "scheduling"), None),
+        (_reading(4, 3, [sup, unsup], "scheduling"), None),
+        (_reading(3, 5, [sup, unsup, unsup, unsup], "nudge"), None),
+    ])
+    ctx = {"channel": "outlook-work", "ask": "Reply.", "sent_count": None, "turns_before_draft": 2,
+           "rule_coverage": None}
+    result = sc.score_draft("<p>Tuesday at <b>2pm</b> works.</p>", ctx, weights=sc.DEFAULT_WEIGHTS,
+                            aspects="", api_key=None)
+    attrs = result["attributes"]
+    assert attrs["stakes"] == [2, 4, 3]
+    assert attrs["content_latitude"] == [3, 3, 5]
+    assert attrs["claims_total"] == [1, 2, 4]
+    assert attrs["claims_unsupported"] == [0, 1, 3]
+    assert attrs["kind"] == {"label": "scheduling", "agreement": 2}
+    assert attrs["turn_count"] == 2
+    assert attrs["word_count"] == 4
+    assert attrs["channel"] == "email"
+    assert (attrs["familiarity"], attrs["familiarity_missing"]) == (None, True)
+    assert (attrs["rule_coverage"], attrs["rule_coverage_missing"]) == (None, True)
+    # The composite reads the median reading: stakes 3, latitude 3 less the turn penalty, and
+    # the median supported share of 1, 1/2, and 1/4.
+    assert result["factors"]["stakes"] == 50
+    assert result["factors"]["content_latitude"] == 50 - 10
+    assert result["factors"]["fact_support"] == 50
+
+
+def test_a_failed_reading_is_dropped_and_its_error_kept(monkeypatch):
+    _queue_judge(monkeypatch, [
+        (_reading(2, 2, [], "thanks-ack"), None),
+        (None, "model call failed: timeout"),
+        (_reading(2, 2, [], "thanks-ack"), None),
+    ])
+    ctx = {"channel": "slack", "ask": "Thank them.", "sent_count": 3, "rule_coverage": 4}
+    result = sc.score_draft("Thanks!", ctx, weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    attrs = result["attributes"]
+    assert attrs["stakes"] == [2, 2]
+    assert attrs["kind"] == {"label": "thanks-ack", "agreement": 2}
+    assert attrs["channel"] == "slack"
+    assert (attrs["familiarity"], attrs["familiarity_missing"]) == (3, False)
+    assert (attrs["rule_coverage"], attrs["rule_coverage_missing"]) == (4, False)
+    assert result["errors"] == ["model call failed: timeout"]
+    assert result["factors"]["fact_support"] == 100
+
+
+def test_no_readings_leave_every_judged_attribute_null():
+    ctx = {"channel": "gmail", "ask": "Reply.", "sent_count": 1, "turns_before_draft": 0}
+    result = sc.score_draft("A reply.", ctx, weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    attrs = result["attributes"]
+    for key in ("stakes", "content_latitude", "claims_total", "claims_unsupported", "kind"):
+        assert attrs[key] is None
+    assert attrs["word_count"] == 2
+    assert result["errors"] == ["judge disabled (SEND_CONFIDENCE_JUDGE=off)"]
+
+
+def test_without_ask_or_inputs_only_stakes_and_kind_are_kept(monkeypatch):
+    _queue_judge(monkeypatch, [(_reading(3, 4, [{"text": "a"}], "decline"), None)] * 3)
+    result = sc.score_draft("No thanks.", {"channel": "gmail"}, weights=sc.DEFAULT_WEIGHTS,
+                            aspects="", api_key=None)
+    attrs = result["attributes"]
+    assert attrs["stakes"] == [3, 3, 3]
+    assert attrs["kind"] == {"label": "decline", "agreement": 3}
+    assert attrs["content_latitude"] is None and attrs["claims_total"] is None
+
+
+@pytest.mark.parametrize("labels,expected", [
+    (["nudge", "decline", "scheduling"], {"label": "nudge", "agreement": 1}),
+    (["decline", "nudge", "nudge"], {"label": "nudge", "agreement": 2}),
+    ([None, None, "decline"], {"label": "decline", "agreement": 1}),
+    ([None, None, None], {"label": None, "agreement": 0}),
+])
+def test_kind_majority(labels, expected):
+    assert sc._kind_majority([{"kind": k} for k in labels]) == expected
+
+
+def test_run_judge_asks_for_kind_at_temperature_1(monkeypatch):
+    seen = {}
+
+    def fake_call(system, user, api_key, max_tokens, temperature=0):
+        seen.update(system=system, temperature=temperature)
+        return {"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [],
+                "kind": " Info-Request "}, None
+    monkeypatch.setattr(sc, "_call_model", fake_call)
+    reading, error = sc.run_judge({"channel": "gmail"}, "body", "", "key")
+    assert error is None and reading["kind"] == "info-request"
+    assert seen["temperature"] == 1
+    assert "|".join(sc.MESSAGE_KINDS) in seen["system"]
+
+
+@pytest.mark.parametrize("answer,ok", [
+    ({"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [], "kind": "poem"}, True),
+    ({"stakes": {"rating": 7}, "content_latitude": {"rating": 3}, "claims": []}, False),
+    ({"stakes": {"rating": "2"}, "content_latitude": {"rating": 3}, "claims": []}, False),
+    ({"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": "none"}, False),
+])
+def test_run_judge_validates_the_reading(monkeypatch, answer, ok):
+    monkeypatch.setattr(sc, "_call_model", lambda *a, **k: (answer, None))
+    reading, error = sc.run_judge({}, "body", "", "key")
+    assert (reading is not None) == ok
+    if ok:
+        assert reading["kind"] is None
+    else:
+        assert error == "judge response missing expected fields"
+
+
+def test_run_judges_makes_three_calls(monkeypatch):
+    calls = []
+    original = sc.run_judge
+
+    def counting(*a):
+        calls.append(1)
+        return original(*a)
+    monkeypatch.setattr(sc, "run_judge", counting)
+    readings, errors = sc.run_judges({}, "body", "", None)
+    assert len(calls) == sc.JUDGE_RUNS == 3
+    assert readings == [] and errors == ["judge disabled (SEND_CONFIDENCE_JUDGE=off)"]
 
 
 # --- score_and_log ---
@@ -195,6 +331,10 @@ def test_score_and_log_writes_snapshot_and_scored_row(tmp_path):
     assert scored[0]["channel"] == "gmail"
     assert scored[0]["factors"]["rule_coverage"] == 75
     assert scored[0]["uncertain_spots"] == "the closing line"
+    assert scored[0]["v"] == 4
+    assert scored[0]["attributes"]["rule_coverage"] == 4
+    assert scored[0]["attributes"]["channel"] == "email"
+    assert scored[0]["attributes"]["word_count"] == len(body.split())
 
 
 def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
