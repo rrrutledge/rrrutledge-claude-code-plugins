@@ -10,7 +10,7 @@
 // never calls graph.microsoft.com for chat — a live sniff presented no graph token. Chat runs on
 // the Skype-spaces / IC3 services. We target those.
 //
-// TWO TOKENS (both sniffed from the live Teams web session over CDP, cached together in
+// TWO CORE TOKENS (both sniffed from the live Teams web session over CDP, cached together in
 // ~/.claude/drainer/teams-ic3-token.json with their real JWT expiries; auto-re-sniffed on expiry or
 // a 401):
 //   - aud=https://chatsvcagg.teams.microsoft.com  -> the chat AGGREGATOR ("chatsvcagg"). Its
@@ -18,7 +18,16 @@
 //     Teams UI shows), plus member names and the last-message preview. This is the source of
 //     truth for DMs / group chats / meeting chats.
 //   - aud=https://ic3.teams.office.com            -> the IC3 chat-service ("chatsvc"). Used to
-//     list CHANNELS (team threads), to read a conversation's messages, and to mark read.
+//     list CHANNELS (team threads), to read a conversation's messages, send messages, and mark read.
+//
+// A THIRD, LAZILY-ACQUIRED TOKEN backs user search (find-user / send-to-user only):
+//   - aud=https://outlook.office.com/search       -> the SUBSTRATE search backend. This is the token
+//     Teams web uses for the new-chat people picker. Unlike the two core tokens it is NOT emitted on
+//     a plain chat-list load — Teams only requests it when the picker actually runs a search. So it
+//     can't be captured by the fast base sniff; instead sniffSubstrateToken() drives the picker in
+//     the CDP browser and grabs the bearer off the outgoing substrate.office.com request. It is
+//     cached under `substrate` in the same token file, acquired on demand, and never touched by the
+//     drainer's enumerate/messages/send path — so those stay fast.
 //
 // IMPORTANT — isRead is NOT the same as IC3 consumptionhorizon. A chat can have its
 // consumptionhorizon caught up to the last message yet still be unread (isRead=false). So unread
@@ -28,6 +37,13 @@
 // sending is a one-liner: node teams-chat.js send <convId> "text". No mark-read: the aggregator's
 // isRead is not driven by any replayable HTTP call, so marking read stays browser-driven (the worker
 // opens the conversation via browser-chauffeur). See teams-provider.md § CLEAR.
+//
+// STARTING A NEW 1:1 (no prior conversation): a 1:1 chat has a DETERMINISTIC convId derived from the
+// two participants' AAD object ids — `19:{oidA}_{oidB}@unq.gbl.spaces`, the two oids lowercased and
+// sorted as strings. There is no explicit "create conversation" call in Teams 2.0 (the old IC3
+// POST .../conversations returns 405); the thread is provisioned implicitly by the first message. So
+// `send-to-user` searches for the person (substrate), derives that convId, and POSTs the message via
+// the normal IC3 send path, which creates-on-send. `find-user` and `dm-convid` expose the pieces.
 //
 // CONFIG (env vars; sensible defaults for Russell's setup):
 //   DRAINER_TEAMS_WATCHED_TEAM_ID    — the watched team's space id (threadProperties.spaceId / General id)
@@ -42,18 +58,25 @@
 //   node teams-chat.js messages <convId> [--top 20]     -> recent messages (newest-first)
 //   node teams-chat.js send <convId> <message> [--html] -> send a message to a conversation
 //   node teams-chat.js mark-unread --conversation-id <id> --message-id <id>  -> mark message (and after) unread
+//   node teams-chat.js find-user <name>                 -> search the directory; JSON array of matches
+//   node teams-chat.js dm-convid <name|mri|oid>         -> derive the 1:1 convId (resolves a name via search)
+//   node teams-chat.js send-to-user <name|mri|oid> <message> [--html]  -> start/continue a 1:1 and send
 //   node teams-chat.js token [--force]                  -> ensure/refresh cached tokens, print status
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
+const crypto = require('crypto');
 
 const CDP = 'http://localhost:9222';
 const REGION = 'amer'; // Russell's geo; the Teams services are region-routed.
 const ORIGIN = 'https://teams.cloud.microsoft';
 const IC3_BASE = `${ORIGIN}/api/chatsvc/${REGION}`;
 const AGG_BASE = `${ORIGIN}/api/csa/${REGION}`;
+// Substrate search backend — hosts the new-chat people picker's suggestions API.
+const SUBSTRATE_HOST = 'substrate.office.com';
+const SUBSTRATE_SUGGEST_PATH = '/search/api/v1/suggestions?scenario=peoplepicker.newChat';
 const TOKEN_DIR = path.join(os.homedir(), '.claude', 'drainer');
 const TOKEN_FILE = path.join(TOKEN_DIR, 'teams-ic3-token.json');
 const RECON_FILE = path.join(TOKEN_DIR, 'teams-token-recon.json');
@@ -145,6 +168,104 @@ async function sniffTokens() {
 async function getTokens(force) {
   if (!force) { const c = readCachedTokens(); if (c) return c; }
   return sniffTokens();
+}
+
+// Russell's own AAD object id (JWT `oid`), from the ic3 token — one half of every 1:1 convId.
+async function getSelfObjectId() {
+  const toks = await getTokens(false);
+  const p = decodeJwt(toks.ic3.token);
+  const oid = p && p.oid;
+  if (!oid) throw new Error('could not read self object id (oid) from the ic3 token');
+  return oid;
+}
+
+// --- Substrate search token (lazy; only for find-user / send-to-user) --------
+// The substrate token is not emitted on a plain chat load, so we drive the new-chat people picker
+// in the CDP browser until Teams fires a substrate.office.com request, then grab its bearer. Cached
+// under `substrate` in the shared token file so repeat searches skip the browser round-trip.
+function readCachedSubstrate() {
+  try {
+    const meta = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+    const now = Date.now() / 1000;
+    const s = meta.substrate;
+    if (s && s.token && s.exp && s.exp - EXPIRY_SKEW_S > now) return s.token;
+  } catch {}
+  return null;
+}
+
+async function sniffSubstrateToken() {
+  const { chromium } = require('playwright');
+  const browser = await chromium.connectOverCDP(CDP);
+  const context = browser.contexts()[0];
+  if (!context) { await browser.close().catch(() => {}); throw new Error('No CDP browser context (is Edge running on 9222?)'); }
+
+  let page = context.pages().find(p => /teams\.(microsoft\.com|cloud\.microsoft)/.test(p.url()));
+  let openedPage = false;
+  if (!page) { page = await context.newPage(); openedPage = true; }
+
+  let token = null;
+  const grab = (req) => {
+    if (token || !req.url().includes(SUBSTRATE_HOST)) return;
+    const h = req.headers();
+    const auth = h['authorization'] || h['Authorization'];
+    if (auth && auth.toLowerCase().startsWith('bearer ')) token = auth.slice(7);
+  };
+  context.on('request', grab);
+  page.on('request', grab);
+
+  try { await page.bringToFront(); } catch {}
+  try { await page.goto(`${ORIGIN}/v2/?ctx=chat`, { waitUntil: 'domcontentloaded', timeout: 20000 }); } catch {}
+  await page.waitForTimeout(3500);
+
+  // Open the new-chat picker and type; retry with different query strings since the search request
+  // that carries the token is debounced and sometimes served from the client's warm cache.
+  const queries = ['a', 'e', 'i', 'o'];
+  for (let i = 0; i < queries.length && !token; i++) {
+    let opened = false;
+    for (const name of [/new chat/i, /new conversation/i]) {
+      const btn = page.getByRole('button', { name }).first();
+      try { if (await btn.count()) { await btn.click({ timeout: 2500 }); opened = true; break; } } catch {}
+    }
+    if (!opened) { try { await page.keyboard.press('Alt+Shift+KeyN'); } catch {} }
+    await page.waitForTimeout(1200);
+    let typed = false;
+    for (const ph of [/type a name/i, /to:/i, /add people/i, /search/i]) {
+      const inp = page.getByPlaceholder(ph).first();
+      try { if (await inp.count()) { await inp.click({ timeout: 1500 }); await inp.fill(''); await inp.type(queries[i], { delay: 140 }); typed = true; break; } } catch {}
+    }
+    if (!typed) { try { await page.keyboard.type(queries[i], { delay: 140 }); } catch {} }
+    const start = Date.now();
+    while (Date.now() - start < 5000 && !token) await new Promise(r => setTimeout(r, 400));
+    try { await page.keyboard.press('Escape'); } catch {}
+    await page.waitForTimeout(500);
+  }
+
+  if (openedPage) await page.close().catch(() => {});
+  await browser.close().catch(() => {});
+
+  if (!token) throw new Error('Could not capture a substrate search token — the new-chat people picker never fired a request. Ensure Teams web is open & signed in.');
+  const payload = decodeJwt(token) || {};
+  // Merge into the shared token file without disturbing the ic3/agg core tokens. If the file exists
+  // but can't be parsed, refuse to write — clobbering it would drop the ic3/agg tokens the drainer
+  // needs. A missing file (ENOENT) is fine: start fresh with just the substrate token.
+  let meta = {};
+  try {
+    meta = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw new Error(`refusing to write substrate token: ${TOKEN_FILE} exists but is unreadable (${e.message})`);
+  }
+  meta.substrate = {
+    token, aud: payload.aud, exp: payload.exp,
+    expISO: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
+  };
+  fs.mkdirSync(path.dirname(TOKEN_FILE), { recursive: true });
+  fs.writeFileSync(TOKEN_FILE, JSON.stringify(meta, null, 2));
+  return token;
+}
+
+async function getSubstrateToken(force) {
+  if (!force) { const c = readCachedSubstrate(); if (c) return c; }
+  return sniffSubstrateToken();
 }
 
 // --- REST helper -------------------------------------------------------------
@@ -338,9 +459,12 @@ async function cmdMarkUnread(convId, messageId) {
   process.stdout.write(`Marked unread from message ${messageId} in ${convId}\n`);
 }
 
-async function cmdSend(convId, text, isHtml) {
-  if (!convId) throw new Error('send requires a convId');
-  if (!text) throw new Error('send requires message text');
+// POST a message to a conversation. For a never-before-used 1:1 convId this creates-on-send (the
+// spaces thread is provisioned implicitly). Returns { id, time }; throws on a non-2xx from both the
+// IC3 path and the aggregator fallback.
+async function sendMessage(convId, text, isHtml) {
+  if (!convId) throw new Error('a convId is required');
+  if (!text) throw new Error('message text is required');
   const content = isHtml ? text : `<p>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
   const body = { content, messagetype: 'RichText/Html', contenttype: 'html' };
   let res = await call('ic3', 'POST', `/v1/users/ME/conversations/${enc(convId)}/messages`, body);
@@ -350,9 +474,119 @@ async function cmdSend(convId, text, isHtml) {
       throw new Error(`send HTTP ${res.status}: ${res.body.slice(0, 400)}`);
   }
   let parsed; try { parsed = JSON.parse(res.body); } catch { throw new Error(`send: non-JSON response (HTTP ${res.status}): ${res.body.slice(0, 200)}`); }
-  const id = parsed.id || parsed.OriginalArrivalTime || null;
-  const time = parsed.composetime || parsed.OriginalArrivalTime || null;
-  process.stdout.write(JSON.stringify({ id, time }, null, 2) + '\n');
+  return {
+    id: parsed.id || parsed.OriginalArrivalTime || null,
+    time: parsed.composetime || parsed.OriginalArrivalTime || null,
+  };
+}
+
+async function cmdSend(convId, text, isHtml) {
+  const sent = await sendMessage(convId, text, isHtml);
+  process.stdout.write(JSON.stringify(sent, null, 2) + '\n');
+}
+
+// --- User search + 1:1 convId derivation -------------------------------------
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// POST the substrate suggestions API with one automatic token refresh on 401.
+async function substrateSuggest(body) {
+  const url = `https://${SUBSTRATE_HOST}${SUBSTRATE_SUGGEST_PATH}`;
+  let tok = await getSubstrateToken(false);
+  let res = await request('POST', url, tok, body);
+  if (res.status === 401) {
+    tok = await getSubstrateToken(true);
+    res = await request('POST', url, tok, body);
+  }
+  return res;
+}
+
+// Search the directory for people matching `name`. Returns
+// [{ displayName, mri, aadObjectId, upn, email }], best match first.
+async function findUser(name) {
+  const body = {
+    EntityRequests: [{
+      Query: { QueryString: name, DisplayQueryString: name },
+      EntityType: 'People', Size: 10,
+      Fields: ['Id', 'MRI', 'DisplayName', 'EmailAddresses', 'UserPrincipalName', 'ExternalDirectoryObjectId', 'PeopleType', 'PeopleSubtype'],
+      Filter: { And: [
+        { Or: [{ Term: { PeopleType: 'Person' } }, { Term: { PeopleType: 'Other' } }] },
+        { Or: [{ Term: { PeopleSubtype: 'OrganizationUser' } }, { Term: { PeopleSubtype: 'Guest' } }] },
+      ] },
+      Provenances: ['Mailbox', 'Directory'], From: 0, ServeNoEmailContacts: true,
+    }],
+    Scenario: { Name: 'peoplepicker.newChat' },
+    Cvid: crypto.randomUUID(), AppName: 'Microsoft Teams', LogicalId: crypto.randomUUID(),
+  };
+  const res = await substrateSuggest(body);
+  if (res.status !== 200) throw new Error(`find-user HTTP ${res.status}: ${res.body.slice(0, 300)}`);
+  let groups; try { groups = JSON.parse(res.body).Groups || []; } catch { throw new Error('find-user: non-JSON response from substrate'); }
+  const people = (groups.find(g => g.Type === 'People') || {}).Suggestions || [];
+  return people.map(u => ({
+    displayName: u.DisplayName || null,
+    mri: u.MRI || null,
+    aadObjectId: u.ExternalDirectoryObjectId || (u.MRI && u.MRI.startsWith('8:orgid:') ? u.MRI.slice(8) : null),
+    upn: u.UserPrincipalName || null,
+    email: (u.EmailAddresses && u.EmailAddresses[0]) || null,
+  })).filter(u => u.aadObjectId);
+}
+
+// A 1:1 convId is deterministic: both AAD object ids lowercased, sorted lexicographically, joined
+// with '_'. Verified against the live Teams web session — the derived convId for a known pair
+// matches the real thread id exactly.
+function dmConvId(selfOid, otherOid) {
+  const [a, b] = [selfOid.toLowerCase(), otherOid.toLowerCase()].sort();
+  return `19:${a}_${b}@unq.gbl.spaces`;
+}
+
+// Resolve a name / MRI (8:orgid:<guid>) / raw object-id into { aadObjectId, displayName }.
+// For a name we insist on a confident match — an exact display name, or a candidate whose display
+// name contains every word of the query — rather than blindly taking the top hit, so a typo can't
+// silently address a first-contact message to the wrong person. Ambiguous input throws with the
+// candidate list so the caller can re-run with an exact name or MRI.
+async function resolveTarget(arg) {
+  if (arg.startsWith('8:orgid:')) return { aadObjectId: arg.slice(8), displayName: null };
+  if (GUID_RE.test(arg)) return { aadObjectId: arg, displayName: null };
+  const matches = await findUser(arg);
+  if (!matches.length) throw new Error(`no directory match for "${arg}"`);
+  const q = arg.toLowerCase().trim();
+  const exact = matches.find(m => (m.displayName || '').toLowerCase() === q);
+  if (exact) return exact;
+  const tokens = q.split(/\s+/);
+  const good = matches.find(m => { const dn = (m.displayName || '').toLowerCase(); return tokens.every(t => dn.includes(t)); });
+  if (good) return good;
+  const names = matches.slice(0, 5).map(m => `${m.displayName} <${m.mri}>`).join('; ');
+  throw new Error(`"${arg}" did not clearly match one person. Candidates: ${names}. Re-run with an exact name or the MRI.`);
+}
+
+async function cmdFindUser(name) {
+  if (!name) throw new Error('find-user requires a name');
+  const users = await findUser(name);
+  process.stdout.write(JSON.stringify(users, null, 2) + '\n');
+}
+
+async function cmdDmConvId(arg) {
+  if (!arg) throw new Error('dm-convid requires a name, MRI, or object id');
+  const selfOid = await getSelfObjectId();
+  const target = await resolveTarget(arg);
+  process.stdout.write(JSON.stringify({
+    displayName: target.displayName,
+    aadObjectId: target.aadObjectId,
+    convId: dmConvId(selfOid, target.aadObjectId),
+  }, null, 2) + '\n');
+}
+
+async function cmdSendToUser(arg, text, isHtml) {
+  if (!arg) throw new Error('send-to-user requires a name, MRI, or object id (quote multi-word names)');
+  if (!text) throw new Error('send-to-user requires message text');
+  const selfOid = await getSelfObjectId();
+  const target = await resolveTarget(arg);
+  const convId = dmConvId(selfOid, target.aadObjectId);
+  const sent = await sendMessage(convId, text, isHtml);
+  process.stdout.write(JSON.stringify({
+    to: target.displayName || target.aadObjectId,
+    aadObjectId: target.aadObjectId,
+    convId, ...sent,
+  }, null, 2) + '\n');
 }
 
 async function cmdToken(force) {
@@ -377,9 +611,17 @@ async function cmdToken(force) {
         await cmdSend(convId, msgText, has('--html')); break;
       }
       case 'mark-unread': await cmdMarkUnread(flag('--conversation-id'), flag('--message-id')); break;
+      case 'find-user': await cmdFindUser(positional.join(' ')); break;
+      case 'dm-convid': await cmdDmConvId(positional.join(' ')); break;
+      case 'send-to-user': {
+        const arg = positional[0];
+        const argIdx = rest.findIndex(a => a === arg);
+        const msgText = rest.slice(argIdx + 1).filter(a => a !== '--html').join(' ');
+        await cmdSendToUser(arg, msgText, has('--html')); break;
+      }
       case 'token': await cmdToken(has('--force')); break;
       default:
-        process.stderr.write('Usage: teams-chat.js <enumerate [--unread]|messages <convId>|send <convId> <message> [--html]|mark-unread --conversation-id <id> --message-id <id>|token> [--top N] [--force]\n');
+        process.stderr.write('Usage: teams-chat.js <enumerate [--unread]|messages <convId>|send <convId> <message> [--html]|mark-unread --conversation-id <id> --message-id <id>|find-user <name>|dm-convid <name|mri|oid>|send-to-user <name|mri|oid> <message> [--html]|token> [--top N] [--force]\n');
         process.exit(1);
     }
   } catch (e) {
