@@ -94,6 +94,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
   State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
+  Logistics the ask never settled follow **When unsure**.
 - **Phrase a requested edit to someone else's draft as a question, not a flat correction** — "can you make it X?" reads as collaborative even when you already know exactly what should change; save the flat "should be X" framing for reference material, not a live ask.
   **With a peer or a superior, don't tell them what to do, even softened into a request.**
   When their draft misses a decision the group already made, state the decision as a bare fact and ask whether the document should reflect it, so the gap is about the document and not their omission.
@@ -584,4 +585,4 @@ These registers reach outside the palette, and most also stack past the one-emoj
 ### When unsure
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
-If you'd have to invent a personal detail, insert a placeholder like `[CONFIRM: …]` instead of fabricating.
+If you'd have to invent a personal detail, or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
