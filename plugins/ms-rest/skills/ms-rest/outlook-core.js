@@ -39,7 +39,10 @@ function readCachedToken() {
 
 // --- Token sniff via CDP -----------------------------------------------------
 async function sniffToken() {
-  const { chromium } = require('playwright');
+  const { chromium } = (() => {
+    try { return require('playwright-core'); }
+    catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
+  })();
   const browser = await chromium.connectOverCDP(CDP);
   const context = browser.contexts()[0];
   if (!context) { await browser.close().catch(() => {}); throw new Error('No CDP browser context (is Edge running on 9222?)'); }
