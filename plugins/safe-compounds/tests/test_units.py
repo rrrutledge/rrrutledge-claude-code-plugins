@@ -707,6 +707,12 @@ class TestComplexBash:
     def test_subst(self):
         assert detect_complex_bash("echo $(date)")[0] is True
 
+    def test_process_substitution_input(self):
+        assert detect_complex_bash("comm -12 <(git diff | sort) <(git diff | sort)")[0] is True
+
+    def test_process_substitution_output(self):
+        assert detect_complex_bash("tee >(cat)")[0] is True
+
     def test_for(self):
         assert detect_complex_bash("for x in a; do echo $x; done")[0] is True
 

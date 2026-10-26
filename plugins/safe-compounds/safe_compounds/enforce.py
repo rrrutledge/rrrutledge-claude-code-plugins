@@ -322,6 +322,8 @@ def detect_complex_bash(command):
             return True, "command substitution $()"
         if not tok.in_quotes() and tok.peek() == '`':
             return True, "backtick command substitution"
+        if not tok.in_quotes() and tok.peek() in ('<', '>') and tok.peek(1) == '(':
+            return True, "process substitution <() or >()"
         tok.advance()
 
     if re.search(r'\bfor\s+\w+\s+in\b', command):
