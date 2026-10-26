@@ -774,7 +774,7 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
 
 
 def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False,
-                   sweep=None):
+                   sweep=None, recipient=None):
     """Compute disposition + edit_distance, label the edits (unless `edit_nature` overrides),
     decide whether the send has something to teach, append the outcome event, and when it
     does, write the learning-session brief. Returns the outcome event plus "dispatch" (the
@@ -784,6 +784,8 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     direction is still logged (`direction`, `miscalibrated`), and nothing here changes the
     score's numbers.
     `moot` (discards only - what it does and when to pass it live in learn-from-send.md).
+    `recipient` names who the sent message went to when the staged draft didn't carry it (a
+    reply's stage command names its thread, not its addressee); it labels the learning session.
     `sweep` is the outcome sweep's own record of the match ({"edit_distance", "sent_ref"} for a
     send, {} for a draft that never went out): the distance it measured stands in for the
     plain one, the edits stay unlabelled, no learning session spawns, and the event carries
@@ -792,8 +794,10 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     if not d or not d["scored"]:
         raise ValueError(f"no scored draft found for {draft_id}")
     scored = d["scored"]
+    if recipient and not scored.get("recipient"):
+        scored = {**scored, "recipient": recipient}
 
-    thresholds = {**DEFAULT_WEIGHTS["thresholds"], **_load_weights().get("thresholds", {})}
+    thresholds ={**DEFAULT_WEIGHTS["thresholds"], **_load_weights().get("thresholds", {})}
     factor_high = thresholds["factor_high"]
     factor_low = thresholds["factor_low"]
     composite_high = thresholds["composite_high"]
@@ -1291,7 +1295,8 @@ def cmd_outcome(argv):
 
     try:
         result = record_outcome(draft_id, sent_text, discarded=discarded,
-                                 edit_nature=edit_nature, reason=reason, moot=moot)
+                                 edit_nature=edit_nature, reason=reason, moot=moot,
+                                 recipient=_flag_value(argv, "--recipient"))
     except Exception as e:
         print(f"outcome: {e}", file=sys.stderr)
         return 2

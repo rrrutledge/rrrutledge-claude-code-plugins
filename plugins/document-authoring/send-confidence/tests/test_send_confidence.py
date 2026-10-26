@@ -471,6 +471,25 @@ def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     assert '--title "Learn from send: slack to a@b.com"' in result["dispatch"]
 
 
+def test_title_uses_recipient_passed_at_outcome_when_stage_had_none():
+    draft_id = _seed_scored("d-norecip", "Hi.\nDraft.", {**NEUTRAL, "rule_coverage": 90}, score=60)
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip2", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "y" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t2",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip2.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    unnamed = sc.record_outcome("d-norecip2", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"], reason=None)
+    assert '--title "Learn from send: gmail to unknown"' in unnamed["dispatch"]
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip3", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "z" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t3",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip3.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    named = sc.record_outcome("d-norecip3", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"],
+                              reason=None, recipient="pat@example.org")
+    assert '--title "Learn from send: gmail to pat@example.org"' in named["dispatch"]
+
+
 def test_procedure_file_exists():
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE_DIR)))
     assert os.path.isfile(os.path.join(repo_root, sc.PROCEDURE_PATH))
