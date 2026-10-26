@@ -210,10 +210,10 @@ def test_three_readings_are_stored_and_the_score_uses_their_median(monkeypatch):
     result = sc.score_draft("<p>Tuesday at <b>2pm</b> works.</p>", ctx, weights=sc.DEFAULT_WEIGHTS,
                             aspects="", api_key=None)
     attrs = result["attributes"]
-    assert attrs["stakes"] == [2, 4, 3]
-    assert attrs["content_latitude"] == [3, 3, 5]
-    assert attrs["claims_total"] == [1, 2, 4]
-    assert attrs["claims_unsupported"] == [0, 1, 3]
+    # The three runs are threads, so which run took which queued answer varies; compare sorted.
+    assert sorted(attrs["stakes"]) == [2, 3, 4]
+    assert sorted(attrs["content_latitude"]) == [3, 3, 5]
+    assert sorted(zip(attrs["claims_total"], attrs["claims_unsupported"])) == [(1, 0), (2, 1), (4, 3)]
     assert attrs["kind"] == {"label": "scheduling", "agreement": 2}
     assert attrs["turn_count"] == 2
     assert attrs["word_count"] == 4
@@ -221,10 +221,39 @@ def test_three_readings_are_stored_and_the_score_uses_their_median(monkeypatch):
     assert (attrs["familiarity"], attrs["familiarity_missing"]) == (None, True)
     assert (attrs["rule_coverage"], attrs["rule_coverage_missing"]) == (None, True)
     # The composite reads the median reading: stakes 3, latitude 3 less the turn penalty, and
-    # the median supported share of 1, 1/2, and 1/4.
+    # the median supported share of 1, 1/2, and 1/4, logged with that reading's claim counts.
     assert result["factors"]["stakes"] == 50
     assert result["factors"]["content_latitude"] == 50 - 10
     assert result["factors"]["fact_support"] == 50
+    assert (result["features"]["claims_total"], result["features"]["claims_unsupported"]) == (2, 1)
+
+
+def test_two_readings_take_the_low_median_so_values_stay_whole(monkeypatch):
+    _queue_judge(monkeypatch, [
+        (_reading(2, 2, [], "nudge"), None),
+        (None, "model call failed: timeout"),
+        (_reading(3, 4, [], "nudge"), None),
+    ])
+    result = sc.score_draft("Following up.", {"channel": "gmail", "ask": "Nudge them."},
+                            weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert result["features"]["stakes_rating"] == 2
+    assert result["features"]["latitude_rating"] == 2
+
+
+def test_a_claim_counts_as_supported_only_when_marked_true(monkeypatch):
+    claims = [{"text": "a", "supported": True}, {"text": "b", "supported": "false"}, {"text": "c"}]
+    _queue_judge(monkeypatch, [(_reading(2, 2, claims, "nudge"), None)] * 3)
+    result = sc.score_draft("Body.", {"channel": "gmail", "ask": "Reply."},
+                            weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert result["attributes"]["claims_unsupported"] == [2, 2, 2]
+
+
+@pytest.mark.parametrize("channel,expected", [
+    ("gmail", "email"), ("outlook-personal", "email"), ("outlook-work", "email"),
+    ("slack", "slack"), ("teams", "teams"), ("other", "other"), (None, None),
+])
+def test_channel_classes(channel, expected):
+    assert sc.measure_attributes("x", {"channel": channel}, [])["channel"] == expected
 
 
 def test_a_failed_reading_is_dropped_and_its_error_kept(monkeypatch):

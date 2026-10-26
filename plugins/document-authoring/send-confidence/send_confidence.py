@@ -20,7 +20,7 @@ readings agreed); rule coverage is the writing reviewer's one rating, carried on
 turn count, familiarity, word count, and channel come from plain code and are exact.
 
 The logged `score` is the weighted composite of five 0-100 factors under `weights.json`,
-taken from the median judge reading: rule coverage, content latitude, stakes, fact support,
+each judged factor taken from the low median of its readings: rule coverage, content latitude, stakes, fact support,
 and familiarity.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
@@ -77,11 +77,14 @@ JUDGE_MODEL = "claude-haiku-4-5"
 JUDGE_RUNS = 3
 JUDGE_TEMPERATURE = 1
 
-# The reply types the judge labels; the weekly report's kind table uses the same six.
+# The reply types the judge labels; personal-ai-pod's scripts/pod-review.py labels its kind
+# table with the same six.
 MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge", "substantive-reply")
 
-# Gmail and both Outlooks are one "email" value in the scored attributes.
-CHANNEL_CLASSES = {"gmail": "email", "outlook-personal": "email", "outlook-work": "email", "slack": "slack"}
+# Gmail and both Outlooks are one "email" value in the scored attributes; any channel outside
+# this table is "other".
+CHANNEL_CLASSES = {"gmail": "email", "outlook-personal": "email", "outlook-work": "email",
+                   "slack": "slack", "teams": "teams"}
 
 RESOLVED_DISPOSITIONS = {"sent-as-is", "edited", "discarded"}
 FACTOR_NAMES = ["familiarity", "stakes", "content_latitude", "fact_support", "rule_coverage"]
@@ -285,7 +288,7 @@ def _judge_log_shape(judge):
 
 def _claim_counts(reading):
     claims = reading.get("claims") or []
-    return len(claims), sum(1 for c in claims if not c.get("supported"))
+    return len(claims), sum(1 for c in claims if c.get("supported") is not True)
 
 
 def _kind_majority(readings):
@@ -322,7 +325,7 @@ def measure_attributes(body, ctx, readings):
         "rule_coverage": coverage,
         "rule_coverage_missing": coverage is None,
         "word_count": len(_plain_text(body).split()),
-        "channel": CHANNEL_CLASSES.get(ctx.get("channel")),
+        "channel": CHANNEL_CLASSES.get(ctx.get("channel"), "other") if ctx.get("channel") else None,
     }
 
 
@@ -331,8 +334,8 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     No I/O besides the judge calls.
 
     `attributes` holds the raw values (see measure_attributes). `score`, `factors`, and
-    `features` are the weighted composite under weights.json, computed from the median of the
-    judge readings."""
+    `features` are the weighted composite under weights.json, each judged value the low median
+    of its readings, so it is always one of the readings the judge gave."""
     errors = []
     features = {}
     factors = {}
@@ -357,7 +360,7 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     attributes = measure_attributes(body, ctx, readings)
 
     if readings:
-        rating_s = statistics.median(attributes["stakes"])
+        rating_s = statistics.median_low(attributes["stakes"])
         factors["stakes"] = round(100 * (5 - rating_s) / 4)
         features["stakes_rating"] = rating_s
 
@@ -365,18 +368,21 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     # measure latitude against and every claim would read as unsupported; those two factors
     # stay null and the composite re-weights over the rest.
     if attributes["content_latitude"]:
-        rating_c = statistics.median(attributes["content_latitude"])
+        rating_c = statistics.median_low(attributes["content_latitude"])
         turns = ctx.get("turns_before_draft") or 0
         penalty = min(20, 5 * turns)
         factors["content_latitude"] = max(0, round(100 * (5 - rating_c) / 4) - penalty)
         features["latitude_rating"] = rating_c
         features["latitude_turn_penalty"] = penalty
 
-        shares = [1 if t == 0 else (t - u) / t
+        # The claim counts logged with the factor come from the reading whose supported share
+        # the factor uses, so the three always agree.
+        shares = [(1 if t == 0 else (t - u) / t, t, u)
                   for t, u in zip(attributes["claims_total"], attributes["claims_unsupported"])]
-        factors["fact_support"] = round(100 * statistics.median(shares))
-        features["claims_total"] = statistics.median(attributes["claims_total"])
-        features["claims_unsupported"] = statistics.median(attributes["claims_unsupported"])
+        share, total, unsupported = statistics.median_low(shares)
+        factors["fact_support"] = round(100 * share)
+        features["claims_total"] = total
+        features["claims_unsupported"] = unsupported
     else:
         factors.setdefault("stakes", None)
         factors["content_latitude"] = None
