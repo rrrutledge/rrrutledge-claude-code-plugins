@@ -35,6 +35,9 @@
 //                 `from:me`: channel, ts, threadTs, sent time, and the raw mrkdwn text as posted. Read-only;
 //                 the send-confidence outcome sweep matches staged drafts against it. Search indexing lags
 //                 a post by a few seconds, so a just-sent message can be missing for a moment)
+// Resolve name:  node slack.js --resolve-name=<U|D|C|G id> [--json]
+//                (the person's or channel's display name for an id; a DM resolves to the other member;
+//                 prints the id unchanged when the lookup fails. Read-only)
 // Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
@@ -937,6 +940,23 @@ async function openDm() {
   console.log(`DM channel with ${userId}: ${channel}`);
 }
 
+// A display name for any Slack id: a user id gives the person's name, a DM id gives the other member's
+// name, a channel or group DM id gives its name. Read-only; falls back to the id itself when Slack
+// knows nothing more, so a caller can always print the result.
+async function resolveName() {
+  const id = String(args['resolve-name']);
+  let name = id;
+  if (/^U[A-Z0-9]+$/.test(id)) {
+    name = await userName(id);
+  } else {
+    const info = await convInfo(id);
+    if (info.is_im && info.user) name = await userName(info.user);
+    else if (info.name) name = info.is_channel || info.is_group ? `#${info.name}` : info.name;
+  }
+  if (args.json) { console.log(JSON.stringify({ id, name }, null, 2)); return; }
+  console.log(name);
+}
+
 async function findByDomain() {
   const domain = String(args['find-by-domain'] || '').toLowerCase().replace(/^@/, '');
   if (!domain) throw new Error('--find-by-domain requires an email domain, e.g. --find-by-domain=opentext.com');
@@ -976,5 +996,6 @@ async function findByDomain() {
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
+  if (args['resolve-name']) return await resolveName();
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

@@ -490,6 +490,50 @@ def test_title_uses_recipient_passed_at_outcome_when_stage_had_none():
     assert '--title "Learn from send: gmail to pat@example.org"' in named["dispatch"]
 
 
+def _slack_scored(recipient):
+    return {"channel": "slack", "recipient": recipient}
+
+
+def test_title_names_the_person_behind_a_slack_id(monkeypatch):
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: "/fake/slack.js")
+    seen = []
+
+    class Done:
+        returncode, stdout, stderr = 0, "Pat Example\n", ""
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        return Done()
+
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to Pat Example"
+    assert seen[0][-1] == "--resolve-name=D0ABC1234"
+
+
+def test_title_keeps_the_slack_id_when_the_lookup_fails(monkeypatch):
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: "/fake/slack.js")
+
+    class Failed:
+        returncode, stdout, stderr = 1, "", "Error: boom"
+
+    monkeypatch.setattr(sc.subprocess, "run", lambda *a, **k: Failed())
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to D0ABC1234"
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: None)
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to D0ABC1234"
+
+
+def test_title_leaves_a_readable_recipient_alone(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("no lookup expected")
+
+    monkeypatch.setattr(sc.subprocess, "run", boom)
+    assert sc._spawn_title({"channel": "gmail", "recipient": "pat@example.org"}) == "Learn from send: gmail to pat@example.org"
+    assert sc._spawn_title(_slack_scored("Pat Example")) == "Learn from send: slack to Pat Example"
+
+
 def test_procedure_file_exists():
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE_DIR)))
     assert os.path.isfile(os.path.join(repo_root, sc.PROCEDURE_PATH))
