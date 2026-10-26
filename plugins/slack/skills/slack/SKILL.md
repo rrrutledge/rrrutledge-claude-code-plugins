@@ -135,9 +135,9 @@ gives an explicit per-message instruction to send it - the same bar as the `gmai
 receipt on `--body-file` proves that exact body was reviewed, so the gate blocks a send whose bytes have no
 fresh receipt.
 
-**The terminal preview is the review surface for a direct send, and it shows only a body that has already passed `writing-review`.** Print the exact message text in the
-terminal - that is what Russ reads to decide, usually without opening the browser-staged draft. Two
-outcomes follow from what he reads there:
+**The terminal preview is the review surface for a direct send, and it shows only a body that has already passed `writing-review`.**
+Print the exact message text in the terminal - that is what Russ reads to decide, usually without opening the browser-staged draft.
+Two outcomes follow from what he reads there:
 
 - **Looks good:** he says to send it, and you run `--send` on that exact body.
 - **Wants changes:** he makes them in the browser composer and sends there himself, so the send is his.
@@ -145,9 +145,8 @@ outcomes follow from what he reads there:
 When you author the body, before printing it:
 
 1. Author (or reuse) the body as a Slack-mrkdwn file - links as `<url|anchor text>`.
-2. Dispatch `writing-review` on that file and apply its findings until it converges, then mint its receipt (the gate reads it), unless a fresh receipt
-   for those exact bytes already exists from staging.
-   `python <document-authoring>/hooks/verify_gate.py check <file>` exits 0 when the receipt is fresh; run it right before printing.
+2. Dispatch `writing-review` on that file and apply its findings until it converges.
+   Mint its receipt (the gate reads it) unless a fresh receipt for those exact bytes already exists from staging.
 3. Print the exact body in the terminal.
 
 When Russ says to send:
