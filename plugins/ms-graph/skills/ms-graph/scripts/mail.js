@@ -15,6 +15,10 @@
 //                 --folder, searches the whole mailbox; --folder=sent scopes to Sent Items -
 //                 the send-confidence familiarity count reads a recipient's prior-sent count
 //                 this way, e.g. --search="to:name@example.com" --folder=sent.)
+// Sent since:    node mail.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every Sent Items message sent on or after that day, oldest first: id, conversationId,
+//                 To and Cc addresses, send time, and the plain-text body; read-only - the
+//                 send-confidence outcome sweep matches staged drafts against it)
 // Show one:      node mail.js --show=<messageId> [--html]
 //                (default emits the body as plain text. --html emits the raw HTML body.content instead
 //                 — the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
@@ -450,6 +454,36 @@ async function thread(client) {
   for (const m of out) console.log(`${m.sent?.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
 }
 
+async function sentSince(client) {
+  // Every message in Sent Items sent on or after a day, oldest first, with its body as plain text and its
+  // quoted original still attached. Read-only; the send-confidence outcome sweep matches staged drafts
+  // against it.
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  const addrs = (list) => (list || []).map(r => (r.emailAddress?.address || '').toLowerCase()).filter(Boolean);
+  const out = [];
+  let page = await client.api('/me/mailFolders/sentitems/messages')
+    .header('Prefer', 'outlook.body-content-type="text"')
+    .filter(`sentDateTime ge ${day}T00:00:00Z`)
+    .orderby('sentDateTime asc')
+    .select('id,conversationId,toRecipients,ccRecipients,sentDateTime,body')
+    .top(100)
+    .get();
+  for (;;) {
+    for (const m of page.value || []) {
+      out.push({
+        id: m.id, conversationId: m.conversationId, to: addrs(m.toRecipients), cc: addrs(m.ccRecipients),
+        sent: m.sentDateTime, text: m.body?.content || '',
+      });
+    }
+    if (!page['@odata.nextLink']) break;
+    page = await client.api(page['@odata.nextLink']).header('Prefer', 'outlook.body-content-type="text"').get();
+  }
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  console.log(`${out.length} message(s) sent since ${day}, oldest first:`);
+  for (const m of out) console.log(`\n--- ${m.sent?.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
+}
+
 // Reusable: create a draft message (never sends). Returns the created draft.
 //   createDraft(client, { to, subject, body, cc, attach, replace, contentType })
 //   - attach: a path or comma-separated string or array of paths -> file attachments
@@ -611,6 +645,7 @@ if (require.main === module) {
     if (args['list-junk']) return listJunk(client);
     if (args['list-drafts']) return listDrafts(client);
     if (args.search) return search(client);
+    if (args['sent-since']) return sentSince(client);
     if (args.show) return show(client);
     if (args.auth) return auth(client);
     if (args.thread) return thread(client);

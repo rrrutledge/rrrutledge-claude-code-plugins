@@ -94,6 +94,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
   State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
+  Logistics the ask never settled follow **When unsure**.
 - **Phrase a requested edit to someone else's draft as a question, not a flat correction** — "can you make it X?" reads as collaborative even when you already know exactly what should change; save the flat "should be X" framing for reference material, not a live ask.
   **With a peer or a superior, don't tell them what to do, even softened into a request.**
   When their draft misses a decision the group already made, state the decision as a bare fact and ask whether the document should reflect it, so the gap is about the document and not their omission.
@@ -213,6 +214,7 @@ A single clear sentence ending in a question is usually the whole message — re
   Hedge with "that I know of" when not fully certain.
 - **When someone else owns a topic, loop them into the thread rather than answering on Russell's own authority — even when he's confident of the answer.**
   Bringing in the real owner means they field the follow-up questions from then on, not Russell — less work for him over time than staying the sole point of contact on something that isn't his to own.
+  Figures and projections count: when a report or a person owns the numbers, confirm only what the asker needs and point to that owner's report, rather than building your own derivation or arguing a competing reading of the arithmetic.
   This extends past the answer to the action itself: when the next step (rescheduling something, making a call) isn't Russell's to take, give only his own position as a bare confirmation and leave the actual step to the owner, rather than adding a directive ("go ahead and move it") that presumes he's the one steering it.
   **Handing an outside contact off to new main contacts keeps Russell's own door open: name the new owners and, in the same sentence, offer his help to everyone on the thread.**
   That offer is an in-voice exception to the helper-tail rule, the same as the warm-partner offer under **Energizing close**, and it stays even though the new owners now handle the day-to-day.
@@ -468,7 +470,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception — when their reply also volunteers something beyond what you asked** (a genuine extra contribution they weren't prompted for, not just a passing pleasantry): that part still gets its own named reaction, per **Answer the question first** — running through the full **Thanking a volunteer** effusive register when it qualifies, since the unprompted extra is usually the bigger contribution even when the asked-for part stays a bare acknowledgment.
 - **Hedge politely** — "There might be a way.", "It may be available soon…", "I think…"
   Once the observation that's the actual reason for the outreach is solid enough to build the ask around (e.g. a pattern in someone's behavior prompting a meeting request), state it as a plain fact, not a hedged impression.
-- **Warm exclamations used genuinely, not as hype** — a direct reaction to someone else's news, not a description dressed up: "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!", "Wow, that is amazing 🎉"
+- **Warm exclamations used genuinely, not as hype** — a direct reaction to someone else's news, not a description dressed up: "Yes! Very important!", "Great!", "Oh no! Sure.", "Awesome!", "Wow, that is amazing 🎉"; a congratulation on someone's accomplishment is one of these reactions and closes with an exclamation mark
 - **Two spaces after a period** — a real typing habit.
 
 ### Emoji
@@ -506,6 +508,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
   **Multiple recipients who are all active participants, but only one needs a personal spotlight** (e.g. thanking a keynote speaker on a thread where the person who's been coordinating them is also on it, not just cc'd — the same shape holds whether that's one other person or several) — open with a shared line to the whole group first ("Hi guys, thanks so much for coordinating on all these details."), then pivot to a named, personal line for the one being spotlighted. **Bold that name at the start of the pivot line** ("*Avery*, thank you for joining us and speaking at the summit.") — the bold itself marks the turn from addressing the group to speaking directly to that one person, the way turning to face someone mid-conversation would.
   The named line ends the message; it carries the ask to the spotlighted person and nothing addressed to other recipients follows it.
   **When one person on a multi-recipient thread asked the question, answer them by name and skip the greeting line entirely** — "Thanks for considering it, Wren." carries both the warm open and the address, and the group greeting would aim the reply at people who are only watching.
+  **The same holds when two people on the thread each asked something:** open with one thanks naming both, drop the group greeting, and answer each by name ("To Wren's questions - ...").
   **The person to answer is the one who raised the problem, even when others on the thread have since asked for action on it** - address them by name as above, apologize per **Apologize genuinely and briefly**, and keep the commitment general.
   **When someone hands you off to a third party within the same thread — introducing them and stepping back ("feel free to coordinate directly with him")** — treat the reply as two parts, not one shared greeting: a brief close with the person handing off (react to what they said - their own news, their own next step), then a fresh open with the new contact as a first introduction. Skip the plural "Hi both" here too - the message is closing one relationship-thread and opening another, not addressing two people at once.
 - **Email reply flow**: always **Reply All**, never plain Reply, to preserve every CC.
@@ -582,4 +585,4 @@ These registers reach outside the palette, and most also stack past the one-emoj
 ### When unsure
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
-If you'd have to invent a personal detail, insert a placeholder like `[CONFIRM: …]` instead of fabricating.
+If you'd have to invent a personal detail, or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.

@@ -15,12 +15,13 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file> [--recipient "<the sent item's To>"]
    python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
    `--body-file` finds the draft's scored row by rehashing the staged body against the log.
+   `--recipient` names who the sent item went to, read from the same sent item as the text; a reply's stage command carries no addressee, so without it the learning session's title reads "to unknown".
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), logs whether the estimate was over- or under-confident, and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
@@ -34,6 +35,19 @@ Calling `--discarded` on the stale draft first logs an over-confident miss that 
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
 There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise log a well-scored draft as over-confident just because it never got the chance to go out.
+
+## The outcome sweep
+
+A draft that never gets an outcome recorded here is settled by the outcome sweep, plain code with no model calls:
+
+```
+python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py sweep [--dry-run] [--json]
+```
+
+It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending draft by thread or recipient, send time, and text similarity.
+A match is logged as sent-as-is or edited with its measured edit distance, an earlier revision whose send went to a later one is logged as superseded, and a draft with no match seven days after it was scored is logged as discarded with no reason.
+Every swept outcome carries `source: "sweep"`, and its edits stay unlabelled, so a swept send spawns no learning session.
+The command prints its match rate: the share of settled drafts that matched a send.
 
 ## When a learning session spawns
 

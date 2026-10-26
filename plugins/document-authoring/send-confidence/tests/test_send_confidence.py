@@ -640,6 +640,25 @@ def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     assert '--title "Learn from send: slack to a@b.com"' in result["dispatch"]
 
 
+def test_title_uses_recipient_passed_at_outcome_when_stage_had_none():
+    draft_id = _seed_scored("d-norecip", "Hi.\nDraft.", {**NEUTRAL, "rule_coverage": 90}, score=60)
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip2", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "y" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t2",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip2.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    unnamed = sc.record_outcome("d-norecip2", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"], reason=None)
+    assert '--title "Learn from send: gmail to unknown"' in unnamed["dispatch"]
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip3", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "z" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t3",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip3.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    named = sc.record_outcome("d-norecip3", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"],
+                              reason=None, recipient="pat@example.org")
+    assert '--title "Learn from send: gmail to pat@example.org"' in named["dispatch"]
+
+
 def test_procedure_file_exists():
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE_DIR)))
     assert os.path.isfile(os.path.join(repo_root, sc.PROCEDURE_PATH))
@@ -970,3 +989,165 @@ def test_spawn_detached_outlives_its_parent(tmp_path):
     while not marker.exists() and time.time() < deadline:
         time.sleep(0.2)
     assert marker.read_text() == "done"
+
+
+# --- the outcome sweep ---
+
+import datetime as _dt  # noqa: E402
+
+NOW = _dt.datetime(2026, 10, 26, 12, 0, tzinfo=_dt.timezone.utc)
+SIG_HTML = 'Russ Rutledge<br>Executive Director<br><a href="https://example.org/">https://example.org/</a>'
+
+
+def _seed_pending(draft_id, body, *, channel="gmail", ts="2026-10-20T10:00:00+00:00", recipient=None,
+                  thread_ref=None, sha=None, account=None):
+    os.makedirs(sc.drafts_dir(), exist_ok=True)
+    with open(os.path.join(sc.drafts_dir(), f"{draft_id}.txt"), "w", encoding="utf-8") as fh:
+        fh.write(body)
+    sc._append_event({
+        "event": "scored", "v": 3, "draft_id": draft_id, "ts": ts, "sha256": sha or draft_id,
+        "channel": channel, "account": account, "recipient": recipient, "thread_ref": thread_ref,
+        "score": 80, "factors": NEUTRAL, "features": {},
+    })
+    return draft_id, sc.fold_drafts()[draft_id]["scored"], body
+
+
+def _mail(text, sent="2026-10-20T12:00:00Z", to=("a@example.org",), refs=(), mid="<sent-1@x>", thread_id=""):
+    return {"id": mid, "threadId": thread_id, "inReplyTo": refs[-1] if refs else "", "references": list(refs),
+            "to": list(to), "cc": [], "sent": sent, "text": text}
+
+
+def _slack(text, channel="C0123ABCD", ts="1792000000.000100", thread_ts="", sent="2026-10-20T12:00:00Z"):
+    return {"channel": channel, "ts": ts, "threadTs": thread_ts, "sent": sent, "text": text}
+
+
+def test_comparable_text_cuts_the_quote_and_signature_and_reduces_links():
+    sig = sc.comparable_text(SIG_HTML)
+    sent = ("Hi Ana - the [ignored] listing is live:\nVacancies <https://example.org/v>.\n\n"
+            "Russ Rutledge\nExecutive Director\nhttps://example.org/\n\n"
+            "On Tue, Oct 13, 2026 at 8:26 AM Ana <\nana@example.org> wrote:\n> earlier text\n")
+    draft = "Hi Ana - the [ignored] listing is live: [Vacancies](https://example.org/v)."
+    assert sc.comparable_text(sent, sig) == "Hi Ana - the [ignored] listing is live: Vacancies ."
+    assert sc._edit_distance(sc.comparable_text(draft, sig), sc.comparable_text(sent, sig)) <= 0.05
+
+
+def test_comparable_text_reduces_slack_mrkdwn_links_to_their_label():
+    assert sc.comparable_text("See <https://x.org/a|the *agenda*> today") == "See the agenda today"
+
+
+def test_conversation_confirms_by_references_and_vetoes_disjoint_recipients():
+    _, scored, _ = _seed_pending("d1", "x", recipient="a@example.org", thread_ref="<orig@x>")
+    keys = sc._draft_keys(scored)
+    item = sc._sent_items("gmail", [_mail("x", to=("other@example.org",), refs=("<orig@x>",))])[0]
+    assert sc._conversation(keys, item) is True
+    item = sc._sent_items("gmail", [_mail("x", to=("other@example.org",), refs=("<else@x>",))])[0]
+    assert sc._conversation(keys, item) is False
+
+
+def test_conversation_confirms_by_recipient_name_and_gmail_thread_id():
+    _, scored, _ = _seed_pending("d1", "x", recipient="Rob Tuley")
+    item = sc._sent_items("gmail", [_mail("x", to=("rob.tuley@example.com",))])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is True
+    _, scored, _ = _seed_pending("d2", "x", recipient="Change Managers (5)")
+    item = sc._sent_items("gmail", [_mail("x", to=("members@example.com",))])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is None
+    _, scored, _ = _seed_pending("d3", "x", thread_ref="1a1457605f7a45b8")
+    item = sc._sent_items("gmail", [_mail("x", thread_id="1a1457605f7a45b8")])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is True
+
+
+def test_conversation_slack_thread_miss_does_not_veto_but_channel_miss_does():
+    _, scored, _ = _seed_pending("d1", "x", channel="slack", thread_ref="slack-C0123ABCD-1791905305-615739")
+    keys = sc._draft_keys(scored)
+    assert keys["recipients"] == {"C0123ABCD"} and keys["threads"] == {"1791905305.615739"}
+    same_channel = sc._sent_items("slack", [_slack("x", thread_ts="1791000000.000001")])[0]
+    assert sc._conversation(keys, same_channel) is True
+    other_channel = sc._sent_items("slack", [_slack("x", channel="C0999ZZZZ")])[0]
+    assert sc._conversation(keys, other_channel) is False
+
+
+def test_match_pending_pairs_closest_first_and_supersedes_the_earlier_version():
+    body = "Thanks for the patterns work, and no worries on missing the session."
+    pending = [
+        _seed_pending("early", body + " We can talk Monday.", channel="slack", recipient="C0123ABCD"),
+        _seed_pending("final", body, channel="slack", recipient="C0123ABCD", ts="2026-10-20T11:00:00+00:00"),
+    ]
+    items = {"slack": sc._sent_items("slack", [_slack(body)])}
+    out = sc.match_pending(pending, items, NOW)
+    assert [(m["draft_id"], m["edit_distance"], m["confirmed"]) for m in out["matched"]] == [("final", 0.0, True)]
+    assert out["superseded"] == ["early"]
+
+
+def test_match_pending_unconfirmed_needs_a_closer_text_than_confirmed():
+    draft = ("Hi Thad - thanks for sending those over. Could you send over the written quote? "
+             "And what's your read on what's causing the leak? Russ")
+    sent = "Hi Thad - thanks for sending those over. Great investigation! Let me know when you have the written quote. Russ"
+    confirmed = [_seed_pending("d1", draft, channel="outlook-personal", recipient="thad@example.com")]
+    items = {"outlook-personal": sc._sent_items("outlook-personal", [_mail(sent, to=("thad@example.com",))])}
+    assert [m["draft_id"] for m in sc.match_pending(confirmed, items, NOW)["matched"]] == ["d1"]
+    unconfirmed = [_seed_pending("d2", draft, channel="outlook-personal", recipient=None)]
+    out = sc.match_pending(unconfirmed, items, NOW)
+    assert out["matched"] == [] and out["waiting"] == ["d2"]
+
+
+def test_match_pending_window_waiting_unchecked_and_twins():
+    old = _seed_pending("old", "An old draft nobody sent.", ts="2026-10-01T10:00:00+00:00")
+    fresh = _seed_pending("fresh", "A fresh draft not sent yet.", ts="2026-10-25T10:00:00+00:00")
+    slack = _seed_pending("chat", "A Slack draft.", channel="slack", recipient="C0123ABCD")
+    twin_a = _seed_pending("twin-a", "Same body twice.", sha="s1", recipient="a@example.org")
+    twin_b = _seed_pending("twin-b", "Same body twice.", sha="s1", recipient="a@example.org",
+                           ts="2026-10-20T10:00:05+00:00")
+    late = _mail("An old draft nobody sent.", sent="2026-10-15T10:00:00Z")
+    items = {"gmail": sc._sent_items("gmail", [late, _mail("Same body twice.")]), "slack": None}
+    out = sc.match_pending([old, fresh, slack, twin_a, twin_b], items, NOW)
+    assert sorted(m["draft_id"] for m in out["matched"]) == ["twin-a", "twin-b"]
+    assert out["unsent"] == ["old"]
+    assert out["waiting"] == ["fresh"]
+    assert out["unchecked"] == ["chat"]
+
+
+def test_sweep_outcomes_writes_sweep_outcomes_and_a_dry_run_writes_nothing(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: pytest.fail("the sweep must not call the model"))
+    _seed_pending("sent", "Hi Ana - the listing is live. Does it look good to you?", recipient="ana@example.org")
+    _seed_pending("edited", "Hi Bo - here is the agenda for Tuesday and the notes.", recipient="bo@example.org")
+    _seed_pending("gone", "Hi Cy - a draft that never went out.", recipient="cy@example.org",
+                  ts="2026-10-01T10:00:00+00:00")
+    calls = []
+
+    def fetch(channel, since):
+        calls.append((channel, since))
+        return [_mail("Hi Ana - the listing is live. Does it look good to you?", to=("ana@example.org",)),
+                _mail("Hi Bo - here is the agenda for Tuesday.", to=("bo@example.org",), mid="<sent-2@x>")]
+
+    dry = sc.sweep_outcomes(fetch=fetch, now=NOW, dry_run=True)
+    assert calls == [("gmail", "2026-09-30")]
+    assert len(dry["matched"]) == 2 and dry["unsent"] == ["gone"] and dry["match_rate"] == round(2 / 3, 4)
+    assert all(d["outcome"] is None for d in sc.fold_drafts().values())
+
+    sc.sweep_outcomes(fetch=fetch, now=NOW)
+    drafts = sc.fold_drafts()
+    sent, edited, gone = (drafts[k]["outcome"] for k in ("sent", "edited", "gone"))
+    assert (sent["disposition"], sent["edit_distance"], sent["source"], sent["sent_ref"]) == \
+        ("sent-as-is", 0.0, "sweep", "<sent-1@x>")
+    assert edited["disposition"] == "edited" and 0.05 < edited["edit_distance"] < 0.6
+    assert edited["edit_nature"] == [] and edited["learn_reasons"] == []
+    assert (gone["disposition"], gone["reason"], gone["source"]) == ("discarded", None, "sweep")
+    assert sc.sweep_outcomes(fetch=fetch, now=NOW)["matched"] == []
+
+
+def test_sweep_outcomes_leaves_drafts_pending_when_a_source_fails():
+    _seed_pending("d1", "Hi - a draft.", recipient="a@example.org", ts="2026-10-01T10:00:00+00:00")
+
+    def fetch(channel, since):
+        raise RuntimeError("quota exceeded")
+
+    out = sc.sweep_outcomes(fetch=fetch, now=NOW)
+    assert out["unchecked"] == ["d1"] and out["errors"] == {"gmail": "quota exceeded"}
+    assert sc.fold_drafts()["d1"]["outcome"] is None
+
+
+def test_sweep_skips_a_second_gmail_mailbox():
+    _, scored, _ = _seed_pending("d1", "x", account="christina")
+    assert sc._source_key(scored) is None
+    _, scored, _ = _seed_pending("d2", "x", account="isc")
+    assert sc._source_key(scored) == "gmail"

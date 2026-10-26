@@ -30,6 +30,12 @@
 //                 stay on the REST/OAuth path above, since that's not what's quota-constrained.)
 // List sent:     node gmail.js --list-sent [--top=50] [--json]
 //                (sent mail, newest-first; same output format as --list-inbox)
+// Sent since:    node gmail.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every message sent on or after that day, oldest first, with its Message-ID, thread id,
+//                 In-Reply-To / References chain, To and Cc addresses, send time, and plain-text body;
+//                 read-only - the send-confidence outcome sweep matches staged drafts against it. Runs
+//                 over IMAP, so it needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD like --list-inbox-imap and
+//                 reads the default account only)
 // Search:        node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]
 //                (search for messages matching query; --folder defaults to "all" (All Mail — everything
 //                 except Spam/Trash); --query is Gmail's own search syntax, matching headers + body;
@@ -473,6 +479,43 @@ async function thread() {
   for (const m of out) console.log(`${m.sent.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
 }
 
+// Every message sent on or after a day, oldest first, with what a matcher needs to pair it with the draft
+// it came from: Message-ID, Gmail thread id, the In-Reply-To / References chain, To and Cc addresses, the
+// send time, and the plain-text body with its quoted original still attached. Read-only; the
+// send-confidence outcome sweep reads it. It reads every body in the window, so it runs over IMAP like
+// the poller's reads, off the REST quota a bulk body fetch would exhaust.
+async function sentSince() {
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  const addrs = (field) => ((field && field.value) || []).map(a => (a.address || '').toLowerCase()).filter(Boolean);
+  const sent = [];
+  await withGmailImap(async c => {
+    const box = (await c.list()).find(b => b.specialUse === '\\Sent');
+    if (!box) throw new Error('no Sent mailbox found over IMAP');
+    const lock = await c.getMailboxLock(box.path);
+    try {
+      const uids = await c.search({ since: new Date(`${day}T00:00:00Z`) }, { uid: true });
+      if (!uids || !uids.length) return;
+      for await (const m of c.fetch(uids, { source: true, internalDate: true, threadId: true }, { uid: true })) {
+        const parsed = await simpleParser(m.source);
+        const when = m.internalDate || parsed.date;
+        if (!when || when < new Date(`${day}T00:00:00Z`)) continue; // IMAP SINCE is day-granular in server time
+        sent.push({
+          id: parsed.messageId || `uid-${m.uid}`,
+          threadId: m.threadId ? BigInt(m.threadId).toString(16) : '',
+          inReplyTo: parsed.inReplyTo || '', references: parsed.references ? [].concat(parsed.references) : [],
+          to: addrs(parsed.to), cc: addrs(parsed.cc),
+          sent: new Date(when).toISOString(), text: parsed.text || htmlToPlainText(parsed.html || ''),
+        });
+      }
+    } finally { lock.release(); }
+  });
+  sent.sort((a, b) => a.sent.localeCompare(b.sent));
+  if (args.json) { console.log(JSON.stringify(sent, null, 2)); return; }
+  console.log(`${sent.length} message(s) sent since ${day}, oldest first:`);
+  for (const m of sent) console.log(`\n--- ${m.sent.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
+}
+
 async function show() {
   const gid = await findMessageId(args.show);
   if (!gid) { console.log('Message not found.'); return; }
@@ -770,6 +813,7 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
   if (args['show-imap']) return await showImap();
   if (args['auth-imap']) return await authImap();
+  if (args['sent-since']) return await sentSince();
   const authClient = getAuthedClient();
   gmail = google.gmail({ version: 'v1', auth: authClient });
   await assertAccountEmail(authClient); // wrong-mailbox guard before any REST operation runs
