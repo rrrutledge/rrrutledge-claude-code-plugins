@@ -30,6 +30,11 @@
 //                 channel/DM/group-DM timeline; use this before deciding a move so you see anything
 //                 posted after the one message a captured item happens to link to, including your own
 //                 follow-up; each --json entry's `isMe` marks a message you posted)
+// Sent since:    node slack.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every message you posted on or after that day, oldest first, from search.messages
+//                 `from:me`: channel, ts, threadTs, sent time, and the raw mrkdwn text as posted. Read-only;
+//                 the send-confidence outcome sweep matches staged drafts against it. Search indexing lags
+//                 a post by a few seconds, so a just-sent message can be missing for a moment)
 // Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
@@ -527,6 +532,39 @@ async function history() {
   }
 }
 
+// A search hit's thread root rides only on its permalink (`?thread_ts=`), not on the match object.
+const permalinkThreadTs = (permalink) => {
+  const m = /[?&]thread_ts=([0-9.]+)/.exec(permalink || '');
+  return m ? m[1] : '';
+};
+
+async function sentSince() {
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  // `after:` is exclusive, so the day before makes the given day inclusive.
+  const after = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const out = [];
+  for (let page = 1, pages = 1; page <= pages; page++) {
+    const r = await call('search.messages', {
+      query: `from:me after:${after}`, sort: 'timestamp', sort_dir: 'asc', count: '100', page: String(page),
+    });
+    const m = r.messages || {};
+    pages = (m.paging && m.paging.pages) || 1;
+    for (const hit of m.matches || []) {
+      out.push({
+        channel: (hit.channel && hit.channel.id) || '', ts: hit.ts,
+        threadTs: permalinkThreadTs(hit.permalink), sent: tsToIso(hit.ts), text: hit.text || '',
+      });
+    }
+  }
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  console.log(`${out.length} message(s) sent since ${day}, oldest first:`);
+  for (const m of out) {
+    console.log(`\n--- ${m.sent.slice(0, 16)} | ${m.channel} (ts=${m.ts}${m.threadTs ? `, thread=${m.threadTs}` : ''})`);
+    console.log(clean(m.text) || '(no text)');
+  }
+}
+
 async function react() {
   if (!args.channel || !args.ts || !args.emoji) throw new Error('--react requires --channel, --ts, and --emoji');
   const name = args.emoji.replace(/^:|:$/g, '');
@@ -927,6 +965,7 @@ async function findByDomain() {
   if (args['list-unread']) return await listUnread();
   if (args.show) return await show();
   if (args.history) return await history();
+  if (args['sent-since']) return await sentSince();
   if (args.react) return await react();
   if (args.mark) return await mark();
   if (args['read-cursor']) return await readCursorCmd();

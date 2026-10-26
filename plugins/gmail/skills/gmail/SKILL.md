@@ -90,6 +90,10 @@ Under `scripts/` (run with `node`):
     Reach for it yourself only if you're deliberately avoiding the REST quota for a bulk listing.)
   - List sent: `node gmail.js --list-sent [--top=50] [--json]` (sent mail, newest-first; same output
     format as `--list-inbox`)
+  - Sent since: `node gmail.js --sent-since=<YYYY-MM-DD> [--json]` (every message sent on or after that
+    day, oldest first, with its Message-ID, thread id, In-Reply-To / References chain, recipients, and
+    plain-text body; runs over IMAP with the same credential pair as `--list-inbox-imap`, default account
+    only; read by the send-confidence outcome sweep)
   - Search: `node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]` (`--query` is
     Gmail's own search syntax — matches headers + body; `--folder` defaults to `all` (All Mail, covering
     both inbox and sent); results newest-first. Use this to check whether a reply was sent to a contact
