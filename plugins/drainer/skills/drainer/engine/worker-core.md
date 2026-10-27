@@ -192,9 +192,10 @@ Route each piece of work by where it belongs - which is also where Russell can r
   A screenshot is a large image and a PDF can be several megabytes; read inline, it lands in the prefix and is re-read on every later model call, so the subagent boundary is where the costliest content stays out.
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
-  Launch it as a background session, the way the poller launched you, and let this session stay on its own item:
+  Launch it as a background session, the way the poller launched you:
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
+  **Before launching, ask whether this item's next step can start before the handoff finishes; if not, launch with `--resume-me` and close paused in that same turn, per §6, "Blocked on another in-flight session".**
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   Name the new session by its title in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
@@ -320,10 +321,12 @@ Decide by who's holding the conversation:
   A separate deliverable, or a step that doesn't block the parent, still gets its own card.
 
 **Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
+The test: **if my next step cannot start until a session I launched or a named peer finishes, I hand that session the resume command and close paused now.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
+A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
-- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`, run `schedule-resume.py` to capture the resume command, deliver it via `SendMessage` or a spawned session's handoff doc, then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree).
+- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
 
@@ -393,7 +396,7 @@ The session and the source item are two different places to hold state, and they
 Closing it early throws that away and substitutes nothing until whatever Start date you set eventually fires - far too late for something Russell meant to do today, like sending a draft you staged.
 
 So a staged draft he hasn't confirmed sending, or a piece of work that's genuinely his to do and hasn't been done yet (even if you've filed a tracker card for it), is not a closable delay - stay open.
-A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
+A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, a session you handed your resume command to (the blocked-session case above - it brings this session itself back), or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
 
 **The close condition is symmetric: your part done, and his part done - not just yours.**
 Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item, §7's lesson if the session earned one) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
@@ -401,7 +404,7 @@ Once the human step is done (Russell told you he sent/submitted/confirmed it, or
 Two independent Slack workers sent their reply, heard Russell confirm it, and closed without ever calling `slack.js --mark`; the conversation sat flagged unread indefinitely even though the work was fully done.
 If you can't point to the CLEAR command's output, run it now, before invoking `session-mgr:close`.
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
-But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
+But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him - unless that work is happening in a session that will resume you, in which case you close paused per the blocked-session rule above.
 
 ## 7. Improve the source, or leave a lesson
 This is the one place a session turns friction into improvement.
