@@ -15,6 +15,11 @@ Stage a **draft** and stop — a human reviews and sends. Pick a mode:
 - **`slack`** — a Slack DM, group DM, channel message, or threaded reply, typed into the Slack composer
   (you drive **browser-chauffeur**) and left as Slack's auto-saved draft.
 
+**Staging is automatic.**
+In every mode, a message drafted for Russell is staged the moment it passes `writing-review`, before it is shown.
+The reply shows the staged text and where it lives, and the only question left is about sending.
+The source's provider doc (for Slack, `slack-provider.md` DRAFT-MODE) names the fastest staging route.
+
 **LinkedIn is never automated.** LinkedIn suspended Russell's account for automation in July 2026 —
 never drive browser-chauffeur/Playwright against linkedin.com for any reason. For a LinkedIn reply,
 write the message text (through the `document-authoring` voice pass below) and hand it to the user
