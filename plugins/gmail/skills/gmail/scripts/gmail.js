@@ -42,7 +42,8 @@
 //                 newest-first)
 // Show one:      node gmail.js --show=<message-id>
 //                (<message-id> is the RFC822 Message-ID header, e.g. <abc@mail.gmail.com>; looked up
-//                 across All Mail, so it shows whether the message is still in the inbox or archived)
+//                 across All Mail, so it shows whether the message is still in the inbox or archived;
+//                 an "Attachments:" header line names each file attachment when it carries any)
 // Auth headers:  node gmail.js --auth=<message-id>
 //                (emits a JSON object with the message's envelope-authentication headers as Gmail
 //                 stamped them — the raw Authentication-Results value(s) and any Received-SPF value(s),
@@ -67,6 +68,10 @@
 //                 like --show; --name keeps only attachments whose filename contains the substring
 //                 (case-insensitive). Prints each saved path + size. Attachments with no filename are named
 //                 "attachment-N".)
+// Save attachments (IMAP): node gmail.js --save-attachments-imap=<uid> [--out-dir=<dir>] [--name=<substring>]
+//                (same as --save-attachments, fetched over IMAP by INBOX UID like --show-imap, off the
+//                 REST quota, and saving only the files --show lists (inline images left out); the
+//                 drainer's capture saves each item's attachments this way.)
 // Draft a reply: node gmail.js --reply --message-id=<id> --body-file=reply.md [--attach=a.pdf,b.png] [--inline=s1.png,s2.png] [--no-quote]
 //                (stages a DRAFT reply in the thread; never sends; replaces any prior draft on the same
 //                 thread; prints a draft-id for --send-draft. <id> is looked up across All Mail, then the
@@ -431,6 +436,13 @@ function renderShow(parsed) {
   ];
   if (parsed.cc) lines.push(`Cc: ${parsed.cc.text}`);
   lines.push(`Date: ${parsed.date ? parsed.date.toISOString() : ''}`);
+  // Each file attachment as `name (contentType)`, joined by ` | `, leaving out the inline images a
+  // multipart/related body references (a signature logo). The drainer's email adapters parse this line,
+  // so keep its shape in step with ATTACHMENTS_LINE in the drainer's provider_base.py.
+  const files = (parsed.attachments || []).filter(a => !a.related);
+  if (files.length) {
+    lines.push(`Attachments: ${files.map((a, i) => `${a.filename || `attachment-${i + 1}`} (${a.contentType || 'unknown type'})`).join(' | ')}`);
+  }
   lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
   return lines.join('\n');
 }
@@ -548,7 +560,20 @@ async function saveAttachments() {
   const gid = await findMessageId(args['save-attachments']);
   if (!gid) { console.log('Message not found in inbox or All Mail.'); return; }
   const { parsed } = await getParsed(gid);
-  const atts = parsed.attachments || [];
+  writeAttachments(parsed);
+}
+
+async function saveAttachmentsImap() {
+  const parsed = await fetchImap(args['save-attachments-imap']);
+  if (!parsed) throw new Error(`Message with UID ${args['save-attachments-imap']} not found in INBOX via IMAP.`);
+  writeAttachments(parsed, a => !a.related);
+}
+
+// Write a parsed message's attachments to --out-dir, shared by the REST --save-attachments and the IMAP
+// --save-attachments-imap so both name files the same way. `keep` filters which attachments to write: the
+// IMAP path the drainer captures with keeps only the files --show lists, leaving out inline images.
+function writeAttachments(parsed, keep = () => true) {
+  const atts = (parsed.attachments || []).filter(keep);
   if (!atts.length) { console.log('Message has no attachments.'); return; }
   const outDir = args['out-dir'] ? String(args['out-dir']) : process.cwd();
   fs.mkdirSync(outDir, { recursive: true });
@@ -815,12 +840,13 @@ function describeError(e) {
 const IMAP_RUN_DEADLINE_MS = 75 * 1000;
 
 (async () => {
-  if (args['list-inbox-imap'] || args['show-imap'] || args['auth-imap']) {
+  if (args['list-inbox-imap'] || args['show-imap'] || args['auth-imap'] || args['save-attachments-imap']) {
     exitIfStillRunningAfter(IMAP_RUN_DEADLINE_MS, 'IMAP operation');
   }
   if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
   if (args['show-imap']) return await showImap();
   if (args['auth-imap']) return await authImap();
+  if (args['save-attachments-imap']) return await saveAttachmentsImap();
   if (args['sent-since']) return await sentSince();
   const authClient = getAuthedClient();
   gmail = google.gmail({ version: 'v1', auth: authClient });
@@ -839,5 +865,5 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --save-attachments-imap, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });

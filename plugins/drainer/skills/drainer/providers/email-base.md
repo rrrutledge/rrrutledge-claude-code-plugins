@@ -9,7 +9,7 @@ Everything here applies as-is.
 ## CAPTURE shape (shared convention)
 
 Every email provider writes two files per dispatched item:
-- `items/<id>.email.md` - header block (From, Received, Link, MessageId) + full body text.
+- `items/<id>.email.md` - header block (From, Received, Link, MessageId) + full body text, ending with an `## Attachments` section when the message carries files: each file saved under `items/<id>.attachments/`, with its text when it has extractable text, so reading the email reads its attachments.
 - `items/<id>.json` - `{ "id","source","triage","kind","from","subject","received","snippet","url",` `"messageId","correspondent","emailFile","ts" }`.
 
 `messageId` is the **load-bearing field** - the worker needs it for the reply draft and for CLEAR.

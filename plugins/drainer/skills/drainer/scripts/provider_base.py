@@ -6,12 +6,14 @@ Each source the poller drives ships a `providers/<name>-adapter.py` next to its 
 poller itself. This module is the small shared surface (subprocess + slug helpers + the interface).
 """
 import glob
+import html
 import importlib.util
 import json
 import os
 import re
 import subprocess
 import sys
+import zipfile
 from datetime import datetime, timezone
 
 # Suppress the brief console window each child process would otherwise flash when the poller runs
@@ -401,6 +403,77 @@ def self_directed(item):
     self-directed, so this reads False for them and the triage signal built on it stays email-only without
     any per-source branching."""
     return bool(item.get("fromMe") and item.get("toMe"))
+
+
+# The `Attachments:` header line the email helpers' show output carries (ms-graph `mail.js --show`, gmail
+# `gmail.js --show-imap`): each file attachment as `name (contentType)`, joined by ` | `, inline images
+# left out. Both helpers print it in the header block above the body, so triage sees it in the text it
+# reads; a message with no file attachment has no such line.
+ATTACHMENTS_LINE = re.compile(r"^Attachments: (.+)$", re.MULTILINE)
+
+
+def parse_attachments(show_text):
+    """The file attachments named in a show dump's `Attachments:` line, as `name (contentType)` strings in
+    the order the helper listed them. Only the header block is searched (everything before the first blank
+    line), so a body that happens to quote an `Attachments:` line is never mistaken for one. Empty when the
+    message carries no file attachment."""
+    header = (show_text or "").split("\n\n", 1)[0]
+    m = ATTACHMENTS_LINE.search(header)
+    return [a.strip() for a in m.group(1).split(" | ") if a.strip()] if m else []
+
+
+ATTACHMENT_TEXT_LIMIT = 20000
+_TEXT_EXTS = {".txt", ".csv", ".md", ".json", ".ics", ".eml", ".log"}
+_HTML_EXTS = {".html", ".htm"}
+
+
+def _strip_tags(markup):
+    return html.unescape(re.sub(r"<[^>]+>", " ", markup))
+
+
+def attachment_text(path):
+    """The readable text of one saved attachment, or None when the file is a kind plain code can't read
+    (an image, a spreadsheet, a zip) and the worker opens it from its saved path instead. PDF via pypdf,
+    .docx from its word/document.xml, HTML with tags stripped, plain-text kinds as-is; capped at
+    ATTACHMENT_TEXT_LIMIT characters."""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
+        elif ext == ".docx":
+            with zipfile.ZipFile(path) as z:
+                xml = z.read("word/document.xml").decode("utf-8", "replace")
+            text = _strip_tags(re.sub(r"</w:p>", "\n", xml))
+        elif ext in _HTML_EXTS:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = _strip_tags(f.read())
+        elif ext in _TEXT_EXTS:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        else:
+            return None
+    except Exception:  # noqa: BLE001 - a corrupt or encrypted file is just unreadable, never a capture failure
+        return None
+    text = "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines())
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text[:ATTACHMENT_TEXT_LIMIT] if text else None
+
+
+def attachments_section(att_dir):
+    """The `## Attachments` section a captured email body ends with: one entry per file saved in att_dir,
+    each with its saved path and its text (or a line saying to open the file when it has no extractable
+    text). Empty when att_dir holds no files, so a message without attachments gets no section."""
+    files = sorted(os.listdir(att_dir)) if os.path.isdir(att_dir) else []
+    if not files:
+        return ""
+    parts = ["\n\n## Attachments\n"]
+    for name in files:
+        path = os.path.join(att_dir, name)
+        text = attachment_text(path)
+        parts.append(f"\n### {name}\n\nSaved: {path}\n\n"
+                     + (text if text else "(no text extracted - open the saved file to read it)") + "\n")
+    return "".join(parts)
 
 
 def from_identity(item):
