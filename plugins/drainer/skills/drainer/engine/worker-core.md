@@ -195,9 +195,7 @@ Route each piece of work by where it belongs - which is also where Russell can r
   Launch it as a background session, the way the poller launched you:
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
-  **Before launching, apply the dependency test: can this item's next step start before the handoff finishes?**
-  Yes (unrelated work, a side deliverable) → launch and keep working this item.
-  No - the handoff does the work your reply, CLEAR, or next action waits on (the form your reply will report done, the PR your answer links) → add `--resume-me` to the launch, leave the dated card comment naming the session, and close paused (`python <skill>/scripts/close-session.py --pause`) in that same turn, per §6's "Blocked on another in-flight session"; the handoff resumes you when its work is done, and you finish the item then.
+  **Before launching, ask whether this item's next step can start before the handoff finishes; if not, launch with `--resume-me` and close paused in that same turn, per §6, "Blocked on another in-flight session".**
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   Name the new session by its title in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
@@ -311,10 +309,10 @@ Decide by who's holding the conversation:
 **Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
 The test: **if my next step cannot start until a session I launched or a named peer finishes, I hand that session the resume command and close paused now.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
-A Russell-only step that happens *inside* that session (pressing the form's Submit, merging its PR) belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
+A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
-- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`): for a session you spawn, `--resume-me` on the step 3 launch writes the resume instruction into its brief; for a peer, run `schedule-resume.py` and deliver its command via `SendMessage`; then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
+- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
 
