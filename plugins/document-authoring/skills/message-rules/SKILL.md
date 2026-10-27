@@ -266,8 +266,8 @@ A single clear sentence ending in a question is usually the whole message — re
   "Central" alone collides with Central European Time for a recipient likely based there, so name the country to remove the ambiguity.
 - **Proposing a concrete date to someone who's already agreed to the underlying ask: ask about their availability for it, not their desire again.**
   "Want to bring it then?" re-asks something they already answered; "are you available to bring it then?" asks the one thing still genuinely open.
-- **Inviting someone to a call that already exists: name that call and ask whether they can join.**
-  The call is already on their calendar, so the message restates no date, time, or timezone conversion and promises no new invite.
+- **Inviting someone to a call that already exists, or confirming you added someone to it: name that call and ask whether they can join, or state the add and stop.**
+  The call is already on their calendar, so the message restates no date, time, or timezone conversion (including why a time someone proposed matches the call's slot) and promises no new invite.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
 
