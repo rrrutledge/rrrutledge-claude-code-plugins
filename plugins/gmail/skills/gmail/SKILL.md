@@ -218,7 +218,7 @@ If Google declines to return a refresh token, revoke prior access at
 ## Notes
 
 - The load-bearing identifier for a **message** is the **Message-ID header** (`id` in `--json`): pass it
-  to `--show`, `--auth`, `--reply`, and `--archive`. It's resolved to Gmail's internal id via an
+  to `--show`, `--auth`, `--save-attachments`, `--reply`, and `--archive`. It's resolved to Gmail's internal id via an
   `rfc822msgid:` search across All Mail, so it works whether the message is in the inbox, archived, or
   sent.
 - The load-bearing identifier for a **draft** is the **draft-id** that `--reply` / `--draft-new` print:
