@@ -22,6 +22,18 @@ The meta file carries the channel, recipient, and thread, plus the script's own 
 The drainer's acknowledgement sweep does this for every ack.
 A message that reaches Russell through no stage command has nothing for the gate to see, so it goes unscored and has no row for `learn-from-send.md`'s outcome step to record against.
 
+## The model and its weekly refit
+
+Each scored draft carries a `model` block: the probability it goes out near as-is under the live coefficient file, the floor under that probability, and whether it passes the auto-send test.
+The coefficient file comes from the weekly refit, a plain-code job that fits the model on every resolved draft and ships a new version only when it does as well on the last four weeks' drafts as the live one:
+
+```
+python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/refit.py [--dry-run] [--json]
+```
+
+The refit needs PyMC (`pip install pymc`); scoring reads the file with plain arithmetic and needs nothing beyond Python.
+`refit.py`'s docstring holds the full run, and every run appends its record to `refit-runs.jsonl` in the send-confidence log directory for the weekly report.
+
 ## The session's part: rate coverage at mint
 
 The one input only the session holds is the reviewer's rule coverage rating and uncertain spots, so they ride on the mint that already ends the review loop:

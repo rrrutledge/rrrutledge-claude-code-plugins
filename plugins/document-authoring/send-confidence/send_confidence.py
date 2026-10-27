@@ -19,9 +19,14 @@ cold Haiku judge that reads `uncertainty-aspects.md` whole and runs three times 
 readings agreed); rule coverage is the writing reviewer's one rating, carried on the receipt;
 turn count, familiarity, word count, and channel come from plain code and are exact.
 
-The logged `score` is the weighted composite of five 0-100 factors under `weights.json`,
+The scored event's `model` block is the draft's score under the live coefficient file the weekly
+refit writes (`refit.py`, terms and arithmetic in `send_confidence_model.py`): the probability
+the draft goes out near as-is, its floor, the support behind it, and whether it passes the
+auto-send test. It is null until a first model ships.
+
+The logged `score` is the weighted composite of five 0-100 factors under the frozen `weights.json`,
 each judged factor taken from the low median of its readings: rule coverage, content latitude, stakes, fact support,
-and familiarity.
+and familiarity. It stays logged until the weekly report reads the `model` block instead.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
 (`~/OneDrive/Claude/send-confidence` by default - see the module-level path helpers). Nothing
@@ -511,15 +516,39 @@ def _superseded_event(draft_id, ts):
     }
 
 
+def model_path():
+    """The live coefficient file the weekly refit (refit.py) writes."""
+    return os.path.join(data_dir(), "model", "model.json")
+
+
+def model_score(attributes, seed):
+    """The draft's score under the live coefficient file - see send_confidence_model.score - or
+    None when no model has shipped yet. A failure comes back as {"error": ...}, never raised."""
+    try:
+        with open(model_path(), "r", encoding="utf-8") as fh:
+            model = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        return {"error": f"model file unreadable: {e}"}
+    try:
+        import send_confidence_model
+        return send_confidence_model.score(attributes, model, seed=seed)
+    except Exception as e:
+        return {"version": model.get("version"), "error": f"model scoring failed: {e}"}
+
+
 def score_and_log(body, sha256, ctx):
-    """Load weights.json and uncertainty-aspects.md; call score_draft; snapshot the body to
-    drafts/<draft_id>.txt; append a superseded outcome for any earlier pending draft in the
-    same conversation; append the scored event; return the draft_id."""
+    """Load weights.json and uncertainty-aspects.md; call score_draft; score the attributes
+    under the live coefficient file; snapshot the body to drafts/<draft_id>.txt; append a
+    superseded outcome for any earlier pending draft in the same conversation; append the
+    scored event; return the draft_id."""
     weights = _load_weights()
     aspects, aspects_sha = _load_aspects()
     api_key = _anthropic_api_key()
 
     result = score_draft(body, ctx, weights=weights, aspects=aspects, api_key=api_key)
+    model = model_score(result["attributes"], seed=sha256)
 
     ts = datetime.datetime.now().astimezone()
     draft_id = f"d-{sha256[:12]}-{ts.strftime('%Y%m%d%H%M%S')}"
@@ -532,7 +561,7 @@ def score_and_log(body, sha256, ctx):
         _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 4, "draft_id": draft_id,
+        "event": "scored", "v": 5, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
         "source": "gate", "stage_kind": ctx.get("stage_kind"),
         "session_id": ctx.get("session_id"),
@@ -543,7 +572,7 @@ def score_and_log(body, sha256, ctx):
         "score": result["score"], "weights_version": weights.get("version"),
         "aspects_sha": aspects_sha,
         "factors": result["factors"], "features": result["features"],
-        "attributes": result["attributes"],
+        "attributes": result["attributes"], "model": model,
         "judge": _judge_log_shape(result["judge"]),
         "uncertain_spots": ctx.get("uncertain_spots"),
         "errors": result["errors"],
@@ -979,7 +1008,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         "event": "outcome", "v": 2, "draft_id": draft_id,
         "ts": datetime.datetime.now().astimezone().isoformat(),
         "disposition": disposition, "edit_distance": edit_distance,
-        "edit_nature": edit_nature, "changes": changes, "reason": reason,
+        "edit_nature": edit_nature, "changes": changes, "reason": reason, "moot": bool(discarded and moot),
         "miscalibrated": direction is not None, "direction": direction,
         "implicated": implicated, "under_factors": under_factors,
         "learn_reasons": learn_reasons,

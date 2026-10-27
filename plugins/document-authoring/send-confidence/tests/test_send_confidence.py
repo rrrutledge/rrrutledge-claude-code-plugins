@@ -360,10 +360,32 @@ def test_score_and_log_writes_snapshot_and_scored_row(tmp_path):
     assert scored[0]["channel"] == "gmail"
     assert scored[0]["factors"]["rule_coverage"] == 75
     assert scored[0]["uncertain_spots"] == "the closing line"
-    assert scored[0]["v"] == 4
+    assert scored[0]["v"] == 5
     assert scored[0]["attributes"]["rule_coverage"] == 4
     assert scored[0]["attributes"]["channel"] == "email"
     assert scored[0]["attributes"]["word_count"] == len(body.split())
+    assert scored[0]["model"] is None
+
+
+def test_score_and_log_scores_under_the_live_model(tmp_path):
+    model = {"version": 3, "binary_terms": [["slack"]], "value_terms": [], "values": {}, "latent": {},
+             "intercept": [0.0, 0.0], "beta": [[0.0], [0.0]], "clear_binary": [], "support_rows": [[0]] * 25}
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump(model, fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert scored["model"] == {"version": 3, "probability": 0.5, "floor": 0.5, "support": 25, "auto_send": False}
+
+
+def test_score_and_log_survives_a_broken_model_file(tmp_path):
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump({"version": 2}, fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert scored["model"]["version"] == 2
+    assert "error" in scored["model"]
 
 
 def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
@@ -595,6 +617,7 @@ def test_moot_discard_skips_flagging(tmp_path):
     assert result["direction"] is None
     assert result["implicated"] == []
     assert result["miscalibrated"] is False
+    assert result["moot"] is True
     assert result["dispatch"] is None
     assert not os.path.isfile(_brief(draft_id))
 
