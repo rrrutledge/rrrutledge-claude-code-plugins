@@ -421,8 +421,6 @@ The specifics that most often separate a message that reads as Russell's from on
     **Exception - you already fixed the flaws yourself rather than leaving them for the recipient to act on:** that isn't a critique anymore, so the genuine-praise requirement doesn't apply - report it as a completed task instead (see **Asks**' "Reporting a completed task" rule).
 - **Bold each thing an email recipient must act on or take away.**
   The ask, the offered quantity or benefit, and a code or link they'll use each get bold, so a skim lands on what the message gives and wants; the turn-marker name in a multi-recipient reply (see the `1on1` bullet under **Persona modes**) is the one other bold.
-- **Hand over access or a benefit with only what they get and how to claim it.**
-  A limit on who may use it or how that the sender didn't state follows **When unsure**.
 - **Answer the question first.**
   Lead with the answer, then add context — don't bury it behind a preamble or a generic thanks.
   When someone raises more than one point, answer each one by name rather than a single blanket acknowledgment — this includes an earlier, question-free message where they shared research or effort on your behalf, or agreed to something asked of them: thank them for the specific contribution or commitment and note your own follow-through on it before pivoting to a fresh, unrelated ask or issue in the same reply. An older message in the thread doesn't get eclipsed by whatever they wrote most recently — answer both. (This is a welcome commitment being celebrated, not a plain answer to something you asked of them — see **Short acknowledgements stand alone** for why that case stays generic.)
