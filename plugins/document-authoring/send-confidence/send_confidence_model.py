@@ -66,13 +66,17 @@ MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge",
 # --- the target ---
 
 def is_routing_discard(outcome):
-    """A discard that says nothing about the wording: Russell resolved the matter some other way
-    (`moot`, or a reason naming another route), or the outcome sweep found no send at all in the
-    draft's own source, which can't tell a rewrite from another route."""
+    """A discard that says nothing about the wording: Russell resolved the matter some other way,
+    or the outcome sweep found no send at all in the draft's own source, which can't tell a
+    rewrite from another route. An outcome that records `moot` says which it was; one logged
+    before outcomes carried `moot` is read from its reason."""
     if outcome.get("disposition") != "discarded":
         return False
-    return bool(outcome.get("moot") or outcome.get("source") == "sweep"
-                or ROUTE_DISCARD_RE.search(outcome.get("reason") or ""))
+    if outcome.get("source") == "sweep":
+        return True
+    if "moot" in outcome:
+        return bool(outcome["moot"])
+    return bool(ROUTE_DISCARD_RE.search(outcome.get("reason") or ""))
 
 
 def target(outcome):
@@ -221,11 +225,14 @@ def set_probabilities(attrs, model, seed=0):
 
 def support(attrs, model):
     """How many resolved drafts the model was fitted on share every clearly nonzero binary term
-    this draft has; every fitted draft when it has none."""
+    this draft has; with none behind its prediction, how many share every one of its flags."""
     xb = binary_row(attrs, model["binary_terms"])
     clear = set(model.get("clear_binary", []))
     behind = {j for j, v in enumerate(xb) if v and j in clear}
-    return sum(1 for row in model["support_rows"] if behind <= set(row))
+    if behind:
+        return sum(1 for row in model["support_rows"] if behind <= set(row))
+    own = flags(attrs)
+    return sum(1 for row in model.get("support_flags", []) if row == own)
 
 
 def score(attrs, model, seed=0):

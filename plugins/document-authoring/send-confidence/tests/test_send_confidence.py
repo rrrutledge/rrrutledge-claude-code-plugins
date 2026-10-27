@@ -375,7 +375,16 @@ def test_score_and_log_scores_under_the_live_model(tmp_path):
         json.dump(model, fh)
     draft_id, _ = _score(tmp_path)
     scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
-    assert scored["model"] == {"version": 3, "probability": 0.5, "floor": 0.5, "support": 25, "auto_send": False}
+    assert scored["model"] == {"version": 3, "probability": 0.5, "floor": 0.5, "support": 0, "auto_send": False}
+
+
+def test_score_and_log_survives_a_model_file_that_is_not_an_object(tmp_path):
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump([], fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert "error" in scored["model"]
 
 
 def test_score_and_log_survives_a_broken_model_file(tmp_path):

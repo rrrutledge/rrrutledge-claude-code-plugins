@@ -8,7 +8,8 @@ arithmetic both sides share).
 
 One run:
 
-1. **Gather.** Each resolved draft's attributes and target (`send_confidence_model.target`).
+1. **Gather.** Each resolved draft's attributes and target (`send_confidence_model.target`), one
+   row per draft body, so two stages of one draft count once.
    A scored event from before the `attributes` block (event v2 and v3) contributes what its
    `features` held - one judge reading per attribute, word count from the draft snapshot, no kind.
    Event v1 rated phrasing complexity and task ambiguity rather than stakes and latitude, so it
@@ -16,21 +17,25 @@ One run:
 2. **Noise.** Each judged attribute's noise figure is the pooled within-draft spread of every
    scored event's three readings, resolved or not; until NOISE_MIN_DRAFTS drafts carry readings
    for it, the attribute enters as measured.
-3. **Gate.** Fit on every resolved draft except the last HOLDOUT_DAYS, and score those days with
-   the new fit and the live model (the base rate when no model is live yet). The new fit ships
-   when its log loss there is no worse than the live one's by more than GATE_TOLERANCE. While
-   the log is young, the held-out days are capped at the newest half of the drafts, so the fit
-   always trains on at least half.
-4. **Clusters.** Last run's proposed clusters enter a second held-out fit as named terms; each
-   stays only when its effect is clearly nonzero and that fit does at least as well on the held-out
-   drafts as the fit without them.
+3. **Gate.** Fit on every resolved draft except the last HOLDOUT_DAYS, while the log is young
+   capped at the newest half of the drafts so the fit always trains on at least half. The new
+   fit ships when its log loss is no worse than the live model's by more than GATE_TOLERANCE,
+   each graded only on drafts neither was fitted on: the held-out drafts scored after the live
+   model was fitted, once there are GATE_MIN_FRESH of them. Before that, and while no model is
+   live, the comparison is the training split's base rate over every held-out draft.
+4. **Clusters.** Proposed clusters enter a second held-out fit as named terms; each passes only
+   when its effect is clearly nonzero and that fit does at least as well on the held-out drafts as
+   the fit without them. A passing cluster joins the model when the fit ships, and stays proposed
+   until then; a failing one is never proposed again.
 5. **Ship.** A passing fit is refit on all resolved drafts and written as the next model version.
-6. **Screen.** Residual cells (every three flags shared by at least SCREEN_MIN_DRAFTS drafts,
-   compared with what the live model predicts for them) and a three-level decision tree over the
-   flags propose the clusters the next run tests.
+6. **Screen.** Residual cells (every three flags shared by at least SCREEN_MIN_DRAFTS training
+   drafts, compared with what the live model predicts for them) and a three-level decision tree
+   over the flags propose new clusters from the training split, so next week's held-out drafts
+   test them on drafts they weren't chosen from.
 
 Every run appends a record to `refit-runs.jsonl` - the split, both log losses, the verdict, each
-cluster's verdict, the noise figures, and the clearly nonzero effects - for the weekly report.
+cluster's verdict, the noise figures, and the new fit's clearly nonzero effects - for the weekly
+report.
 
 CLI:
     python refit.py [--dry-run] [--json]
@@ -50,6 +55,7 @@ import send_confidence_model as scm  # noqa: E402
 
 HOLDOUT_DAYS = 28
 GATE_TOLERANCE = 0.01
+GATE_MIN_FRESH = 10
 NOISE_MIN_DRAFTS = 10
 SCREEN_MIN_DRAFTS = 15
 SCREEN_MIN_Z = 2.0
@@ -66,15 +72,11 @@ SAMPLER = {"draws": 500, "tune": 1000, "chains": 4, "target_accept": 0.95}
 
 
 def model_dir():
-    return os.path.join(sc.data_dir(), "model")
-
-
-def model_path():
-    return os.path.join(model_dir(), "model.json")
+    return os.path.dirname(sc.model_path())
 
 
 def proposals_path():
-    return os.path.join(model_dir(), "proposed-clusters.json")
+    return os.path.join(model_dir(), "clusters.json")
 
 
 def runs_path():
@@ -130,7 +132,8 @@ def _draft_text(draft_id):
 
 
 def gather(drafts=None):
-    """[{"draft_id", "ts", "attrs", "y"}] for every resolved draft that has a target, oldest first."""
+    """[{"draft_id", "ts", "attrs", "y"}] for every resolved draft that has a target, oldest first,
+    keeping the earliest scored row of each draft body."""
     drafts = drafts if drafts is not None else sc.fold_drafts()
     rows = []
     for draft_id, d in drafts.items():
@@ -142,9 +145,15 @@ def gather(drafts=None):
         if y is None or ts is None:
             continue
         attrs = scored.get("attributes") or legacy_attributes(scored, _draft_text(draft_id))
-        rows.append({"draft_id": draft_id, "ts": ts, "attrs": attrs, "y": y})
+        rows.append({"draft_id": draft_id, "ts": ts, "attrs": attrs, "y": y, "sha256": scored.get("sha256")})
     rows.sort(key=lambda r: r["ts"])
-    return rows
+    seen, out = set(), []
+    for r in rows:
+        if r["sha256"] and r["sha256"] in seen:
+            continue
+        seen.add(r["sha256"])
+        out.append(r)
+    return out
 
 
 # --- 2. noise ---
@@ -264,6 +273,7 @@ def fit(rows, binary_terms, noise, *, sampler=None, seed=1):
         "beta": [[round(float(v), 5) for v in row] for row in beta_draws],
         "divergences": int(stats["diverging"].sum()),
         "support_rows": [[j for j, v in enumerate(row) if v] for row in xb],
+        "support_flags": [scm.flags(r["attrs"]) for r in rows],
     }
     model["effects"] = effects(model)
     model["clear_binary"] = [j for j, e in enumerate(model["effects"][:len(terms)]) if e["clear"]]
@@ -294,9 +304,12 @@ def split(rows, now):
 
 
 def predict(model, rows):
-    if model is None:
-        return None
-    return [scm.score(r["attrs"], model, seed=r["draft_id"])["probability"] for r in rows]
+    """Each row's mean probability under `model`."""
+    out = []
+    for r in rows:
+        probs = scm.set_probabilities(r["attrs"], model, seed=r["draft_id"])
+        out.append(sum(probs) / len(probs))
+    return out
 
 
 def log_loss(ps, ys):
@@ -392,23 +405,33 @@ def run(*, now=None, dry_run=False, fit_fn=None, sampler=None):
     now = now or datetime.datetime.now().astimezone()
     rows = gather()
     noise = pooled_noise()
-    live = _read_json(model_path())
-    proposed = _read_json(proposals_path(), []) or []
+    live = _read_json(sc.model_path())
+    live = live if isinstance(live, dict) and live.get("binary_terms") is not None else None
+    clusters = _read_json(proposals_path(), {}) or {}
+    proposed, rejected = clusters.get("proposed", []), clusters.get("rejected", [])
     record = {"ts": now.isoformat(), "dry_run": dry_run, "n": len(rows),
               "positives": sum(r["y"] for r in rows), "noise": noise,
-              "live_version": (live or {}).get("version"), "shipped": False}
+              "live_version": (live or {}).get("version"), "shipped": False, "cluster_verdicts": []}
 
     train, hold = split(rows, now)
     record.update(n_train=len(train), n_holdout=len(hold),
                   holdout_from=hold[0]["ts"].isoformat() if hold else None)
-    train_ys = {r["y"] for r in train}
-    if not hold or train_ys != {0, 1}:
+    if not hold or {r["y"] for r in train} != {0, 1}:
         record["skipped"] = "the training split needs both a near-as-is draft and another, and the holdout a draft"
     else:
         ys = [r["y"] for r in hold]
-        base = sum(r["y"] for r in train) / len(train)
-        live_ps = predict(live, hold) if live else [base] * len(hold)
-        record["live_loss"] = round(log_loss(live_ps, ys), 4)
+        fitted_at = sc._parse_ts((live or {}).get("fitted_at"))
+        fresh = [i for i, r in enumerate(hold) if fitted_at and r["ts"] > fitted_at]
+        if live and len(fresh) >= GATE_MIN_FRESH:
+            gate = fresh
+            comparator = predict(live, [hold[i] for i in gate])
+            record["gate"] = f"live model v{live.get('version')} on held-out drafts scored after it was fitted"
+        else:
+            gate = list(range(len(hold)))
+            comparator = [sum(r["y"] for r in train) / len(train)] * len(hold)
+            record["gate"] = "training base rate on every held-out draft"
+        record["n_gate"] = len(gate)
+        record["live_loss"] = round(log_loss(comparator, [ys[i] for i in gate]), 4)
 
         confirmed = [t for t in (live or {}).get("binary_terms", []) if _is_cluster(t)]
         terms_a = scm.default_binary_terms() + confirmed
@@ -418,47 +441,56 @@ def run(*, now=None, dry_run=False, fit_fn=None, sampler=None):
             key = json.dumps(terms)
             if key not in fits:
                 m = fit_fn(train, terms, noise, sampler=sampler)
-                fits[key] = (m, log_loss(predict(m, hold), ys))
+                fits[key] = (m, predict(m, hold))
             return fits[key]
 
-        model_a, loss_a = held_out(terms_a)
-        verdicts = []
-        newly = []
+        def loss(ps, idx=None):
+            idx = range(len(hold)) if idx is None else idx
+            return log_loss([ps[i] for i in idx], [ys[i] for i in idx])
+
+        _, ps_a = held_out(terms_a)
+        passed = []
         if proposed:
-            model_b, loss_b = held_out(terms_a + proposed)
+            model_b, ps_b = held_out(terms_a + proposed)
+            loss_a, loss_b = loss(ps_a), loss(ps_b)
             by_name = {e["term"]: e for e in model_b["effects"]}
             for cluster in proposed:
                 effect = by_name.get(scm.term_name(cluster))
                 kept = bool(effect and effect["clear"] and loss_b <= loss_a)
-                verdicts.append({"cluster": scm.term_name(cluster), "kept": kept,
-                                 "effect": effect, "loss_with": round(loss_b, 4), "loss_without": round(loss_a, 4)})
-                if kept:
-                    newly.append(cluster)
-        record["cluster_verdicts"] = verdicts
-        candidate_terms = terms_a + newly
-        candidate, candidate_loss = held_out(candidate_terms)
-        record["candidate_loss"] = round(candidate_loss, 4)
+                record["cluster_verdicts"].append({"cluster": scm.term_name(cluster), "kept": kept, "effect": effect,
+                                                   "loss_with": round(loss_b, 4), "loss_without": round(loss_a, 4)})
+                (passed if kept else rejected).append(cluster)
+        candidate_terms = terms_a + passed
+        candidate, ps_c = held_out(candidate_terms)
+        record["candidate_loss"] = round(loss(ps_c, gate), 4)
         record["candidate_divergences"] = candidate.get("divergences")
-        record["shipped"] = candidate_loss <= record["live_loss"] + GATE_TOLERANCE
+        record["effects"] = [e for e in candidate["effects"] if e["clear"]]
+        record["shipped"] = record["candidate_loss"] <= record["live_loss"] + GATE_TOLERANCE
+        # A cluster that passed stays proposed until a fit carrying it ships.
+        proposed = [] if record["shipped"] else passed
 
         if record["shipped"]:
             model = fit_fn(rows, candidate_terms, noise, sampler=sampler)
             model["version"] = ((live or {}).get("version") or 0) + 1
             model["holdout"] = {"loss": record["candidate_loss"], "live_loss": record["live_loss"],
-                                "n": len(hold), "from": record["holdout_from"]}
+                                "n": len(gate), "gate": record["gate"], "from": record["holdout_from"]}
             record["version"] = model["version"]
             record["divergences"] = model["divergences"]
             record["effects"] = [e for e in model["effects"] if e["clear"]]
             if not dry_run:
                 _write_json(os.path.join(model_dir(), f"model-v{model['version']}.json"), model)
-                _write_json(model_path(), model)
+                _write_json(sc.model_path(), model)
             live = model
 
-    current_terms = (live or {}).get("binary_terms", [])
-    ps = predict(live, rows) if live else [record["positives"] / len(rows) if rows else 0.0] * len(rows)
-    record["proposed"] = [scm.term_name(c) for c in screen(rows, ps, current_terms)] if rows else []
+    screen_rows = train or rows
+    if screen_rows:
+        ps = (predict(live, screen_rows) if live
+              else [sum(r["y"] for r in screen_rows) / len(screen_rows)] * len(screen_rows))
+        taken = (live or {}).get("binary_terms", []) + proposed + rejected
+        proposed = proposed + screen(screen_rows, ps, taken)
+    record["proposed"] = [scm.term_name(c) for c in proposed]
     if not dry_run:
-        _write_json(proposals_path(), [name.split(" & ") for name in record["proposed"]])
+        _write_json(proposals_path(), {"proposed": proposed, "rejected": rejected})
         os.makedirs(sc.data_dir(), exist_ok=True)
         with open(runs_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record) + "\n")

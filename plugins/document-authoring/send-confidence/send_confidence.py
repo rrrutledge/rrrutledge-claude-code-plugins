@@ -530,6 +530,8 @@ def model_score(attributes, seed):
         return None
     except Exception as e:
         return {"error": f"model file unreadable: {e}"}
+    if not isinstance(model, dict):
+        return {"error": "model file is not a JSON object"}
     try:
         import send_confidence_model
         return send_confidence_model.score(attributes, model, seed=seed)

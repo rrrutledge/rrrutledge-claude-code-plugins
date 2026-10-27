@@ -65,6 +65,7 @@ EDITED = {"disposition": "edited", "edit_distance": 0.3}
     ({"disposition": "discarded", "reason": "the tone was off"}, 0),
     ({"disposition": "discarded", "reason": "Russell replied by phone instead"}, None),
     ({"disposition": "discarded", "reason": None, "moot": True}, None),
+    ({"disposition": "discarded", "reason": "rewrote it himself, too formal", "moot": False}, 0),
     ({"disposition": "discarded", "reason": None, "source": "sweep"}, None),
     ({"disposition": "superseded"}, None),
     (None, None),
@@ -115,7 +116,12 @@ def test_support_counts_drafts_sharing_the_clear_terms():
     result = scm.score(_attrs(), model)
     assert result["support"] == 21
     assert result["auto_send"] is True
-    assert scm.score(_attrs(channel="email"), model)["support"] == 51
+
+
+def test_support_without_clear_terms_counts_drafts_with_identical_flags():
+    model = _model([["slack"]], [[0.0]], support_rows=[[0]] * 40)
+    model["support_flags"] = [scm.flags(_attrs())] * 3 + [scm.flags(_attrs(word_count=300))] * 30
+    assert scm.score(_attrs(), model)["support"] == 3
 
 
 def test_exact_value_term_is_standardized_and_missing_sits_at_center():
@@ -212,13 +218,34 @@ def _seed_history():
         _seed(f"d-{i:02d}", ts, _attrs(word_count=40 + i), SENT if i % 4 == 0 else EDITED)
 
 
+def _write(path, doc):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+
+
+def _clusters():
+    with open(refit.proposals_path(), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def test_gather_keeps_one_row_per_draft_body():
+    ts = NOW - datetime.timedelta(days=40)
+    for draft_id, offset in (("d-first", 0), ("d-second", 1)):
+        sc._append_event({"event": "scored", "v": 4, "draft_id": draft_id, "sha256": "same",
+                          "ts": (ts + datetime.timedelta(hours=offset)).isoformat(), "attributes": _attrs()})
+        sc._append_event({"event": "outcome", "draft_id": draft_id, "ts": ts.isoformat(), **SENT})
+    assert [r["draft_id"] for r in refit.gather()] == ["d-first"]
+
+
 def test_run_ships_a_fit_within_tolerance_and_writes_the_model():
     _seed_history()
     stub = StubFit(0.25)
     record = refit.run(now=NOW, fit_fn=stub)
     assert record["shipped"] is True and record["version"] == 1
+    assert record["gate"] == "training base rate on every held-out draft"
     assert stub.calls[-1][0] == 30
-    with open(refit.model_path(), encoding="utf-8") as fh:
+    with open(sc.model_path(), encoding="utf-8") as fh:
         model = json.load(fh)
     assert model["version"] == 1 and model["holdout"]["n"] == record["n_holdout"]
     assert os.path.isfile(os.path.join(refit.model_dir(), "model-v1.json"))
@@ -230,7 +257,20 @@ def test_run_keeps_the_live_model_when_the_fit_loses():
     _seed_history()
     record = refit.run(now=NOW, fit_fn=StubFit(0.9))
     assert record["shipped"] is False
-    assert not os.path.isfile(refit.model_path())
+    assert "effects" in record
+    assert not os.path.isfile(sc.model_path())
+
+
+def test_gate_grades_the_live_model_only_on_drafts_scored_after_it(monkeypatch):
+    _seed_history()
+    monkeypatch.setattr(refit, "GATE_MIN_FRESH", 2)
+    live = StubFit(0.25)([], [], {})
+    live.update(version=4, fitted_at=(NOW - datetime.timedelta(days=9)).isoformat())
+    _write(sc.model_path(), live)
+    record = refit.run(now=NOW, fit_fn=StubFit(0.25), dry_run=True)
+    assert record["gate"].startswith("live model v4")
+    assert record["n_gate"] == 4
+    assert record["shipped"] is True and record["version"] == 5
 
 
 def test_dry_run_writes_nothing():
@@ -241,23 +281,44 @@ def test_dry_run_writes_nothing():
     assert not os.path.isfile(refit.runs_path())
 
 
-def test_proposed_cluster_is_kept_only_when_clear():
+def test_a_clear_cluster_ships_with_the_fit_and_leaves_the_proposals():
     _seed_history()
     cluster = ["slack", "short", "few_claims"]
-    os.makedirs(refit.model_dir(), exist_ok=True)
-    with open(refit.proposals_path(), "w", encoding="utf-8") as fh:
-        json.dump([cluster], fh)
-    kept = refit.run(now=NOW, fit_fn=StubFit(0.25, {"lo": 0.2, "hi": 1.5, "clear": True}), dry_run=True)
-    assert kept["cluster_verdicts"][0]["kept"] is True
-    rejected = refit.run(now=NOW, fit_fn=StubFit(0.25), dry_run=True)
-    assert rejected["cluster_verdicts"][0]["kept"] is False
+    _write(refit.proposals_path(), {"proposed": [cluster], "rejected": []})
+    record = refit.run(now=NOW, fit_fn=StubFit(0.25, {"lo": 0.2, "hi": 1.5, "clear": True}))
+    assert record["cluster_verdicts"][0]["kept"] is True and record["shipped"] is True
+    with open(sc.model_path(), encoding="utf-8") as fh:
+        assert cluster in json.load(fh)["binary_terms"]
+    assert cluster not in _clusters()["proposed"]
+
+
+def test_a_clear_cluster_stays_proposed_when_the_fit_misses_the_gate():
+    _seed_history()
+    cluster = ["slack", "short", "few_claims"]
+    _write(refit.proposals_path(), {"proposed": [cluster], "rejected": []})
+    record = refit.run(now=NOW, fit_fn=StubFit(0.9, {"lo": 0.2, "hi": 1.5, "clear": True}))
+    assert record["shipped"] is False
+    assert _clusters()["proposed"][0] == cluster
+
+
+def test_a_rejected_cluster_is_never_proposed_again():
+    _seed_history()
+    cluster = ["slack", "short", "few_claims"]
+    _write(refit.proposals_path(), {"proposed": [cluster], "rejected": []})
+    record = refit.run(now=NOW, fit_fn=StubFit(0.25))
+    assert record["cluster_verdicts"][0]["kept"] is False
+    assert cluster in _clusters()["rejected"]
+    assert cluster not in _clusters()["proposed"]
 
 
 def test_run_skips_the_gate_without_both_outcomes_in_training():
     for i in range(6):
         _seed(f"d-{i}", NOW - datetime.timedelta(days=60 - i), _attrs(), EDITED)
-    record = refit.run(now=NOW, fit_fn=StubFit(0.25), dry_run=True)
+    cluster = ["slack", "short", "few_claims"]
+    _write(refit.proposals_path(), {"proposed": [cluster], "rejected": []})
+    record = refit.run(now=NOW, fit_fn=StubFit(0.25))
     assert "skipped" in record and record["shipped"] is False
+    assert _clusters()["proposed"][0] == cluster
 
 
 @pytest.mark.skipif(importlib.util.find_spec("pymc") is None, reason="PyMC not installed")
