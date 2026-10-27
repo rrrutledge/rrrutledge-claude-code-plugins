@@ -41,7 +41,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention via the platform's mention picker, never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @dana", not "Hi Dana") — not only when notifying them is the point.
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **A channel on a platform with channel mentions (Slack, Teams)** — reference it by a real channel mention, never typed text.
-- **An event** — link its name to the event's page.
+- **An event** — link its name to the event's own page URL, the one on the organizer's site.
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar. Include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
   **A meeting that others besides Russell must attend asks the recipient to propose times:** name everyone attending and ask the recipient to propose times from their availability, since the booking page shows only Russell's.
