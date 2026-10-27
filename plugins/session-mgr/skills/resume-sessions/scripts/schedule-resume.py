@@ -70,6 +70,18 @@ def fwd(path):
     return path.replace("\\", "/")
 
 
+def resume_command(session_id, cwd, title=None):
+    """The `spawn-session.py --resume` line that brings session_id back in cwd, or None when no
+    launcher can be found. spawn-session.py's --resume-me builds its handoff instruction from this."""
+    launcher = resolve_launcher()
+    if not launcher:
+        return None
+    command = f'python "{fwd(launcher)}" --resume {session_id} --cwd "{fwd(os.path.abspath(cwd))}"'
+    if title:
+        command += f' --title "{title}"'
+    return command
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Print the command that resumes this session.")
     parser.add_argument("--session-id", default=os.environ.get("CLAUDE_CODE_SESSION_ID"))
@@ -84,16 +96,11 @@ def main(argv=None):
               "session via the Bash tool so $CLAUDE_CODE_SESSION_ID is set.", file=sys.stderr)
         return 1
 
-    launcher = resolve_launcher()
-    if not launcher:
+    command = resume_command(args.session_id, args.cwd, args.title)
+    if not command:
         print("schedule-resume: could not locate spawn-session.py (no installed copy and no "
               "working-clone sibling).", file=sys.stderr)
         return 1
-
-    command = (f'python "{fwd(launcher)}" --resume {args.session_id} '
-               f'--cwd "{fwd(os.path.abspath(args.cwd))}"')
-    if args.title:
-        command += f' --title "{args.title}"'
     print(command)
     return 0
 

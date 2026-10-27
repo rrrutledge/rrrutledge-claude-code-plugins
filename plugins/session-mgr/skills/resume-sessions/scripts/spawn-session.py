@@ -25,6 +25,11 @@ the seed file with the worker contract appended is written into the job folder a
 and the worker (short id, slug, result path) is registered in `<job folder>/job.json`. See the
 coordinate-workers skill.
 
+--resume-me (fresh --brief launches only) is for a launching session whose own next step waits on the
+new session's work: it appends the instruction to resume the launching session (the command
+schedule-resume.py prints, for $CLAUDE_CODE_SESSION_ID in the current directory) to the end of the
+brief, so the launcher's last step is to close paused. See resume-on-completion.md.
+
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
 
@@ -33,6 +38,7 @@ writes the guid to `<FILE>.session` beside the brief or prompt file - the receip
 Exit code 1 means nothing was launched.
 """
 import argparse
+import importlib.util
 import os
 import sys
 
@@ -40,7 +46,42 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bg_session import launch, session_name  # noqa: E402
 import worker_job  # noqa: E402
 
-WORKER_DONE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "worker-done.py")
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+WORKER_DONE = os.path.join(SCRIPTS, "worker-done.py")
+
+RESUME_ME_HEADING = "## When this is done, resume the session that launched you"
+RESUME_ME = """
+
+---
+
+""" + RESUME_ME_HEADING + """
+
+The session that launched you closed paused; its own next step waits on this work.
+Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), run this via the Bash tool without waiting to be asked, then tell Russell in one line which session you resumed:
+
+    {command}
+"""
+
+
+def _schedule_resume():
+    spec = importlib.util.spec_from_file_location("schedule_resume", os.path.join(SCRIPTS, "schedule-resume.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _append_resume_me(brief, session_id, cwd):
+    """Append the resume-the-launcher instruction to the brief, once. Returns the command, or None
+    when no launcher can be found to resume with."""
+    command = _schedule_resume().resume_command(session_id, cwd)
+    if not command:
+        return None
+    with open(brief, encoding="utf-8") as f:
+        body = f.read()
+    if RESUME_ME_HEADING not in body:
+        with open(brief, "w", encoding="utf-8") as f:
+            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command))
+    return command
 
 WORKER_CONTRACT = """
 
@@ -120,6 +161,9 @@ def main(argv=None):
                     help="launch this session as a worker of the coordinator whose job folder "
                          "(holding job.json) this is: appends the worker contract to the seed file "
                          "and registers the worker in job.json")
+    ap.add_argument("--resume-me", action="store_true",
+                    help="this (launching) session's next step waits on the new session's work: append "
+                         "the command that resumes this session to the brief, then close this one paused")
     a = ap.parse_args(argv)
 
     brief = os.path.abspath(a.brief) if a.brief else None
@@ -140,6 +184,22 @@ def main(argv=None):
     if not a.resume and not (a.model and name):
         print("spawn-session: a fresh launch needs --model and a name (--title or --summary-file).")
         return 1
+
+    resume_me = None
+    if a.resume_me:
+        launcher_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        if a.resume or not brief or a.worker_of:
+            print("spawn-session: --resume-me needs a fresh launch with --brief (a coordinator's "
+                  "workers resume it through --worker-of instead).")
+            return 1
+        if not launcher_id:
+            print("spawn-session: --resume-me runs from inside the launching session via the Bash tool, "
+                  "so $CLAUDE_CODE_SESSION_ID names the session to resume; it is not set here.")
+            return 1
+        resume_me = _append_resume_me(brief, launcher_id, os.getcwd())
+        if not resume_me:
+            print("spawn-session: --resume-me could not locate spawn-session.py to build the resume command.")
+            return 1
 
     slug = folder = None
     if a.worker_of:
@@ -170,6 +230,10 @@ def main(argv=None):
     print(f"Launched in the background: the '{name or 'resumed session'}' session. "
           f"Reach it from the Claude app or claude.ai/code, or `claude attach {short_id}` / `claude logs {short_id}` here "
           f"(id {short_id}, {receipt}; name the session to Russell by its title).")
+    if resume_me:
+        print("The brief now ends with the command that resumes this session when that work is done. "
+              "Leave the paper trail (a drainer worker: a dated comment on its card), then close this "
+              "session paused this turn: session-mgr:close with --pause (a drainer worker: close-session.py --pause).")
     return 0
 
 
