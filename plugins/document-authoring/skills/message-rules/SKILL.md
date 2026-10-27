@@ -91,6 +91,10 @@ Don't present a menu of options or stack a numbered list of questions.
   When their own decline reads as genuinely wanting this to happen and not just a polite close, and a concrete alternative avenue already exists (an event, a program), close by naming that avenue instead of leaning on personal warmth alone. It asks nothing of them, so it reads as accepting the decline, not as a new ask. Skip this on a decline that reads as merely polite; naming an avenue there is pushy, not gracious.
   Defer to their judgment and end.
   When they checked a lead that didn't pan out, close with "No problem ✅" rather than "Good to know" — the former is gracious about their effort — and add a brief "Thanks for checking." for the legwork itself, not "Thanks for asking." (which fits a first ask, not a lead they went and checked on).
+- **When declining an offer or invitation made to you because of a constraint you can't lift, say you'd like to accept before the no, state the constraint plainly, and close with a clear decline and when it could reopen.**
+  Give the timeframe as a plain span in everyday words, not a formal date, and state the barrier firmly.
+  The wish and the reopening carry the warmth.
+  A decline that leaves the idea open follows the group-channel decline bullet under **Keep asks open and tentative** instead.
 - **When the ask rested on your own mistake, own it plainly, release the other person, and don't pivot to a replacement ask.**
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
