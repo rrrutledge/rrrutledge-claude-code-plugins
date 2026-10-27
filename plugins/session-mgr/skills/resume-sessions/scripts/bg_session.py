@@ -106,7 +106,8 @@ def _user_env(name):
 
 
 # User variables the launch env never takes from the registry: the registry's PATH is only the
-# User half of the merged process PATH, and CLAUDE_CONFIG_DIR is set per account by _account_env.
+# User half of the merged process PATH, CLAUDE_CONFIG_DIR is set per account by _account_env, and
+# CLAUDE_HOST_PID names a terminal tab's PowerShell host, which a background session never has.
 _REGISTRY_SKIP = {"PATH", "CLAUDE_CONFIG_DIR", "CLAUDE_HOST_PID"}
 
 
@@ -329,7 +330,7 @@ def _launch_env():
     """The env the `claude --bg` call runs under: the launcher's own, minus _SESSION_ENV, with every
     User variable re-read from the registry (but _REGISTRY_SKIP), on the current account. The
     registry overlay is what keeps a daemon this call starts from inheriting the launcher's stale
-    values; it reaches only the launch process and that daemon, never disk."""
+    values; it lives only in the memory of the launch process and that daemon."""
     env = {k: v for k, v in os.environ.items() if k not in _SESSION_ENV}
     keys = {k.upper(): k for k in env}
     for name, value in _user_env_all().items():
