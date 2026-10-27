@@ -37,7 +37,7 @@ bg_session = sys.modules["bg_session"]  # session-mgr's launcher, loaded by prov
 GUID = "abc123ef-1111-2222-3333-444455556666"
 
 
-def spawn(triage, config_repo, bg_id="abc123ef", agents=()):
+def spawn(triage, config_repo, bg_id="abc123ef", agents=(), kind=None):
     """Run spawn_worker against a temp runtime dir with spawn_bg captured and `claude agents` stubbed
     to `agents` (so the receipt is deterministic and no real claude runs); return
     (error, prompt, summary_exists, calls, receipt)."""
@@ -55,7 +55,7 @@ def spawn(triage, config_repo, bg_id="abc123ef", agents=()):
         os.makedirs(local_dir)
         json_file = os.path.join(tmp, "item.json")
         with open(json_file, "w", encoding="utf-8") as f:
-            json.dump({"id": "x1", "source": "trello", "subject": "Jordan Avery", "triage": triage}, f)
+            json.dump({"id": "x1", "source": "trello", "subject": "Jordan Avery", "triage": triage, "kind": kind}, f)
         error = None
         try:
             poller.spawn_worker("item-x1", json_file, tmp, runtime, "sonnet", local_dir, config_repo,
@@ -94,6 +94,13 @@ error, prompt, summary_exists, calls, receipt = spawn(
     "needs-you", "C:/cfg/repo", agents=[{"kind": "background", "id": "abc123ef", "sessionId": GUID}])
 check("does not raise", error, None)
 check("receipt holds the full guid", receipt, GUID)
+
+print("\nspawn_worker tells a work-then-reply worker to do the ask before drafting")
+error, prompt, summary_exists, calls, receipt = spawn("needs-you", "C:/cfg/repo", kind="work-then-reply")
+check("does not raise", error, None)
+check("seed names the do-the-ask-first step", "carry the ask out yourself first" in prompt, True)
+error, prompt, summary_exists, calls, receipt = spawn("needs-you", "C:/cfg/repo", kind="reply")
+check("a reply item's seed omits it", "carry the ask out yourself first" in prompt, False)
 
 print("\nspawn_worker leaves no receipt when the headless launch returns no id")
 error, prompt, summary_exists, calls, receipt = spawn("needs-you", "C:/cfg/repo", bg_id=None)
