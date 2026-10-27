@@ -1114,12 +1114,97 @@ def test_comparable_text_cuts_the_quote_and_signature_and_reduces_links():
             "Russ Rutledge\nExecutive Director\nhttps://example.org/\n\n"
             "On Tue, Oct 13, 2026 at 8:26 AM Ana <\nana@example.org> wrote:\n> earlier text\n")
     draft = "Hi Ana - the [ignored] listing is live: [Vacancies](https://example.org/v)."
-    assert sc.comparable_text(sent, sig) == "Hi Ana - the [ignored] listing is live: Vacancies ."
-    assert sc._edit_distance(sc.comparable_text(draft, sig), sc.comparable_text(sent, sig)) <= 0.05
+    assert sc.comparable_text(sent, sig) == "Hi Ana - the [ignored] listing is live: Vacancies."
+    assert sc.comparable_text(draft, sig) == sc.comparable_text(sent, sig)
 
 
 def test_comparable_text_reduces_slack_mrkdwn_links_to_their_label():
     assert sc.comparable_text("See <https://x.org/a|the *agenda*> today") == "See the agenda today"
+
+
+# --- email is rich text: a formatting round trip is not an edit ---
+
+MD_DRAFT = (
+    "Hi Sam - good to see you last week.\n\n"
+    "Thanks for sharing [the Spring Meetup](https://example.org/meetup/) with your team.\n"
+    "It is remote, so anyone can join.\n\n"
+    "Use the code `TEAM-26` when you register.\n\n"
+    "Here's a blurb:\n\n"
+    "> The **Spring Meetup** is May 4 - join free at [ex.org/m](https://ex.org/m)\n\n"
+    "* agenda posted\n"
+    "* slides after\n"
+)
+# The plain-text alternative a mail client derives from the rendered HTML of MD_DRAFT.
+PLAIN_ALTERNATIVE = (
+    "Hi Sam - good to see you last week.\n\n"
+    "Thanks for sharing the Spring Meetup <https://example.org/meetup/> with your team. It is "
+    "remote, so anyone can join.\n\n"
+    "Use the code TEAM-26 when you register.\n\n"
+    "Here's a blurb:\n\n"
+    "The *Spring Meetup* is May 4 - join free at ex.org/m\n\n"
+    "   - agenda posted\n"
+    "   - slides after\n\n"
+    "On Mon, May 1, 2026 at 9:00 AM Sam <sam@example.org> wrote:\n> earlier text\n"
+)
+SENT_HTML = (
+    "<p>Hi Sam - good to see you last week.</p>"
+    '<p>Thanks for sharing <a href="https://example.org/meetup/">the Spring Meetup</a> with your team.\n'
+    "It is remote, so anyone can join.</p>"
+    "<p>Use the code <code>TEAM-26</code> when you register.</p>"
+    "<p>Here's a blurb:</p>"
+    '<blockquote><p>The <strong>Spring Meetup</strong> is May 4 - join free at '
+    '<a href="https://ex.org/m">ex.org/m</a></p></blockquote>'
+    "<ul><li>agenda posted</li><li>slides after</li></ul>"
+)
+
+
+def test_rendered_text_reads_markdown_html_and_plain_alternative_the_same():
+    expected = (
+        "Hi Sam - good to see you last week.\n\n"
+        "Thanks for sharing the Spring Meetup with your team. It is remote, so anyone can join.\n\n"
+        "Use the code TEAM-26 when you register.\n\n"
+        "Here's a blurb:\n\n"
+        "The Spring Meetup is May 4 - join free at ex.org/m\n\n"
+        "- agenda posted\n- slides after"
+    )
+    assert sc.rendered_text(MD_DRAFT) == expected
+    assert sc.rendered_text(PLAIN_ALTERNATIVE) == expected
+    assert sc.rendered_text(SENT_HTML) == expected
+
+
+def test_email_formatting_round_trip_records_sent_as_is(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: pytest.fail("a round trip has no edits to label"))
+    draft_id = _seed_scored("d-rich", MD_DRAFT, NEUTRAL, score=50)
+    result = sc.record_outcome(draft_id, PLAIN_ALTERNATIVE, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "sent-as-is"
+    assert result["edit_distance"] == 0.0
+
+
+def test_email_word_edit_is_labelled_and_briefed_in_rendered_form(monkeypatch):
+    seen = {}
+
+    def label(draft, sent, key):
+        seen.update(draft=draft, sent=sent)
+        return ["tone-voice"], [{"label": "tone-voice", "summary": "added a detail"}], None
+    monkeypatch.setattr(sc, "label_edits", label)
+    draft_id = _seed_scored("d-rich-edit", MD_DRAFT, NEUTRAL, score=50)
+    sent = PLAIN_ALTERNATIVE.replace("May 4 -", "May 4, with a guest keynote -")
+    result = sc.record_outcome(draft_id, sent, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "edited"
+    assert "](" not in seen["draft"] and "`" not in seen["draft"] and "<https" not in seen["sent"]
+    with open(_brief(draft_id), encoding="utf-8") as fh:
+        redline = fh.read().split("## Redline")[1].split("## Diff")[0]
+    assert "May ~~4~~***4, with a guest keynote*** - join" in redline
+    assert "https://" not in redline and "`" not in redline
+
+
+def test_slack_outcome_keeps_its_markup(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: (["tone-voice"], [], None))
+    draft_id = _seed_scored("d-slack-raw", "Ship it `today` please, the whole team agrees.", NEUTRAL,
+                            score=50, channel="slack")
+    result = sc.record_outcome(draft_id, "Ship it today please, the whole team agrees.",
+                               discarded=False, edit_nature=[], reason=None)
+    assert result["edit_distance"] > 0
 
 
 def test_conversation_confirms_by_references_and_vetoes_disjoint_recipients():

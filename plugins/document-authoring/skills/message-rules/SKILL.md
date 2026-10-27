@@ -30,9 +30,9 @@ This section adds the message-specific mechanics on top of it.
 Anchor by format:
 - **Confluence**: `<a href="URL">descriptive text</a>` inside the sentence.
 - **Teams / Slack**: anchor via the link dialog (Ctrl+K).
-- **Word / rich-text email / Markdown / PRs**: anchor to natural words.
+- **Word / email / Markdown / PRs**: anchor to natural words.
+  Email is always rich text: a staged email body is Markdown the stage script renders to HTML, so anchor with `[text](URL)` and use any other Markdown formatting the message needs.
 - **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL right after the text, in parentheses or angle brackets — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
-  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): for a link inside a sentence, put the plain URL right after the text, as above; for a link that stands on its own line, write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
 
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
