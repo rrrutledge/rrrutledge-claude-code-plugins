@@ -313,6 +313,10 @@ The specifics that most often separate a message that reads as Russell's from on
   "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step tied to a response that hasn't come in yet.
   The same holds when what's missing is coming from someone else entirely - "I'll build theirs as soon as those come in" ties a deliverable to photos still missing, so name only what's missing now and leave the follow-through unstated.
   A concrete deliverable tied to something not yet in hand is the trigger, with two named exceptions: an immediate, self-initiated "I'll" for work already decided or already underway (see **Holding the voice**'s next-step rule and **A commitment already carries its own strength** below), and the one reciprocal future-ask case under **Persona modes**' `1on1` job-search-resource bullet.
+- **Answer an own-side pending decision with "We'll let you know."**
+  When the decision or list they're waiting on is still yours, say "We'll let you know" - it tells them what happens next.
+  It promises an update rather than a concrete deliverable, so it sits outside the trigger in the **Offer visibility** bullet above.
+  The message says only that an update will come and leaves the outcome to that update.
 - **Reporting a gap in what someone else provided: state it as a fact, not their delay.**
   "I don't have photos for X and Y yet" reads as a neutral status; "still waiting on photos for X and Y" casts them as behind schedule, which isn't a fair read absent an actual deadline they've missed.
 - **A commitment already carries its own strength - don't undercut it with an added qualifier.**
