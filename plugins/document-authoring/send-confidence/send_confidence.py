@@ -53,6 +53,7 @@ import json
 import math
 import socket
 import difflib
+import functools
 import hashlib
 import datetime
 import subprocess
@@ -754,8 +755,37 @@ def _edit_distance(draft_text, sent_text):
 
 # --- the learning-session brief ---
 
+_SLACK_ID = re.compile(r"^[UCDG][A-Z0-9]{6,}$")
+
+
+@functools.lru_cache(maxsize=None)
+def _slack_display_name(slack_id):
+    """The person's or channel's name for a Slack id, from the slack client's read-only
+    `--resolve-name`; the id itself when the client or the lookup is unavailable, so a title
+    never waits on or fails because of Slack."""
+    path = _client_script("slack", "slack.js")
+    if not path:
+        return slack_id
+    try:
+        r = subprocess.run(["node", path, f"--resolve-name={slack_id}"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return slack_id
+    name = (r.stdout or "").strip()
+    return name if r.returncode == 0 and name else slack_id
+
+
+def _display_recipient(scored):
+    """The recipient as a person reads it: a Slack id becomes a name, anything else (an email
+    address, a name) is already readable and passes through."""
+    recipient = scored.get("recipient")
+    if recipient and scored.get("channel") == "slack" and _SLACK_ID.match(recipient):
+        return _slack_display_name(recipient)
+    return recipient
+
+
 def _spawn_title(scored):
-    who = f"{scored.get('channel') or 'message'} to {scored.get('recipient') or 'unknown'}"
+    who = f"{scored.get('channel') or 'message'} to {_display_recipient(scored) or 'unknown'}"
     return "Learn from send: " + who.replace('"', "'")
 
 

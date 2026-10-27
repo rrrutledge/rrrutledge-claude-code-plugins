@@ -106,6 +106,7 @@ Under `scripts/` (run with `node`):
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
     user ID you already have, printing the DM channel id.
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
+  - Resolve an id to a name: `node slack.js --resolve-name=<user, DM, channel, or group DM id> [--json]` - prints the person's name (a DM gives the other member), or the channel's name, and the id itself when Slack has nothing more.
 
 ## How it works (Web API endpoints)
 
