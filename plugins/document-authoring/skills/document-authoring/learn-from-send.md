@@ -64,7 +64,7 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    - **A clear rule the draft broke** - the reviewer missed it, so the lesson is sharper rule wording a reviewer can't read past.
    - **The rules were silent or ambiguous on it** - a rule gap to fill.
      A change that lands on a spot the reviewer listed as unsettled is this case exactly.
-   - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write.
+   - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write; when every change lands here, report per step 5 and close.
 3. **Fill each rule gap.**
    Distill the underlying **rule**, not the transcript.
    It almost always belongs in `message-rules` (the message artifact rubric); a rule about *how you compose* rather than what lands belongs in `document-authoring`'s drafting loop instead.
@@ -85,8 +85,9 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    The draft, the sent text, the diff, the recipient, and any name, amount, or org detail from the exchange stay in the local brief and this terminal session.
    The PR body describes each change as the pattern it captures, then states the brief's file name (its draft id) so Russell can trace the PR back to the send locally.
    Also state, for each rule added or changed, the overlap search's outcome ("folded into `<bullet>` in `<section>`" or "searched every section and persona - no overlap, new bullet").
-   A session whose diagnosis finds nothing to learn still reports that finding, and a session that finds the process itself at fault fixes the process instead.
+   A session that finds the process itself at fault fixes the process instead.
 5. **Report in one line** what was learned and changed, with the PR link.
+   A session that found nothing to learn reports that finding in one line instead, and closes itself in the same turn via `session-mgr:close`, because Russell trusts the diagnosis.
    The terminal session is where Russell sees the draft and sent text side by side, so quote them here when the change needs them to make sense.
    Always include the brief's Redline section in this reply: one merged text with removed words struck through and added words in bold italics, so Russell reads what changed in one pass and judges the PR against it.
    The redline carries real correspondence, so it stays in the reply and out of the PR.
