@@ -68,11 +68,6 @@ Whether a sign-in exists doesn't decide it here.
   - a **pure memo** - a fact, a link, or a reminder he only wants to keep and re-read, with nothing to act on - is **fyi**.
     When it's genuinely unclear whether the note asks for an action, lean **needs-you** (the standing "unsure → act" tie-breaker below): a false needs-you costs one worker session, a false fyi leaves a directive sitting untouched until the digest.
 
-**An email flagged `hasAttachments: true` delivers the file its body mentions.**
-The payload carries `hasAttachments: true` when the message has a file attachment, and a Gmail preview also names each file on an `Attachments:` line.
-A short body that refers to a file then reads as the cover note for the attached file.
-Triage it as the delivered item, and write the `triageReason` around reviewing the attached file, so the worker opens it before replying.
-
 **When there is something to do, it's one of two buckets:**
 
 - **needs-you** - Russell acts on it now, in its own worker session.

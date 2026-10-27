@@ -34,12 +34,13 @@ Use `mcp__claude_ai_Gmail__search_threads` with `subject:"<subject>"` (no `in:` 
 Read newest-first.
 CLEAR archives to All Mail (not Trash), so any reply the contact sent after capture is always findable here.
 Also run `node gmail.js --list-drafts` to check for an existing draft before staging a new one.
-For step 4's attachments, run `node gmail.js --save-attachments=<messageId> --out-dir=.tmp/<item-id>`.
 
 ## CAPTURE
 See `email-base.md` for the shared two-file shape.
 Gmail-specific: `messageId` is the RFC822 Message-ID header (with angle brackets).
 The `url` opens the message in Gmail by that id.
+
+When the work needs a message's attachments, save them with the gmail skill's "Save attachments" command.
 
 ## CLEAR
 `node gmail.js --archive=<messageId>` - removes the message from the inbox and keeps it in **All Mail** (reversible; narrate it).

@@ -318,7 +318,10 @@ async function getAttachments(client) {
       console.log(`Skipped (not a downloadable file attachment): ${a.name} [${a['@odata.type']}]`);
       continue;
     }
-    const outPath = path.join(outDir, a.name);
+    // A sender controls the filename, so strip any directory part and characters Windows forbids.
+    const name = path.basename(String(a.name || '').replace(/\\/g, '/')).replace(/[<>:"|?*\x00-\x1f]/g, '_')
+      .replace(/^\.+$/, '') || `attachment-${saved.length + 1}`;
+    const outPath = path.join(outDir, name);
     fs.writeFileSync(outPath, Buffer.from(a.contentBytes, 'base64'));
     saved.push(outPath);
     console.log(`Saved: ${outPath} (${a.contentType || 'unknown type'}, ${a.size} bytes)`);
