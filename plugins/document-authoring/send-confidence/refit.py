@@ -11,7 +11,8 @@ One run:
 1. **Gather.** Each resolved draft's attributes and target (`send_confidence_model.target`).
    A scored event from before the `attributes` block (event v2 and v3) contributes what its
    `features` held - one judge reading per attribute, word count from the draft snapshot, no kind.
-   Event v1 measured different aspects under the old factor set, so it stays out.
+   Event v1 rated phrasing complexity and task ambiguity rather than stakes and latitude, so it
+   stays out.
 2. **Noise.** Each judged attribute's noise figure is the pooled within-draft spread of every
    scored event's three readings, resolved or not; until NOISE_MIN_DRAFTS drafts carry readings
    for it, the attribute enters as measured.

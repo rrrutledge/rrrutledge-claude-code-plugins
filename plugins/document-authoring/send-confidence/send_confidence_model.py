@@ -28,7 +28,7 @@ import statistics
 NEAR_AS_IS_MAX_DISTANCE = 0.05
 
 # A discard where Russell answered some other way - another channel, a reaction, a call, in person -
-# is a routing outcome: the wording wasn't the problem, sending anything at all was.
+# is a routing outcome: Russell chose a different route, so the discard says nothing about the wording.
 ROUTE_DISCARD_RE = re.compile(
     r"\binstead\b|\bdirectly\b|\bphone\b|in person|\blive\b|reaction|portal|channel|switched|himself|"
     r"already (?:met|replied|handled|answered|sent)", re.IGNORECASE)

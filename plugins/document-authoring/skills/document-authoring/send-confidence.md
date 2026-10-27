@@ -24,7 +24,7 @@ A message that reaches Russell through no stage command has nothing for the gate
 
 ## The model and its weekly refit
 
-Each scored draft carries a `model` block: the probability it goes out near as-is under the live coefficient file, the floor under that probability, and whether it passes the auto-send test.
+Each scored draft carries a `model` block, its score under the live coefficient file; `score` in `send-confidence/send_confidence_model.py` defines the block's fields and the auto-send test.
 The coefficient file comes from the weekly refit, a plain-code job that fits the model on every resolved draft and ships a new version only when it does as well on the last four weeks' drafts as the live one:
 
 ```

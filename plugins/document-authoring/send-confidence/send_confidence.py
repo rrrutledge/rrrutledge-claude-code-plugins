@@ -20,13 +20,12 @@ readings agreed); rule coverage is the writing reviewer's one rating, carried on
 turn count, familiarity, word count, and channel come from plain code and are exact.
 
 The scored event's `model` block is the draft's score under the live coefficient file the weekly
-refit writes (`refit.py`, terms and arithmetic in `send_confidence_model.py`): the probability
-the draft goes out near as-is, its floor, the support behind it, and whether it passes the
-auto-send test. It is null until a first model ships.
+refit writes (`refit.py`), with the fields `send_confidence_model.score` defines. It is null
+until a first model ships.
 
 The logged `score` is the weighted composite of five 0-100 factors under the frozen `weights.json`,
 each judged factor taken from the low median of its readings: rule coverage, content latitude, stakes, fact support,
-and familiarity. It stays logged until the weekly report reads the `model` block instead.
+and familiarity. The weekly report reads the `score`.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
 (`~/OneDrive/Claude/send-confidence` by default - see the module-level path helpers). Nothing
