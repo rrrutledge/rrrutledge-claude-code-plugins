@@ -51,7 +51,6 @@ These are the most-missed rules, restated so they ride in with this page:
 - Do not restate what the other person already said.
 - On a pure acknowledgment, mirror their length.
 - No new promises or details they did not ask for.
-- Report the sender's ask done, in the past tense, after step 3 has done it (worker-core step 4).
 
 ### Voice gate (mandatory - follow the full loop, not just Read)
 
