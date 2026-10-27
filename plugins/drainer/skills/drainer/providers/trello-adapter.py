@@ -68,7 +68,7 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # The four above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
 # fresh strong-fit role is caught the same day as email; P2/P3 drop below. Within a band, a people manager
 # below the pay floor, or with no posted pay, sits at the neutral level (see _level_band) and interleaves
-# with email by date, while an individual-contributor role waits behind it. This is inert for every other
+# with email by date, as does every individual-contributor P1; a P2/P3 individual contributor waits behind it. This is inert for every other
 # board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
 # `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
@@ -371,17 +371,26 @@ class Provider(ProviderBase):
     @staticmethod
     def _level_band(card):
         """Return a card's level rank from its 'Priority: ... · <level>' desc line — 0 for
-        Director/VP-level, every people-manager card (a `Manages people: yes` line), every non-job-search
-        card, and a job-search card job-board-poll hasn't scored yet; -1 for an IC-level job-search card
-        that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
+        Director/VP-level, every people-manager card (a `Manages people: yes` line), every P1 card
+        (IC-level included), every non-job-search card, and a job-search card job-board-poll hasn't
+        scored yet; -1 for a P2/P3 IC-level job-search card that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
         before referral. Zero is the shared neutral level that email/Slack and ordinary Trello cards also
         carry by default, so a people manager interleaves with today's mail by date within its priority
-        band; an IC posting drops below and waits for that neutral level to clear. A people manager at
+        band; a P2/P3 IC posting drops below and waits for that neutral level to clear. A people manager at
         the pay floor, or a Director-or-above, is lifted a whole band instead (see _priority_band)."""
         desc = card.get("desc") or ""
-        if "IC-level" in desc and not Provider._manages_people(card):
+        if "IC-level" in desc and not Provider._manages_people(card) and not Provider._is_p1(card):
             return -1
         return 0
+
+    @staticmethod
+    def _is_p1(card):
+        """True for a card wearing the P1 priority label."""
+        for l in card.get("labels", []):
+            m = _PRIORITY_RE.match(l.get("name") or "")
+            if m and int(m.group(1)) == 1:
+                return True
+        return False
 
     def _has_skip_label(self, card):
         """True if the card wears a suppress label (default: ⛔ Blocked) — hidden until it's cleared."""

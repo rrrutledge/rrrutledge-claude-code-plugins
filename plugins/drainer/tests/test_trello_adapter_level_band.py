@@ -47,8 +47,10 @@ def test_level_band_reads_desc_line():
     Provider = adapter_mod.Provider
     check("Director/VP-level -> 0 (shared neutral level with email/Slack)",
           Provider._level_band(card("Priority: P1 · Developer enablement · Director/VP-level")) == 0)
-    check("IC-level -> -1",
-          Provider._level_band(card("Priority: P1 · Developer enablement · IC-level")) == -1)
+    check("P1 IC-level -> 0 (interleaves with email by date)",
+          Provider._level_band(card("Priority: P1 · Developer enablement · IC-level", [{"name": "🎯 P1"}])) == 0)
+    check("P2 IC-level -> -1",
+          Provider._level_band(card("Priority: P2 · Internal enablement · IC-level", [{"name": "🎯 P2"}])) == -1)
     check("no priority line -> 0 (non-job-search board)", Provider._level_band(card("just a normal card")) == 0)
     check("empty desc -> 0", Provider._level_band(card(None)) == 0)
 
@@ -213,8 +215,12 @@ def test_priority_band_above_inbox_pins():
           Provider._priority_band(card(labels=[{"name": "👤 Contact"}])) == above)
     check("people manager (IC-level word + Manages people line) -> level 0, interleaves with email",
           Provider._level_band(card("Priority: P1 · x · IC-level\nManages people: yes")) == 0)
-    check("IC-level that manages no one -> level -1",
-          Provider._level_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr (posted)")) == -1)
+    check("P3 IC-level that manages no one -> level -1",
+          Provider._level_band(card("Priority: P3 · x · IC-level\nComp: up to $300K/yr (posted)", p3)) == -1)
+    check("P1 IC-level that manages no one -> level 0, whatever the pay",
+          Provider._level_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr (posted)", p1)) == 0)
+    check("P3 people manager under the floor -> level 0",
+          Provider._level_band(card("Priority: P3 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p3)) == 0)
 
 
 def test_registry_parses_in_progress_lists():

@@ -52,8 +52,8 @@ The band each tier maps to - and how to change it - is defined in one place, the
 
 A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores, plus a `Manages people: yes` line when engineers or engineering managers report to the role and a `Comp: up to $<N>K/yr (posted)` line when the posting states pay.
 The poller only records these facts; this model alone decides what they rank.
-Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` or `Manages people: yes` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; an `IC-level` card that manages no one drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
-Individual-contributor P1s therefore still wait behind email; whether they should interleave too is a separate decision.
+Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` or `Manages people: yes` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; a P2/P3 `IC-level` card that manages no one drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
+Every P1, individual contributors included, sits at level 0, so a P1 that is not pinned above the inbox interleaves with email by date.
 
 The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
 See the adapter's `_referral_band`.
