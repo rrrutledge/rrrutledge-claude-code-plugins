@@ -62,9 +62,10 @@
 //                 time, isDraft. <threadId> is the hex `threadId` --list-inbox-imap returns per item.
 //                 Read-only; the drainer's acknowledgement sweep reads it.)
 // List drafts:   node gmail.js --list-drafts [--top=30]
-// Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>]
+// Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>] [--name=<substring>]
 //                (downloads every attachment on a message to <dir> (default: cwd); looked up in All Mail
-//                 like --show. Prints each saved filename + size. Attachments with no filename are named
+//                 like --show; --name keeps only attachments whose filename contains the substring
+//                 (case-insensitive). Prints each saved path + size. Attachments with no filename are named
 //                 "attachment-N".)
 // Draft a reply: node gmail.js --reply --message-id=<id> --body-file=reply.md [--attach=a.pdf,b.png] [--inline=s1.png,s2.png] [--no-quote]
 //                (stages a DRAFT reply in the thread; never sends; replaces any prior draft on the same
@@ -551,12 +552,19 @@ async function saveAttachments() {
   if (!atts.length) { console.log('Message has no attachments.'); return; }
   const outDir = args['out-dir'] ? String(args['out-dir']) : process.cwd();
   fs.mkdirSync(outDir, { recursive: true });
+  // A sender controls the filename, so strip any directory part and characters Windows forbids.
+  const safeName = (n, i) => path.basename(String(n || '').replace(/\\/g, '/')).replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/^\.+$/, '') || `attachment-${i + 1}`;
+  const nameFilter = args.name ? String(args.name).toLowerCase() : null;
+  let saved = 0;
   atts.forEach((a, i) => {
-    const name = a.filename || `attachment-${i + 1}`;
+    const name = safeName(a.filename, i);
+    if (nameFilter && !name.toLowerCase().includes(nameFilter)) return;
     const dest = path.join(outDir, name);
     fs.writeFileSync(dest, a.content);
+    saved++;
     console.log(`Saved ${dest} (${a.content.length} bytes, ${a.contentType || 'unknown type'})`);
   });
+  if (!saved) console.log(`No attachment name contains "${args.name}".`);
 }
 
 async function listDrafts() {
