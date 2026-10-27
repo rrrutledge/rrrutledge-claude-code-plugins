@@ -282,7 +282,8 @@ The specifics that most often separate a message that reads as Russell's from on
   The plain-speech rule above targets decorating a description, not a genuine reaction to someone else's good news — that's **Warm exclamations used genuinely**, below.
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
-  **When a plan belongs to a named colleague who will carry it forward with the recipient, name that colleague, so the recipient knows whose plan it is and who to expect to hear from.
+  **When someone else owns the work or the plan, name them rather than saying "we"**, so they get the credit and the recipient knows whose it is and who to expect to hear from.
+  "We" is for work Russell himself is doing, where it shares the credit.
   This covers confirming a completed institutional-onboarding action too - "we made you a new email address" reads as the org processing someone into it, not Russell personally handling it; contrast the next bullet's personal "I'll", which is for work that's Russell's own to do, not the org's standing process.
   Paying a vendor invoice is action taken on the org's behalf too, so it stays "we'll" - "we'll send that over" - regardless of whether Russell personally executes the transfer or fronts it himself for reimbursement; the recipient only needs to know the org is paying, not who personally sends it.
 - **Disclosing a gap in the org's own records that predates Russell's tenure: attribute it to the time before he led it, not a flat statement of the gap.**
