@@ -199,7 +199,9 @@ A single clear sentence ending in a question is usually the whole message — re
   The same holds for something they shared or described: the author already knows what it is, so a reply that names its mechanism or features as praise hands their own description back.
   Give the reaction (what you think of it, what it's good for) and leave the description out.
 - **Accepting an opportunity or proposal about an idea earns one short sentence of your own view of the idea or its goal after the yes.**
-  The acceptance then reads as engaged rather than bare; a reply confirming a booked call and an accepted introduction ("When a contact offers to connect you with a specific named person") take no added sentence.
+  The acceptance then reads as engaged rather than bare.
+  Keep that sentence to a plain, warm reaction of your own, since a predicted benefit or outcome asserts something nobody gave you.
+  A reply confirming a booked call or an accepted introduction ("When a contact offers to connect you with a specific named person") takes no added sentence.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
   Don't add a clause explaining why you're grateful — "Thanks so much, Lena!", not "…really appreciate you taking the time." Reacting to content shared for a favor like that carries the same amplifier caution as authoring-rules' "Say it plainly": a plain, measured line ("is a good story") reads as genuine, not a superlative tied to your own purpose ("is exactly the kind of concrete example I wanted for the talk"), which reads as over-the-top and fake. Reserve real enthusiasm for someone who volunteered unprompted effort, not one you asked for (see **Thanking a volunteer** in Core voice). (How much warmth a close carries is set separately, by relationship — see **Register**.)
 - **When specific people own the answer, don't explain the architecture — route to them, or when the recipient is that owner, let them supply the mechanism.**
