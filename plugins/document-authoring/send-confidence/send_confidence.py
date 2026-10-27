@@ -479,6 +479,10 @@ def _plain_text(text):
     return html.unescape(text).strip()
 
 
+# Channels whose drafts are rich text: staged as Markdown, sent as HTML.
+EMAIL_CHANNELS = {"gmail", "outlook-personal", "outlook-work"}
+
+
 def _read_draft_text(draft_id):
     with open(os.path.join(drafts_dir(), f"{draft_id}.txt"), "r", encoding="utf-8") as fh:
         return _plain_text(fh.read())
@@ -850,9 +854,8 @@ def redline(draft_text, sent_text):
     return "".join(out)
 
 
-def _write_brief(draft_id, scored, outcome_event, sent_text):
+def _write_brief(draft_id, scored, outcome_event, draft_text, sent_text):
     os.makedirs(briefs_dir(), exist_ok=True)
-    draft_text = _read_draft_text(draft_id)
     if sent_text is not None:
         diff = "\n".join(difflib.unified_diff(
             draft_text.splitlines(), sent_text.splitlines(), fromfile="draft", tofile="sent", lineterm="",
@@ -946,6 +949,10 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     `moot` (discards only - what it does and when to pass it live in learn-from-send.md).
     `recipient` names who the sent message went to when the staged draft didn't carry it (a
     reply's stage command names its thread, not its addressee); it labels the learning session.
+    An email is rich text: its draft is staged as Markdown and rendered to HTML, and its sent
+    item reads back as that HTML or a plain-text alternative derived from it, so both sides go
+    through `rendered_text` before they are compared, and a formatting round trip never reads
+    as an edit.
     `sweep` is the outcome sweep's own record of the match ({"edit_distance", "sent_ref"} for a
     send, {} for a draft that never went out): the distance it measured stands in for the
     plain one, the edits stay unlabelled, no learning session spawns, and the event carries
@@ -967,11 +974,14 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     edit_nature = list(edit_nature or [])
     changes = []
     label_error = None
+    draft_text = None
     if discarded:
         disposition = "discarded"
         edit_distance = None
     else:
         draft_text = _read_draft_text(draft_id)
+        if scored.get("channel") in EMAIL_CHANNELS:
+            draft_text, sent_text = rendered_text(draft_text), rendered_text(sent_text)
         if sweep is not None:
             edit_distance = sweep["edit_distance"]
         else:
@@ -1026,7 +1036,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
 
     dispatch = None
     if learn_reasons and sweep is None:
-        brief_path = _write_brief(draft_id, scored, event, sent_text)
+        brief_path = _write_brief(draft_id, scored, event, draft_text, sent_text)
         dispatch = (
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
             f'--title "{_spawn_title(scored)}" '
@@ -1202,24 +1212,56 @@ def _signature_text():
     return comparable_text(sig) if sig else ""
 
 
-def comparable_text(text, signature=""):
-    """The part of a message a draft can be compared with: the quoted original and the
-    signature (itself already reduced by this function) cut off, and Markdown, Slack mrkdwn,
-    and links reduced to their words, so a staged `[anchor](url)` and a sent `anchor <url>`
-    read the same."""
+def rendered_text(text):
+    """The words a reader of the rendered message sees, in one form whichever way the message
+    reached us: the Markdown a draft is staged in, the HTML a sent item holds, the plain-text
+    alternative a mail client derives from that HTML, or Slack mrkdwn. A link reads as its
+    anchor text (`[anchor](url)`, `anchor <url>`, `anchor (url)`, and `<a href>` all read
+    `anchor`), code, emphasis, heading, and blockquote markers drop away, every list item is one
+    `- ` line, and a paragraph's source line breaks join into spaces, since rendering reflows
+    them. The quoted original is cut off. A formatting round trip therefore reads the same on
+    both sides, and only a change to the words shows."""
     # Slack's `<url|label>` and a mail client's `<url>` go before the markup strip, which would
     # read them as tags and drop the label with them.
     text = re.sub(r"<(?:https?|mailto):[^|>]*\|([^>]+)>", r"\1", text or "")
     text = re.sub(r"<(?:https?|mailto):[^>]*>", " ", text)
+    text = re.sub(r"(?i)<li\b[^>]*>", "\n- ", text)
+    text = re.sub(r"(?i)</li>", "", text)
+    text = re.sub(r"(?i)</(?:p|blockquote|ul|ol|h[1-6])>", "\n\n", text)
     text = _plain_text(text).replace("\r\n", "\n")
     cut = min((m.start() for m in (p.search(text) for p in _QUOTE_MARKERS) if m), default=len(text))
-    text = "\n".join(line for line in text[:cut].split("\n") if not line.lstrip().startswith(">"))
+    text = text[:cut]
     text = re.sub(r"\[image:[^\]]*\]", " ", text)
     text = re.sub(r"\[([^\]]+)\]\((?:[^)]+)\)", r"\1", text)
     text = re.sub(r"\((?:https?|mailto):[^)]*\)|(?:https?|mailto):\S+", " ", text)
-    text = re.sub(r"(?m)^\s*(?:[-*+•]|\d+[.)])\s+", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:>[ \t]?)+", "", text)
+    text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+", "\0", text)
     text = re.sub(r"[*_~`]+", "", text)
-    text = " ".join(text.split())
+    paragraphs = []
+    for block in re.split(r"\n[ \t]*\n", text):
+        lines = []
+        for line in block.split("\n"):
+            item = line.startswith("\0")
+            line = re.sub(r"\s+([.,;:!?)])", r"\1", " ".join(line.strip("\0").split()))
+            if not line:
+                continue
+            if item:
+                lines.append("- " + line)
+            elif lines:
+                lines[-1] += " " + line
+            else:
+                lines.append(line)
+        if lines:
+            paragraphs.append("\n".join(lines))
+    return "\n\n".join(paragraphs)
+
+
+def comparable_text(text, signature=""):
+    """The part of a message a draft can be compared with: `rendered_text` on one line with its
+    list markers dropped, and the signature (itself already reduced by this function) cut off,
+    so a staged `[anchor](url)` and a sent `anchor <url>` read the same."""
+    text = " ".join(re.sub(r"(?m)^- ", "", rendered_text(text)).split())
     if signature:
         at = text.rfind(signature)
         if at >= 0:
