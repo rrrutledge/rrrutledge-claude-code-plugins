@@ -100,6 +100,10 @@ Under `scripts/` (run with `node`):
     before concluding a thread is unresponded.)
   - Show one: `node gmail.js --show=<message-id>` (`<message-id>` is the Message-ID header, with the
     angle brackets, e.g. `<abc@mail.gmail.com>`)
+  - Save attachments: `node gmail.js --save-attachments=<message-id> [--out-dir=<dir>] [--name=<substring>]`
+    (writes each attachment to `<dir>`, default cwd, under its sanitized original filename and prints one
+    `Saved <path>` line per file; `--name` keeps only filenames containing the substring; works in All Mail
+    like `--show`, and with `--account=<name>`)
   - Envelope-auth headers: `node gmail.js --auth=<message-id>` (JSON with the message's
     `Authentication-Results` and `Received-SPF` values — the SPF/DKIM/DMARC provenance Gmail stamped on
     arrival, which the `From:` line can't give; read by the drainer's security screen; also any
@@ -214,7 +218,7 @@ If Google declines to return a refresh token, revoke prior access at
 ## Notes
 
 - The load-bearing identifier for a **message** is the **Message-ID header** (`id` in `--json`): pass it
-  to `--show`, `--auth`, `--reply`, and `--archive`. It's resolved to Gmail's internal id via an
+  to `--show`, `--auth`, `--save-attachments`, `--reply`, and `--archive`. It's resolved to Gmail's internal id via an
   `rfc822msgid:` search across All Mail, so it works whether the message is in the inbox, archived, or
   sent.
 - The load-bearing identifier for a **draft** is the **draft-id** that `--reply` / `--draft-new` print:

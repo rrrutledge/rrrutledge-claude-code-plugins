@@ -301,7 +301,8 @@ def load_providers(cfg, health):
 TRIAGE_INSTRUCTIONS = (
     "You are the drainer poller's triage step. Classify each item per the rubric below, applied with "
     "the world-knowledge below. For EACH item decide its bucket; for needs-you (and auto-handle) also "
-    "give kind = reply | work | work-then-reply (else null) and complexity = simple | complex (simple = "
+    "give kind = reply | work | work-then-reply (else null), per the rubric's needs-you hint, "
+    "and complexity = simple | complex (simple = "
     "a quick reply or a trivial action; complex = multi-step work, research, code, or a delicate / "
     "high-stakes message — these get a stronger model). For a JUNK item that is deceptive (a phishing "
     "lure, a spoofed or lookalike sender domain, a credential-harvest or scam, per the rubric's phishing "
@@ -1271,9 +1272,10 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     # to it from prose — mechanical loading the worker can't miss.
     try:
         with open(json_file, encoding="utf-8") as jf:
-            triage = (json.load(jf) or {}).get("triage")
+            item_json = json.load(jf) or {}
+        triage, kind = item_json.get("triage"), item_json.get("kind")
     except Exception:
-        triage = None
+        triage = kind = None
     auto_handle = os.path.join(SKILL_DIR, "engine", "auto-handle.md")
     ctx_file = write_worker_context(item, local_dir, json_file)
     with open(prompt_file, "w", encoding="utf-8") as f:
@@ -1300,6 +1302,14 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
                 f"Read `{auto_handle}` and follow it (act → CLEAR → stamp disposition → queue the "
                 "digest entry → close up), instead of the needs-you flow, unless it tells you to fall "
                 "back to needs-you.\n"
+            )
+        elif kind == "work-then-reply":
+            # Triage read an ask the pod can carry out; say so in the seed so the worker does the ask
+            # before it drafts, instead of drafting a promise to do it (worker-core step 3).
+            f.write(
+                "Triage read an ask in this item (`kind` is `work-then-reply`). Per worker-core step 3, "
+                "carry the ask out yourself first, staging only its irreversible final button for Russell, "
+                "then draft the reply reporting it done (step 4).\n"
             )
         f.write(
             # Repo-tracked config the item's handling depends on — above all `initiatives/<slug>.md`

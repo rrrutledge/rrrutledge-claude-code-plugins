@@ -73,7 +73,8 @@ Whether a sign-in exists doesn't decide it here.
 - **needs-you** - Russell acts on it now, in its own worker session.
   This is the default for anything he'd do.
   It's ONE bucket on purpose; don't split reply-vs-work here.
-  Record a hint: **"reply" / "work" / "work-then-reply"**.
+  Record a hint: **"reply"** when a message is the whole response (an answer, an acknowledgment), **"work"** when the action is the whole of it, and **"work-then-reply"** when the sender asks for something the pod can carry out itself (the asks `worker-core.md` step 3 covers) and a reply then reports it done.
+  The verdict's reason (the item's `triageReason`) names that ask as the worker's task ("fill the sender's form, then reply done"), because the worker carries it out itself (`worker-core.md` step 3).
 - **auto-handle** - the narrow case where a **standing rule fully decides** the action: the same answer every time, no judgment left.
   Claude does it autonomously and reports it in the digest instead of waiting on Russell.
   These standing rules are defined per source, in `providers/<source>-provider.md` under its **AUTO-HANDLE** section (the poller surfaces them at triage time so the match can be made here); pick this bucket **only** when one of those rules plainly matches - it says exactly what to do and under what condition.
