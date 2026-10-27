@@ -134,12 +134,12 @@ Marking read (CLEAR) silences the current item but does not stop the next one - 
 There is no inbound-mail-style unsubscribe for Slack.
 
 ## DRAFT-MODE
-Stage the reply through the **`message-draft`** skill's **`slack`** mode (browser, draft-only) - that skill owns the composer mechanics and the voice gate.
-It jumps to the conversation, confirms the header matches, and **types the reply into the Slack composer without sending** (Slack auto-saves it as a per-conversation draft).
-**Never press Enter / never send.**
 Before writing the body, follow the pre-draft step in `email-base.md`.
-Show the draft text in your reply and tell the user to edit + send it themselves in Slack.
-(message-draft loads `document-authoring` for the voice and runs its stage-time voice gate; learning from the send still applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.)
+Stage the reply the moment it passes `writing-review`, before showing it.
+Write the reviewed body to a `.tmp` file, mint its receipt with `verify_gate.py mint`, and create the server-side draft with the **`slack`** skill's `--create-draft` (it turns `<@U...>` tokens into real mentions), then confirm it with `--list-drafts`; the **`message-draft`** skill's `slack` mode step 6 lists the flags.
+The reply shows the staged text and says it sits in the conversation's Slack drafts.
+When the API path fails, stage through the **`message-draft`** skill's **`slack`** mode (browser composer, draft-only); that skill owns the composer mechanics and the voice gate, loading `document-authoring` for the voice.
+Learning from the send applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.
 
-- **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): point `message-draft` slack mode at that conversation.
+- **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts` (or, on the browser fallback, point `message-draft` slack mode at it).
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.

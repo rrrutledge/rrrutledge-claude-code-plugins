@@ -28,6 +28,7 @@ The middle step is the one that gets dropped under pressure, so carry all three 
 ## Two shapes of the same flow
 
 - **An outward message** - email, Slack, Teams, a Jira or GitHub comment - ends in **Stage**: put the reviewed text where it will be sent and leave it there, and Russell sends it himself.
+  Staging follows the review immediately and precedes showing the text: the reply shows the staged draft and where it lives, and the only question for Russell is whether to send.
   Then **Learn**: after he sends, record how his sent version differs from your draft, and a learning session folds any lesson back into the rules (the process for doing so is `document-authoring`'s `learn-from-send.md`).
   The message-shaped flow, step by step with its persona and staging detail, is `document-authoring`'s drafting loop.
 
