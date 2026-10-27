@@ -40,6 +40,8 @@ See `email-base.md` for the shared two-file shape.
 Gmail-specific: `messageId` is the RFC822 Message-ID header (with angle brackets).
 The `url` opens the message in Gmail by that id.
 
+When the work needs a message's attachments (a spreadsheet to process or re-upload), save them with `node gmail.js --save-attachments=<messageId> --out-dir=<dir>`; it works on archived mail too.
+
 ## CLEAR
 `node gmail.js --archive=<messageId>` - removes the message from the inbox and keeps it in **All Mail** (reversible; narrate it).
 Archiving, not trashing, is the drainer's clear: a drained item has been dealt with, not discarded.
