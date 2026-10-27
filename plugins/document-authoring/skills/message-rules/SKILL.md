@@ -198,7 +198,6 @@ A single clear sentence ending in a question is usually the whole message — re
 - **Never repeat back what they just told you.** This holds even when it's dressed up as your own reaction: "Glad the repair went so fast" just hands back the fact they already gave you - that it went fast.
   The same holds for something they shared or described: the author already knows what it is, so a reply that names its mechanism or features as praise hands their own description back.
   Give the reaction (what you think of it, what it's good for) and leave the description out.
-  An agenda they proposed counts as something they described; thank them for reaching out and state only a feeling Russell's own notes or the thread show he has.
 - **Accepting an opportunity or proposal about an idea earns one short sentence of your own view of the idea or its goal after the yes.**
   The acceptance then reads as engaged rather than bare; a reply confirming a booked call and an accepted introduction ("When a contact offers to connect you with a specific named person") take no added sentence.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
