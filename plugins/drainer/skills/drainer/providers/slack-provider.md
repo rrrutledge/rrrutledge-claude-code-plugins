@@ -143,4 +143,3 @@ Show the draft text in your reply and tell the user to edit + send it themselves
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): point `message-draft` slack mode at that conversation.
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
-- A reply is warranted only after any underlying **work** (step 3 of worker-core) is done - draft about the outcome, not a promise.

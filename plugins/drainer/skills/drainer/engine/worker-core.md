@@ -215,12 +215,21 @@ Doing so drops the plan-phase context from the implementation session, runs the 
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
 You are the implementer, not a task manager.
+
+**An ask in the item is ours to carry out, then the reply reports it done.**
+Whatever the sender asks Russell to do is step 3's work whenever the pod can do it with facts it can find (`context.md`, `~/OneDrive/Claude/personal-facts.md`, his mailboxes, calendars, and files) or a system it can drive: a form to fill, a link or document to send, a fact about him to share, a calendar slot to book or an invite to accept, an account or access to set up.
+Do it now, and stage only its irreversible final button (a form's Submit, an invite's Send) for Russell, per the global staging rule; step 4's reply then reports the ask done.
+An ask that needs a fact or a judgment only Russell holds comes back to him as one complete question (§1's one-brief rule), and the work resumes on his answer.
+An ask only his own hands can finish is still ours to set up: open the page for him in the browser (browser-chauffeur), ready at the step he takes, or give him the exact steps when there is no page to open; every LinkedIn action gets its link for him to click, per the LinkedIn ban.
+The reply then reports it done once he has done it.
+Triage's `kind` and `triageReason` are a quick read of a skimmed body; the ask in the item's own words decides what step 3 does.
+
 Opening the PR this item is about?
 You open it.
 Filing its ticket?
 You file it.
 Completing a form?
-You fill it out together with the user.
+You fill it out, and Russell presses Submit.
 Writing the code it calls for?
 You write it.
 **The user guides if needed, but you drive the keyboard.**
@@ -243,6 +252,11 @@ This applies whether Trello is your own source or you found the card from anothe
 The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
 Show the draft text in your reply, then tell the user to review it and either send it themselves or tell you to send it.
 Don't send on your own initiative - only on Russell's explicit per-message instruction this turn, reviewing this exact draft (per the send exception in §0's framing above); silence or a generic go-ahead earlier in the conversation doesn't count.
+
+**The reply reports the sender's ask done, in the past tense.**
+It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and Russell presses any staged final button before he sends it.
+Before staging, confirm every ask the draft mentions is one step 3 finished; for any that isn't, return to step 3, do it, and rewrite the draft.
+When the ask depends on an input the sender or a system still owes (an invite not yet sent, a document still coming), tell Russell what it's waiting on and hold the reply until it can report the ask done.
 
 Teams and Slack staging runs inside message-draft's own browser subagent (its **`teams` and `slack` stage in a browser subagent** section).
 If that subagent returns `HELP_NEEDED` instead of `DONE`, follow §2e.
