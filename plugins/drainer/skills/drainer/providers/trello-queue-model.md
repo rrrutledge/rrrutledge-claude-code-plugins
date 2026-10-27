@@ -43,13 +43,17 @@ The order of those three bands is defined in exactly one place, `provider_base.b
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
-A **people-manager card whose posted pay reaches the floor** is pinned there too: its desc level is `Director/VP-level` or `Manager-level` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
+A **Director-or-above card** (desc level `Director/VP-level`) is pinned there too, with or without posted pay.
+A **people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
+A people manager with no posted pay, or pay under the floor, is not pinned: it keeps its P-tier band and sits at the neutral level, interleaved with email by date (see the level band below).
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
-A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level`, `· Manager-level`, or `· IC-level` line into every Job Search Outreach card it scores, plus a `Comp: up to $<N>K/yr (posted)` line when the posting states pay.
-Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; a card whose desc contains `IC-level` or `Manager-level` drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
+A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores, plus a `Manages people: yes` line when engineers or engineering managers report to the role and a `Comp: up to $<N>K/yr (posted)` line when the posting states pay.
+The poller only records these facts; this model alone decides what they rank.
+Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` or `Manages people: yes` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; an `IC-level` card that manages no one drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
+Individual-contributor P1s therefore still wait behind email; whether they should interleave too is a separate decision.
 
 The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
 See the adapter's `_referral_band`.

@@ -61,11 +61,14 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)        → above neutral   worked ahead of email/Slack and every application
 #   card on an in-progress list          → above neutral   a live application is worked ahead of the inbox
+#   Director-or-above role               → above neutral   with or without posted pay
 #   people manager, posted pay >= floor  → above neutral   the role Russell needs, whatever its title
 #   P1 application card                  → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card               → below neutral   worked once the neutral band is drained
-# The three above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
-# fresh strong-fit role is caught the same day as email; P2/P3 drop below. This is inert for every other
+# The four above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
+# fresh strong-fit role is caught the same day as email; P2/P3 drop below. Within a band, a people manager
+# below the pay floor, or with no posted pay, sits at the neutral level (see _level_band) and interleaves
+# with email by date, while an individual-contributor role waits behind it. This is inert for every other
 # board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
 # `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
@@ -74,12 +77,13 @@ _PRIORITY_BAND = {
     3: NEUTRAL_PRIORITY_BAND - 2,
 }
 
-# The pay-band floor: a people-manager card (desc level `Director/VP-level` or `Manager-level`) whose
-# `Comp:` desc line tops out at or above this annual USD figure ranks above neutral at any P-tier. The
-# personal-ai-pod job-board poller writes both lines; its job-search initiative's Priority section holds
-# the policy this number comes from.
+# The pay-band floor: a people-manager card (a `Manages people: yes` desc line) whose `Comp:` desc line
+# tops out at or above this annual USD figure ranks above neutral at any P-tier. The personal-ai-pod
+# job-board poller records both lines, plus the `Director/VP-level` level word, as facts; this adapter
+# alone decides what they rank.
 _PAY_BAND_FLOOR = 250_000
-_PEOPLE_MANAGER_LEVELS = ("Director/VP-level", "Manager-level")
+_DIRECTOR_LEVEL = "Director/VP-level"
+_MANAGES_PEOPLE_RE = re.compile(r"^Manages people:\s*yes\b", re.MULTILINE | re.IGNORECASE)
 # A `Comp:` desc line's dollar figures: "$260K", "$262,500", "$262.5k".
 _COMP_LINE_RE = re.compile(r"^Comp:(.*)$", re.MULTILINE)
 _DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
@@ -298,13 +302,14 @@ class Provider(ProviderBase):
     @staticmethod
     def _priority_band(card, in_progress=False):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        Three pins put a card one band above neutral, ahead of the inbox and every application tier,
+        Four pins put a card one band above neutral, ahead of the inbox and every application tier,
         whatever other labels it wears: a 👤 Contact person-follow-up card; a card on one of its board's
-        in-progress lists (`in_progress`, resolved by the caller from the card's list); and a
-        people-manager card whose posted pay reaches _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3
-        priority label wins; an application card normally wears exactly one."""
+        in-progress lists (`in_progress`, resolved by the caller from the card's list); a Director-or-above
+        role, with or without posted pay; and a people-manager role whose posted pay reaches
+        _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3 priority label wins; an application card normally
+        wears exactly one."""
         labels = card.get("labels", [])
-        if in_progress or Provider._pays_people_manager_floor(card):
+        if in_progress or Provider._is_director_level(card) or Provider._pays_people_manager_floor(card):
             return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or ""):
@@ -332,11 +337,20 @@ class Provider(ProviderBase):
         return max(figures) if figures else None
 
     @staticmethod
+    def _is_director_level(card):
+        """True for a Director-or-above card (its desc level word is `Director/VP-level`)."""
+        return _DIRECTOR_LEVEL in (card.get("desc") or "")
+
+    @staticmethod
+    def _manages_people(card):
+        """True for a card whose desc carries the poller's `Manages people: yes` line, or whose level
+        is Director/VP (every Director-or-above manages people)."""
+        return bool(_MANAGES_PEOPLE_RE.search(card.get("desc") or "")) or Provider._is_director_level(card)
+
+    @staticmethod
     def _pays_people_manager_floor(card):
-        """True for a people-manager card (desc level `Director/VP-level` or `Manager-level`) whose
-        `Comp:` line reaches _PAY_BAND_FLOOR."""
-        desc = card.get("desc") or ""
-        if not any(level in desc for level in _PEOPLE_MANAGER_LEVELS):
+        """True for a people-manager card whose `Comp:` line reaches _PAY_BAND_FLOOR."""
+        if not Provider._manages_people(card):
             return False
         comp = Provider._comp_max(card)
         return comp is not None and comp >= _PAY_BAND_FLOOR
@@ -357,16 +371,15 @@ class Provider(ProviderBase):
     @staticmethod
     def _level_band(card):
         """Return a card's level rank from its 'Priority: ... · <level>' desc line — 0 for
-        Director/VP-level, every non-job-search card, and a job-search card job-board-poll hasn't
-        scored yet; -1 for an IC-level or Manager-level (people manager below director) job-search
-        card. Level leads referral in band_rank, so within a fit tier the level decides before referral.
-        Zero is the shared neutral level that email/Slack and ordinary Trello cards also carry by
-        default, so a Director/VP-level lead interleaves with today's mail by date within its priority
-        band; an IC-level or Manager-level posting drops below and waits for that neutral level to clear,
-        unless its posted pay lifts it a whole band (see _priority_band). Mirrors job-board-poll's
-        tiers.js PREVIEW_LEVEL_RANK's relative order (lead ahead of manager and ic)."""
+        Director/VP-level, every people-manager card (a `Manages people: yes` line), every non-job-search
+        card, and a job-search card job-board-poll hasn't scored yet; -1 for an IC-level job-search card
+        that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
+        before referral. Zero is the shared neutral level that email/Slack and ordinary Trello cards also
+        carry by default, so a people manager interleaves with today's mail by date within its priority
+        band; an IC posting drops below and waits for that neutral level to clear. A people manager at
+        the pay floor, or a Director-or-above, is lifted a whole band instead (see _priority_band)."""
         desc = card.get("desc") or ""
-        if "IC-level" in desc or "Manager-level" in desc:
+        if "IC-level" in desc and not Provider._manages_people(card):
             return -1
         return 0
 
