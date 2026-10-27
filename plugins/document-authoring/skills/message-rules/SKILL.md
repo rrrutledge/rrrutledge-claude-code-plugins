@@ -31,8 +31,8 @@ Anchor by format:
 - **Confluence**: `<a href="URL">descriptive text</a>` inside the sentence.
 - **Teams / Slack**: anchor via the link dialog (Ctrl+K).
 - **Word / rich-text email / Markdown / PRs**: anchor to natural words.
-- **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL in parentheses right after the text — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
-  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): for a link inside a sentence, put the plain URL in parentheses right after the text, as above; for a link that stands on its own line, write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
+- **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL right after the text, in parentheses or angle brackets — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
+  **A plain-text email body** (a draft staged through a script or API, where `[text](URL)` would arrive as literal characters): for a link inside a sentence, put the plain URL right after the text, as above; for a link that stands on its own line, write the descriptive text, then the URL in angle brackets on the next line — `Project name` / `<https://example.com/project>`.
 
 **When previewing a draft for approval, show where each link lands.**
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
@@ -198,6 +198,7 @@ A single clear sentence ending in a question is usually the whole message — re
 - **Never repeat back what they just told you.** This holds even when it's dressed up as your own reaction: "Glad the repair went so fast" just hands back the fact they already gave you - that it went fast.
   The same holds for something they shared or described: the author already knows what it is, so a reply that names its mechanism or features as praise hands their own description back.
   Give the reaction (what you think of it, what it's good for) and leave the description out.
+  An agenda they proposed counts as something they described; thank them for reaching out and state only a feeling Russell's own notes or the thread show he has.
 - **Accepting an opportunity or proposal about an idea earns one short sentence of your own view of the idea or its goal after the yes.**
   The acceptance then reads as engaged rather than bare; a reply confirming a booked call and an accepted introduction ("When a contact offers to connect you with a specific named person") take no added sentence.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
