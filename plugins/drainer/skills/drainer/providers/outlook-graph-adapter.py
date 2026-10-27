@@ -16,7 +16,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
-                           node_failure_kind, parse_email_auth)
+                           node_failure_kind, parse_email_auth, parse_attachments)
 
 
 class Provider(ProviderBase):
@@ -143,14 +143,17 @@ class Provider(ProviderBase):
         email_file = os.path.join(items_dir, f"{iid}.email.md")
         show = run_node([self.mailjs, f"--show={item['id']}"])
         body = show.stdout if show.returncode == 0 else "(could not load body)"
+        attachments = parse_attachments(show.stdout if show.returncode == 0 else "")
+        att_line = f"Attachments: {' | '.join(attachments)}\n" if attachments else ""
         with open(email_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\nReceived: {item.get('received')}\n"
-                    f"Link: {item.get('webLink')}\nMessageId: {item['id']}\n\n---\n\n{body}\n")
+                    f"Link: {item.get('webLink')}\nMessageId: {item['id']}\n{att_line}\n---\n\n{body}\n")
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
             "triageReason": item.get("_triageReason"),
             "from": item.get("from"), "subject": item.get("subject"), "received": item.get("received"),
             "snippet": item.get("preview"), "url": item.get("webLink"), "messageId": item["id"],
+            "hasAttachments": bool(attachments or item.get("hasAttachments")), "attachments": attachments,
             "conversationId": item.get("conversationId"),
             "correspondent": item.get("_correspondent"), "emailFile": email_file,
             "ts": datetime.now(timezone.utc).isoformat(),

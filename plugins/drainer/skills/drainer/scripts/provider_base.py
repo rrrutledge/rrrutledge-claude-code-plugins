@@ -403,6 +403,23 @@ def self_directed(item):
     return bool(item.get("fromMe") and item.get("toMe"))
 
 
+# The `Attachments:` header line the email helpers' show output carries (ms-graph `mail.js --show`, gmail
+# `gmail.js --show-imap`): each file attachment as `name (contentType)`, joined by ` | `, inline images
+# left out. Both helpers print it in the header block above the body; a message with no file attachment
+# has no such line.
+ATTACHMENTS_LINE = re.compile(r"^Attachments: (.+)$", re.MULTILINE)
+
+
+def parse_attachments(show_text):
+    """The file attachments named in a show dump's `Attachments:` line, as `name (contentType)` strings in
+    the order the helper listed them. Only the header block is searched (everything before the first blank
+    line), so a body that happens to quote an `Attachments:` line is never mistaken for one. Empty when the
+    message carries no file attachment."""
+    header = (show_text or "").split("\n\n", 1)[0]
+    m = ATTACHMENTS_LINE.search(header)
+    return [a.strip() for a in m.group(1).split(" | ") if a.strip()] if m else []
+
+
 def from_identity(item):
     """The default correspondent identity for a DIRECT sender: their email address, lowercased. When a
     person emails from their own address the From address IS the correspondent, so two messages from them
@@ -734,8 +751,16 @@ class ProviderBase:
         override like screen_signal) because it needs no per-item fetch: `self_directed` reads fields the
         enumerate already carried, and a source with no such fields reads False, so platform sources
         inherit None without any branching. An adapter with an additional triage signal overrides this and
-        merges the base result in. Called only for items being triaged, so it stays cheap."""
-        return {"selfEmail": True} if self_directed(item) else None
+        merges the base result in. Called only for items being triaged, so it stays cheap.
+
+        It also surfaces `{"hasAttachments": True}` when the enumerate flagged a file attachment (both email
+        listings carry the flag), so triage reads a short cover note as the delivery of the attached file."""
+        signal = {}
+        if self_directed(item):
+            signal["selfEmail"] = True
+        if item.get("hasAttachments"):
+            signal["hasAttachments"] = True
+        return signal or None
 
     def screen_signal(self, item):
         """A compact per-item signal the security screen weighs ON TOP OF the content, or None when this

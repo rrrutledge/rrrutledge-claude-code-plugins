@@ -28,6 +28,7 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 The inbox is drained and emptied by the poller, so recently-handled messages live in **Archive** (where CLEAR moves them), not the inbox.
 Search all three folders - inbox, Archive, Deleted Items - covering both directions and **paginating each fully** (older items cleared before this behavior changed may still sit in Deleted Items).
 Use `node mail.js --search="<subject>"` - verify it covers Archive and Deleted Items and do not stop at the first page.
+For step 4's attachments, run `node mail.js --get-attachments=<messageId> --out-dir=.tmp/<item-id>`.
 
 ## RESOLVE-A-POINTER (hosted-PDF / body-link newsletter)
 The shared open-the-pointer mechanic lives in `../engine/worker-core.md` § 2b - a worker uses it for a needs-you pointer, the digest for an fyi one (`../engine/digest-core.md` step 2).

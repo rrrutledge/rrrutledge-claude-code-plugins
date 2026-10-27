@@ -20,8 +20,8 @@
 // List inbox:    node gmail.js --list-inbox [--top=50] [--json]
 //                (inbox, newest-first; --json emits a structured array for scripts)
 // List inbox (IMAP): node gmail.js --list-inbox-imap [--top=50] [--json]
-//                (same output shape as --list-inbox, but fetched over IMAP with a Google App Password
-//                 instead of the Gmail REST API - no Gmail API quota cost. Requires GMAIL_ADDRESS and
+//                (same output shape as --list-inbox plus a hasAttachments flag, but fetched over IMAP
+//                 with a Google App Password instead of the Gmail REST API - no Gmail API quota cost. Requires GMAIL_ADDRESS and
 //                 GMAIL_APP_PASSWORD in the environment (a 16-char Google App Password; needs 2-Step
 //                 Verification on the account and IMAP enabled in Gmail settings). This and the
 //                 --show-imap / --auth-imap single-message reads below carry the drainer poller's
@@ -42,7 +42,8 @@
 //                 newest-first)
 // Show one:      node gmail.js --show=<message-id>
 //                (<message-id> is the RFC822 Message-ID header, e.g. <abc@mail.gmail.com>; looked up
-//                 across All Mail, so it shows whether the message is still in the inbox or archived)
+//                 across All Mail, so it shows whether the message is still in the inbox or archived;
+//                 an "Attachments:" header line names each file attachment when it carries any)
 // Auth headers:  node gmail.js --auth=<message-id>
 //                (emits a JSON object with the message's envelope-authentication headers as Gmail
 //                 stamped them — the raw Authentication-Results value(s) and any Received-SPF value(s),
@@ -345,9 +346,9 @@ function withGmailImap(fn) {
 }
 
 // IMAP counterpart to listFolder() above - same output shape (id/uid/subject/from/fromAddress/fromMe/
-// toMe/received/isRead), fetched via imapflow with a Google App Password instead of the REST API, so
-// the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this file's header
-// comment for why). Envelope + flags only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
+// toMe/received/isRead), plus hasAttachments, fetched via imapflow with a Google App Password instead of
+// the REST API, so the drainer poller's recurring enumeration doesn't touch the Gmail API quota (see this
+// file's header comment for why). Envelope, flags, and body structure only, no body fetch, to keep it cheap. GMAIL_ADDRESS stands in for
 // the account() lookup above since there's no OAuth profile to read the address from over IMAP.
 async function listInboxImap() {
   const top = parseInt(args.top || '50', 10);
@@ -359,7 +360,7 @@ async function listInboxImap() {
       const total = c.mailbox.exists;
       if (total) {
         const start = Math.max(1, total - top + 1);
-        for await (const m of c.fetch(`${start}:*`, { envelope: true, flags: true, internalDate: true, threadId: true })) {
+        for await (const m of c.fetch(`${start}:*`, { envelope: true, flags: true, internalDate: true, threadId: true, bodyStructure: true })) {
           const e = m.envelope || {};
           const d = e.date || m.internalDate || new Date();
           out.push({
@@ -374,6 +375,7 @@ async function listInboxImap() {
             toMe: (e.to || []).some(a => (a.address || '').toLowerCase() === acct),
             received: d.toISOString ? d.toISOString() : String(d),
             isRead: m.flags ? m.flags.has('\\Seen') : false,
+            hasAttachments: hasFileAttachment(m.bodyStructure),
           });
         }
         out.reverse(); // fetch() walks the sequence range oldest-first; REST's --list-inbox is newest-first.
@@ -431,8 +433,25 @@ function renderShow(parsed) {
   ];
   if (parsed.cc) lines.push(`Cc: ${parsed.cc.text}`);
   lines.push(`Date: ${parsed.date ? parsed.date.toISOString() : ''}`);
+  // Each file attachment as `name (contentType)`, joined by ` | `, leaving out the inline images a
+  // multipart/related body references (a signature logo). The drainer's email adapters parse this line,
+  // so keep its shape in step with ATTACHMENTS_LINE in the drainer's provider_base.py.
+  const files = (parsed.attachments || []).filter(a => !a.related);
+  if (files.length) {
+    lines.push(`Attachments: ${files.map((a, i) => `${a.filename || `attachment-${i + 1}`} (${a.contentType || 'unknown type'})`).join(' | ')}`);
+  }
   lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
   return lines.join('\n');
+}
+
+// Whether an IMAP BODYSTRUCTURE tree carries a file attachment: a part marked `attachment`, or a
+// non-inline part with a filename. Lets --list-inbox-imap flag attachments without fetching any body.
+function hasFileAttachment(node) {
+  if (!node) return false;
+  const filename = (node.dispositionParameters && node.dispositionParameters.filename)
+    || (node.parameters && node.parameters.name);
+  if (node.disposition === 'attachment' || (filename && node.disposition !== 'inline')) return true;
+  return (node.childNodes || []).some(hasFileAttachment);
 }
 
 // The --auth JSON object — the envelope-authentication headers Gmail stamped onto the message — from a
