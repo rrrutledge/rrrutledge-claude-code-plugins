@@ -133,16 +133,17 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-The poller's duplicate guard only knows the item ids it dispatched itself, so it cannot see a session Russell or a handoff started, and a recurring card whose Start date arrives while its work is in motion gets a second worker.
-Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work), not only one whose title names this item.
+The poller's duplicate guard tracks the item ids it dispatched itself, which excludes sessions Russell or a handoff started.
+A recurring card whose Start date arrives while its work is in motion therefore gets a second worker.
+Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
 Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
 Russell's own interactive session counts the same as a background worker.
 When a peer looks like it covers the same work:
-1. `SendMessage` it what this worker was launched on and ask whether it is the same work.
+1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
 2. If the peer confirms, `SendMessage` it everything useful this worker has gathered (card state, thread context, links, findings), then close this worker via `python <skill>/scripts/close-session.py`.
    Leave a card un-cleared and its Start untouched, so the peer owns the item.
-   Do not ask Russell whether the peer is fine taking it, and do not start duplicate work.
-   Like the other silent closes, this queues no digest entry: the peer is the one carrying the item.
+   Hand the item over without asking Russell whether the peer is fine taking it.
+   Like the silent closes listed in §6a, this queues no digest entry: the peer is the one carrying the item.
 3. If the peer says it is different work, or no peer looks related, carry on as normal.
 
 ## 2b. Resolve a pointer - open the real content yourself
@@ -395,7 +396,7 @@ Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
 
-Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
+Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), a handoff to a live peer already on the same work (§2), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
 A silently-resolved session left open is just noise; close it.
 
 **Close your browser tabs when you and the user are truly finished with the item.**
