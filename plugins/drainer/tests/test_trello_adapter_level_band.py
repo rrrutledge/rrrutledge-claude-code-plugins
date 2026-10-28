@@ -176,37 +176,45 @@ def test_priority_band_still_leads_level_band():
 
 
 def test_priority_band_above_inbox_pins():
-    print("test: _priority_band - in-progress, Director-or-above, and $250K+ people-manager cards rank above neutral")
+    print("test: _priority_band - in-progress, P1 Director-or-above, and P1 $250K+ people-manager cards rank above neutral")
     Provider = adapter_mod.Provider
     above = provider_base.NEUTRAL_PRIORITY_BAND + 1
     p1 = [{"name": "🎯 P1"}]
+    p2 = [{"name": "🎯 P2"}]
     p3 = [{"name": "🎯 P3"}]
-    mgr = "Priority: P3 · Product team · IC-level\nManages people: yes\nComp: up to $260K/yr (posted)"
-    check("people manager at $260K -> above neutral, even on P3",
-          Provider._priority_band(card(mgr, p3)) == above)
+    mgr = "Priority: P1 · Developer enablement · IC-level\nManages people: yes\nComp: up to $260K/yr (posted)"
+    check("P1 people manager at $260K -> above neutral",
+          Provider._priority_band(card(mgr, p1)) == above)
+    check("P3 people manager at $260K -> its P-tier band (the pay pin is P1-only)",
+          Provider._priority_band(card(mgr.replace("P1", "P3"), p3)) == adapter_mod._PRIORITY_BAND[3])
     check("exactly $250K reaches the floor",
-          Provider._priority_band(card("Priority: P2 · x · IC-level\nManages people: yes\nComp: up to $250K/yr", p3))
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $250K/yr", p1))
           == above)
-    check("people manager at $240K -> its P-tier band",
-          Provider._priority_band(card("Priority: P3 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p3))
-          == adapter_mod._PRIORITY_BAND[3])
+    check("P1 people manager at $240K -> its P-tier band",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p1))
+          == adapter_mod._PRIORITY_BAND[1])
     check("people manager with no posted pay -> its P-tier band (P1 stays neutral)",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes", p1))
           == adapter_mod._PRIORITY_BAND[1])
     check("IC-level at $300K, manages no one -> its P-tier band (pay lifts people managers only)",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr", p1))
           == adapter_mod._PRIORITY_BAND[1])
-    check("Director/VP-level with no Comp line -> above neutral, even on P3",
-          Provider._priority_band(card("Priority: P3 · x · Director/VP-level", p3)) == above)
-    check("Director/VP-level under the floor -> above neutral",
-          Provider._priority_band(card("Priority: P2 · x · Director/VP-level\nComp: up to $180K/yr", [{"name": "🎯 P2"}]))
+    check("P1 Director/VP-level with no Comp line -> above neutral",
+          Provider._priority_band(card("Priority: P1 · x · Director/VP-level", p1)) == above)
+    check("P1 Director/VP-level under the floor -> above neutral",
+          Provider._priority_band(card("Priority: P1 · x · Director/VP-level\nComp: up to $180K/yr", p1))
           == above)
+    check("P2 Director/VP-level -> its P-tier band (the Director pin is P1-only)",
+          Provider._priority_band(card("Priority: P2 · x · Director/VP-level\nComp: up to $300K/yr", p2))
+          == adapter_mod._PRIORITY_BAND[2])
+    check("P3 Director/VP-level -> its P-tier band",
+          Provider._priority_band(card("Priority: P3 · x · Director/VP-level", p3)) == adapter_mod._PRIORITY_BAND[3])
     check("a dollar figure outside a Comp: line is ignored",
-          Provider._priority_band(card("Priority: P3 · x · IC-level\nManages people: yes\nnotes: $300K budget", p3))
-          == adapter_mod._PRIORITY_BAND[3])
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nnotes: $300K budget", p1))
+          == adapter_mod._PRIORITY_BAND[1])
     check("Comp: line figures read with commas and K",
-          Provider._priority_band(card("Priority: P3 · x · IC-level\nManages people: yes\n"
-                                       "Comp: $200,000 - $262,500", p3)) == above)
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\n"
+                                       "Comp: $200,000 - $262,500", p1)) == above)
     check("in-progress P3 IC card -> above neutral",
           Provider._priority_band(card("Priority: P3 · x · IC-level", p3), in_progress=True) == above)
     check("in-progress unlabeled card -> above neutral",

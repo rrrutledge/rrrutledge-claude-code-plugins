@@ -59,16 +59,19 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy — the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
-#   👤 Contact (person follow-up)        → above neutral   worked ahead of email/Slack and every application
-#   card on an in-progress list          → above neutral   a live application is worked ahead of the inbox
-#   Director-or-above role               → above neutral   with or without posted pay
-#   people manager, posted pay >= floor  → above neutral   the role Russell needs, whatever its title
-#   P1 application card                  → neutral         interleaves with that day's email/Slack by date
-#   P2/P3 application card               → below neutral   worked once the neutral band is drained
-# The four above-neutral pins live in _priority_band. A P1 (top-fit) application stays AT neutral so a
-# fresh strong-fit role is caught the same day as email; P2/P3 drop below. Within a band, a people manager
-# below the pay floor, or with no posted pay, sits at the neutral level (see _level_band) and interleaves
-# with email by date, as does every individual-contributor P1; a P2/P3 individual contributor waits behind it. This is inert for every other
+#   👤 Contact (person follow-up)  → above neutral   worked ahead of email/Slack and every application
+#   card on an in-progress list    → above neutral   a live application is worked ahead of the inbox
+#   P1 Director-or-above role      → above neutral   with or without posted pay
+#   P1 manager, pay >= floor       → above neutral   the role Russell needs, whatever its title
+#   other P1 application card      → neutral         interleaves with that day's email/Slack by date
+#   P2/P3 application card         → below neutral   worked once the neutral band is drained
+# The four above-neutral pins live in _priority_band. A P2/P3 Director or well-paid manager keeps its
+# P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
+# A P1 (top-fit) application stays AT neutral so a fresh strong-fit role is caught the same day as email;
+# P2/P3 drop below. Within a band, a people manager below the pay floor, or with no posted pay, sits at the
+# neutral level (see _level_band) and interleaves with email by date, as does every individual-contributor
+# P1; a P2/P3 individual contributor waits behind the same tier's Director-or-above roles and people
+# managers. This is inert for every other
 # board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
 # `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
@@ -78,7 +81,7 @@ _PRIORITY_BAND = {
 }
 
 # The pay-band floor: a people-manager card (a `Manages people: yes` desc line) whose `Comp:` desc line
-# tops out at or above this annual USD figure ranks above neutral at any P-tier. The personal-ai-pod
+# tops out at or above this annual USD figure ranks above neutral when it is a P1. The personal-ai-pod
 # job-board poller records both lines, plus the `Director/VP-level` level word, as facts; this adapter
 # alone decides what they rank.
 _PAY_BAND_FLOOR = 250_000
@@ -302,14 +305,17 @@ class Provider(ProviderBase):
     @staticmethod
     def _priority_band(card, in_progress=False):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        Four pins put a card one band above neutral, ahead of the inbox and every application tier,
-        whatever other labels it wears: a 👤 Contact person-follow-up card; a card on one of its board's
-        in-progress lists (`in_progress`, resolved by the caller from the card's list); a Director-or-above
-        role, with or without posted pay; and a people-manager role whose posted pay reaches
+        Four pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
+        Contact person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
+        resolved by the caller from the card's list), whatever other labels either wears; and a P1
+        Director-or-above role, with or without posted pay, or a P1 people manager whose posted pay reaches
         _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
-        if in_progress or Provider._is_director_level(card) or Provider._pays_people_manager_floor(card):
+        if in_progress:
+            return NEUTRAL_PRIORITY_BAND + 1
+        if Provider._is_p1(card) and (Provider._is_director_level(card)
+                                      or Provider._pays_people_manager_floor(card)):
             return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or ""):
@@ -376,8 +382,8 @@ class Provider(ProviderBase):
         scored yet; -1 for a P2/P3 IC-level job-search card that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
         before referral. Zero is the shared neutral level that email/Slack and ordinary Trello cards also
         carry by default, so a people manager interleaves with today's mail by date within its priority
-        band; a P2/P3 IC posting drops below and waits for that neutral level to clear. A people manager at
-        the pay floor, or a Director-or-above, is lifted a whole band instead (see _priority_band)."""
+        band; a P2/P3 IC posting drops below and waits for that neutral level to clear. A P1 people manager
+        at the pay floor, or a P1 Director-or-above, is lifted a whole band instead (see _priority_band)."""
         desc = card.get("desc") or ""
         if "IC-level" in desc and not Provider._manages_people(card) and not Provider._is_p1(card):
             return -1

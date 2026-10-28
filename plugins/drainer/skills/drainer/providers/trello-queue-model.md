@@ -43,8 +43,9 @@ The order of those three bands is defined in exactly one place, `provider_base.b
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
-A **Director-or-above card** (desc level `Director/VP-level`) is pinned there too, with or without posted pay.
-A **people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
+A **P1 Director-or-above card** (desc level `Director/VP-level`) is pinned there too, with or without posted pay.
+A **P1 people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
+A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 A people manager with no posted pay, or pay under the floor, is not pinned: it keeps its P-tier band and sits at the neutral level, interleaved with email by date (see the level band below).
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
