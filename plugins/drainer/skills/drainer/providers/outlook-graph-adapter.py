@@ -16,7 +16,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
-                           node_failure_kind, parse_email_auth)
+                           node_failure_kind, parse_email_auth, parse_attachments, attachments_section)
 
 
 class Provider(ProviderBase):
@@ -78,6 +78,17 @@ class Provider(ProviderBase):
             return None
         return parse_email_auth(data.get("fromAddress") or item.get("fromAddress"),
                                 data.get("authenticationResults"), data.get("receivedSpf"))
+
+    def triage_text(self, item):
+        """The preview triage reads, headed by the message's `Attachments:` line when the listing flagged a
+        file attachment, so triage sees the files the way a reader sees them on opening the message. The
+        extra `--show` runs only for those flagged messages."""
+        preview = item.get("preview") or ""
+        if not item.get("hasAttachments"):
+            return preview
+        show = run_node([self.mailjs, f"--show={item['id']}"])
+        names = parse_attachments(show.stdout) if show.returncode == 0 else []
+        return f"Attachments: {' | '.join(names)}\n\n{preview}" if names else preview
 
     def _fetch_body(self, item):
         """The message body, for relay-correspondent extraction when a relay's name isn't already in the
@@ -143,9 +154,13 @@ class Provider(ProviderBase):
         email_file = os.path.join(items_dir, f"{iid}.email.md")
         show = run_node([self.mailjs, f"--show={item['id']}"])
         body = show.stdout if show.returncode == 0 else "(could not load body)"
+        att_dir = os.path.join(items_dir, f"{iid}.attachments")
+        if parse_attachments(body):
+            run_node([self.mailjs, f"--get-attachments={item['id']}", f"--out-dir={att_dir}"])
         with open(email_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\nReceived: {item.get('received')}\n"
-                    f"Link: {item.get('webLink')}\nMessageId: {item['id']}\n\n---\n\n{body}\n")
+                    f"Link: {item.get('webLink')}\nMessageId: {item['id']}\n\n---\n\n{body}\n"
+                    f"{attachments_section(att_dir)}")
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
             "triageReason": item.get("_triageReason"),

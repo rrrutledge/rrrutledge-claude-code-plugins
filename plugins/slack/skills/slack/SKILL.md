@@ -53,6 +53,10 @@ Under `scripts/` (run with `node`):
   - Show one: `node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]` — the message
     text plus a `chat.getPermalink` url. Pass `--thread-ts` to read a threaded reply. `--json` emits
     `{channel,ts,threadTs,from,fromId,received,text,permalink}`.
+  - Sent since: `node slack.js --sent-since=<YYYY-MM-DD> [--json]` - every message you posted on or
+    after that day, oldest first, from `search.messages` `from:me`: channel, ts, threadTs, send time, and
+    the raw mrkdwn text.
+    Read by the send-confidence outcome sweep.
   - History: `node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]` — recent
     messages, oldest first: a whole thread (`conversations.replies`) when `--thread-ts` is given, else
     the channel/DM/group-DM timeline (`conversations.history`). Use this for a situational check — a
@@ -102,6 +106,7 @@ Under `scripts/` (run with `node`):
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
     user ID you already have, printing the DM channel id.
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
+  - Resolve an id to a name: `node slack.js --resolve-name=<user, DM, channel, or group DM id> [--json]` - prints the person's name (a DM gives the other member), or the channel's name, and the id itself when Slack has nothing more.
 
 ## How it works (Web API endpoints)
 
@@ -135,22 +140,25 @@ gives an explicit per-message instruction to send it - the same bar as the `gmai
 receipt on `--body-file` proves that exact body was reviewed, so the gate blocks a send whose bytes have no
 fresh receipt.
 
-**The terminal preview is the review surface for a direct send.** Print the exact message text in the
-terminal - that is what Russ reads to decide, usually without opening the browser-staged draft. Two
-outcomes follow from what he reads there:
+**The terminal preview is the review surface for a direct send, and it shows only a body that has already passed `writing-review`.**
+Print the exact message text in the terminal - that is what Russ reads to decide, usually without opening the browser-staged draft.
+Two outcomes follow from what he reads there:
 
 - **Looks good:** he says to send it, and you run `--send` on that exact body.
 - **Wants changes:** he makes them in the browser composer and sends there himself, so the send is his.
 
+When you author the body, before printing it:
+
+1. Author (or reuse) the body as a Slack-mrkdwn file - links as `<url|anchor text>`.
+2. Dispatch `writing-review` on that file and apply its findings until it converges.
+   Mint its receipt (the gate reads it) unless a fresh receipt for those exact bytes already exists from staging.
+3. Print the exact body in the terminal.
+
 When Russ says to send:
 
-1. Print the exact body in the terminal (if you haven't already this turn), and author (or reuse) it as a
-   Slack-mrkdwn file - links as `<url|anchor text>`.
-2. Dispatch `writing-review` on that file and mint its receipt (the gate reads it), unless a fresh receipt
-   for those exact bytes already exists from staging.
-3. Resolve the target: a DM channel via `--find-dm` (by name) or `--open-dm` (by user ID), or the
+1. Resolve the target: a DM channel via `--find-dm` (by name) or `--open-dm` (by user ID), or the
    `channel` (+ `thread-ts`) from the captured item.
-4. Run `--send` as described under Send above, and report the permalink.
+2. Run `--send` as described under Send above, and report the permalink.
 
 These constraints keep send safe:
 

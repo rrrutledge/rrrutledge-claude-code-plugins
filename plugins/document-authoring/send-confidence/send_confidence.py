@@ -12,13 +12,20 @@ count from the session transcript; familiarity from earlier stages in this log -
 `score_and_log`. Scoring is fail-open (a scorer exception never blocks the stage), so this
 module must never raise past its own CLI entry points.
 
-Five factors, each 0-100 where higher means "more likely to go out untouched", one per aspect
-of uncertainty described in `uncertainty-aspects.md`: rule coverage (the writing reviewer's
-rating, carried on the receipt), content latitude and stakes (one cold Haiku call per draft,
-which reads that file whole), fact support (the same call's claim audit against the
-transcript), and familiarity (how many distinct drafts this log has seen staged to the same
-recipient). The composite is the weighted mean over whichever factors came back non-null -
-see `weights.json` for the weights and thresholds.
+The scored event stores each attribute's raw value (`attributes`), the raw inputs a model fit
+reads: claim count and unsupported claim count, content latitude, stakes, and kind from a
+cold Haiku judge that reads `uncertainty-aspects.md` whole and runs three times at temperature
+1, so each judged attribute keeps three readings (kind keeps its majority label and how many
+readings agreed); rule coverage is the writing reviewer's one rating, carried on the receipt;
+turn count, familiarity, word count, and channel come from plain code and are exact.
+
+The scored event's `model` block is the draft's score under the live coefficient file the weekly
+refit writes (`refit.py`), with the fields `send_confidence_model.score` defines. It is null
+until a first model ships.
+
+The logged `score` is the weighted composite of five 0-100 factors under the frozen `weights.json`,
+each judged factor taken from the low median of its readings: rule coverage, content latitude, stakes, fact support,
+and familiarity. The weekly report reads the `score`.
 
 The log is an append-only JSONL file per machine under `SEND_CONFIDENCE_DIR`
 (`~/OneDrive/Claude/send-confidence` by default - see the module-level path helpers). Nothing
@@ -30,6 +37,7 @@ CLI:
         --sent-file <file> [--edit-nature a,b]
     python send_confidence.py outcome (--draft-id <id> | --body-file <staged body>) \
         --discarded [--reason "<text>"] [--moot]
+    python send_confidence.py sweep [--dry-run] [--json]
     python send_confidence.py weights-suggest
     python send_confidence.py show <draft_id>
     python send_confidence.py auto-score <job.json>   (launched by the stage gate, not by hand)
@@ -49,10 +57,14 @@ import json
 import math
 import socket
 import difflib
+import functools
 import hashlib
 import datetime
 import subprocess
 import time
+import statistics
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -66,6 +78,19 @@ INPUTS_CHAR_CAP = 12000
 DIFF_CHAR_CAP = 20000
 
 JUDGE_MODEL = "claude-haiku-4-5"
+# The judge runs three times at temperature 1, so every draft carries a measure of the judge's
+# self-disagreement on each judged attribute.
+JUDGE_RUNS = 3
+JUDGE_TEMPERATURE = 1
+
+# The reply types the judge labels; personal-ai-pod's scripts/pod-review.py labels its kind
+# table with the same six.
+MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge", "substantive-reply")
+
+# Gmail and both Outlooks are one "email" value in the scored attributes; any channel outside
+# this table is "other".
+CHANNEL_CLASSES = {"gmail": "email", "outlook-personal": "email", "outlook-work": "email",
+                   "slack": "slack", "teams": "teams"}
 
 RESOLVED_DISPOSITIONS = {"sent-as-is", "edited", "discarded"}
 FACTOR_NAMES = ["familiarity", "stakes", "content_latitude", "fact_support", "rule_coverage"]
@@ -136,14 +161,14 @@ def _anthropic_api_key():
 
 # --- the Haiku calls ---
 
-def _call_model(system, user, api_key, max_tokens):
+def _call_model(system, user, api_key, max_tokens, temperature=0):
     """One JSON-answering Haiku call. Returns (parsed_dict, error)."""
     if os.environ.get("SEND_CONFIDENCE_JUDGE") == "off":
         return None, "judge disabled (SEND_CONFIDENCE_JUDGE=off)"
     if not api_key:
         return None, "no API key"
     payload = json.dumps({
-        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": 0,
+        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": temperature,
         "system": system, "messages": [{"role": "user", "content": user}],
     }).encode("utf-8")
     req = Request(
@@ -174,28 +199,52 @@ The aspects of uncertainty, with their rating scales:
 
 {aspects}
 
-Rate Content latitude and Stakes on their 1-5 scales, and list every factual claim in the \
-draft for Fact support. The other aspects are measured elsewhere; ignore them.
+Rate Content latitude and Stakes on their 1-5 scales, list every factual claim in the \
+draft for Fact support, and label the draft's Kind. The other aspects are measured elsewhere; \
+ignore them.
 
 Respond with ONLY this JSON, no other text:
 {{"content_latitude": {{"rating": 1-5, "rationale": "..."}}, "stakes": {{"rating": 1-5, \
-"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}]}}"""
+"rationale": "..."}}, "claims": [{{"text": "...", "supported": true, "source": "ask|inputs|none"}}], \
+"kind": "{kinds}"}}"""
+
+
+def _rating(reading, key):
+    """A reading's 1-5 rating for `key`, or None when it's missing or off the scale."""
+    block = reading.get(key)
+    value = block.get("rating") if isinstance(block, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5 else None
 
 
 def run_judge(ctx, body, aspects, api_key):
-    """One Haiku call rating content latitude and stakes and auditing claim support.
-    Returns (result_dict, error) - result is None and error is set on any failure, so the
-    three judged factors fall out as null and scoring continues on the others."""
+    """One Haiku call rating content latitude and stakes, auditing claim support, and labelling
+    the kind. Returns (result_dict, error) - result is None and error is set on any failure.
+    A kind outside MESSAGE_KINDS comes back as None rather than failing the reading."""
     user = json.dumps({
         "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
         "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
     })
-    parsed, error = _call_model(JUDGE_SYSTEM.format(aspects=aspects or ""), user, api_key, 2048)
+    system = JUDGE_SYSTEM.format(aspects=aspects or "", kinds="|".join(MESSAGE_KINDS))
+    parsed, error = _call_model(system, user, api_key, 2048, temperature=JUDGE_TEMPERATURE)
     if error:
         return None, error
-    if not all(k in parsed for k in ("content_latitude", "stakes", "claims")):
+    if not (all(_rating(parsed, k) for k in ("content_latitude", "stakes"))
+            and isinstance(parsed.get("claims"), list)):
         return None, "judge response missing expected fields"
+    parsed["claims"] = [c for c in parsed["claims"] if isinstance(c, dict)]
+    kind = str(parsed.get("kind") or "").strip().lower()
+    parsed["kind"] = kind if kind in MESSAGE_KINDS else None
     return parsed, None
+
+
+def run_judges(ctx, body, aspects, api_key):
+    """JUDGE_RUNS independent judge readings, made in parallel. Returns (readings, errors):
+    the readings that succeeded in run order, and each distinct error the failed runs hit."""
+    with ThreadPoolExecutor(max_workers=JUDGE_RUNS) as pool:
+        results = list(pool.map(lambda _: run_judge(ctx, body, aspects, api_key), range(JUDGE_RUNS)))
+    readings = [r for r, _ in results if r]
+    errors = list(dict.fromkeys(e for _, e in results if e))
+    return readings, errors
 
 
 LABEL_SYSTEM = """You compare a draft message with the version Russell actually sent, and \
@@ -228,6 +277,7 @@ def label_edits(draft_text, sent_text, api_key):
 
 
 def _judge_log_shape(judge):
+    """The first judge reading's rationales and claim list, for the learning brief to show."""
     if not judge:
         return None
     return {
@@ -242,9 +292,56 @@ def _judge_log_shape(judge):
 
 # --- scoring ---
 
+def _claim_counts(reading):
+    claims = reading.get("claims") or []
+    return len(claims), sum(1 for c in claims if c.get("supported") is not True)
+
+
+def _kind_majority(readings):
+    """The kind most readings agree on, and how many agree. The earliest reading's label wins
+    a tie, so three different labels keep the first with an agreement of 1."""
+    labels = [r.get("kind") for r in readings if r.get("kind")]
+    if not labels:
+        return {"label": None, "agreement": 0}
+    counts = Counter(labels)
+    top = max(counts.values())
+    label = next(lbl for lbl in labels if counts[lbl] == top)
+    return {"label": label, "agreement": top}
+
+
+def measure_attributes(body, ctx, readings):
+    """Every attribute's raw value at scoring time, the raw inputs a model fit reads.
+    Judged attributes keep one value per judge reading so their noise can be measured; they
+    are None when no reading succeeded. Latitude and both claim counts are also None when the
+    judge had no ask or inputs to measure against. Plain-code attributes are exact."""
+    grounded = bool(ctx.get("ask") or ctx.get("inputs"))
+    sent_count = ctx.get("sent_count")
+    coverage = ctx.get("rule_coverage")
+    coverage = coverage if isinstance(coverage, int) and 1 <= coverage <= 5 else None
+    counts = [_claim_counts(r) for r in readings] if readings and grounded else None
+    return {
+        "claims_total": [t for t, _ in counts] if counts else None,
+        "claims_unsupported": [u for _, u in counts] if counts else None,
+        "content_latitude": [_rating(r, "content_latitude") for r in readings] if readings and grounded else None,
+        "stakes": [_rating(r, "stakes") for r in readings] if readings else None,
+        "kind": _kind_majority(readings) if readings else None,
+        "turn_count": ctx.get("turns_before_draft"),
+        "familiarity": sent_count,
+        "familiarity_missing": sent_count is None,
+        "rule_coverage": coverage,
+        "rule_coverage_missing": coverage is None,
+        "word_count": len(_plain_text(body).split()),
+        "channel": CHANNEL_CLASSES.get(ctx.get("channel"), "other") if ctx.get("channel") else None,
+    }
+
+
 def score_draft(body, ctx, *, weights, aspects, api_key):
-    """Pure scoring: returns {"score", "factors", "features", "judge", "errors"}. No I/O
-    besides the judge call."""
+    """Pure scoring: returns {"score", "factors", "features", "attributes", "judge", "errors"}.
+    No I/O besides the judge calls.
+
+    `attributes` holds the raw values (see measure_attributes). `score`, `factors`, and
+    `features` are the weighted composite under weights.json, each judged value the low median
+    of its readings, so it is always one of the readings the judge gave."""
     errors = []
     features = {}
     factors = {}
@@ -264,32 +361,34 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     else:
         factors["rule_coverage"] = None
 
-    judge, judge_error = run_judge(ctx, body, aspects, api_key)
-    if judge_error:
-        errors.append(judge_error)
+    readings, judge_errors = run_judges(ctx, body, aspects, api_key)
+    errors.extend(judge_errors)
+    attributes = measure_attributes(body, ctx, readings)
 
-    if judge:
-        rating_s = judge["stakes"]["rating"]
+    if readings:
+        rating_s = statistics.median_low(attributes["stakes"])
         factors["stakes"] = round(100 * (5 - rating_s) / 4)
         features["stakes_rating"] = rating_s
 
     # With no ask and no inputs (the transcript was unreadable), the judge has nothing to
     # measure latitude against and every claim would read as unsupported; those two factors
     # stay null and the composite re-weights over the rest.
-    if judge and (ctx.get("ask") or ctx.get("inputs")):
-        rating_c = judge["content_latitude"]["rating"]
+    if attributes["content_latitude"]:
+        rating_c = statistics.median_low(attributes["content_latitude"])
         turns = ctx.get("turns_before_draft") or 0
         penalty = min(20, 5 * turns)
         factors["content_latitude"] = max(0, round(100 * (5 - rating_c) / 4) - penalty)
         features["latitude_rating"] = rating_c
         features["latitude_turn_penalty"] = penalty
 
-        claims = judge.get("claims") or []
-        total = len(claims)
-        supported = sum(1 for c in claims if c.get("supported"))
-        factors["fact_support"] = 100 if total == 0 else round(100 * supported / total)
+        # The claim counts logged with the factor come from the reading whose supported share
+        # the factor uses, so the three always agree.
+        shares = [(1 if t == 0 else (t - u) / t, t, u)
+                  for t, u in zip(attributes["claims_total"], attributes["claims_unsupported"])]
+        share, total, unsupported = statistics.median_low(shares)
+        factors["fact_support"] = round(100 * share)
         features["claims_total"] = total
-        features["claims_unsupported"] = total - supported
+        features["claims_unsupported"] = unsupported
     else:
         factors.setdefault("stakes", None)
         factors["content_latitude"] = None
@@ -303,7 +402,8 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     else:
         score = None
 
-    return {"score": score, "factors": factors, "features": features, "judge": judge, "errors": errors}
+    return {"score": score, "factors": factors, "features": features, "attributes": attributes,
+            "judge": readings[0] if readings else None, "errors": errors}
 
 
 # --- the log ---
@@ -368,10 +468,19 @@ def fold_drafts(events=None):
 
 def _plain_text(text):
     """Strip HTML markup from a staged body, so a Gmail draft staged as `<p>...</p>` compares
-    equal to the plain text the sent item reads back as."""
-    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text or "")
+    equal to the plain text the sent item reads back as. Slack's `<@U123>` mention and
+    `<#C123|name>` channel tokens become the `@Name` and `#name` a Slack read-back shows, so
+    the markup strip doesn't erase them and make a staged mention look like one Russell added."""
+    text = re.sub(r"<@([UW][A-Z0-9]+)(?:\|[^>]*)?>", lambda m: "@" + _slack_display_name(m.group(1)), text or "")
+    text = re.sub(r"<#[CG][A-Z0-9]+\|([^>]+)>", r"#\1", text)
+    text = re.sub(r"<!(here|channel|everyone)(?:\|[^>]*)?>", r"@\1", text)
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text)
     text = re.sub(r"<[^>]+>", "", text)
     return html.unescape(text).strip()
+
+
+# Channels whose drafts are rich text: staged as Markdown, sent as HTML.
+EMAIL_CHANNELS = {"gmail", "outlook-personal", "outlook-work"}
 
 
 def _read_draft_text(draft_id):
@@ -403,23 +512,53 @@ def _supersede_pending(thread_ref, recipient):
         if not scored or d["outcome"] is not None or scored.get("stage_kind") == "send":
             continue
         if _same_conversation(scored, thread_ref, recipient):
-            _append_event({
-                "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
-                "disposition": "superseded", "edit_distance": None, "edit_nature": [],
-                "reason": None, "miscalibrated": False, "direction": None,
-                "implicated": [], "under_factors": [], "learn_reasons": [],
-            })
+            _append_event(_superseded_event(draft_id, ts))
+
+
+def _superseded_event(draft_id, ts):
+    return {
+        "event": "outcome", "v": 1, "draft_id": draft_id, "ts": ts,
+        "disposition": "superseded", "edit_distance": None, "edit_nature": [],
+        "reason": None, "miscalibrated": False, "direction": None,
+        "implicated": [], "under_factors": [], "learn_reasons": [],
+    }
+
+
+def model_path():
+    """The live coefficient file the weekly refit (refit.py) writes."""
+    return os.path.join(data_dir(), "model", "model.json")
+
+
+def model_score(attributes, seed):
+    """The draft's score under the live coefficient file - see send_confidence_model.score - or
+    None when no model has shipped yet. A failure comes back as {"error": ...}, never raised."""
+    try:
+        with open(model_path(), "r", encoding="utf-8") as fh:
+            model = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        return {"error": f"model file unreadable: {e}"}
+    if not isinstance(model, dict):
+        return {"error": "model file is not a JSON object"}
+    try:
+        import send_confidence_model
+        return send_confidence_model.score(attributes, model, seed=seed)
+    except Exception as e:
+        return {"version": model.get("version"), "error": f"model scoring failed: {e}"}
 
 
 def score_and_log(body, sha256, ctx):
-    """Load weights.json and uncertainty-aspects.md; call score_draft; snapshot the body to
-    drafts/<draft_id>.txt; append a superseded outcome for any earlier pending draft in the
-    same conversation; append the scored event; return the draft_id."""
+    """Load weights.json and uncertainty-aspects.md; call score_draft; score the attributes
+    under the live coefficient file; snapshot the body to drafts/<draft_id>.txt; append a
+    superseded outcome for any earlier pending draft in the same conversation; append the
+    scored event; return the draft_id."""
     weights = _load_weights()
     aspects, aspects_sha = _load_aspects()
     api_key = _anthropic_api_key()
 
     result = score_draft(body, ctx, weights=weights, aspects=aspects, api_key=api_key)
+    model = model_score(result["attributes"], seed=sha256)
 
     ts = datetime.datetime.now().astimezone()
     draft_id = f"d-{sha256[:12]}-{ts.strftime('%Y%m%d%H%M%S')}"
@@ -432,7 +571,7 @@ def score_and_log(body, sha256, ctx):
         _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 3, "draft_id": draft_id,
+        "event": "scored", "v": 5, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
         "source": "gate", "stage_kind": ctx.get("stage_kind"),
         "session_id": ctx.get("session_id"),
@@ -443,6 +582,7 @@ def score_and_log(body, sha256, ctx):
         "score": result["score"], "weights_version": weights.get("version"),
         "aspects_sha": aspects_sha,
         "factors": result["factors"], "features": result["features"],
+        "attributes": result["attributes"], "model": model,
         "judge": _judge_log_shape(result["judge"]),
         "uncertain_spots": ctx.get("uncertain_spots"),
         "errors": result["errors"],
@@ -654,8 +794,37 @@ def _edit_distance(draft_text, sent_text):
 
 # --- the learning-session brief ---
 
+_SLACK_ID = re.compile(r"^[UCDG][A-Z0-9]{6,}$")
+
+
+@functools.lru_cache(maxsize=None)
+def _slack_display_name(slack_id):
+    """The person's or channel's name for a Slack id, from the slack client's read-only
+    `--resolve-name`; the id itself when the client or the lookup is unavailable, so a title
+    never waits on or fails because of Slack."""
+    path = _client_script("slack", "slack.js")
+    if not path:
+        return slack_id
+    try:
+        r = subprocess.run(["node", path, f"--resolve-name={slack_id}"], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return slack_id
+    name = (r.stdout or "").strip()
+    return name if r.returncode == 0 and name else slack_id
+
+
+def _display_recipient(scored):
+    """The recipient as a person reads it: a Slack id becomes a name, anything else (an email
+    address, a name) is already readable and passes through."""
+    recipient = scored.get("recipient")
+    if recipient and scored.get("channel") == "slack" and _SLACK_ID.match(recipient):
+        return _slack_display_name(recipient)
+    return recipient
+
+
 def _spawn_title(scored):
-    who = f"{scored.get('channel') or 'message'} to {scored.get('recipient') or 'unknown'}"
+    who = f"{scored.get('channel') or 'message'} to {_display_recipient(scored) or 'unknown'}"
     return "Learn from send: " + who.replace('"', "'")
 
 
@@ -685,9 +854,8 @@ def redline(draft_text, sent_text):
     return "".join(out)
 
 
-def _write_brief(draft_id, scored, outcome_event, sent_text):
+def _write_brief(draft_id, scored, outcome_event, draft_text, sent_text):
     os.makedirs(briefs_dir(), exist_ok=True)
-    draft_text = _read_draft_text(draft_id)
     if sent_text is not None:
         diff = "\n".join(difflib.unified_diff(
             draft_text.splitlines(), sent_text.splitlines(), fromfile="draft", tofile="sent", lineterm="",
@@ -768,7 +936,8 @@ def _write_brief(draft_id, scored, outcome_event, sent_text):
     return brief_path
 
 
-def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False):
+def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=False,
+                   sweep=None, recipient=None):
     """Compute disposition + edit_distance, label the edits (unless `edit_nature` overrides),
     decide whether the send has something to teach, append the outcome event, and when it
     does, write the learning-session brief. Returns the outcome event plus "dispatch" (the
@@ -777,13 +946,25 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     A learning session spawns on a voice edit only. Whether the estimate was wrong in either
     direction is still logged (`direction`, `miscalibrated`), and nothing here changes the
     score's numbers.
-    `moot` (discards only - what it does and when to pass it live in learn-from-send.md)."""
+    `moot` (discards only - what it does and when to pass it live in learn-from-send.md).
+    `recipient` names who the sent message went to when the staged draft didn't carry it (a
+    reply's stage command names its thread, not its addressee); it labels the learning session.
+    An email is rich text: its draft is staged as Markdown and rendered to HTML, and its sent
+    item reads back as that HTML or a plain-text alternative derived from it, so both sides go
+    through `rendered_text` before they are compared, and a formatting round trip never reads
+    as an edit.
+    `sweep` is the outcome sweep's own record of the match ({"edit_distance", "sent_ref"} for a
+    send, {} for a draft that never went out): the distance it measured stands in for the
+    plain one, the edits stay unlabelled, no learning session spawns, and the event carries
+    `source: "sweep"` so the report can tell swept outcomes from recorded ones."""
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
         raise ValueError(f"no scored draft found for {draft_id}")
     scored = d["scored"]
+    if recipient and not scored.get("recipient"):
+        scored = {**scored, "recipient": recipient}
 
-    thresholds = {**DEFAULT_WEIGHTS["thresholds"], **_load_weights().get("thresholds", {})}
+    thresholds ={**DEFAULT_WEIGHTS["thresholds"], **_load_weights().get("thresholds", {})}
     factor_high = thresholds["factor_high"]
     factor_low = thresholds["factor_low"]
     composite_high = thresholds["composite_high"]
@@ -793,17 +974,23 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     edit_nature = list(edit_nature or [])
     changes = []
     label_error = None
+    draft_text = None
     if discarded:
         disposition = "discarded"
         edit_distance = None
     else:
         draft_text = _read_draft_text(draft_id)
-        edit_distance = _edit_distance(draft_text, sent_text)
+        if scored.get("channel") in EMAIL_CHANNELS:
+            draft_text, sent_text = rendered_text(draft_text), rendered_text(sent_text)
+        if sweep is not None:
+            edit_distance = sweep["edit_distance"]
+        else:
+            edit_distance = _edit_distance(draft_text, sent_text)
         disposition = "sent-as-is" if edit_distance <= sent_as_is_max else "edited"
         os.makedirs(drafts_dir(), exist_ok=True)
         with open(os.path.join(drafts_dir(), f"{draft_id}.sent.txt"), "w", encoding="utf-8") as fh:
             fh.write(sent_text or "")
-        if disposition == "edited" and not edit_nature:
+        if disposition == "edited" and not edit_nature and sweep is None:
             edit_nature, changes, label_error = label_edits(draft_text, sent_text, _anthropic_api_key())
 
     factors = scored.get("factors", {})
@@ -837,16 +1024,19 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         "event": "outcome", "v": 2, "draft_id": draft_id,
         "ts": datetime.datetime.now().astimezone().isoformat(),
         "disposition": disposition, "edit_distance": edit_distance,
-        "edit_nature": edit_nature, "changes": changes, "reason": reason,
+        "edit_nature": edit_nature, "changes": changes, "reason": reason, "moot": bool(discarded and moot),
         "miscalibrated": direction is not None, "direction": direction,
         "implicated": implicated, "under_factors": under_factors,
         "learn_reasons": learn_reasons,
     }
+    if sweep is not None:
+        event["source"] = "sweep"
+        event["sent_ref"] = sweep.get("sent_ref")
     _append_event(event)
 
     dispatch = None
-    if learn_reasons:
-        brief_path = _write_brief(draft_id, scored, event, sent_text)
+    if learn_reasons and sweep is None:
+        brief_path = _write_brief(draft_id, scored, event, draft_text, sent_text)
         dispatch = (
             'python <drainer>/skills/drainer/scripts/spawn-handoff.py '
             f'--title "{_spawn_title(scored)}" '
@@ -867,6 +1057,338 @@ def _find_draft_id_by_body_file(path):
         return None
     matches.sort(key=lambda e: e.get("ts", ""))
     return matches[-1]["draft_id"]
+
+
+# --- the outcome sweep ---
+#
+# Plain code, no model calls. Every scored draft with no outcome is matched against what Russell
+# actually sent - Gmail and personal Outlook Sent folders and his Slack posts, read through those
+# plugins' own read-only `--sent-since` listings - and the match is written as an ordinary outcome
+# event. A draft whose window closes with no match is logged as discarded with no reason, the
+# same as a voluntary discard with no cause given.
+
+SWEEP_WINDOW_DAYS = 7
+# A sent message can carry a timestamp a little before the draft's scored row: a direct Slack
+# send posts while its scorer is still running.
+SWEEP_EARLY_SLACK = datetime.timedelta(hours=1)
+# Farthest a match may sit from the draft: looser when the thread or recipient confirms it is the
+# same conversation, stricter when the draft carries nothing to check that against.
+SWEEP_MAX_DISTANCE_CONFIRMED = 0.6
+SWEEP_MAX_DISTANCE_UNCONFIRMED = 0.35
+
+# Channel -> (plugin, script) whose `--sent-since <day> --json` lists the sent messages.
+SWEEP_CLIENTS = {
+    "gmail": ("gmail", "gmail.js"),
+    "outlook-personal": ("ms-graph", "mail.js"),
+    "slack": ("slack", "slack.js"),
+}
+GMAIL_NAMED_ACCOUNTS = {"christina"}
+
+_QUOTE_MARKERS = [
+    re.compile(r"^\s*On [^\n]{0,300}?(\n[^\n]{0,300}?)?wrote:\s*$", re.M),
+    re.compile(r"^\s*-{2,}\s*Original Message\s*-{2,}", re.M | re.I),
+    re.compile(r"^\s*_{10,}\s*$", re.M),
+    re.compile(r"^\s*From: [^\n]+\n\s*(Sent|Date): ", re.M),
+    re.compile(r"^-- $", re.M),
+]
+_SLACK_CHANNEL = re.compile(r"^[CDG][A-Z0-9]{6,}$")
+_SLACK_ITEM_REF = re.compile(r"^slack-([CDG][A-Z0-9]{6,})-")
+
+
+def _client_script(plugin, script):
+    """The newest copy of a sibling plugin's script: the repo layout (plugins/<plugin>/skills/...)
+    or the installed cache layout (<marketplace>/<plugin>/<version>/skills/...)."""
+    patterns = [
+        os.path.join(SCRIPT_DIR, "..", "..", plugin, "skills", plugin, "scripts", script),
+        os.path.join(SCRIPT_DIR, "..", "..", "..", plugin, "*", "skills", plugin, "scripts", script),
+    ]
+    found = [p for pat in patterns for p in glob.glob(pat)]
+    return max(found, key=os.path.getmtime) if found else None
+
+
+def fetch_sent(channel, since_day):
+    """Run one client's read-only `--sent-since` listing and return its JSON. Raises on any
+    failure, so a source that can't be read leaves its drafts pending rather than unsent."""
+    plugin, script = SWEEP_CLIENTS[channel]
+    path = _client_script(plugin, script)
+    if not path:
+        raise RuntimeError(f"{plugin} client {script} not found")
+    args = ["node", path, f"--sent-since={since_day}", "--json"]
+    r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    if r.returncode != 0:
+        raise RuntimeError(f"{plugin} {script} exited {r.returncode}: {(r.stderr or '').strip()[-300:]}")
+    return json.loads(r.stdout or "[]")
+
+
+def _source_key(scored):
+    """The channel a draft would have gone out on, or None when the sweep can't read it: a
+    channel with no client, or a second Gmail mailbox, since the Gmail listing reads the
+    default mailbox over IMAP."""
+    channel = scored.get("channel")
+    if channel not in SWEEP_CLIENTS:
+        return None
+    if channel == "gmail" and scored.get("account") in GMAIL_NAMED_ACCOUNTS:
+        return None
+    return channel
+
+
+def _sent_items(channel, raw):
+    """A client's listing in one shape: ref, sent (aware datetime), text, and the thread and
+    recipient keys a draft can be checked against."""
+    items = []
+    for m in raw or []:
+        sent = _parse_ts(m.get("sent"))
+        if sent is None:
+            continue
+        if channel == "slack":
+            items.append({"ref": f"{m.get('channel')}/{m.get('ts')}", "sent": sent, "text": m.get("text") or "",
+                          "threads": {m.get("ts"), m.get("threadTs")} - {None, ""},
+                          "recipients": {m.get("channel")} - {None, ""}})
+        else:
+            threads = set(m.get("references") or [])
+            threads |= {m.get("inReplyTo"), m.get("threadId")} - {None, ""}
+            items.append({"ref": m.get("id"), "sent": sent, "text": m.get("text") or "",
+                          "threads": threads,
+                          "recipients": {a.lower() for a in (m.get("to") or []) + (m.get("cc") or []) if a}})
+    return items
+
+
+def _draft_keys(scored):
+    """What a sent message is checked against: its thread ids, its recipient addresses or
+    channel, and the words of a recipient given by name rather than address.
+
+    A Gmail thread_ref is either the RFC822 Message-ID the reply threads off, which the sent
+    reply's References chain carries, or the hex Gmail thread id. An Outlook thread_ref is a
+    Graph message id the sent item doesn't expose, so Outlook checks recipients only. A Slack
+    draft's conversation is its channel id, from the recipient or from a drainer item ref
+    (`slack-<channel>-<sec>-<frac>`), and its thread is the ts that ref or a bare thread ts
+    names. That ts can be a reply inside the thread rather than its root, so for Slack a
+    thread match confirms and a thread miss proves nothing (`thread_vetoes`)."""
+    channel = scored.get("channel")
+    thread_ref = scored.get("thread_ref") or ""
+    recipient = scored.get("recipient") or ""
+    keys = {"threads": set(), "recipients": set(), "names": set(), "thread_vetoes": channel != "slack"}
+    if channel == "slack":
+        m = _SLACK_ITEM_REF.match(thread_ref)
+        chan = recipient if _SLACK_CHANNEL.match(recipient) else (m.group(1) if m else None)
+        keys["recipients"] = {chan} if chan else set()
+        ts = re.search(r"(\d{9,})[-.](\d+)$", thread_ref)
+        keys["threads"] = {f"{ts.group(1)}.{ts.group(2)}"} if ts else set()
+        return keys
+    if channel == "gmail" and re.match(r"^(<[^>]+@[^>]+>|[0-9a-f]{16})$", thread_ref):
+        keys["threads"] = {thread_ref}
+    keys["recipients"] = {a.strip().lower() for a in recipient.split(",") if "@" in a}
+    if not keys["recipients"]:
+        keys["names"] = {w for w in re.findall(r"[a-z]{3,}", recipient.lower())}
+    return keys
+
+
+def _conversation(keys, item):
+    """True when the thread, recipients, or recipient name confirm the item belongs to the
+    draft's conversation, False when everything both sides know disagrees, None when there is
+    nothing to compare. A name confirms when two of its words are words of one recipient
+    address's local part ("Rob Tuley" and rob.tuley@...), and never disagrees, since a name can
+    be partial."""
+    checks = []
+    if keys["threads"] and item["threads"]:
+        if keys["threads"] & item["threads"]:
+            return True
+        if keys["thread_vetoes"]:
+            checks.append(False)
+    if keys["recipients"] and item["recipients"]:
+        checks.append(bool(keys["recipients"] & item["recipients"]))
+    if keys["names"] and any(len(keys["names"] & set(re.split(r"[^a-z]+", a.split("@")[0]))) >= 2
+                             for a in item["recipients"]):
+        return True
+    if not checks:
+        return None
+    return any(checks)
+
+
+def _signature_text():
+    """The Gmail signature gmail.js appends at send, reduced the way comparable_text reduces a
+    body, so it can be cut from a sent message the staged draft never carried it in."""
+    sig = os.environ.get("GMAIL_SIGNATURE_HTML")
+    return comparable_text(sig) if sig else ""
+
+
+def rendered_text(text):
+    """The words a reader of the rendered message sees, in one form whichever way the message
+    reached us: the Markdown a draft is staged in, the HTML a sent item holds, the plain-text
+    alternative a mail client derives from that HTML, or Slack mrkdwn. A link reads as its
+    anchor text (`[anchor](url)`, `anchor <url>`, `anchor (url)`, and `<a href>` all read
+    `anchor`), code, emphasis, heading, and blockquote markers drop away, every list item is one
+    `- ` line, and a paragraph's source line breaks join into spaces, since rendering reflows
+    them. The quoted original is cut off. A formatting round trip therefore reads the same on
+    both sides, and only a change to the words shows."""
+    # Slack's `<url|label>` and a mail client's `<url>` go before the markup strip, which would
+    # read them as tags and drop the label with them.
+    text = re.sub(r"<(?:https?|mailto):[^|>]*\|([^>]+)>", r"\1", text or "")
+    text = re.sub(r"<(?:https?|mailto):[^>]*>", " ", text)
+    text = re.sub(r"(?i)<li\b[^>]*>", "\n- ", text)
+    text = re.sub(r"(?i)</li>", "", text)
+    text = re.sub(r"(?i)</(?:p|blockquote|ul|ol|h[1-6])>", "\n\n", text)
+    text = _plain_text(text).replace("\r\n", "\n")
+    cut = min((m.start() for m in (p.search(text) for p in _QUOTE_MARKERS) if m), default=len(text))
+    text = text[:cut]
+    text = re.sub(r"\[image:[^\]]*\]", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\((?:[^)]+)\)", r"\1", text)
+    text = re.sub(r"\((?:https?|mailto):[^)]*\)|(?:https?|mailto):\S+", " ", text)
+    text = re.sub(r"(?m)^[ \t]*(?:>[ \t]?)+", "", text)
+    text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+", "\0", text)
+    text = re.sub(r"[*_~`]+", "", text)
+    paragraphs = []
+    for block in re.split(r"\n[ \t]*\n", text):
+        lines = []
+        for line in block.split("\n"):
+            item = line.startswith("\0")
+            line = re.sub(r"\s+([.,;:!?)])", r"\1", " ".join(line.strip("\0").split()))
+            if not line:
+                continue
+            if item:
+                lines.append("- " + line)
+            elif lines:
+                lines[-1] += " " + line
+            else:
+                lines.append(line)
+        if lines:
+            paragraphs.append("\n".join(lines))
+    return "\n\n".join(paragraphs)
+
+
+def comparable_text(text, signature=""):
+    """The part of a message a draft can be compared with: `rendered_text` on one line with its
+    list markers dropped, and the signature (itself already reduced by this function) cut off,
+    so a staged `[anchor](url)` and a sent `anchor <url>` read the same."""
+    text = " ".join(re.sub(r"(?m)^- ", "", rendered_text(text)).split())
+    if signature:
+        at = text.rfind(signature)
+        if at >= 0:
+            text = (text[:at] + text[at + len(signature):]).strip()
+    return text
+
+
+def _parse_ts(value):
+    if not value:
+        return None
+    try:
+        ts = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.astimezone()
+
+
+def match_pending(pending, items_by_source, now, signature=""):
+    """Pair pending drafts with sent messages. `pending` is [(draft_id, scored, draft_text)];
+    `items_by_source` maps a source key to its sent items, or to None when that source could not
+    be read. Returns {"matched", "superseded", "unsent", "waiting", "unchecked"}, each a list.
+
+    Each draft's candidates are the messages from its own source sent between just before it
+    was scored and SWEEP_WINDOW_DAYS after, whose conversation doesn't contradict it, within the
+    distance limit for how well the conversation is confirmed. Pairs are taken closest first and
+    each sent message settles one draft, plus any other row scored on the same body. A draft
+    whose only candidates went to closer drafts is an earlier version of one of them
+    (superseded). A draft with no candidate is unsent once its window has closed, and waiting
+    until then."""
+    window = datetime.timedelta(days=SWEEP_WINDOW_DAYS)
+    pairs, checked = [], []
+    out = {"matched": [], "superseded": [], "unsent": [], "waiting": [], "unchecked": []}
+    for draft_id, scored, draft_text in pending:
+        key = _source_key(scored)
+        items = items_by_source.get(key) if key else None
+        if items is None:
+            out["unchecked"].append(draft_id)
+            continue
+        checked.append((draft_id, scored))
+        staged = _parse_ts(scored.get("ts"))
+        keys = _draft_keys(scored)
+        draft_cmp = comparable_text(draft_text, signature)
+        for i, item in enumerate(items):
+            if not (staged - SWEEP_EARLY_SLACK <= item["sent"] <= staged + window):
+                continue
+            same = _conversation(keys, item)
+            if same is False:
+                continue
+            limit = SWEEP_MAX_DISTANCE_CONFIRMED if same else SWEEP_MAX_DISTANCE_UNCONFIRMED
+            sent_cmp = comparable_text(item["text"], signature)
+            distance = _edit_distance(draft_cmp, sent_cmp)
+            if distance <= limit:
+                pairs.append((distance, draft_id, (key, i), item, sent_cmp, same))
+
+    taken_drafts, taken_items = set(), set()
+    for distance, draft_id, item_key, item, sent_cmp, same in sorted(pairs, key=lambda p: p[0]):
+        if draft_id in taken_drafts or item_key in taken_items:
+            continue
+        taken_drafts.add(draft_id)
+        taken_items.add(item_key)
+        out["matched"].append({"draft_id": draft_id, "edit_distance": distance, "sent_ref": item["ref"],
+                               "sent_ts": item["sent"].isoformat(), "sent_text": sent_cmp,
+                               "confirmed": bool(same)})
+    # The same body scored twice (two stages of one draft) is one draft: a send settles both rows.
+    by_sha = {}
+    for draft_id, scored in checked:
+        by_sha.setdefault(scored.get("sha256"), []).append(draft_id)
+    for m in list(out["matched"]):
+        sha = next(s.get("sha256") for d, s in checked if d == m["draft_id"])
+        for twin in by_sha.get(sha, []) if sha else []:
+            if twin not in taken_drafts:
+                taken_drafts.add(twin)
+                out["matched"].append({**m, "draft_id": twin})
+    # A draft whose send was claimed by a closer draft is an earlier version of that one.
+    had_pair = {p[1] for p in pairs}
+    for draft_id, scored in checked:
+        if draft_id in taken_drafts:
+            continue
+        if draft_id in had_pair:
+            out["superseded"].append(draft_id)
+            continue
+        staged = _parse_ts(scored.get("ts"))
+        out["unsent" if now - staged > window else "waiting"].append(draft_id)
+    return out
+
+
+def sweep_outcomes(*, fetch=fetch_sent, now=None, dry_run=False):
+    """Run the sweep over the whole log. Reads every source the pending drafts need once, from
+    the day before the oldest pending draft, then writes an outcome for each match and each
+    closed-window miss unless `dry_run`. Returns the match_pending result plus "errors" and
+    "match_rate" (matched over matched plus unsent)."""
+    now = now or datetime.datetime.now().astimezone()
+    pending = []
+    for draft_id, d in fold_drafts().items():
+        scored = d["scored"]
+        if not scored or d["outcome"] is not None or not _parse_ts(scored.get("ts")):
+            continue
+        try:
+            text = _read_draft_text(draft_id)
+        except OSError:
+            continue
+        pending.append((draft_id, scored, text))
+
+    items_by_source, errors = {}, {}
+    keys = {k for k in (_source_key(s) for _, s, _ in pending) if k}
+    if pending:
+        since = (min(_parse_ts(s["ts"]) for _, s, _ in pending) - datetime.timedelta(days=1)).date().isoformat()
+        for key in sorted(keys):
+            try:
+                items_by_source[key] = _sent_items(key, fetch(key, since))
+            except Exception as e:
+                items_by_source[key] = None
+                errors[key] = str(e)
+
+    result = match_pending(pending, items_by_source, now, _signature_text())
+    if not dry_run:
+        for m in result["matched"]:
+            record_outcome(m["draft_id"], m["sent_text"], discarded=False, edit_nature=[], reason=None,
+                           sweep={"edit_distance": m["edit_distance"], "sent_ref": m["sent_ref"]})
+        for draft_id in result["superseded"]:
+            _append_event({**_superseded_event(draft_id, now.isoformat()), "source": "sweep"})
+        for draft_id in result["unsent"]:
+            record_outcome(draft_id, None, discarded=True, edit_nature=[], reason=None, sweep={})
+    settled = len(result["matched"]) + len(result["unsent"])
+    result["match_rate"] = round(len(result["matched"]) / settled, 4) if settled else None
+    result["errors"] = errors
+    return result
 
 
 # --- weight fitting ---
@@ -975,7 +1497,8 @@ def cmd_outcome(argv):
 
     try:
         result = record_outcome(draft_id, sent_text, discarded=discarded,
-                                 edit_nature=edit_nature, reason=reason, moot=moot)
+                                 edit_nature=edit_nature, reason=reason, moot=moot,
+                                 recipient=_flag_value(argv, "--recipient"))
     except Exception as e:
         print(f"outcome: {e}", file=sys.stderr)
         return 2
@@ -994,6 +1517,27 @@ def cmd_outcome(argv):
     return 0
 
 
+def cmd_sweep(argv):
+    dry_run = "--dry-run" in argv
+    result = sweep_outcomes(dry_run=dry_run)
+    if "--json" in argv:
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    rate = result["match_rate"]
+    print(f"outcome sweep{' (dry run - nothing written)' if dry_run else ''}: "
+          f"{len(result['matched'])} sent, {len(result['superseded'])} superseded by a later version, "
+          f"{len(result['unsent'])} not sent, "
+          f"{len(result['waiting'])} inside the {SWEEP_WINDOW_DAYS}-day window, "
+          f"{len(result['unchecked'])} unchecked")
+    print(f"match rate: {'n/a' if rate is None else f'{rate:.0%}'} of settled drafts matched a send")
+    for source, error in result["errors"].items():
+        print(f"could not read {source}: {error}")
+    for m in result["matched"]:
+        print(f"  {m['draft_id']} -> {m['sent_ref']} (edit_distance {m['edit_distance']}"
+              f"{'' if m['confirmed'] else ', unconfirmed conversation'})")
+    return 0
+
+
 def cmd_show(draft_id):
     d = fold_drafts().get(draft_id)
     if not d or not d["scored"]:
@@ -1006,13 +1550,15 @@ def cmd_show(draft_id):
 def main():
     argv = sys.argv[1:]
     if not argv:
-        print("usage: send_confidence.py outcome|weights-suggest|show|auto-score ...", file=sys.stderr)
+        print("usage: send_confidence.py outcome|sweep|weights-suggest|show|auto-score ...", file=sys.stderr)
         return 2
     verb, rest = argv[0], argv[1:]
     if verb == "outcome":
         return cmd_outcome(rest)
     if verb == "auto-score":
         return cmd_auto_score(rest[0]) if rest else 0
+    if verb == "sweep":
+        return cmd_sweep(rest)
     if verb == "weights-suggest":
         print(json.dumps(suggest_weights(), indent=2))
         return 0

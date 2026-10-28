@@ -4,7 +4,7 @@
 //                (inbox unread, newest-first; one block per message with id + webLink)
 // List inbox:    node mail.js --list-inbox [--top=50] [--json]
 //                (inbox read+unread, newest-first; count-capped by --top; --json emits a
-//                 structured array for scripts)
+//                 structured array for scripts, each with a hasAttachments flag)
 // List junk:     node mail.js --list-junk [--top=50] [--json]
 //                (Junk Email folder, read+unread, newest-first; same shape as --list-inbox)
 // List drafts:   node mail.js --list-drafts [--top=30]
@@ -15,11 +15,16 @@
 //                 --folder, searches the whole mailbox; --folder=sent scopes to Sent Items -
 //                 the send-confidence familiarity count reads a recipient's prior-sent count
 //                 this way, e.g. --search="to:name@example.com" --folder=sent.)
+// Sent since:    node mail.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every Sent Items message sent on or after that day, oldest first: id, conversationId,
+//                 To and Cc addresses, send time, and the plain-text body; read-only - the
+//                 send-confidence outcome sweep matches staged drafts against it)
 // Show one:      node mail.js --show=<messageId> [--html]
 //                (default emits the body as plain text. --html emits the raw HTML body.content instead
 //                 — the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
 //                 content, that the plaintext view strips out. Prints a "*** DRAFT — NOT SENT ***"
-//                 banner up top when the message is still sitting in Drafts.)
+//                 banner up top when the message is still sitting in Drafts, and an "Attachments:"
+//                 header line naming each file attachment when it carries any.)
 // Auth headers:  node mail.js --auth=<messageId>
 //                (emits a JSON object with the message's envelope-authentication headers as the
 //                 receiving system stamped them — the raw Authentication-Results value(s) and any
@@ -151,7 +156,7 @@ async function listInbox(client) {
   const data = await client.api('/me/mailFolders/inbox/messages')
     .orderby('receivedDateTime desc')
     .top(parseInt(args.top || '50', 10))
-    .select('id,conversationId,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isRead')
+    .select('id,conversationId,subject,from,toRecipients,receivedDateTime,bodyPreview,webLink,isRead,hasAttachments')
     .get();
   const msgs = data.value || [];
   if (args.json) {
@@ -162,12 +167,15 @@ async function listInbox(client) {
       const me = await client.api('/me').select('mail,userPrincipalName').get();
       myAddr = (me.mail || me.userPrincipalName || '').toLowerCase();
     } catch { /* leave myAddr empty */ }
+    // hasAttachments is Graph's own flag: true when the message carries a file attachment, false when its
+    // only attachments are inline images (a signature logo), so it marks a message that delivers a file.
     console.log(JSON.stringify(msgs.map(m => ({
       id: m.id, conversationId: m.conversationId, subject: m.subject,
       from: addr(m.from), fromAddress: m.from?.emailAddress?.address || '',
       fromMe: !!myAddr && (m.from?.emailAddress?.address || '').toLowerCase() === myAddr,
       toMe: !!myAddr && (m.toRecipients || []).some(r => (r.emailAddress?.address || '').toLowerCase() === myAddr),
       received: m.receivedDateTime, isRead: m.isRead, webLink: m.webLink,
+      hasAttachments: !!m.hasAttachments,
       preview: (m.bodyPreview || '').replace(/\s+/g, ' ').slice(0, 300),
     })), null, 2));
     return;
@@ -310,7 +318,10 @@ async function getAttachments(client) {
       console.log(`Skipped (not a downloadable file attachment): ${a.name} [${a['@odata.type']}]`);
       continue;
     }
-    const outPath = path.join(outDir, a.name);
+    // A sender controls the filename, so strip any directory part and characters Windows forbids.
+    const name = path.basename(String(a.name || '').replace(/\\/g, '/')).replace(/[<>:"|?*\x00-\x1f]/g, '_')
+      .replace(/^\.+$/, '') || `attachment-${saved.length + 1}`;
+    const outPath = path.join(outDir, name);
     fs.writeFileSync(outPath, Buffer.from(a.contentBytes, 'base64'));
     saved.push(outPath);
     console.log(`Saved: ${outPath} (${a.contentType || 'unknown type'}, ${a.size} bytes)`);
@@ -343,14 +354,28 @@ async function search(client) {
   }
 }
 
+// The `Attachments:` header line --show prints: each file attachment as `name (contentType)`, joined by
+// ` | `, inline images left out. Metadata only, so it never downloads the bytes; --get-attachments does that.
+// The drainer's email adapters parse this line, so keep its shape in step with ATTACHMENTS_LINE in the
+// drainer's provider_base.py.
+async function attachmentsLine(client, id) {
+  const data = await client.api(`/me/messages/${id}/attachments`).select('name,contentType,isInline').get();
+  const files = (data.value || []).filter(a => !a.isInline);
+  return files.length ? `Attachments: ${files.map(a => `${a.name} (${a.contentType || 'unknown type'})`).join(' | ')}` : '';
+}
+
 async function show(client) {
   const m = await client.api(`/me/messages/${args.show}`)
-    .select('subject,from,toRecipients,ccRecipients,receivedDateTime,body,isDraft').get();
+    .select('subject,from,toRecipients,ccRecipients,receivedDateTime,body,isDraft,hasAttachments').get();
   if (m.isDraft) console.log('*** DRAFT — NOT SENT ***');
   console.log(`Subject: ${m.subject}`);
   console.log(`From: ${addr(m.from)}`);
   console.log(`To: ${(m.toRecipients || []).map(addr).join(', ')}`);
   if ((m.ccRecipients || []).length) console.log(`Cc: ${m.ccRecipients.map(addr).join(', ')}`);
+  if (m.hasAttachments) {
+    const line = await attachmentsLine(client, args.show);
+    if (line) console.log(line);
+  }
   if (args.html) { console.log('\n' + (m.body?.content || '')); return; }
   console.log('\n' + strip(m.body?.content));
 }
@@ -448,6 +473,36 @@ async function thread(client) {
   })).sort((a, b) => String(a.sent).localeCompare(String(b.sent)));
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   for (const m of out) console.log(`${m.sent?.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
+}
+
+async function sentSince(client) {
+  // Every message in Sent Items sent on or after a day, oldest first, with its body as plain text and its
+  // quoted original still attached. Read-only; the send-confidence outcome sweep matches staged drafts
+  // against it.
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  const addrs = (list) => (list || []).map(r => (r.emailAddress?.address || '').toLowerCase()).filter(Boolean);
+  const out = [];
+  let page = await client.api('/me/mailFolders/sentitems/messages')
+    .header('Prefer', 'outlook.body-content-type="text"')
+    .filter(`sentDateTime ge ${day}T00:00:00Z`)
+    .orderby('sentDateTime asc')
+    .select('id,conversationId,toRecipients,ccRecipients,sentDateTime,body')
+    .top(100)
+    .get();
+  for (;;) {
+    for (const m of page.value || []) {
+      out.push({
+        id: m.id, conversationId: m.conversationId, to: addrs(m.toRecipients), cc: addrs(m.ccRecipients),
+        sent: m.sentDateTime, text: m.body?.content || '',
+      });
+    }
+    if (!page['@odata.nextLink']) break;
+    page = await client.api(page['@odata.nextLink']).header('Prefer', 'outlook.body-content-type="text"').get();
+  }
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  console.log(`${out.length} message(s) sent since ${day}, oldest first:`);
+  for (const m of out) console.log(`\n--- ${m.sent?.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
 }
 
 // Reusable: create a draft message (never sends). Returns the created draft.
@@ -611,6 +666,7 @@ if (require.main === module) {
     if (args['list-junk']) return listJunk(client);
     if (args['list-drafts']) return listDrafts(client);
     if (args.search) return search(client);
+    if (args['sent-since']) return sentSince(client);
     if (args.show) return show(client);
     if (args.auth) return auth(client);
     if (args.thread) return thread(client);

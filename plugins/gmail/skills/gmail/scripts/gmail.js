@@ -30,13 +30,20 @@
 //                 stay on the REST/OAuth path above, since that's not what's quota-constrained.)
 // List sent:     node gmail.js --list-sent [--top=50] [--json]
 //                (sent mail, newest-first; same output format as --list-inbox)
+// Sent since:    node gmail.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every message sent on or after that day, oldest first, with its Message-ID, thread id,
+//                 In-Reply-To / References chain, To and Cc addresses, send time, and plain-text body;
+//                 read-only - the send-confidence outcome sweep matches staged drafts against it. Runs
+//                 over IMAP, so it needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD like --list-inbox-imap and
+//                 reads the default account only)
 // Search:        node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]
 //                (search for messages matching query; --folder defaults to "all" (All Mail — everything
 //                 except Spam/Trash); --query is Gmail's own search syntax, matching headers + body;
 //                 newest-first)
 // Show one:      node gmail.js --show=<message-id>
 //                (<message-id> is the RFC822 Message-ID header, e.g. <abc@mail.gmail.com>; looked up
-//                 across All Mail, so it shows whether the message is still in the inbox or archived)
+//                 across All Mail, so it shows whether the message is still in the inbox or archived;
+//                 an "Attachments:" header line names each file attachment when it carries any)
 // Auth headers:  node gmail.js --auth=<message-id>
 //                (emits a JSON object with the message's envelope-authentication headers as Gmail
 //                 stamped them — the raw Authentication-Results value(s) and any Received-SPF value(s),
@@ -56,10 +63,15 @@
 //                 time, isDraft. <threadId> is the hex `threadId` --list-inbox-imap returns per item.
 //                 Read-only; the drainer's acknowledgement sweep reads it.)
 // List drafts:   node gmail.js --list-drafts [--top=30]
-// Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>]
+// Save attachments: node gmail.js --save-attachments=<message-id> [--out-dir=<dir>] [--name=<substring>]
 //                (downloads every attachment on a message to <dir> (default: cwd); looked up in All Mail
-//                 like --show. Prints each saved filename + size. Attachments with no filename are named
+//                 like --show; --name keeps only attachments whose filename contains the substring
+//                 (case-insensitive). Prints each saved path + size. Attachments with no filename are named
 //                 "attachment-N".)
+// Save attachments (IMAP): node gmail.js --save-attachments-imap=<uid> [--out-dir=<dir>] [--name=<substring>]
+//                (same as --save-attachments, fetched over IMAP by INBOX UID like --show-imap, off the
+//                 REST quota, and saving only the files --show lists (inline images left out); the
+//                 drainer's capture saves each item's attachments this way.)
 // Draft a reply: node gmail.js --reply --message-id=<id> --body-file=reply.md [--attach=a.pdf,b.png] [--inline=s1.png,s2.png] [--no-quote]
 //                (stages a DRAFT reply in the thread; never sends; replaces any prior draft on the same
 //                 thread; prints a draft-id for --send-draft. <id> is looked up across All Mail, then the
@@ -116,6 +128,7 @@ const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
 const { pickLatest } = require('./threading');
+const { pickTextPart, partAsMime } = require('./body-part');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -424,6 +437,13 @@ function renderShow(parsed) {
   ];
   if (parsed.cc) lines.push(`Cc: ${parsed.cc.text}`);
   lines.push(`Date: ${parsed.date ? parsed.date.toISOString() : ''}`);
+  // Each file attachment as `name (contentType)`, joined by ` | `, leaving out the inline images a
+  // multipart/related body references (a signature logo). The drainer's email adapters parse this line,
+  // so keep its shape in step with ATTACHMENTS_LINE in the drainer's provider_base.py.
+  const files = (parsed.attachments || []).filter(a => !a.related);
+  if (files.length) {
+    lines.push(`Attachments: ${files.map((a, i) => `${a.filename || `attachment-${i + 1}`} (${a.contentType || 'unknown type'})`).join(' | ')}`);
+  }
   lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
   return lines.join('\n');
 }
@@ -473,6 +493,85 @@ async function thread() {
   for (const m of out) console.log(`${m.sent.slice(0, 16)}  ${m.isDraft ? '[DRAFT] ' : ''}${m.from}`);
 }
 
+// Every message sent on or after a day, oldest first, with what a matcher needs to pair it with the draft
+// it came from: Message-ID, Gmail thread id, the In-Reply-To / References chain, To and Cc addresses, the
+// send time, and the plain-text body with its quoted original still attached. Read-only; the
+// send-confidence outcome sweep reads it. It reads every body in the window, so it runs over IMAP like
+// the poller's reads, off the REST quota a bulk body fetch would exhaust.
+//
+// It downloads each message's text part alone and leaves attachments on the server: a few weeks of sent
+// mail with screenshots and PDFs attached runs to hundreds of megabytes, minutes of transfer over one
+// connection where any Gmail stall would fail the whole read. A dropped connection is retried from the
+// start with a growing pause, since a rerun of the text-only read costs seconds.
+const SENT_SINCE_RETRY_DELAYS_MS = [5 * 1000, 20 * 1000];
+
+async function sentSince() {
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const sent = await readSentSince(day);
+      sent.sort((a, b) => a.sent.localeCompare(b.sent));
+      if (args.json) { console.log(JSON.stringify(sent, null, 2)); return; }
+      console.log(`${sent.length} message(s) sent since ${day}, oldest first:`);
+      for (const m of sent) console.log(`\n--- ${m.sent.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
+      return;
+    } catch (e) {
+      if (attempt >= SENT_SINCE_RETRY_DELAYS_MS.length || /GMAIL_APP_PASSWORD|no Sent mailbox/.test(e.message)) throw e;
+      console.error(`Sent-mail read failed (${e.message}); retrying in ${SENT_SINCE_RETRY_DELAYS_MS[attempt] / 1000}s.`);
+      await new Promise(resolve => setTimeout(resolve, SENT_SINCE_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
+// One pass over the Sent mailbox: headers and body structure for every message in a single fetch, then the
+// chosen text part of each, one fetch per distinct part number (Gmail fails a whole FETCH that names a part
+// some message lacks, so messages are grouped by the part they need).
+async function readSentSince(day) {
+  const since = new Date(`${day}T00:00:00Z`);
+  const addrs = (list) => (list || []).map(a => (a.address || '').toLowerCase()).filter(Boolean);
+  const sent = [];
+  await withGmailImap(async c => {
+    const box = (await c.list()).find(b => b.specialUse === '\\Sent');
+    if (!box) throw new Error('no Sent mailbox found over IMAP');
+    const lock = await c.getMailboxLock(box.path);
+    try {
+      const uids = await c.search({ since }, { uid: true });
+      if (!uids || !uids.length) return;
+      const byPart = new Map();
+      const query = { envelope: true, bodyStructure: true, internalDate: true, threadId: true, headers: ['references', 'in-reply-to'] };
+      for await (const m of c.fetch(uids, query, { uid: true })) {
+        const e = m.envelope || {};
+        const when = m.internalDate || e.date;
+        if (!when || when < since) continue; // IMAP SINCE is day-granular in server time
+        const hdrs = await simpleParser(m.headers || '');
+        const item = {
+          id: e.messageId || `uid-${m.uid}`,
+          threadId: m.threadId ? BigInt(m.threadId).toString(16) : '',
+          inReplyTo: hdrs.inReplyTo || e.inReplyTo || '', references: hdrs.references ? [].concat(hdrs.references) : [],
+          to: addrs(e.to), cc: addrs(e.cc),
+          sent: new Date(when).toISOString(), text: '',
+        };
+        sent.push(item);
+        const picked = pickTextPart(m.bodyStructure);
+        if (!picked) continue;
+        if (!byPart.has(picked.part)) byPart.set(picked.part, new Map());
+        byPart.get(picked.part).set(String(m.uid), { item, picked });
+      }
+      for (const [part, wanted] of byPart) {
+        for await (const m of c.fetch([...wanted.keys()], { bodyParts: [part] }, { uid: true })) {
+          const entry = wanted.get(String(m.uid));
+          const raw = m.bodyParts && (m.bodyParts.get(part) || [...m.bodyParts.values()][0]);
+          if (!entry || !raw) continue;
+          const parsed = await simpleParser(partAsMime(entry.picked, raw));
+          entry.item.text = entry.picked.type === 'text/plain' ? parsed.text || '' : htmlToPlainText(parsed.html || '');
+        }
+      }
+    } finally { lock.release(); }
+  });
+  return sent;
+}
+
 async function show() {
   const gid = await findMessageId(args.show);
   if (!gid) { console.log('Message not found.'); return; }
@@ -504,16 +603,36 @@ async function saveAttachments() {
   const gid = await findMessageId(args['save-attachments']);
   if (!gid) { console.log('Message not found in inbox or All Mail.'); return; }
   const { parsed } = await getParsed(gid);
-  const atts = parsed.attachments || [];
+  writeAttachments(parsed);
+}
+
+async function saveAttachmentsImap() {
+  const parsed = await fetchImap(args['save-attachments-imap']);
+  if (!parsed) throw new Error(`Message with UID ${args['save-attachments-imap']} not found in INBOX via IMAP.`);
+  writeAttachments(parsed, a => !a.related);
+}
+
+// Write a parsed message's attachments to --out-dir, shared by the REST --save-attachments and the IMAP
+// --save-attachments-imap so both name files the same way. `keep` filters which attachments to write: the
+// IMAP path the drainer captures with keeps only the files --show lists, leaving out inline images.
+function writeAttachments(parsed, keep = () => true) {
+  const atts = (parsed.attachments || []).filter(keep);
   if (!atts.length) { console.log('Message has no attachments.'); return; }
   const outDir = args['out-dir'] ? String(args['out-dir']) : process.cwd();
   fs.mkdirSync(outDir, { recursive: true });
+  // A sender controls the filename, so strip any directory part and characters Windows forbids.
+  const safeName = (n, i) => path.basename(String(n || '').replace(/\\/g, '/')).replace(/[<>:"|?*\x00-\x1f]/g, '_').replace(/^\.+$/, '') || `attachment-${i + 1}`;
+  const nameFilter = args.name ? String(args.name).toLowerCase() : null;
+  let saved = 0;
   atts.forEach((a, i) => {
-    const name = a.filename || `attachment-${i + 1}`;
+    const name = safeName(a.filename, i);
+    if (nameFilter && !name.toLowerCase().includes(nameFilter)) return;
     const dest = path.join(outDir, name);
     fs.writeFileSync(dest, a.content);
+    saved++;
     console.log(`Saved ${dest} (${a.content.length} bytes, ${a.contentType || 'unknown type'})`);
   });
+  if (!saved) console.log(`No attachment name contains "${args.name}".`);
 }
 
 async function listDrafts() {
@@ -764,12 +883,14 @@ function describeError(e) {
 const IMAP_RUN_DEADLINE_MS = 75 * 1000;
 
 (async () => {
-  if (args['list-inbox-imap'] || args['show-imap'] || args['auth-imap']) {
+  if (args['list-inbox-imap'] || args['show-imap'] || args['auth-imap'] || args['save-attachments-imap']) {
     exitIfStillRunningAfter(IMAP_RUN_DEADLINE_MS, 'IMAP operation');
   }
   if (args['list-inbox-imap']) return await listInboxImap(); // IMAP paths below - no REST/OAuth client needed
   if (args['show-imap']) return await showImap();
   if (args['auth-imap']) return await authImap();
+  if (args['save-attachments-imap']) return await saveAttachmentsImap();
+  if (args['sent-since']) return await sentSince();
   const authClient = getAuthedClient();
   gmail = google.gmail({ version: 'v1', auth: authClient });
   await assertAccountEmail(authClient); // wrong-mailbox guard before any REST operation runs
@@ -787,5 +908,5 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --save-attachments-imap, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });

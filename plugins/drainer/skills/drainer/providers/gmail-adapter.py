@@ -31,7 +31,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, run_node, slug, find_skill_script,  # noqa: E402
-                           node_failure_kind, parse_email_auth)
+                           node_failure_kind, parse_email_auth, parse_attachments, attachments_section)
 
 
 class Provider(ProviderBase):
@@ -218,10 +218,13 @@ class Provider(ProviderBase):
         uid = item.get("uid")
         show = run_node([self.gmailjs, f"--show-imap={uid}"]) if uid else None
         body = show.stdout if (show and show.returncode == 0) else "(could not load body)"
+        att_dir = os.path.join(items_dir, f"{iid}.attachments")
+        if uid and parse_attachments(body):
+            run_node([self.gmailjs, f"--save-attachments-imap={uid}", f"--out-dir={att_dir}"])
         web_link = self._web_link(message_id)
         with open(email_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\nReceived: {item.get('received')}\n"
-                    f"Link: {web_link}\nMessageId: {message_id}\n\n---\n\n{body}\n")
+                    f"Link: {web_link}\nMessageId: {message_id}\n\n---\n\n{body}\n{attachments_section(att_dir)}")
         record = {
             "id": iid, "source": self.name, "triage": item["_bucket"], "kind": item.get("_kind"),
             "triageReason": item.get("_triageReason"),

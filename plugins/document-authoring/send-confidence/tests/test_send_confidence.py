@@ -168,7 +168,7 @@ def test_judge_ratings_and_latitude_turn_penalty(monkeypatch):
 def test_judge_prompt_carries_the_aspects_file(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, api_key, max_tokens):
+    def fake_call(system, user, api_key, max_tokens, temperature=0):
         seen["system"] = system
         return None, "stubbed"
     monkeypatch.setattr(sc, "_call_model", fake_call)
@@ -178,8 +178,173 @@ def test_judge_prompt_carries_the_aspects_file(monkeypatch):
 
 def test_aspects_file_exists_and_names_every_aspect():
     text, _ = sc._load_aspects()
-    for heading in ("## Rule coverage", "## Content latitude", "## Fact support", "## Stakes", "## Familiarity"):
+    for heading in ("## Rule coverage", "## Content latitude", "## Fact support", "## Stakes", "## Familiarity",
+                    "## Kind"):
         assert heading in text
+    for kind in sc.MESSAGE_KINDS:
+        assert f"- {kind} - " in text
+
+
+# --- three judge readings + raw attributes ---
+
+def _reading(stakes, latitude, claims, kind):
+    return {"stakes": {"rating": stakes, "rationale": "s"},
+            "content_latitude": {"rating": latitude, "rationale": "l"},
+            "claims": claims, "kind": kind}
+
+
+def _queue_judge(monkeypatch, answers):
+    queue = list(answers)
+    monkeypatch.setattr(sc, "run_judge", lambda ctx, body, aspects, key: queue.pop(0))
+
+
+def test_three_readings_are_stored_and_the_score_uses_their_median(monkeypatch):
+    sup, unsup = {"text": "a", "supported": True}, {"text": "b", "supported": False}
+    _queue_judge(monkeypatch, [
+        (_reading(2, 3, [sup], "scheduling"), None),
+        (_reading(4, 3, [sup, unsup], "scheduling"), None),
+        (_reading(3, 5, [sup, unsup, unsup, unsup], "nudge"), None),
+    ])
+    ctx = {"channel": "outlook-work", "ask": "Reply.", "sent_count": None, "turns_before_draft": 2,
+           "rule_coverage": None}
+    result = sc.score_draft("<p>Tuesday at <b>2pm</b> works.</p>", ctx, weights=sc.DEFAULT_WEIGHTS,
+                            aspects="", api_key=None)
+    attrs = result["attributes"]
+    # The three runs are threads, so which run took which queued answer varies; compare sorted.
+    assert sorted(attrs["stakes"]) == [2, 3, 4]
+    assert sorted(attrs["content_latitude"]) == [3, 3, 5]
+    assert sorted(zip(attrs["claims_total"], attrs["claims_unsupported"])) == [(1, 0), (2, 1), (4, 3)]
+    assert attrs["kind"] == {"label": "scheduling", "agreement": 2}
+    assert attrs["turn_count"] == 2
+    assert attrs["word_count"] == 4
+    assert attrs["channel"] == "email"
+    assert (attrs["familiarity"], attrs["familiarity_missing"]) == (None, True)
+    assert (attrs["rule_coverage"], attrs["rule_coverage_missing"]) == (None, True)
+    # The composite reads the median reading: stakes 3, latitude 3 less the turn penalty, and
+    # the median supported share of 1, 1/2, and 1/4, logged with that reading's claim counts.
+    assert result["factors"]["stakes"] == 50
+    assert result["factors"]["content_latitude"] == 50 - 10
+    assert result["factors"]["fact_support"] == 50
+    assert (result["features"]["claims_total"], result["features"]["claims_unsupported"]) == (2, 1)
+
+
+def test_two_readings_take_the_low_median_so_values_stay_whole(monkeypatch):
+    _queue_judge(monkeypatch, [
+        (_reading(2, 2, [], "nudge"), None),
+        (None, "model call failed: timeout"),
+        (_reading(3, 4, [], "nudge"), None),
+    ])
+    result = sc.score_draft("Following up.", {"channel": "gmail", "ask": "Nudge them."},
+                            weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert result["features"]["stakes_rating"] == 2
+    assert result["features"]["latitude_rating"] == 2
+
+
+def test_a_claim_counts_as_supported_only_when_marked_true(monkeypatch):
+    claims = [{"text": "a", "supported": True}, {"text": "b", "supported": "false"}, {"text": "c"}]
+    _queue_judge(monkeypatch, [(_reading(2, 2, claims, "nudge"), None)] * 3)
+    result = sc.score_draft("Body.", {"channel": "gmail", "ask": "Reply."},
+                            weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    assert result["attributes"]["claims_unsupported"] == [2, 2, 2]
+
+
+@pytest.mark.parametrize("channel,expected", [
+    ("gmail", "email"), ("outlook-personal", "email"), ("outlook-work", "email"),
+    ("slack", "slack"), ("teams", "teams"), ("other", "other"), (None, None),
+])
+def test_channel_classes(channel, expected):
+    assert sc.measure_attributes("x", {"channel": channel}, [])["channel"] == expected
+
+
+def test_a_failed_reading_is_dropped_and_its_error_kept(monkeypatch):
+    _queue_judge(monkeypatch, [
+        (_reading(2, 2, [], "thanks-ack"), None),
+        (None, "model call failed: timeout"),
+        (_reading(2, 2, [], "thanks-ack"), None),
+    ])
+    ctx = {"channel": "slack", "ask": "Thank them.", "sent_count": 3, "rule_coverage": 4}
+    result = sc.score_draft("Thanks!", ctx, weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    attrs = result["attributes"]
+    assert attrs["stakes"] == [2, 2]
+    assert attrs["kind"] == {"label": "thanks-ack", "agreement": 2}
+    assert attrs["channel"] == "slack"
+    assert (attrs["familiarity"], attrs["familiarity_missing"]) == (3, False)
+    assert (attrs["rule_coverage"], attrs["rule_coverage_missing"]) == (4, False)
+    assert result["errors"] == ["model call failed: timeout"]
+    assert result["factors"]["fact_support"] == 100
+
+
+def test_no_readings_leave_every_judged_attribute_null():
+    ctx = {"channel": "gmail", "ask": "Reply.", "sent_count": 1, "turns_before_draft": 0}
+    result = sc.score_draft("A reply.", ctx, weights=sc.DEFAULT_WEIGHTS, aspects="", api_key=None)
+    attrs = result["attributes"]
+    for key in ("stakes", "content_latitude", "claims_total", "claims_unsupported", "kind"):
+        assert attrs[key] is None
+    assert attrs["word_count"] == 2
+    assert result["errors"] == ["judge disabled (SEND_CONFIDENCE_JUDGE=off)"]
+
+
+def test_without_ask_or_inputs_only_stakes_and_kind_are_kept(monkeypatch):
+    _queue_judge(monkeypatch, [(_reading(3, 4, [{"text": "a"}], "decline"), None)] * 3)
+    result = sc.score_draft("No thanks.", {"channel": "gmail"}, weights=sc.DEFAULT_WEIGHTS,
+                            aspects="", api_key=None)
+    attrs = result["attributes"]
+    assert attrs["stakes"] == [3, 3, 3]
+    assert attrs["kind"] == {"label": "decline", "agreement": 3}
+    assert attrs["content_latitude"] is None and attrs["claims_total"] is None
+
+
+@pytest.mark.parametrize("labels,expected", [
+    (["nudge", "decline", "scheduling"], {"label": "nudge", "agreement": 1}),
+    (["decline", "nudge", "nudge"], {"label": "nudge", "agreement": 2}),
+    ([None, None, "decline"], {"label": "decline", "agreement": 1}),
+    ([None, None, None], {"label": None, "agreement": 0}),
+])
+def test_kind_majority(labels, expected):
+    assert sc._kind_majority([{"kind": k} for k in labels]) == expected
+
+
+def test_run_judge_asks_for_kind_at_temperature_1(monkeypatch):
+    seen = {}
+
+    def fake_call(system, user, api_key, max_tokens, temperature=0):
+        seen.update(system=system, temperature=temperature)
+        return {"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [],
+                "kind": " Info-Request "}, None
+    monkeypatch.setattr(sc, "_call_model", fake_call)
+    reading, error = sc.run_judge({"channel": "gmail"}, "body", "", "key")
+    assert error is None and reading["kind"] == "info-request"
+    assert seen["temperature"] == 1
+    assert "|".join(sc.MESSAGE_KINDS) in seen["system"]
+
+
+@pytest.mark.parametrize("answer,ok", [
+    ({"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [], "kind": "poem"}, True),
+    ({"stakes": {"rating": 7}, "content_latitude": {"rating": 3}, "claims": []}, False),
+    ({"stakes": {"rating": "2"}, "content_latitude": {"rating": 3}, "claims": []}, False),
+    ({"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": "none"}, False),
+])
+def test_run_judge_validates_the_reading(monkeypatch, answer, ok):
+    monkeypatch.setattr(sc, "_call_model", lambda *a, **k: (answer, None))
+    reading, error = sc.run_judge({}, "body", "", "key")
+    assert (reading is not None) == ok
+    if ok:
+        assert reading["kind"] is None
+    else:
+        assert error == "judge response missing expected fields"
+
+
+def test_run_judges_makes_three_calls(monkeypatch):
+    calls = []
+    original = sc.run_judge
+
+    def counting(*a):
+        calls.append(1)
+        return original(*a)
+    monkeypatch.setattr(sc, "run_judge", counting)
+    readings, errors = sc.run_judges({}, "body", "", None)
+    assert len(calls) == sc.JUDGE_RUNS == 3
+    assert readings == [] and errors == ["judge disabled (SEND_CONFIDENCE_JUDGE=off)"]
 
 
 # --- score_and_log ---
@@ -195,6 +360,41 @@ def test_score_and_log_writes_snapshot_and_scored_row(tmp_path):
     assert scored[0]["channel"] == "gmail"
     assert scored[0]["factors"]["rule_coverage"] == 75
     assert scored[0]["uncertain_spots"] == "the closing line"
+    assert scored[0]["v"] == 5
+    assert scored[0]["attributes"]["rule_coverage"] == 4
+    assert scored[0]["attributes"]["channel"] == "email"
+    assert scored[0]["attributes"]["word_count"] == len(body.split())
+    assert scored[0]["model"] is None
+
+
+def test_score_and_log_scores_under_the_live_model(tmp_path):
+    model = {"version": 3, "binary_terms": [["slack"]], "value_terms": [], "values": {}, "latent": {},
+             "intercept": [0.0, 0.0], "beta": [[0.0], [0.0]], "clear_binary": [], "support_rows": [[0]] * 25}
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump(model, fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert scored["model"] == {"version": 3, "probability": 0.5, "floor": 0.5, "support": 0, "auto_send": False}
+
+
+def test_score_and_log_survives_a_model_file_that_is_not_an_object(tmp_path):
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump([], fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert "error" in scored["model"]
+
+
+def test_score_and_log_survives_a_broken_model_file(tmp_path):
+    os.makedirs(os.path.dirname(sc.model_path()), exist_ok=True)
+    with open(sc.model_path(), "w", encoding="utf-8") as fh:
+        json.dump({"version": 2}, fh)
+    draft_id, _ = _score(tmp_path)
+    scored = [e for e in sc.load_events() if e["event"] == "scored" and e["draft_id"] == draft_id][0]
+    assert scored["model"]["version"] == 2
+    assert "error" in scored["model"]
 
 
 def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
@@ -308,6 +508,17 @@ def test_html_staged_draft_sent_as_plain_text_is_sent_as_is(tmp_path):
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(f"<p>{body}</p>")
     result = sc.record_outcome(draft_id, body, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "sent-as-is"
+    assert result["learn_reasons"] == []
+
+
+def test_staged_slack_mention_token_reads_as_the_sent_mention(tmp_path, monkeypatch):
+    monkeypatch.setattr(sc, "_slack_display_name", lambda slack_id: "Dana Avery")
+    draft_id, body = _score(tmp_path, rule_coverage=3)
+    path = os.path.join(sc.drafts_dir(), f"{draft_id}.txt")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(f"<@U0123ABCD> {body}")
+    result = sc.record_outcome(draft_id, f"@Dana Avery {body}", discarded=False, edit_nature=[], reason=None)
     assert result["disposition"] == "sent-as-is"
     assert result["learn_reasons"] == []
 
@@ -426,6 +637,7 @@ def test_moot_discard_skips_flagging(tmp_path):
     assert result["direction"] is None
     assert result["implicated"] == []
     assert result["miscalibrated"] is False
+    assert result["moot"] is True
     assert result["dispatch"] is None
     assert not os.path.isfile(_brief(draft_id))
 
@@ -469,6 +681,69 @@ def test_brief_names_the_procedure_and_carries_both_texts(tmp_path):
     assert "weights.json" not in brief and "weights-suggest" not in brief
     assert "uncertainty-aspects.md" not in brief.split("## Files you may change")[1]
     assert '--title "Learn from send: slack to a@b.com"' in result["dispatch"]
+
+
+def test_title_uses_recipient_passed_at_outcome_when_stage_had_none():
+    draft_id = _seed_scored("d-norecip", "Hi.\nDraft.", {**NEUTRAL, "rule_coverage": 90}, score=60)
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip2", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "y" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t2",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip2.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    unnamed = sc.record_outcome("d-norecip2", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"], reason=None)
+    assert '--title "Learn from send: gmail to unknown"' in unnamed["dispatch"]
+    sc._append_event({"event": "scored", "v": 2, "draft_id": "d-norecip3", "ts": "2026-09-28T10:00:00-05:00",
+                      "sha256": "z" * 64, "channel": "gmail", "recipient": None, "thread_ref": "t3",
+                      "factors": {**NEUTRAL, "rule_coverage": 90}, "score": 60, "errors": []})
+    with open(os.path.join(sc.drafts_dir(), "d-norecip3.txt"), "w", encoding="utf-8") as fh:
+        fh.write("Hi.\nDraft.")
+    named = sc.record_outcome("d-norecip3", "Hi.\nSent.", discarded=False, edit_nature=["tone-voice"],
+                              reason=None, recipient="pat@example.org")
+    assert '--title "Learn from send: gmail to pat@example.org"' in named["dispatch"]
+
+
+def _slack_scored(recipient):
+    return {"channel": "slack", "recipient": recipient}
+
+
+def test_title_names_the_person_behind_a_slack_id(monkeypatch):
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: "/fake/slack.js")
+    seen = []
+
+    class Done:
+        returncode, stdout, stderr = 0, "Pat Example\n", ""
+
+    def fake_run(args, **kw):
+        seen.append(args)
+        return Done()
+
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to Pat Example"
+    assert seen[0][-1] == "--resolve-name=D0ABC1234"
+
+
+def test_title_keeps_the_slack_id_when_the_lookup_fails(monkeypatch):
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: "/fake/slack.js")
+
+    class Failed:
+        returncode, stdout, stderr = 1, "", "Error: boom"
+
+    monkeypatch.setattr(sc.subprocess, "run", lambda *a, **k: Failed())
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to D0ABC1234"
+    sc._slack_display_name.cache_clear()
+    monkeypatch.setattr(sc, "_client_script", lambda plugin, script: None)
+    assert sc._spawn_title(_slack_scored("D0ABC1234")) == "Learn from send: slack to D0ABC1234"
+
+
+def test_title_leaves_a_readable_recipient_alone(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("no lookup expected")
+
+    monkeypatch.setattr(sc.subprocess, "run", boom)
+    assert sc._spawn_title({"channel": "gmail", "recipient": "pat@example.org"}) == "Learn from send: gmail to pat@example.org"
+    assert sc._spawn_title(_slack_scored("Pat Example")) == "Learn from send: slack to Pat Example"
 
 
 def test_procedure_file_exists():
@@ -801,3 +1076,250 @@ def test_spawn_detached_outlives_its_parent(tmp_path):
     while not marker.exists() and time.time() < deadline:
         time.sleep(0.2)
     assert marker.read_text() == "done"
+
+
+# --- the outcome sweep ---
+
+import datetime as _dt  # noqa: E402
+
+NOW = _dt.datetime(2026, 10, 26, 12, 0, tzinfo=_dt.timezone.utc)
+SIG_HTML = 'Russ Rutledge<br>Executive Director<br><a href="https://example.org/">https://example.org/</a>'
+
+
+def _seed_pending(draft_id, body, *, channel="gmail", ts="2026-10-20T10:00:00+00:00", recipient=None,
+                  thread_ref=None, sha=None, account=None):
+    os.makedirs(sc.drafts_dir(), exist_ok=True)
+    with open(os.path.join(sc.drafts_dir(), f"{draft_id}.txt"), "w", encoding="utf-8") as fh:
+        fh.write(body)
+    sc._append_event({
+        "event": "scored", "v": 3, "draft_id": draft_id, "ts": ts, "sha256": sha or draft_id,
+        "channel": channel, "account": account, "recipient": recipient, "thread_ref": thread_ref,
+        "score": 80, "factors": NEUTRAL, "features": {},
+    })
+    return draft_id, sc.fold_drafts()[draft_id]["scored"], body
+
+
+def _mail(text, sent="2026-10-20T12:00:00Z", to=("a@example.org",), refs=(), mid="<sent-1@x>", thread_id=""):
+    return {"id": mid, "threadId": thread_id, "inReplyTo": refs[-1] if refs else "", "references": list(refs),
+            "to": list(to), "cc": [], "sent": sent, "text": text}
+
+
+def _slack(text, channel="C0123ABCD", ts="1792000000.000100", thread_ts="", sent="2026-10-20T12:00:00Z"):
+    return {"channel": channel, "ts": ts, "threadTs": thread_ts, "sent": sent, "text": text}
+
+
+def test_comparable_text_cuts_the_quote_and_signature_and_reduces_links():
+    sig = sc.comparable_text(SIG_HTML)
+    sent = ("Hi Ana - the [ignored] listing is live:\nVacancies <https://example.org/v>.\n\n"
+            "Russ Rutledge\nExecutive Director\nhttps://example.org/\n\n"
+            "On Tue, Oct 13, 2026 at 8:26 AM Ana <\nana@example.org> wrote:\n> earlier text\n")
+    draft = "Hi Ana - the [ignored] listing is live: [Vacancies](https://example.org/v)."
+    assert sc.comparable_text(sent, sig) == "Hi Ana - the [ignored] listing is live: Vacancies."
+    assert sc.comparable_text(draft, sig) == sc.comparable_text(sent, sig)
+
+
+def test_comparable_text_reduces_slack_mrkdwn_links_to_their_label():
+    assert sc.comparable_text("See <https://x.org/a|the *agenda*> today") == "See the agenda today"
+
+
+# --- email is rich text: a formatting round trip is not an edit ---
+
+MD_DRAFT = (
+    "Hi Sam - good to see you last week.\n\n"
+    "Thanks for sharing [the Spring Meetup](https://example.org/meetup/) with your team.\n"
+    "It is remote, so anyone can join.\n\n"
+    "Use the code `TEAM-26` when you register.\n\n"
+    "Here's a blurb:\n\n"
+    "> The **Spring Meetup** is May 4 - join free at [ex.org/m](https://ex.org/m)\n\n"
+    "* agenda posted\n"
+    "* slides after\n"
+)
+# The plain-text alternative a mail client derives from the rendered HTML of MD_DRAFT.
+PLAIN_ALTERNATIVE = (
+    "Hi Sam - good to see you last week.\n\n"
+    "Thanks for sharing the Spring Meetup <https://example.org/meetup/> with your team. It is "
+    "remote, so anyone can join.\n\n"
+    "Use the code TEAM-26 when you register.\n\n"
+    "Here's a blurb:\n\n"
+    "The *Spring Meetup* is May 4 - join free at ex.org/m\n\n"
+    "   - agenda posted\n"
+    "   - slides after\n\n"
+    "On Mon, May 1, 2026 at 9:00 AM Sam <sam@example.org> wrote:\n> earlier text\n"
+)
+SENT_HTML = (
+    "<p>Hi Sam - good to see you last week.</p>"
+    '<p>Thanks for sharing <a href="https://example.org/meetup/">the Spring Meetup</a> with your team.\n'
+    "It is remote, so anyone can join.</p>"
+    "<p>Use the code <code>TEAM-26</code> when you register.</p>"
+    "<p>Here's a blurb:</p>"
+    '<blockquote><p>The <strong>Spring Meetup</strong> is May 4 - join free at '
+    '<a href="https://ex.org/m">ex.org/m</a></p></blockquote>'
+    "<ul><li>agenda posted</li><li>slides after</li></ul>"
+)
+
+
+def test_rendered_text_reads_markdown_html_and_plain_alternative_the_same():
+    expected = (
+        "Hi Sam - good to see you last week.\n\n"
+        "Thanks for sharing the Spring Meetup with your team. It is remote, so anyone can join.\n\n"
+        "Use the code TEAM-26 when you register.\n\n"
+        "Here's a blurb:\n\n"
+        "The Spring Meetup is May 4 - join free at ex.org/m\n\n"
+        "- agenda posted\n- slides after"
+    )
+    assert sc.rendered_text(MD_DRAFT) == expected
+    assert sc.rendered_text(PLAIN_ALTERNATIVE) == expected
+    assert sc.rendered_text(SENT_HTML) == expected
+
+
+def test_email_formatting_round_trip_records_sent_as_is(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: pytest.fail("a round trip has no edits to label"))
+    draft_id = _seed_scored("d-rich", MD_DRAFT, NEUTRAL, score=50)
+    result = sc.record_outcome(draft_id, PLAIN_ALTERNATIVE, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "sent-as-is"
+    assert result["edit_distance"] == 0.0
+
+
+def test_email_word_edit_is_labelled_and_briefed_in_rendered_form(monkeypatch):
+    seen = {}
+
+    def label(draft, sent, key):
+        seen.update(draft=draft, sent=sent)
+        return ["tone-voice"], [{"label": "tone-voice", "summary": "added a detail"}], None
+    monkeypatch.setattr(sc, "label_edits", label)
+    draft_id = _seed_scored("d-rich-edit", MD_DRAFT, NEUTRAL, score=50)
+    sent = PLAIN_ALTERNATIVE.replace("May 4 -", "May 4, with a guest keynote -")
+    result = sc.record_outcome(draft_id, sent, discarded=False, edit_nature=[], reason=None)
+    assert result["disposition"] == "edited"
+    assert "](" not in seen["draft"] and "`" not in seen["draft"] and "<https" not in seen["sent"]
+    with open(_brief(draft_id), encoding="utf-8") as fh:
+        redline = fh.read().split("## Redline")[1].split("## Diff")[0]
+    assert "May ~~4~~***4, with a guest keynote*** - join" in redline
+    assert "https://" not in redline and "`" not in redline
+
+
+def test_slack_outcome_keeps_its_markup(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: (["tone-voice"], [], None))
+    draft_id = _seed_scored("d-slack-raw", "Ship it `today` please, the whole team agrees.", NEUTRAL,
+                            score=50, channel="slack")
+    result = sc.record_outcome(draft_id, "Ship it today please, the whole team agrees.",
+                               discarded=False, edit_nature=[], reason=None)
+    assert result["edit_distance"] > 0
+
+
+def test_conversation_confirms_by_references_and_vetoes_disjoint_recipients():
+    _, scored, _ = _seed_pending("d1", "x", recipient="a@example.org", thread_ref="<orig@x>")
+    keys = sc._draft_keys(scored)
+    item = sc._sent_items("gmail", [_mail("x", to=("other@example.org",), refs=("<orig@x>",))])[0]
+    assert sc._conversation(keys, item) is True
+    item = sc._sent_items("gmail", [_mail("x", to=("other@example.org",), refs=("<else@x>",))])[0]
+    assert sc._conversation(keys, item) is False
+
+
+def test_conversation_confirms_by_recipient_name_and_gmail_thread_id():
+    _, scored, _ = _seed_pending("d1", "x", recipient="Rob Tuley")
+    item = sc._sent_items("gmail", [_mail("x", to=("rob.tuley@example.com",))])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is True
+    _, scored, _ = _seed_pending("d2", "x", recipient="Change Managers (5)")
+    item = sc._sent_items("gmail", [_mail("x", to=("members@example.com",))])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is None
+    _, scored, _ = _seed_pending("d3", "x", thread_ref="1a1457605f7a45b8")
+    item = sc._sent_items("gmail", [_mail("x", thread_id="1a1457605f7a45b8")])[0]
+    assert sc._conversation(sc._draft_keys(scored), item) is True
+
+
+def test_conversation_slack_thread_miss_does_not_veto_but_channel_miss_does():
+    _, scored, _ = _seed_pending("d1", "x", channel="slack", thread_ref="slack-C0123ABCD-1791905305-615739")
+    keys = sc._draft_keys(scored)
+    assert keys["recipients"] == {"C0123ABCD"} and keys["threads"] == {"1791905305.615739"}
+    same_channel = sc._sent_items("slack", [_slack("x", thread_ts="1791000000.000001")])[0]
+    assert sc._conversation(keys, same_channel) is True
+    other_channel = sc._sent_items("slack", [_slack("x", channel="C0999ZZZZ")])[0]
+    assert sc._conversation(keys, other_channel) is False
+
+
+def test_match_pending_pairs_closest_first_and_supersedes_the_earlier_version():
+    body = "Thanks for the patterns work, and no worries on missing the session."
+    pending = [
+        _seed_pending("early", body + " We can talk Monday.", channel="slack", recipient="C0123ABCD"),
+        _seed_pending("final", body, channel="slack", recipient="C0123ABCD", ts="2026-10-20T11:00:00+00:00"),
+    ]
+    items = {"slack": sc._sent_items("slack", [_slack(body)])}
+    out = sc.match_pending(pending, items, NOW)
+    assert [(m["draft_id"], m["edit_distance"], m["confirmed"]) for m in out["matched"]] == [("final", 0.0, True)]
+    assert out["superseded"] == ["early"]
+
+
+def test_match_pending_unconfirmed_needs_a_closer_text_than_confirmed():
+    draft = ("Hi Thad - thanks for sending those over. Could you send over the written quote? "
+             "And what's your read on what's causing the leak? Russ")
+    sent = "Hi Thad - thanks for sending those over. Great investigation! Let me know when you have the written quote. Russ"
+    confirmed = [_seed_pending("d1", draft, channel="outlook-personal", recipient="thad@example.com")]
+    items = {"outlook-personal": sc._sent_items("outlook-personal", [_mail(sent, to=("thad@example.com",))])}
+    assert [m["draft_id"] for m in sc.match_pending(confirmed, items, NOW)["matched"]] == ["d1"]
+    unconfirmed = [_seed_pending("d2", draft, channel="outlook-personal", recipient=None)]
+    out = sc.match_pending(unconfirmed, items, NOW)
+    assert out["matched"] == [] and out["waiting"] == ["d2"]
+
+
+def test_match_pending_window_waiting_unchecked_and_twins():
+    old = _seed_pending("old", "An old draft nobody sent.", ts="2026-10-01T10:00:00+00:00")
+    fresh = _seed_pending("fresh", "A fresh draft not sent yet.", ts="2026-10-25T10:00:00+00:00")
+    slack = _seed_pending("chat", "A Slack draft.", channel="slack", recipient="C0123ABCD")
+    twin_a = _seed_pending("twin-a", "Same body twice.", sha="s1", recipient="a@example.org")
+    twin_b = _seed_pending("twin-b", "Same body twice.", sha="s1", recipient="a@example.org",
+                           ts="2026-10-20T10:00:05+00:00")
+    late = _mail("An old draft nobody sent.", sent="2026-10-15T10:00:00Z")
+    items = {"gmail": sc._sent_items("gmail", [late, _mail("Same body twice.")]), "slack": None}
+    out = sc.match_pending([old, fresh, slack, twin_a, twin_b], items, NOW)
+    assert sorted(m["draft_id"] for m in out["matched"]) == ["twin-a", "twin-b"]
+    assert out["unsent"] == ["old"]
+    assert out["waiting"] == ["fresh"]
+    assert out["unchecked"] == ["chat"]
+
+
+def test_sweep_outcomes_writes_sweep_outcomes_and_a_dry_run_writes_nothing(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: pytest.fail("the sweep must not call the model"))
+    _seed_pending("sent", "Hi Ana - the listing is live. Does it look good to you?", recipient="ana@example.org")
+    _seed_pending("edited", "Hi Bo - here is the agenda for Tuesday and the notes.", recipient="bo@example.org")
+    _seed_pending("gone", "Hi Cy - a draft that never went out.", recipient="cy@example.org",
+                  ts="2026-10-01T10:00:00+00:00")
+    calls = []
+
+    def fetch(channel, since):
+        calls.append((channel, since))
+        return [_mail("Hi Ana - the listing is live. Does it look good to you?", to=("ana@example.org",)),
+                _mail("Hi Bo - here is the agenda for Tuesday.", to=("bo@example.org",), mid="<sent-2@x>")]
+
+    dry = sc.sweep_outcomes(fetch=fetch, now=NOW, dry_run=True)
+    assert calls == [("gmail", "2026-09-30")]
+    assert len(dry["matched"]) == 2 and dry["unsent"] == ["gone"] and dry["match_rate"] == round(2 / 3, 4)
+    assert all(d["outcome"] is None for d in sc.fold_drafts().values())
+
+    sc.sweep_outcomes(fetch=fetch, now=NOW)
+    drafts = sc.fold_drafts()
+    sent, edited, gone = (drafts[k]["outcome"] for k in ("sent", "edited", "gone"))
+    assert (sent["disposition"], sent["edit_distance"], sent["source"], sent["sent_ref"]) == \
+        ("sent-as-is", 0.0, "sweep", "<sent-1@x>")
+    assert edited["disposition"] == "edited" and 0.05 < edited["edit_distance"] < 0.6
+    assert edited["edit_nature"] == [] and edited["learn_reasons"] == []
+    assert (gone["disposition"], gone["reason"], gone["source"]) == ("discarded", None, "sweep")
+    assert sc.sweep_outcomes(fetch=fetch, now=NOW)["matched"] == []
+
+
+def test_sweep_outcomes_leaves_drafts_pending_when_a_source_fails():
+    _seed_pending("d1", "Hi - a draft.", recipient="a@example.org", ts="2026-10-01T10:00:00+00:00")
+
+    def fetch(channel, since):
+        raise RuntimeError("quota exceeded")
+
+    out = sc.sweep_outcomes(fetch=fetch, now=NOW)
+    assert out["unchecked"] == ["d1"] and out["errors"] == {"gmail": "quota exceeded"}
+    assert sc.fold_drafts()["d1"]["outcome"] is None
+
+
+def test_sweep_skips_a_second_gmail_mailbox():
+    _, scored, _ = _seed_pending("d1", "x", account="christina")
+    assert sc._source_key(scored) is None
+    _, scored, _ = _seed_pending("d2", "x", account="isc")
+    assert sc._source_key(scored) == "gmail"

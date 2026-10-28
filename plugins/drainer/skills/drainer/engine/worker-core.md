@@ -132,6 +132,20 @@ A match means the item is already tracked: reference the card in what you presen
 No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
+**Also check whether another live session is already working on this same thing.**
+The poller's duplicate guard tracks the item ids it dispatched itself, which excludes sessions Russell or a handoff started.
+A recurring card whose Start date arrives while its work is in motion therefore gets a second worker.
+Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
+Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
+Russell's own interactive session counts the same as a background worker.
+When a peer looks like it covers the same work:
+1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
+2. If the peer confirms, `SendMessage` it everything useful this worker has gathered (card state, thread context, links, findings), then close this worker via `python <skill>/scripts/close-session.py`.
+   Leave a card un-cleared and its Start untouched, so the peer owns the item.
+   Hand the item over without asking Russell whether the peer is fine taking it.
+   Like the silent closes listed in §6a, this queues no digest entry: the peer is the one carrying the item.
+3. If the peer says it is different work, or no peer looks related, carry on as normal.
+
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
 The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → queue the digest and close the session per §2c).
@@ -192,9 +206,11 @@ Route each piece of work by where it belongs - which is also where Russell can r
   A screenshot is a large image and a PDF can be several megabytes; read inline, it lands in the prefix and is re-read on every later model call, so the subagent boundary is where the costliest content stays out.
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
-  Launch it as a background session, the way the poller launched you, and let this session stay on its own item:
+  Launch it as a background session, the way the poller launched you:
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
+  **Before launching, ask whether this item's next step can start before the handoff finishes; if not, launch with `--resume-me` and close paused in that same turn, per §6, "Blocked on another in-flight session".**
+  A session that launches a handoff and closes plain (no `--resume-me`, no `--pause`) is gone for good: nothing revives it.
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   Name the new session by its title in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
@@ -215,12 +231,21 @@ Doing so drops the plan-phase context from the implementation session, runs the 
 
 Figure out what the seed item needs and **DO THAT WORK in this session** - the inline deliverable above.
 You are the implementer, not a task manager.
+
+**An ask in the item is ours to carry out, then the reply reports it done.**
+Whatever the sender asks Russell to do is step 3's work whenever the pod can do it with facts it can find (`context.md`, `~/OneDrive/Claude/personal-facts.md`, his mailboxes, calendars, and files) or a system it can drive: a form to fill, a link or document to send, a fact about him to share, a calendar slot to book or an invite to accept, an account or access to set up.
+Do it now, and stage only its irreversible final button (a form's Submit, an invite's Send) for Russell, per the global staging rule; step 4's reply then reports the ask done.
+An ask that needs a fact or a judgment only Russell holds comes back to him as one complete question (§1's one-brief rule), and the work resumes on his answer.
+An ask only his own hands can finish is still ours to set up: open the page for him in the browser (browser-chauffeur), ready at the step he takes, or give him the exact steps when there is no page to open; every LinkedIn action gets its link for him to click, per the LinkedIn ban.
+The reply then reports it done once he has done it.
+Triage's `kind` and `triageReason` are a quick read of a skimmed body; the ask in the item's own words decides what step 3 does.
+
 Opening the PR this item is about?
 You open it.
 Filing its ticket?
 You file it.
 Completing a form?
-You fill it out together with the user.
+You fill it out, and Russell presses Submit.
 Writing the code it calls for?
 You write it.
 **The user guides if needed, but you drive the keyboard.**
@@ -240,10 +265,16 @@ This applies whether Trello is your own source or you found the card from anothe
 
 ## 4. Contact the person (draft-only by default)
 **After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all composer mechanics, leaving the draft un-sent.
-Show the draft text in your reply, then tell the user to review it and either send it themselves or tell you to send it.
+The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
+The draft is already staged when you show it (per the provider's DRAFT-MODE); the reply shows the staged text plus where it lives.
 Don't send on your own initiative - only on Russell's explicit per-message instruction this turn, reviewing this exact draft (per the send exception in §0's framing above); silence or a generic go-ahead earlier in the conversation doesn't count.
 
-Teams and Slack staging runs inside message-draft's own browser subagent (its **`teams` and `slack` stage in a browser subagent** section).
+**The reply reports the sender's ask done, in the past tense.**
+It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and Russell presses any staged final button before he sends it.
+Before staging, confirm every ask the draft mentions is one step 3 finished; for any that isn't, return to step 3, do it, and rewrite the draft.
+When the ask depends on an input the sender or a system still owes (an invite not yet sent, a document still coming), tell Russell what it's waiting on and hold the reply until it can report the ask done.
+
+Teams staging runs inside message-draft's own browser subagent (its **`teams` and `slack` stage in a browser subagent** section), as does Slack's browser fallback.
 If that subagent returns `HELP_NEEDED` instead of `DONE`, follow §2e.
 
 If no message is needed (automated reminder, pure action item), skip to step 6.
@@ -305,11 +336,14 @@ Decide by who's holding the conversation:
   A separate deliverable, or a step that doesn't block the parent, still gets its own card.
 
 **Blocked on another in-flight session's work → resume-on-completion, don't sit open.**
+The test: **if my next step cannot start until a session I launched or a named peer finishes, I hand that session the resume command and close paused now.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
+A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
-- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`, run `schedule-resume.py` to capture the resume command, deliver it via `SendMessage` or a spawned session's handoff doc, then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree).
+- the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes.
+  Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
@@ -362,7 +396,7 @@ Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
 
-Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
+Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), a handoff to a live peer already on the same work (§2), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
 A silently-resolved session left open is just noise; close it.
 
 **Close your browser tabs when you and the user are truly finished with the item.**
@@ -378,7 +412,7 @@ The session and the source item are two different places to hold state, and they
 Closing it early throws that away and substitutes nothing until whatever Start date you set eventually fires - far too late for something Russell meant to do today, like sending a draft you staged.
 
 So a staged draft he hasn't confirmed sending, or a piece of work that's genuinely his to do and hasn't been done yet (even if you've filed a tracker card for it), is not a closable delay - stay open.
-A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
+A delay is only safe to walk away from when something *other than this session* will reliably bring it back to him: a reply you're waiting on from a third party, a step blocked on an external dependency, a session you handed your resume command to (the blocked-session case above - it brings this session itself back), or a send he explicitly told you - in this session - he'll handle later and doesn't need the session open for.
 
 **The close condition is symmetric: your part done, and his part done - not just yours.**
 Once the human step is done (Russell told you he sent/submitted/confirmed it, or explicitly said to close) and any follow-up you owed is finished (§5's learn-from-send, a tracker card, advancing the source item, §7's lesson if the session earned one) - close this session yourself as your very last act, by invoking the **`session-mgr:close`** skill.
@@ -386,7 +420,7 @@ Once the human step is done (Russell told you he sent/submitted/confirmed it, or
 Two independent Slack workers sent their reply, heard Russell confirm it, and closed without ever calling `slack.js --mark`; the conversation sat flagged unread indefinitely even though the work was fully done.
 If you can't point to the CLEAR command's output, run it now, before invoking `session-mgr:close`.
 Don't ask "anything else?" and don't wait for him to type `/close` - those two extra round-trips are exactly what this rule removes.
-But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him.
+But stay open whenever a draft you staged hasn't been sent yet, whenever work that's his to do is still undone, or whenever you're waiting on an answer from him - unless that work is happening in a session that will resume you, in which case you close paused per the blocked-session rule above.
 
 ## 7. Improve the source, or leave a lesson
 This is the one place a session turns friction into improvement.

@@ -1,7 +1,7 @@
 # The aspects of uncertainty
 
 Send-confidence estimates how likely a drafted message is to need a change before Russell sends it.
-This file describes every aspect that makes a message uncertain, with a rating scale for each one that a model rates.
+This file describes every aspect that makes a message uncertain, each with a rating scale a model rates, and closes with Kind, the reply-type label the judge assigns alongside them.
 The scoring judge reads the whole file for every draft, and the writing reviewer reads its Rule coverage section.
 
 Every aspect here describes the situation a draft is in, never whether the draft follows a writing rule.
@@ -46,7 +46,7 @@ Whether every factual claim in the draft is backed by the ask or the inputs.
 A claim is a name, date, number, link, commitment, or statement of fact, and it is supported only when the ask or the inputs state it; a claim the draft inferred or invented is unsupported.
 Check each claim's tense or status separately from the fact itself: stating a completed thing as upcoming, or a pending thing as done, is unsupported even when the underlying fact is backed.
 
-The judge lists every claim and marks each supported or unsupported; the factor is the supported share, weighted by consequence.
+The judge lists every claim and marks each supported or unsupported; code counts the claims and the unsupported claims as two separate attributes.
 An unsupported commitment the recipient would act on counts as three claims, since acting on it costs more than a wrong plain statement.
 
 ## Stakes
@@ -77,3 +77,15 @@ Code measures it from the number of other sessions that staged a draft to the sa
 A stage that names no recipient (a reply carries its thread, not its addressee) leaves familiarity unmeasured.
 
 A high count assumes an established register, so it misses warmth risk: one especially warm or appreciative reply to a familiar recipient can still need a heavier rewrite than the count predicts.
+
+## Kind
+
+The type of reply the draft is, labelled from the draft and the ask.
+Pick the one label that fits the draft's main purpose:
+
+- scheduling - proposing or confirming times, or booking something.
+- thanks-ack - thanks, or a bare acknowledgement.
+- info-request - asking the recipient for something.
+- decline - saying no, or turning something down.
+- nudge - a follow-up on something unanswered.
+- substantive-reply - anything that actually answers, explains, or decides.

@@ -30,6 +30,14 @@
 //                 channel/DM/group-DM timeline; use this before deciding a move so you see anything
 //                 posted after the one message a captured item happens to link to, including your own
 //                 follow-up; each --json entry's `isMe` marks a message you posted)
+// Sent since:    node slack.js --sent-since=<YYYY-MM-DD> [--json]
+//                (every message you posted on or after that day, oldest first, from search.messages
+//                 `from:me`: channel, ts, threadTs, sent time, and the raw mrkdwn text as posted. Read-only;
+//                 the send-confidence outcome sweep matches staged drafts against it. Search indexing lags
+//                 a post by a few seconds, so a just-sent message can be missing for a moment)
+// Resolve name:  node slack.js --resolve-name=<U|D|C|G id> [--json]
+//                (the person's or channel's display name for an id; a DM resolves to the other member;
+//                 prints the id unchanged when the lookup fails. Read-only)
 // Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
@@ -527,6 +535,39 @@ async function history() {
   }
 }
 
+// A search hit's thread root rides only on its permalink (`?thread_ts=`), not on the match object.
+const permalinkThreadTs = (permalink) => {
+  const m = /[?&]thread_ts=([0-9.]+)/.exec(permalink || '');
+  return m ? m[1] : '';
+};
+
+async function sentSince() {
+  const day = String(args['sent-since']);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
+  // `after:` is exclusive, so the day before makes the given day inclusive.
+  const after = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const out = [];
+  for (let page = 1, pages = 1; page <= pages; page++) {
+    const r = await call('search.messages', {
+      query: `from:me after:${after}`, sort: 'timestamp', sort_dir: 'asc', count: '100', page: String(page),
+    });
+    const m = r.messages || {};
+    pages = (m.paging && m.paging.pages) || 1;
+    for (const hit of m.matches || []) {
+      out.push({
+        channel: (hit.channel && hit.channel.id) || '', ts: hit.ts,
+        threadTs: permalinkThreadTs(hit.permalink), sent: tsToIso(hit.ts), text: hit.text || '',
+      });
+    }
+  }
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  console.log(`${out.length} message(s) sent since ${day}, oldest first:`);
+  for (const m of out) {
+    console.log(`\n--- ${m.sent.slice(0, 16)} | ${m.channel} (ts=${m.ts}${m.threadTs ? `, thread=${m.threadTs}` : ''})`);
+    console.log(clean(m.text) || '(no text)');
+  }
+}
+
 async function react() {
   if (!args.channel || !args.ts || !args.emoji) throw new Error('--react requires --channel, --ts, and --emoji');
   const name = args.emoji.replace(/^:|:$/g, '');
@@ -899,6 +940,23 @@ async function openDm() {
   console.log(`DM channel with ${userId}: ${channel}`);
 }
 
+// A display name for any Slack id: a user id gives the person's name, a DM id gives the other member's
+// name, a channel or group DM id gives its name. Read-only; falls back to the id itself when Slack
+// knows nothing more, so a caller can always print the result.
+async function resolveName() {
+  const id = String(args['resolve-name']);
+  let name = id;
+  if (/^U[A-Z0-9]+$/.test(id)) {
+    name = await userName(id);
+  } else {
+    const info = await convInfo(id);
+    if (info.is_im && info.user) name = await userName(info.user);
+    else if (info.name) name = info.is_channel || info.is_group ? `#${info.name}` : info.name;
+  }
+  if (args.json) { console.log(JSON.stringify({ id, name }, null, 2)); return; }
+  console.log(name);
+}
+
 async function findByDomain() {
   const domain = String(args['find-by-domain'] || '').toLowerCase().replace(/^@/, '');
   if (!domain) throw new Error('--find-by-domain requires an email domain, e.g. --find-by-domain=opentext.com');
@@ -927,6 +985,7 @@ async function findByDomain() {
   if (args['list-unread']) return await listUnread();
   if (args.show) return await show();
   if (args.history) return await history();
+  if (args['sent-since']) return await sentSince();
   if (args.react) return await react();
   if (args.mark) return await mark();
   if (args['read-cursor']) return await readCursorCmd();
@@ -937,5 +996,6 @@ async function findByDomain() {
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, or --find-by-domain');
+  if (args['resolve-name']) return await resolveName();
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

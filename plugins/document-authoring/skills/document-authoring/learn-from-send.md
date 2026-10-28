@@ -15,12 +15,14 @@ After Russell sends such a draft (he edited it in the app and clicked Send, or s
 2. **Record the outcome:**
 
    ```
-   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file>
+   python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --sent-file <file> [--recipient "<the sent item's To>"]
    python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py outcome --body-file <staged body> --discarded --reason "<text>" [--moot]
    ```
 
    (run the newest cached copy if several exist).
    `--body-file` finds the draft's scored row by rehashing the staged body against the log.
+   `--recipient` names who the sent item went to, read from the same sent item as the text; a reply's stage command carries no addressee, so without it the learning session's title reads "to unknown".
+   A Slack recipient given as an id appears in the title as the person's or channel's name, looked up by the command itself.
    The command labels each change itself, as `factual-correction`, `tone-voice`, or `structural-rewrite` (defined in its labelling prompt), logs whether the estimate was over- or under-confident, and decides whether the send has anything to teach.
    If it prints that labelling failed, rerun it with `--edit-nature` naming the labels yourself.
 3. **Run the spawn command it prints**, exactly as printed, and name the new session by its title in your reply so Russell can find it.
@@ -34,6 +36,19 @@ Calling `--discarded` on the stale draft first logs an over-confident miss that 
 
 **Add `--moot` when Russell resolved the matter somewhere other than by sending this draft.**
 There's no replacement to stage, so `--discarded` is still the right call; `--moot` tells the command to skip the estimate check that would otherwise log a well-scored draft as over-confident just because it never got the chance to go out.
+
+## The outcome sweep
+
+A draft that never gets an outcome recorded here is settled by the outcome sweep, plain code with no model calls:
+
+```
+python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py sweep [--dry-run] [--json]
+```
+
+It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending draft by thread or recipient, send time, and text similarity.
+A match is logged as sent-as-is or edited with its measured edit distance, an earlier revision whose send went to a later one is logged as superseded, and a draft with no match seven days after it was scored is logged as discarded with no reason.
+Every swept outcome carries `source: "sweep"`, and its edits stay unlabelled, so a swept send spawns no learning session.
+The command prints its match rate: the share of settled drafts that matched a send.
 
 ## When a learning session spawns
 
@@ -49,7 +64,7 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    - **A clear rule the draft broke** - the reviewer missed it, so the lesson is sharper rule wording a reviewer can't read past.
    - **The rules were silent or ambiguous on it** - a rule gap to fill.
      A change that lands on a spot the reviewer listed as unsettled is this case exactly.
-   - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write.
+   - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write; when every change lands here, report per step 5 and close.
 3. **Fill each rule gap.**
    Distill the underlying **rule**, not the transcript.
    It almost always belongs in `message-rules` (the message artifact rubric); a rule about *how you compose* rather than what lands belongs in `document-authoring`'s drafting loop instead.
@@ -70,8 +85,9 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    The draft, the sent text, the diff, the recipient, and any name, amount, or org detail from the exchange stay in the local brief and this terminal session.
    The PR body describes each change as the pattern it captures, then states the brief's file name (its draft id) so Russell can trace the PR back to the send locally.
    Also state, for each rule added or changed, the overlap search's outcome ("folded into `<bullet>` in `<section>`" or "searched every section and persona - no overlap, new bullet").
-   A session whose diagnosis finds nothing to learn still reports that finding, and a session that finds the process itself at fault fixes the process instead.
+   A session that finds the process itself at fault fixes the process instead.
 5. **Report in one line** what was learned and changed, with the PR link.
+   A session that found nothing to learn reports that finding in one line instead, and closes itself in the same turn via `session-mgr:close`, because Russell trusts the diagnosis.
    The terminal session is where Russell sees the draft and sent text side by side, so quote them here when the change needs them to make sense.
    Always include the brief's Redline section in this reply: one merged text with removed words struck through and added words in bold italics, so Russell reads what changed in one pass and judges the PR against it.
    The redline carries real correspondence, so it stays in the reply and out of the PR.
