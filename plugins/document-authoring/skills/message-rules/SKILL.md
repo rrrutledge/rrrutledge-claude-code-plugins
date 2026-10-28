@@ -226,6 +226,7 @@ A single clear sentence ending in a question is usually the whole message — re
   Bringing in the real owner means they field the follow-up questions from then on, not Russell — less work for him over time than staying the sole point of contact on something that isn't his to own.
   Figures and projections count: when a report or a person owns the numbers, confirm only what the asker needs and point to that owner's report, rather than building your own derivation or arguing a competing reading of the arithmetic.
   This extends past the answer to the action itself: when the next step (rescheduling something, making a call) isn't Russell's to take, give only his own position as a bare confirmation and leave the actual step to the owner, rather than adding a directive ("go ahead and move it") that presumes he's the one steering it.
+  **The same holds for the steps they already plan to take and for Russell's own follow-through:** give the answer (the yes, the decision) and stop, leaving their plan unrecited and his next move unpromised; when the answer leaves him a step he can't name, ask what it is.
   **Handing an outside contact off to new main contacts keeps Russell's own door open: name the new owners and, in the same sentence, offer his help to everyone on the thread.**
   That offer is an in-voice exception to the helper-tail rule, the same as the warm-partner offer under **Energizing close**, and it stays even though the new owners now handle the day-to-day.
 - **Keep asks open and tentative — don't pre-commit.**
