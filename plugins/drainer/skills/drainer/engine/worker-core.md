@@ -132,6 +132,20 @@ A match means the item is already tracked: reference the card in what you presen
 No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
+**Also check whether another live session is already working on this same thing.**
+The poller's duplicate guard tracks the item ids it dispatched itself, which excludes sessions Russell or a handoff started.
+A recurring card whose Start date arrives while its work is in motion therefore gets a second worker.
+Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
+Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
+Russell's own interactive session counts the same as a background worker.
+When a peer looks like it covers the same work:
+1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
+2. If the peer confirms, `SendMessage` it everything useful this worker has gathered (card state, thread context, links, findings), then close this worker via `python <skill>/scripts/close-session.py`.
+   Leave a card un-cleared and its Start untouched, so the peer owns the item.
+   Hand the item over without asking Russell whether the peer is fine taking it.
+   Like the silent closes listed in §6a, this queues no digest entry: the peer is the one carrying the item.
+3. If the peer says it is different work, or no peer looks related, carry on as normal.
+
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
 The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → queue the digest and close the session per §2c).
@@ -196,6 +210,7 @@ Route each piece of work by where it belongs - which is also where Russell can r
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
   **Before launching, ask whether this item's next step can start before the handoff finishes; if not, launch with `--resume-me` and close paused in that same turn, per §6, "Blocked on another in-flight session".**
+  A session that launches a handoff and closes plain (no `--resume-me`, no `--pause`) is gone for good: nothing revives it.
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
   Name the new session by its title in your reply so Russell can find the session in the Claude app, on [claude.ai/code](https://claude.ai/code), or in `claude agents`.
   A dispatched task is still draft-only outbound (§0) - dispatch moves *where* work runs, never *whether* it waits for Russell.
@@ -328,6 +343,7 @@ Sitting open then wastes Russell's attention as he cycles through his sessions a
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared and its Start untouched:** the work isn't done, seen-state keeps the card from re-dispatching a second worker while the resume is pending (per `providers/trello-provider.md`, CAPTURE), and the resumed session is what CLEARs it once it finishes.
+  Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
@@ -380,7 +396,7 @@ Stamp `disposition: "briefed"`, set `dispositionReason` to a one-line headline, 
 A card whose entire action was safe/reversible bookkeeping on Russell's own systems - nothing sent, nothing decided that needed him - is the clearest example, and it applies the same way whether or not the item happened to carry a label; the worker recognizes it from the finished work, every time, with no per-item setup required.
 Most needs-you items still end with the normal step 6 presentation - this rule is narrower than it looks, and reaches only the cases above.
 
-Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
+Items you resolve WITHOUT surfacing them for the user's attention - a pointer re-triaged to fyi/junk (§2b), a content re-triage to FYI (§2c), a situational no-op close (nothing to do right now), a handoff to a live peer already on the same work (§2), or completed work that left nothing for Russell (§6a) - likewise close the session at once (`python <skill>/scripts/close-session.py`).
 A silently-resolved session left open is just noise; close it.
 
 **Close your browser tabs when you and the user are truly finished with the item.**
