@@ -306,7 +306,8 @@ The specifics that most often separate a message that reads as Russell's from on
   **Exception - the step hangs on something the same message leaves open**: "I can" names his part in the plan without announcing it as settled, so it isn't a tail.
   The dependency here is one this message is still resolving, not a deliverable tied to something the recipient owes (see **Offer visibility, not a future action**).
 - **Never open an offer with "Happy to" — state it plainly instead.**
-  "I can make the introduction if that'd help", not "Happy to make the introduction if that'd help." Russell doesn't talk this way; it reads as generic AI phrasing.
+  "I can send you the file if that'd help", not "Happy to send you the file if that'd help." Russell doesn't talk this way; it reads as generic AI phrasing.
+  **An offer whose delivery rests on a third party's willingness is hedged ("I may be able to introduce you").**
 - **Adding a new item mid-thread: lead into it, don't tack it on cold — but don't reuse one fixed opener every time.** The bridge phrasing varies by relationship and occasion: "found one more", "one more thing", "if it's not too much trouble, I have one other similar ask", or no bridge line at all when the item flows naturally from what's already in the thread.
   Scope: tacking a new point onto something you already sent, answered or not; on a still-unanswered one, a new share or update rides along as an add-on to what's pending and leaves the pending ask unrestated (see **Follow-up nudges**' "Let the thread carry the context").
   When several points are compiled into one message from the start (e.g. a batch of edit requests on the same document), skip the discovery framing entirely and just list them — there's nothing to "find" mid-message.
