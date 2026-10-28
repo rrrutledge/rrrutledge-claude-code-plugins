@@ -47,8 +47,10 @@ def test_level_band_reads_desc_line():
     Provider = adapter_mod.Provider
     check("Director/VP-level -> 0 (shared neutral level with email/Slack)",
           Provider._level_band(card("Priority: P1 · Developer enablement · Director/VP-level")) == 0)
-    check("IC-level -> -1",
-          Provider._level_band(card("Priority: P1 · Developer enablement · IC-level")) == -1)
+    check("P1 IC-level -> 0 (interleaves with email by date)",
+          Provider._level_band(card("Priority: P1 · Developer enablement · IC-level", [{"name": "🎯 P1"}])) == 0)
+    check("P2 IC-level -> -1",
+          Provider._level_band(card("Priority: P2 · Internal enablement · IC-level", [{"name": "🎯 P2"}])) == -1)
     check("no priority line -> 0 (non-job-search board)", Provider._level_band(card("just a normal card")) == 0)
     check("empty desc -> 0", Provider._level_band(card(None)) == 0)
 
@@ -173,7 +175,82 @@ def test_priority_band_still_leads_level_band():
     check("P1 IC still outranks P2 Director/VP", ranked[0]["name"] == "P1 IC", [it["name"] for it in ranked])
 
 
+def test_priority_band_above_inbox_pins():
+    print("test: _priority_band - in-progress, P1 Director-or-above, and P1 $250K+ people-manager cards rank above neutral")
+    Provider = adapter_mod.Provider
+    above = provider_base.NEUTRAL_PRIORITY_BAND + 1
+    p1 = [{"name": "🎯 P1"}]
+    p2 = [{"name": "🎯 P2"}]
+    p3 = [{"name": "🎯 P3"}]
+    mgr = "Priority: P1 · Developer enablement · IC-level\nManages people: yes\nComp: up to $260K/yr (posted)"
+    check("P1 people manager at $260K -> above neutral",
+          Provider._priority_band(card(mgr, p1)) == above)
+    check("P3 people manager at $260K -> its P-tier band (the pay pin is P1-only)",
+          Provider._priority_band(card(mgr.replace("P1", "P3"), p3)) == adapter_mod._PRIORITY_BAND[3])
+    check("exactly $250K reaches the floor",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $250K/yr", p1))
+          == above)
+    check("P1 people manager at $240K -> its P-tier band",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p1))
+          == adapter_mod._PRIORITY_BAND[1])
+    check("people manager with no posted pay -> its P-tier band (P1 stays neutral)",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes", p1))
+          == adapter_mod._PRIORITY_BAND[1])
+    check("IC-level at $300K, manages no one -> its P-tier band (pay lifts people managers only)",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr", p1))
+          == adapter_mod._PRIORITY_BAND[1])
+    check("P1 Director/VP-level with no Comp line -> above neutral",
+          Provider._priority_band(card("Priority: P1 · x · Director/VP-level", p1)) == above)
+    check("P1 Director/VP-level under the floor -> above neutral",
+          Provider._priority_band(card("Priority: P1 · x · Director/VP-level\nComp: up to $180K/yr", p1))
+          == above)
+    check("P2 Director/VP-level -> its P-tier band (the Director pin is P1-only)",
+          Provider._priority_band(card("Priority: P2 · x · Director/VP-level\nComp: up to $300K/yr", p2))
+          == adapter_mod._PRIORITY_BAND[2])
+    check("P3 Director/VP-level -> its P-tier band",
+          Provider._priority_band(card("Priority: P3 · x · Director/VP-level", p3)) == adapter_mod._PRIORITY_BAND[3])
+    check("a dollar figure outside a Comp: line is ignored",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nnotes: $300K budget", p1))
+          == adapter_mod._PRIORITY_BAND[1])
+    check("Comp: line figures read with commas and K",
+          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\n"
+                                       "Comp: $200,000 - $262,500", p1)) == above)
+    check("in-progress P3 IC card -> above neutral",
+          Provider._priority_band(card("Priority: P3 · x · IC-level", p3), in_progress=True) == above)
+    check("in-progress unlabeled card -> above neutral",
+          Provider._priority_band(card("recruiter thread"), in_progress=True) == above)
+    check("👤 Contact still above neutral",
+          Provider._priority_band(card(labels=[{"name": "👤 Contact"}])) == above)
+    check("people manager (IC-level word + Manages people line) -> level 0, interleaves with email",
+          Provider._level_band(card("Priority: P1 · x · IC-level\nManages people: yes")) == 0)
+    check("P3 IC-level that manages no one -> level -1",
+          Provider._level_band(card("Priority: P3 · x · IC-level\nComp: up to $300K/yr (posted)", p3)) == -1)
+    check("P1 IC-level that manages no one -> level 0, whatever the pay",
+          Provider._level_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr (posted)", p1)) == 0)
+    check("P3 people manager under the floor -> level 0",
+          Provider._level_band(card("Priority: P3 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p3)) == 0)
+
+
+def test_registry_parses_in_progress_lists():
+    print("test: _parse_registry reads a board's in_progress_lists")
+    text = ("boards:\n"
+            "  - name: \"Job Search Outreach\"\n"
+            "    id: \"abc\"\n"
+            "    initiative: job-search\n"
+            "    in_progress_lists: [Applied, Applied / Reached Out, \"In Conversation\"]\n"
+            "    purpose: >-\n"
+            "      text\n"
+            "  - name: \"Other\"\n"
+            "    id: \"def\"\n")
+    boards = adapter_mod.Provider._parse_registry(text)
+    check("job search board carries its in-progress lists",
+          boards[0].get("in_progress_lists") == ["Applied", "Applied / Reached Out", "In Conversation"], boards)
+    check("a board without the field has none", "in_progress_lists" not in boards[1], boards)
+
+
 if __name__ == "__main__":
+    test_priority_band_above_inbox_pins()
+    test_registry_parses_in_progress_lists()
     test_level_band_reads_desc_line()
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
