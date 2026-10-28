@@ -381,6 +381,7 @@ The specifics that most often separate a message that reads as Russell's from on
   **When the ask is whether a deliverable exists rather than a decision to make, recast per the "Keep asks open and tentative" rule above instead of the binary-release formula** — "let me know if you have the headshot" asks whether it's in hand at all, not a release on a choice already made.
   When the unanswered message sits visibly elsewhere in the same thread, pair a brief soft verbal frame ("wanted to ask again if you can let me know about this") with the emoji gesture matching its actual position: 👆 for a Slack/Teams or text-message (SMS/iMessage) thread, where the earlier message sits above; 👇 for an email reply, where the quoted original sits below the new text.
   **When the repeat also carries genuine new content** (a lower-commitment alternative, fresh information), lengthen that same frame to name the new material alongside the gesture.
+- **A first ping to a colleague about a message already visible in the thread, when a live conversation was meant to settle it and didn't, takes a one-clause frame owning the miss plus the pointing gesture from the repeat-nudge bullet above** ("I forgot to confirm this in our meetings today 👆?").
 - **Lead with a genuine fresh reason when you have one** — the timely hook or honest trigger for writing now, not "circling back" or "just checking in". Skip recapping what you already sent and cut the offer-to-help tail, except for a warm, established sponsor or partner relationship, which keeps it per Energizing close's warm-sponsor exception. Release the timeline through the question's own open phrasing, not by tacking on a separate "no rush" reassurance clause at the end — that's a helper tail like any other, except on a first nudge re-asking a low-stakes favor (see the broaden-and-release bullet below).
   When the fresh reason is someone else's related progress, let it double as the trigger for reminding the recipient of their own still-open piece, and land that reminder as a same-day timeframe question rather than a status check.
 - **On a sent deliverable, confirm receipt, not review, and release the timeline** — "did you get it? Look at it on whatever schedule works", not "did you get a chance to look at it?"
@@ -504,7 +505,7 @@ His palette:
 | 👍 | Light acknowledgement, often after "Thanks" |
 | ✅ | Marking a logistics item handled: "Will reschedule ✅" |
 | 👇 | Pointing at a link or recording just below; or, on a repeat nudge, at an unanswered message below (e.g. a quoted email original) |
-| 👆 | On a repeat nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams or text-message thread) |
+| 👆 | On a nudge, pointing at an unanswered message above (e.g. earlier in a Slack/Teams or text-message thread) |
 | 🎉 / 👋 / 🔔 | Occasional: celebration, greeting wave, notify nudge |
 
 Don't invent emoji outside this palette, don't stack them, and skip them entirely in more serious messages.
