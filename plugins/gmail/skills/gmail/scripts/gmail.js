@@ -128,6 +128,7 @@ const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
 const { pickLatest } = require('./threading');
+const { pickTextPart, partAsMime } = require('./body-part');
 
 const USER_ID = 'me';
 let gmail; // the Gmail API client, built in main() after auth so a sign-in error is reported cleanly.
@@ -497,36 +498,78 @@ async function thread() {
 // send time, and the plain-text body with its quoted original still attached. Read-only; the
 // send-confidence outcome sweep reads it. It reads every body in the window, so it runs over IMAP like
 // the poller's reads, off the REST quota a bulk body fetch would exhaust.
+//
+// It downloads each message's text part alone and leaves attachments on the server: a few weeks of sent
+// mail with screenshots and PDFs attached runs to hundreds of megabytes, minutes of transfer over one
+// connection where any Gmail stall would fail the whole read. A dropped connection is retried from the
+// start with a growing pause, since a rerun of the text-only read costs seconds.
+const SENT_SINCE_RETRY_DELAYS_MS = [5 * 1000, 20 * 1000];
+
 async function sentSince() {
   const day = String(args['sent-since']);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('--sent-since takes a YYYY-MM-DD day');
-  const addrs = (field) => ((field && field.value) || []).map(a => (a.address || '').toLowerCase()).filter(Boolean);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const sent = await readSentSince(day);
+      sent.sort((a, b) => a.sent.localeCompare(b.sent));
+      if (args.json) { console.log(JSON.stringify(sent, null, 2)); return; }
+      console.log(`${sent.length} message(s) sent since ${day}, oldest first:`);
+      for (const m of sent) console.log(`\n--- ${m.sent.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
+      return;
+    } catch (e) {
+      if (attempt >= SENT_SINCE_RETRY_DELAYS_MS.length || /GMAIL_APP_PASSWORD|no Sent mailbox/.test(e.message)) throw e;
+      console.error(`Sent-mail read failed (${e.message}); retrying in ${SENT_SINCE_RETRY_DELAYS_MS[attempt] / 1000}s.`);
+      await new Promise(resolve => setTimeout(resolve, SENT_SINCE_RETRY_DELAYS_MS[attempt]));
+    }
+  }
+}
+
+// One pass over the Sent mailbox: headers and body structure for every message in a single fetch, then the
+// chosen text part of each, one fetch per distinct part number (Gmail fails a whole FETCH that names a part
+// some message lacks, so messages are grouped by the part they need).
+async function readSentSince(day) {
+  const since = new Date(`${day}T00:00:00Z`);
+  const addrs = (list) => (list || []).map(a => (a.address || '').toLowerCase()).filter(Boolean);
   const sent = [];
   await withGmailImap(async c => {
     const box = (await c.list()).find(b => b.specialUse === '\\Sent');
     if (!box) throw new Error('no Sent mailbox found over IMAP');
     const lock = await c.getMailboxLock(box.path);
     try {
-      const uids = await c.search({ since: new Date(`${day}T00:00:00Z`) }, { uid: true });
+      const uids = await c.search({ since }, { uid: true });
       if (!uids || !uids.length) return;
-      for await (const m of c.fetch(uids, { source: true, internalDate: true, threadId: true }, { uid: true })) {
-        const parsed = await simpleParser(m.source);
-        const when = m.internalDate || parsed.date;
-        if (!when || when < new Date(`${day}T00:00:00Z`)) continue; // IMAP SINCE is day-granular in server time
-        sent.push({
-          id: parsed.messageId || `uid-${m.uid}`,
+      const byPart = new Map();
+      const query = { envelope: true, bodyStructure: true, internalDate: true, threadId: true, headers: ['references', 'in-reply-to'] };
+      for await (const m of c.fetch(uids, query, { uid: true })) {
+        const e = m.envelope || {};
+        const when = m.internalDate || e.date;
+        if (!when || when < since) continue; // IMAP SINCE is day-granular in server time
+        const hdrs = await simpleParser(m.headers || '');
+        const item = {
+          id: e.messageId || `uid-${m.uid}`,
           threadId: m.threadId ? BigInt(m.threadId).toString(16) : '',
-          inReplyTo: parsed.inReplyTo || '', references: parsed.references ? [].concat(parsed.references) : [],
-          to: addrs(parsed.to), cc: addrs(parsed.cc),
-          sent: new Date(when).toISOString(), text: parsed.text || htmlToPlainText(parsed.html || ''),
-        });
+          inReplyTo: hdrs.inReplyTo || e.inReplyTo || '', references: hdrs.references ? [].concat(hdrs.references) : [],
+          to: addrs(e.to), cc: addrs(e.cc),
+          sent: new Date(when).toISOString(), text: '',
+        };
+        sent.push(item);
+        const picked = pickTextPart(m.bodyStructure);
+        if (!picked) continue;
+        if (!byPart.has(picked.part)) byPart.set(picked.part, new Map());
+        byPart.get(picked.part).set(String(m.uid), { item, picked });
+      }
+      for (const [part, wanted] of byPart) {
+        for await (const m of c.fetch([...wanted.keys()], { bodyParts: [part] }, { uid: true })) {
+          const entry = wanted.get(String(m.uid));
+          const raw = m.bodyParts && (m.bodyParts.get(part) || [...m.bodyParts.values()][0]);
+          if (!entry || !raw) continue;
+          const parsed = await simpleParser(partAsMime(entry.picked, raw));
+          entry.item.text = entry.picked.type === 'text/plain' ? parsed.text || '' : htmlToPlainText(parsed.html || '');
+        }
       }
     } finally { lock.release(); }
   });
-  sent.sort((a, b) => a.sent.localeCompare(b.sent));
-  if (args.json) { console.log(JSON.stringify(sent, null, 2)); return; }
-  console.log(`${sent.length} message(s) sent since ${day}, oldest first:`);
-  for (const m of sent) console.log(`\n--- ${m.sent.slice(0, 16)} | to ${m.to.join(', ')}\n    id: ${m.id}`);
+  return sent;
 }
 
 async function show() {
