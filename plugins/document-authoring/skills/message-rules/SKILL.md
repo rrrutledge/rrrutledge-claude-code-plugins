@@ -59,6 +59,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 **One concrete question or request per message.**
 Land on the single thing you actually need and ask for that.
 Don't present a menu of options or stack a numbered list of questions.
+Exception: two unrelated asks after a status update, per the lead-in bullet below.
 
 - **Name the concrete need, not the options.**
   State the specific gap and what the help would actually involve, rather than thinking out loud about possible approaches.
@@ -83,6 +84,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
 - **Relaying a third party's request for someone's personal/sensitive info (a phone number, an address): attribute it to that third party and ask about their comfort sharing it, rather than requesting the detail directly as your own ask.**
 - **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand. When the ask is backed by a screenshot or a brief supporting fact rather than dense context, lead with the ask and let that evidence follow it.
+  When a status update is followed by two unrelated asks, the lead-in states the exact count instead ("2 things that you can help with:").
 - **Frame the ask to match the recipient's role.**
   When their job is to route you to a third party (find a volunteer, recommend a speaker), make the asks conditional on that handoff rather than personal requests to them — and don't narrate the follow-up's timing.
   On a repeat ask to someone with standing local knowledge, lean on that ("you have much more insight than me here") rather than citing a specific thing they said they'd do — the former trusts their judgment, the latter reads as holding them to an obligation.
@@ -202,6 +204,9 @@ A single clear sentence ending in a question is usually the whole message — re
 - **A clause split out of a run-on, or a sign-off line that echoes something the correspondent already said, still counts as restatement.**
   Splitting a chained sentence per the "own sentence" rule can leave a clause that only restates what the sentence next to it already implies; a closing "you too" line that just hands back a wish the correspondent voiced in the message being answered is the same move. A closing line that restates an agreement, decision, or plan already settled earlier in the conversation is the same move, even when you proposed it yourself; the short scheduling or coordination closes allowed elsewhere in this file stay. Cut these rather than keeping them just because they're now their own sentence. The same over-split shows up as a bare topic-naming sentence with no content of its own ("The steering committee is one specific case.") standing ahead of the sentence that actually says something about it - merge the name and its first fact into one sentence instead of giving the announcement its own empty one.
 - **Open a reply on the reaction itself, not a clause re-describing what arrived or what happened.** The thread, the attachment, or the completed action already established the situation, so naming it again before reacting is the same restatement this section already bars: lead straight with the reaction ("Thank you!") and drop the scene-setting clause in front of it.
+- **A status or figures list carries only what the message's own asks don't already say.**
+  A bullet naming something the body announces a few lines later is the same restatement.
+  Keep the list to the numbers the reader wouldn't otherwise get.
 - **Never repeat back what they just told you.** This holds even when it's dressed up as your own reaction: "Glad the repair went so fast" just hands back the fact they already gave you - that it went fast.
   The same holds for something they shared or described: the author already knows what it is, so a reply that names its mechanism or features as praise hands their own description back.
   Give the reaction (what you think of it, what it's good for) and leave the description out.
