@@ -52,7 +52,7 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
         return subprocess.CompletedProcess(args, returncode, stdout, "")
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
-        "run_bounded", "_user_env", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
+        "run_bounded", "_user_env", "_user_env_all", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
         "REGISTRY_PATH", "WAKES_PATH", "stop_session")}
     bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
@@ -62,6 +62,7 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
     saved_env = {k: os.environ.get(k) for k in (*bg_session._SESSION_ENV, "CLAUDE_CONFIG_DIR")}
     bg_session.run_bounded = fake_run
     bg_session._user_env = lambda name: (True, registry.get(name))
+    bg_session._user_env_all = lambda: dict(registry)
     bg_session.DEFAULT_CONFIG_DIR = main_dir
     bg_session.claude_agents = lambda: agents
     # A launch from inside a session inherits these; the launcher must clear every one.
@@ -157,6 +158,27 @@ def test_config_dir_follows_registry():
         env = s.calls[0][1]["env"]
         check("registry unset -> removed even when inherited", "CLAUDE_CONFIG_DIR" not in env,
               env.get("CLAUDE_CONFIG_DIR"))
+
+
+def test_launch_env_takes_user_vars_from_registry():
+    print("test: the launch env re-reads User variables from the registry, so a daemon it starts is current")
+    with sandbox(registry={"TEST_BG_WP_URL": "https://new.example", "PATH": "user-only-path",
+                           "CLAUDE_HOST_PID": "999", "TEST_BG_ADDED": "added"}) as s:
+        os.environ["TEST_BG_WP_URL"] = "https://stale.example"
+        os.environ["TEST_BG_PROCESS_ONLY"] = "kept"
+        try:
+            bg_session.spawn_bg("x", "m", s.tmp, "n")
+        finally:
+            for k in ("TEST_BG_WP_URL", "TEST_BG_PROCESS_ONLY"):
+                os.environ.pop(k, None)
+        env = s.calls[0][1]["env"]
+        check("stale inherited value replaced by the registry's", env.get("TEST_BG_WP_URL") == "https://new.example",
+              env.get("TEST_BG_WP_URL"))
+        check("a registry-only variable is added", env.get("TEST_BG_ADDED") == "added", env.get("TEST_BG_ADDED"))
+        check("a process-only variable is kept", env.get("TEST_BG_PROCESS_ONLY") == "kept")
+        check("PATH stays the merged process PATH", env.get("PATH") != "user-only-path")
+        check("CLAUDE_HOST_PID never comes from the registry", env.get("CLAUDE_HOST_PID") != "999",
+              env.get("CLAUDE_HOST_PID"))
 
 
 def test_resume_uses_transcript_account():
@@ -442,6 +464,7 @@ if __name__ == "__main__":
     test_respawn_session_runs_claude_respawn()
     test_failed_wake_returns_none()
     test_accounts_discovered_not_named()
+    test_launch_env_takes_user_vars_from_registry()
     test_short_id_parsing()
     test_launch_cwd_uses_on_disk_case()
     test_write_receipt()

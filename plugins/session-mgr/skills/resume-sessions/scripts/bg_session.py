@@ -9,6 +9,11 @@ Two facts about background sessions shape this module:
     and exits, and the session inherits the daemon's environment, not the launching command's. So a
     value that has to be current in the session travels in a per-launch `--settings` env block
     (_settings_env), not in the launch command's environment.
+    The daemon runs on demand: when none is running, the `claude --bg` call starts one, and that
+    daemon copies the launch command's environment for its whole life. Most launches come from
+    inside a background session, whose env is the previous daemon's, so a stale value would pass
+    from daemon to daemon indefinitely. The launch env therefore re-reads the User variables from
+    the registry (_launch_env), where the PowerShell profile promotes every credential.
   - There is one daemon per Claude account (CLAUDE_CONFIG_DIR), and `claude agents` lists only the
     sessions of the account it runs under. So a launch passes the current account explicitly
     (_launch_env), and anything counting or checking sessions reads every account (claude_agents).
@@ -98,6 +103,32 @@ def _user_env(name):
             return True, winreg.QueryValueEx(key, name)[0] or None
     except OSError:
         return True, None
+
+
+# User variables the launch env never takes from the registry: the registry's PATH is only the
+# User half of the merged process PATH, CLAUDE_CONFIG_DIR is set per account by _account_env, and
+# CLAUDE_HOST_PID names a terminal tab's PowerShell host, which a background session never has.
+_REGISTRY_SKIP = {"PATH", "CLAUDE_CONFIG_DIR", "CLAUDE_HOST_PID"}
+
+
+def _user_env_all():
+    """Every User-level environment variable in the registry, `%VAR%` references expanded, or {}
+    off Windows or when the key can't be read."""
+    try:
+        import winreg
+    except ImportError:
+        return {}
+    values = {}
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            for i in range(winreg.QueryInfoKey(key)[1]):
+                name, value, kind = winreg.EnumValue(key, i)
+                if not isinstance(value, str):
+                    continue
+                values[name] = winreg.ExpandEnvironmentStrings(value) if kind == winreg.REG_EXPAND_SZ else value
+    except OSError:
+        return {}
+    return values
 
 
 def current_config_dir():
@@ -296,9 +327,17 @@ def claude_agents():
 # ---------------------------------------------------------------------------------------- the launch
 
 def _launch_env():
-    """The env the `claude --bg` call runs under: the launcher's own, minus _SESSION_ENV, on the
-    current account."""
+    """The env the `claude --bg` call runs under: the launcher's own, minus _SESSION_ENV, with every
+    User variable re-read from the registry (but _REGISTRY_SKIP), on the current account. The
+    registry overlay is what keeps a daemon this call starts from inheriting the launcher's stale
+    values; it lives only in the memory of the launch process and that daemon."""
     env = {k: v for k, v in os.environ.items() if k not in _SESSION_ENV}
+    keys = {k.upper(): k for k in env}
+    for name, value in _user_env_all().items():
+        if name.upper() in _REGISTRY_SKIP or name.upper() in _SESSION_ENV:
+            continue
+        env.pop(keys.get(name.upper(), name), None)
+        env[name] = value
     return _account_env(current_config_dir(), env)
 
 
