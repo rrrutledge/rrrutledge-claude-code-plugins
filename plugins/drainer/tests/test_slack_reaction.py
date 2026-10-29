@@ -64,6 +64,9 @@ p = run("propose", ts="1761700001.000100", emoji="thumbsup")
 a = run("approve", draft_id=p["draft_id"], emoji="tada")
 check("approval with another emoji adds that one", calls[-1][3], "tada")
 check("and counts as an edit", (a["disposition"], outcome(p["draft_id"])["edit_distance"]), ("edited", 1.0))
+check("the outcome names both emoji and the change",
+      (a["emoji"], outcome(p["draft_id"])["edit_nature"]),
+      ({"proposed": "thumbsup", "sent": "tada"}, ["different-emoji"]))
 
 p = run("propose", ts="1761700002.000100", emoji="thumbsup")
 d = run("discard", draft_id=p["draft_id"], reason="a written reply fits better")

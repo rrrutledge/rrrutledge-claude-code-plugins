@@ -1367,6 +1367,8 @@ def test_a_reaction_outcome_is_all_or_nothing_and_never_labelled(monkeypatch):
     out = sc.record_outcome(other["draft_id"], sc.reaction_text("tada", "C0123ABCD", "1761700001.000100"),
                             discarded=False, edit_nature=[], reason=None)
     assert (out["disposition"], out["edit_distance"]) == ("edited", 1.0)
+    assert out["edit_nature"] == ["different-emoji"]
+    assert out["reaction_emoji"] == {"proposed": "thumbsup", "sent": "tada"}
 
 
 def test_an_auto_sent_reaction_leaves_the_target_until_undone():

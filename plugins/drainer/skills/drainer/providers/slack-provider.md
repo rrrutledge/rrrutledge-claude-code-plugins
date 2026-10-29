@@ -155,8 +155,10 @@ python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of
 - **`auto_sent` true:** the model's auto-send test passed, and the script already added the reaction.
   Close out per worker-core §6a, with `disposition` `advanced` and the printed `digest` line as `dispositionReason`, so the digest's Auto-handled section shows the emoji, the message permalink, and the undo command.
 - **`auto_sent` false:** present the reaction to Russell like a staged draft, with the emoji and the message's permalink, and wait for his answer.
-  Record it with the printed `draft_id`:
-  - **He approves:** `slack_reaction.py approve --draft-id=<id>`, adding `--emoji=<name>` when he picked a different one; this adds the reaction.
+  When more than one emoji fits, propose the best one and name the others as alternatives he can pick.
+  Record his answer with the printed `draft_id`:
+  - **He approves:** `slack_reaction.py approve --draft-id=<id>`; this adds the reaction.
+  - **He picks a different emoji:** the same `approve`, adding `--emoji=<his pick>`, whether he named it here or already added it himself in Slack.
   - **He declines:** `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
   - **No `draft_id` printed:** the reaction wasn't staged (the printed `staged` says why); on approval, run `approve` with the same `--channel`, `--ts`, and `--emoji` in place of `--draft-id`.
 

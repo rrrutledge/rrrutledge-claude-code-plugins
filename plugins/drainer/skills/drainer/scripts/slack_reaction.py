@@ -105,7 +105,7 @@ def cmd_approve(args):
     slack("--react", r["channel"], r["ts"], emoji)
     out = sc.record_outcome(args.draft_id, sc.reaction_text(emoji, r["channel"], r["ts"]),
                             discarded=False, edit_nature=[], reason=None)
-    return {"reacted": emoji, "disposition": out["disposition"]}
+    return {"reacted": emoji, "disposition": out["disposition"], "emoji": out.get("reaction_emoji")}
 
 
 def cmd_discard(args):

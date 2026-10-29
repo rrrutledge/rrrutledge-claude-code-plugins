@@ -29,7 +29,7 @@ A proposed Slack emoji reaction is a draft too, with message type `reaction`, wh
 The drainer's `slack_reaction.py` stages it, since a reaction has no body file for the gate and no prose for a writing review (the drainer's Slack provider, REACTION-PROPOSAL, has the commands).
 Its kind is `reaction`, set by the stager rather than judged from text, and the snapshot names the emoji and the message it goes on.
 No judge runs, so the stage scores at once, and the model's auto-send verdict decides whether the reaction goes out or goes to Russell.
-His approve or discard is the outcome: approving the emoji as proposed counts as sent as-is, and approving a different emoji counts as a full edit.
+His answer is the outcome, one of three: approving the emoji as proposed counts as sent as-is, choosing a different emoji counts as a full edit labelled `different-emoji` with both emoji recorded, and declining is a discard.
 A reaction the model sent on its own stays out of the fit until Russell undoes it, since he never ruled on it; the undo records a discard, which counts against it.
 
 ## The model and its weekly refit

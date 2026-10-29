@@ -573,7 +573,14 @@ async function sentSince() {
 async function react() {
   if (!args.channel || !args.ts || !args.emoji) throw new Error('--react requires --channel, --ts, and --emoji');
   const name = args.emoji.replace(/^:|:$/g, '');
-  await call('reactions.add', { channel: args.channel, timestamp: args.ts, name });
+  try {
+    await call('reactions.add', { channel: args.channel, timestamp: args.ts, name });
+  } catch (e) {
+    // Russell may have added the same emoji himself in Slack; the reaction is there either way.
+    if (!/already_reacted/.test(e.message)) throw e;
+    console.log(`:${name}: was already on message ${args.ts} in ${args.channel}.`);
+    return;
+  }
   console.log(`Reacted :${name}: on message ${args.ts} in ${args.channel}.`);
 }
 

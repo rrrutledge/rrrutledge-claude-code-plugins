@@ -95,6 +95,8 @@ MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge",
 # stager sets it; a reaction's kind is "reaction" rather than a judge's label, since it has no
 # text to judge.
 REACTION = "reaction"
+# The edit label a reaction outcome carries when Russell chose a different emoji than proposed.
+REACTION_EMOJI_CHANGE = "different-emoji"
 
 # Gmail and both Outlooks are one "email" value in the scored attributes; any channel outside
 # this table is "other".
@@ -1048,6 +1050,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     sent_as_is_max = thresholds["sent_as_is_max_distance"]
 
     edit_nature = list(edit_nature or [])
+    reaction_emoji = None
     changes = []
     label_error = None
     draft_text = None
@@ -1061,7 +1064,11 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         if scored.get("message_type") == REACTION:
             # A reaction has no wording to edit: another emoji, or another message, is a whole change.
             edit_distance = 0.0 if sent_text.strip() == draft_text.strip() else 1.0
-            edit_nature = edit_nature or []
+            sent_emoji = re.match(r":([^:\s]+):", sent_text.strip())
+            reaction_emoji = {"proposed": (scored.get("reaction") or {}).get("emoji"),
+                              "sent": sent_emoji.group(1) if sent_emoji else None}
+            if reaction_emoji["sent"] != reaction_emoji["proposed"]:
+                edit_nature = [REACTION_EMOJI_CHANGE]
         elif sweep is not None:
             edit_distance = sweep["edit_distance"]
         else:
@@ -1113,6 +1120,8 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     if sweep is not None:
         event["source"] = "sweep"
         event["sent_ref"] = sweep.get("sent_ref")
+    if reaction_emoji:
+        event["reaction_emoji"] = reaction_emoji
     _append_event(event)
 
     dispatch = None
