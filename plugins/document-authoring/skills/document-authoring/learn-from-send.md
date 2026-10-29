@@ -8,6 +8,7 @@ The drafting session's part is short and mechanical; the learning session, spawn
 ## The drafting session's part
 
 This part covers a draft the stage gate scored - every draft that went through a stage command, per `send-confidence.md`.
+A proposed Slack reaction records its outcome through the script that proposed it instead (`send-confidence.md`, Reactions), and never spawns a learning session, since it has no wording to learn from.
 After Russell sends such a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
 
 1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.
@@ -45,7 +46,7 @@ A draft that never gets an outcome recorded here is settled by the outcome sweep
 python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py sweep [--dry-run] [--json]
 ```
 
-It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending draft by thread or recipient, send time, and text similarity.
+It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending written draft by thread or recipient, send time, and text similarity.
 A match is logged as sent-as-is or edited with its measured edit distance, an earlier revision whose send went to a later one is logged as superseded, and a draft with no match seven days after it was scored is logged as discarded with no reason.
 Every swept outcome carries `source: "sweep"`, and its edits stay unlabelled, so a swept send spawns no learning session.
 The command prints its match rate: the share of settled drafts that matched a send.

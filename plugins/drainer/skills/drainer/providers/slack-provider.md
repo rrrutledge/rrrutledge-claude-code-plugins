@@ -98,12 +98,12 @@ Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `-
 ## REACT
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.
-Irreversible (reactions cannot be removed by the drainer), so propose and execute only when the reaction is clearly warranted.
-Reactions are visible to everyone in the workspace.
+Take one off with `node slack.js --unreact --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.remove`).
+A reaction is reversible, and every one goes through REACTION-PROPOSAL below, which adds it at once when send-confidence's auto-send test passes for it and otherwise puts it to Russell first.
 
 **React only to a message a 👍 actually fits** - a genuinely positive or acknowledgeable note (a "thanks", a "sounds good", a shared win, a closing agreement aimed at Russell).
-A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and because the reaction can't be undone, the cost of a wrong one is real.
-When no reaction clearly fits, add none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
+A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and others see it before it comes off.
+When no reaction clearly fits, propose none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
 
 ## AUTO-HANDLE
 Standing rules where Russell has decided the answer in advance, so the poller triages the item **`auto-handle`** (per `../engine/triage.md`) and the worker executes it autonomously - no wait for Russell - then records it in the digest's "Auto-handled" section.
@@ -143,3 +143,23 @@ Learning from the send applies: after the user sends, run the document-authoring
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts` (or, on the browser fallback, point `message-draft` slack mode at it).
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
+
+## REACTION-PROPOSAL
+A reaction goes through send-confidence like a written draft, so the model learns, from Russell's answers, which reactions can go out without him.
+Which message gets a reaction, and which emoji, is the worker's call per REACT above; the drainer's `slack_reaction.py` script does everything after that:
+
+```
+python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of the message> --emoji=<name> --permalink=<message permalink> [--thread-ts=<threadTs>]
+```
+
+- **`auto_sent` true:** the model's auto-send test passed, and the script already added the reaction.
+  Close out per worker-core §6a, with `disposition` `advanced` and the printed `digest` line as `dispositionReason`, so the digest's Auto-handled section shows the emoji, the message permalink, and the undo command.
+- **`auto_sent` false:** present the reaction to Russell like a staged draft, with the emoji and the message's permalink, and wait for his answer.
+  When more than one emoji fits, propose the best one and name the others as alternatives he can pick.
+  Record his answer with the printed `draft_id`:
+  - **He approves:** `slack_reaction.py approve --draft-id=<id>`; this adds the reaction.
+  - **He picks a different emoji:** the same `approve`, adding `--emoji=<his pick>`, whether he named it here or already added it himself in Slack.
+  - **He declines:** `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
+  - **No `draft_id` printed:** the reaction wasn't staged (the printed `staged` says why); on approval, run `approve` with the same `--channel`, `--ts`, and `--emoji` in place of `--draft-id`.
+
+The undo command in an auto-sent reaction's digest line, `slack_reaction.py undo --draft-id=<id>`, takes the reaction off and records the undo as a discard, so the model counts it against reactions like that one.

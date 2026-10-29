@@ -67,6 +67,9 @@ Under `scripts/` (run with `node`):
   - Read cursor: `node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]` - your `last_read`
     ts on the conversation, plus on the thread when `--thread-ts` is given.
     Read-only.
+  - React: `node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.add`; emoji name without colons.
+    Reversible with `--unreact`.
+  - Unreact: `node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.remove`; takes off the reaction `--react` added.
   - Mark read: `node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]` — `conversations.mark`
     up to `<ts>`, or `subscriptions.thread.mark` when `--thread-ts` is given (the conversation/thread's
     "gone"; reversible — re-reading re-surfaces it, never deletes).

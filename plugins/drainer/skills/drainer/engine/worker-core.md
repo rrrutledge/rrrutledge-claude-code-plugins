@@ -142,7 +142,7 @@ Two patterns to watch for, on any source:
 
 **Also check Trello when the item could be outreach** - an introduction, or a reply from a company or individual who might already be a tracked contact - regardless of which source it arrived on.
 Read `trello-boards.yaml` (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0) for an existing card naming that company or contact.
-A match means the item is already tracked: reference the card in what you present (and consider updating it - bump the Start date, add a comment) instead of acting as if this were unstarted outreach.
+A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
 No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
