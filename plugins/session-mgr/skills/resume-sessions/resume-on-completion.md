@@ -26,7 +26,7 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 
 **A fresh spawn does steps 1 and 2 in the launch itself: add `--resume-me` to the `spawn-session.py` call (a drainer worker's `spawn-handoff.py` forwards it).**
 The launcher appends the resume command and the "run it once this is done" instruction to the end of the brief, where the new session reads it with the Read tool (a seed line truncates on the command's quotes), then prints the remaining steps; record the paper trail (step 3) and close paused (step 4) in that same turn.
-It also writes a wake note beside the brief (`<brief>.resume-note.md`) saying the launched session's work is done and the wait is over, and the resume command hands that note to the resumed session as its follow-up prompt.
+It also writes the wake note that step 1 describes, beside the brief (`<brief>.resume-note.md`).
 Steps 1 and 2 below are the by-hand path for an existing peer.
 
 1. **Capture the resume command.**
@@ -39,19 +39,17 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    The command carries only paths and a guid, so it drops verbatim into a message or a doc without anything mangling it.
 
 2. **Hand that command to the peer with `SendMessage`.**
-   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to run it via its Bash tool at that point, with the cue that the work this session waits on is done.
-   The note file in the command carries that cue to the resumed session; the message carries it to the peer.
+   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to run it via its Bash tool at that point.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    A drainer worker leaves a dated comment on its Trello card noting the pause and naming the session it handed the resume to; a plain session notes it wherever that work is tracked.
-   When the work is tracked on a Trello card, make sure the card sits in an active list with its Start set to when to check back, alongside the comment, so the drainer surfaces it again even if the resume never lands. A card left in Finished, or with no Start, is parked for good if the resume fails.
+   When the work is tracked on a Trello card, keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
 
 4. **Close this session now, paused**, via the **`session-mgr:close`** skill with `--pause` (a drainer worker: `python <skill>/scripts/close-session.py --pause`).
    This fires `SessionEnd` cleanly, so the session deregisters from the live-session registry rather than looking crash-interrupted.
    `--pause` stops the session instead of removing it, because a plain close deletes its worktree and the resume needs that worktree intact.
 
-Because the resume carries the wake note as a follow-up prompt, the session continues under a new session id (the old id leaves the live-session registry) and starts a turn on that note; a resume with no prompt would wake it in place with no turn, and it would sit idle until Russell wrote to it.
-The resumed session comes back under a new session id carrying the full history, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
+The resume carries the wake note as a follow-up prompt, so the session comes back under a new session id (the old id leaves the live-session registry), carrying the full history, and starts a turn on that note, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
 
 ## Why this is safe against a duplicate worker (drainer)
 
