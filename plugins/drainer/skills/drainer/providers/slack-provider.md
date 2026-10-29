@@ -99,14 +99,12 @@ Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `-
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.
 Take one off with `node slack.js --unreact --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.remove`).
-A reaction is reversible, so a worker adds a fitting one on its own, with no wait for Russell and no staging, unlike a written message.
+A reaction is reversible, but a worker still proposes it for Russell to approve, the same as a written reply.
+Whether a reaction ever goes out without his approval is the send-confidence model's call, made from his approve/discard history on reactions, so no rule here approves one in advance.
 
 **React only to a message a 👍 actually fits** - a genuinely positive or acknowledgeable note (a "thanks", a "sounds good", a shared win, a closing agreement aimed at Russell).
 A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and others see it before it comes off.
-When no reaction clearly fits, add none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
-
-**Record every autonomous reaction in the digest's "Auto-handled" section** so Russell can undo it in one step.
-Stamp the item `advanced` per `engine/auto-handle.md` step 4, with a `dispositionReason` carrying the emoji, the message permalink, and the exact undo command, e.g. "Reacted :+1: on Bob's 'sounds good' (https://acme.slack.com/archives/C123/p1700000000000100) - undo: `node slack.js --unreact --channel=C123 --ts=1700000000.000100 --emoji=+1`".
+When no reaction clearly fits, propose none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
 
 ## AUTO-HANDLE
 Standing rules where Russell has decided the answer in advance, so the poller triages the item **`auto-handle`** (per `../engine/triage.md`) and the worker executes it autonomously - no wait for Russell - then records it in the digest's "Auto-handled" section.
