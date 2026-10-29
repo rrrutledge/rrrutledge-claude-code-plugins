@@ -1,64 +1,56 @@
 """The record that a session launched another session and has not yet said what it does next.
 
-spawn-session.py writes it after a fresh launch from inside a session. The user-level Stop hook
-(session-lifecycle.py) reads it and blocks the launching session's turn from ending until the
-session has resolved it: closed (end-session.py clears the marker), or declared it is carrying
-on with its own work (`keep-open`). Without it, a session that has handed its work off sits idle
-and looks like it is waiting on Russell.
+It is a `launch` field on the launching session's entry in the live-session registry
+(hooks/session_registry.py). spawn-session.py writes it after a fresh launch from inside a session.
+The user-level Stop hook (session-lifecycle.py) reads it and blocks the launching session's turn from
+ending until the session has resolved it: closed (the registry's SessionEnd removal drops the whole
+entry, field included), or declared it is carrying on with its own work (`keep-open`). Without it, a
+session that has handed its work off sits idle and looks like it is waiting on Russell.
 
-One JSON file per launching session, `<session id>.launched`, in the state directory the hook
-also uses. The hook reads the file directly, so keep the keys stable:
+The field's keys, which the hook reads directly, so keep them stable:
     mode   "handoff" (close now), "resume" (close paused; the launched session resumes this one),
            or "keep-open" (declared: this session carries on, so the hook leaves it alone)
     title  the launched session's title, for the hook's message
     short_id  the launched session's short id
 
+A session with no registry entry gets no record: the entry is what find-orphans.py reads, so this
+module never creates one.
+
 Command line, from inside the launching session (via the Bash tool):
     python "<this file>" keep-open      declare the launch a side quest this session carries on past
 """
-import json
 import os
 import sys
 
-DEFAULT_DIR = os.path.expanduser("~/.claude/session-lifecycle")
-
-
-def state_dir():
-    return os.environ.get("LAUNCH_MARKER_DIR") or DEFAULT_DIR
-
-
-def marker_path(session_id):
-    return os.path.join(state_dir(), f"{session_id}.launched")
-
-
-def write(session_id, mode, title, short_id):
-    os.makedirs(state_dir(), exist_ok=True)
-    with open(marker_path(session_id), "w", encoding="utf-8") as f:
-        json.dump({"mode": mode, "title": title, "short_id": short_id}, f)
+HOOKS = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "hooks"))
+sys.path.insert(0, HOOKS)
+import session_registry  # noqa: E402
 
 
 def read(session_id):
-    try:
-        with open(marker_path(session_id), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
+    entry = session_registry.load_registry().get(session_id)
+    return entry.get("launch") if isinstance(entry, dict) else None
 
 
-def clear(session_id):
-    try:
-        os.remove(marker_path(session_id))
-    except OSError:
-        pass
+def write(session_id, mode, title, short_id):
+    """Record the launch on the session's registry entry. Returns False when it has no entry."""
+    found = []
+
+    def mutate(registry):
+        entry = registry.get(session_id)
+        if isinstance(entry, dict):
+            entry["launch"] = {"mode": mode, "title": title, "short_id": short_id}
+            found.append(True)
+    session_registry.update_registry(mutate)
+    return bool(found)
 
 
 def declare_keep_open(session_id):
-    """Flip an unresolved marker to keep-open. Returns False when there is none to flip."""
-    marker = read(session_id)
-    if not marker:
+    """Flip an unresolved launch to keep-open. Returns False when there is none to flip."""
+    launch = read(session_id)
+    if not launch:
         return False
-    write(session_id, "keep-open", marker.get("title", ""), marker.get("short_id", ""))
-    return True
+    return write(session_id, "keep-open", launch.get("title", ""), launch.get("short_id", ""))
 
 
 def main(argv):

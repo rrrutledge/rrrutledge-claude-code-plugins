@@ -12,7 +12,10 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.abspath(os.path.join(HERE, "..", "skills", "resume-sessions", "scripts"))
 sys.path.insert(0, SCRIPTS)
-os.environ["LAUNCH_MARKER_DIR"] = tempfile.mkdtemp()
+import launch_marker  # noqa: E402
+
+launch_marker.session_registry.REGISTRY_DIR = tempfile.mkdtemp()
+launch_marker.session_registry.REGISTRY_PATH = os.path.join(launch_marker.session_registry.REGISTRY_DIR, "live-sessions.json")
 
 spec = importlib.util.spec_from_file_location("spawn_session", os.path.join(SCRIPTS, "spawn-session.py"))
 spawn_session = importlib.util.module_from_spec(spec)

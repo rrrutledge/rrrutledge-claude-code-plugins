@@ -1,8 +1,8 @@
-"""Tests for the launch marker: spawn-session.py records what the launching session does next
-(handoff / resume / keep-open), end-session.py clears it, and nothing is recorded for launches that
-are not a handoff from a session.
+"""Tests for the launch record: spawn-session.py records what the launching session does next
+(handoff / resume / keep-open) on its live-session registry entry, and nothing is recorded for
+launches that are not a handoff from a session.
 
-Runs in-process with the `claude --bg` launch stubbed and the marker directory in a temp folder.
+Runs in-process with the `claude --bg` launch stubbed and the registry in a temp folder.
 Run directly: python plugins/session-mgr/tests/test_launch_marker.py
 """
 import contextlib
@@ -54,12 +54,17 @@ def spawn(tmp, extra, session_id=GUID):
 
 
 def with_temp_dir(fn):
+    """Run fn(tmp) with the live-session registry in a temp folder and GUID registered in it."""
+    sr = launch_marker.session_registry
+    real = sr.REGISTRY_DIR, sr.REGISTRY_PATH
     with tempfile.TemporaryDirectory() as tmp:
-        os.environ["LAUNCH_MARKER_DIR"] = os.path.join(tmp, "state")
+        sr.REGISTRY_DIR = os.path.join(tmp, "state")
+        sr.REGISTRY_PATH = os.path.join(sr.REGISTRY_DIR, "live-sessions.json")
+        sr.update_registry(lambda r: r.update({GUID: {"cwd": tmp, "pid": 1, "host_pid": None}}))
         try:
             fn(tmp)
         finally:
-            os.environ.pop("LAUNCH_MARKER_DIR", None)
+            sr.REGISTRY_DIR, sr.REGISTRY_PATH = real
 
 
 def test_default_records_handoff_and_says_close():
@@ -98,18 +103,20 @@ def test_nothing_recorded_outside_a_session_handoff():
     with_temp_dir(body)
 
 
-def test_declare_and_clear():
-    print("test: keep-open declaration flips the marker, clear removes it")
+def test_declare_and_registry_removal():
+    print("test: keep-open declaration flips the field; the SessionEnd removal drops it; no entry is ever created")
 
     def body(tmp):
+        sr = launch_marker.session_registry
         check("nothing to declare yet", launch_marker.declare_keep_open(GUID) is False)
         launch_marker.write(GUID, "handoff", "T", "abc")
         check("declare succeeds", launch_marker.declare_keep_open(GUID) is True)
         check("mode flipped, title kept", launch_marker.read(GUID) == {"mode": "keep-open", "title": "T", "short_id": "abc"})
-        launch_marker.clear(GUID)
-        check("cleared", launch_marker.read(GUID) is None)
-        launch_marker.clear(GUID)
-        check("clearing twice is harmless", True)
+        check("entry's other fields untouched", sr.load_registry()[GUID]["cwd"] == tmp)
+        sr.update_registry(lambda r: r.pop(GUID, None))
+        check("entry removal drops the launch", launch_marker.read(GUID) is None)
+        check("write for an unregistered session records nothing", launch_marker.write("other", "handoff", "T", "abc") is False)
+        check("and creates no entry", "other" not in sr.load_registry())
     with_temp_dir(body)
 
 
@@ -117,6 +124,6 @@ if __name__ == "__main__":
     test_default_records_handoff_and_says_close()
     test_flags_choose_mode()
     test_nothing_recorded_outside_a_session_handoff()
-    test_declare_and_clear()
+    test_declare_and_registry_removal()
     print(f"\n{len(failures)} failure(s)" if failures else "\nall passed")
     sys.exit(1 if failures else 0)
