@@ -317,6 +317,8 @@ The specifics that most often separate a message that reads as Russell's from on
   "Adding Mei directly here as well." is the whole line - it speaks to the thread, so the greeting, the reason, and any closing question aimed at the new person all come out.
 - **Connecting two people in a brand-new group chat: address the one who owns the ask, not the group.**
   Open with a real @-mention to the person the ask is actually for rather than a shared "Hey both" greeting, and drop any aside to the other party that doesn't serve them. When the other party's own stated constraint or detail is the reason for the ask, let them supply it themselves in the same conversation rather than relaying it on their behalf.
+- **Introducing two people together.**
+  When neither party owns an ask, write one shared email from Russell's own experience: greet everyone together per the email greetings in **Persona modes**, follow it with one short sentence of gladness about connecting them, then say how he met each person and what he took away, and close on why he's connecting them.
 - **Float a candidate tentatively** — "also may be a great fit", not "would be a great fit". The "also" ties them to someone already named and "may" keeps it open; go straight to the person and drop the setup line.
 - **When confirming an ask, give the "why" — not how-to steps.**
   Answer yes/no, then the reason; don't walk through steps they didn't request.
