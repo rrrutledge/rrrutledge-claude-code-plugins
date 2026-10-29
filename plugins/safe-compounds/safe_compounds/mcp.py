@@ -1,8 +1,9 @@
 """Classify MCP tool calls (mcp__<server>__<operation>) as auto-allowable.
 
-Whole servers can be blanket-allowed; otherwise the operation's leading verb
-decides: read-only and reversible-write verbs allow, destructive or
-unrecognized verbs fall through to a manual prompt.
+Whole servers can be blanket-allowed; otherwise the operation's verb (leading,
+trailing, or anywhere in the name) decides: read-only and reversible-write
+verbs allow, while a destructive or irreversible word anywhere, or no
+recognized verb, falls through to a manual prompt.
 """
 import re
 
@@ -24,6 +25,10 @@ MCP_DESTRUCTIVE_VERBS = (
     'wipe', 'revoke', 'deactivate', 'disable', 'uninstall', 'unlink',
     'unassign', 'clear', 'reset', 'authenticate', 'authorize',
 )
+MCP_IRREVERSIBLE_VERBS = (
+    'send', 'publish', 'submit', 'pay', 'book', 'transfer', 'execute', 'run',
+    'trigger', 'deploy', 'merge',
+)
 
 
 def classify_mcp_tool(tool_name):
@@ -44,13 +49,27 @@ def classify_mcp_tool(tool_name):
     verb_match = re.match(r'[a-z]+', name)
     verb = verb_match.group(0) if verb_match else name
 
+    words = [w for w in re.split(r'[_-]', name) if w]
+    risky = next((w for w in words
+                  if w in MCP_DESTRUCTIVE_VERBS or w in MCP_IRREVERSIBLE_VERBS), None)
+    if risky:
+        log_debug(f"MCP {tool_name}: destructive/irreversible word '{risky}', prompting")
+        return False
+
     kind = _verb_kind(name, verb)
     if kind is None:
         # Noun-first names (recordings_list, meetings_get) carry the verb last.
-        trailing = re.split(r'[_-]', name)[-1]
+        trailing = words[-1] if words else name
         if trailing != verb:
             verb = trailing
             kind = _verb_kind(trailing, trailing)
+    if kind is None:
+        # Verb in the middle (hub_get_file_content): any recognized word counts.
+        for w in words:
+            kind = _verb_kind(w, w)
+            if kind:
+                verb = w
+                break
 
     if kind == 'destructive':
         log_debug(f"MCP {tool_name}: destructive verb '{verb}', prompting")

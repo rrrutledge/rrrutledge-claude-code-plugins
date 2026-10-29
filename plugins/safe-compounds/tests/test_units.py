@@ -552,6 +552,22 @@ class TestMcp:
         set_config()
         assert classify_mcp_tool("mcp__s__recordings_frobnicate") is False
 
+    def test_middle_verb_read_allowed(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__hub_get_file_content") is True
+
+    def test_middle_verb_destructive_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__zoom-mcp__hub_delete_file") is False
+
+    def test_middle_verb_irreversible_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__s__hub_get_and_send") is False
+
+    def test_leading_read_with_trailing_destructive_prompts(self):
+        set_config()
+        assert classify_mcp_tool("mcp__s__get_and_delete") is False
+
     def test_blanket_tool_configured(self):
         set_config(mcp_blanket_tools=["mcp__s__frobnicate_thing"])
         assert classify_mcp_tool("mcp__s__frobnicate_thing") is True
