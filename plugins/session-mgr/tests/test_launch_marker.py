@@ -81,6 +81,18 @@ def test_default_records_handoff_and_says_close():
     with_temp_dir(body)
 
 
+def test_unregistered_session_gets_a_warning():
+    print("test: a launching session with no registry entry is told, loudly")
+
+    def body(tmp):
+        launch_marker.session_registry.update_registry(lambda r: r.pop(GUID, None))
+        rc, out = spawn(tmp, [])
+        check("launch itself still succeeds", rc == 0)
+        check("output warns of the missing entry", "WARNING" in out and "no entry in the live-session registry" in out, out)
+        check("close instruction still printed", "close this one in this same turn" in out)
+    with_temp_dir(body)
+
+
 def test_flags_choose_mode():
     print("test: --resume-me records resume, --keep-open records keep-open")
 
@@ -122,6 +134,7 @@ def test_declare_and_registry_removal():
 
 if __name__ == "__main__":
     test_default_records_handoff_and_says_close()
+    test_unregistered_session_gets_a_warning()
     test_flags_choose_mode()
     test_nothing_recorded_outside_a_session_handoff()
     test_declare_and_registry_removal()

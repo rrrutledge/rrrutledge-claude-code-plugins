@@ -13,8 +13,9 @@ The field's keys, which the hook reads directly, so keep them stable:
     title  the launched session's title, for the hook's message
     short_id  the launched session's short id
 
-A session with no registry entry gets no record: the entry is what find-orphans.py reads, so this
-module never creates one.
+A session with no registry entry gets no record, and `write` returns False so the caller can say so:
+the entry is what find-orphans.py reads, so this module never creates one, and every session
+registers at start, so a missing entry is a bug to surface, not a case to skip.
 
 Command line, from inside the launching session (via the Bash tool):
     python "<this file>" keep-open      declare the launch a side quest this session carries on past

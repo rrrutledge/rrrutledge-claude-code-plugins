@@ -260,7 +260,12 @@ def _record_launch(a, short_id, title, resume_me, is_worker):
     if a.resume or is_worker or not session_id:
         return
     mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
-    launch_marker.write(session_id, mode, title or "", short_id)
+    if not launch_marker.write(session_id, mode, title or "", short_id):
+        print(f"WARNING: session {session_id} has no entry in the live-session registry "
+              f"({launch_marker.session_registry.REGISTRY_PATH}), so the Stop hook cannot hold it to this launch. "
+              "A session always registers at start, so this is a bug: the SessionStart hook did not run for "
+              "this session, or another session's registry write overwrote its entry. Tell Russell, then "
+              "follow the close-or-keep-open instruction below by hand.")
     if mode == "handoff":
         print("Next for this session: the new session now holds the work, so close this one in this same "
               "turn with session-mgr:close (a drainer worker: close-session.py). If Russell asked you to "
