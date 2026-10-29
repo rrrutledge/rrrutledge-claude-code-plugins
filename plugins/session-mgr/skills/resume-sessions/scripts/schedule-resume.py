@@ -75,7 +75,8 @@ def fwd(path):
 
 WAKE_NOTE = """The session you launched to do "{done_title}" has run this because its work is done, so your wait is over.
 Pick up your own next step now, from where you paused.
-Check the card or tracker you left a paper trail on first, to see what state it is in.
+Read the report below, if it has one, for what that session did and where to find it.
+Then check the card or tracker you left a paper trail on, to see what state it is in.
 """
 
 

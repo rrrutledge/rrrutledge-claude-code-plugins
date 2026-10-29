@@ -62,7 +62,9 @@ RESUME_ME = """
 """ + RESUME_ME_HEADING + """
 
 The session that launched you closed paused; its own next step waits on this work.
-Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), run this via the Bash tool without waiting to be asked, then tell Russell in one line which session you resumed:
+Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first append a short report to `{note}` under a `## Report` heading: what you did, where to find it (path, link, card), and anything that differs from what the brief asked.
+The launcher reads that note when it wakes, with its own history but not yours, so the report is how it learns what happened.
+Then run this via the Bash tool without waiting to be asked, and tell Russell in one line which session you resumed:
 
     {command}
 """
@@ -86,11 +88,12 @@ def _append_resume_me(brief, session_id, cwd, done_title):
     if not command:
         return None
     schedule_resume.write_wake_note(note, done_title)
+    fwd_note = schedule_resume.fwd(note)
     with open(brief, encoding="utf-8") as f:
         body = f.read()
     if RESUME_ME_HEADING not in body:
         with open(brief, "w", encoding="utf-8") as f:
-            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command))
+            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command, note=fwd_note))
     return command
 
 WORKER_CONTRACT = """

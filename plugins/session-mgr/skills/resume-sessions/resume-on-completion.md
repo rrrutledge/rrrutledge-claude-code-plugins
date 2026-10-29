@@ -26,7 +26,7 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 
 **A fresh spawn does steps 1 and 2 in the launch itself: add `--resume-me` to the `spawn-session.py` call (a drainer worker's `spawn-handoff.py` forwards it).**
 The launcher appends the resume command and the "run it once this is done" instruction to the end of the brief, where the new session reads it with the Read tool (a seed line truncates on the command's quotes), then prints the remaining steps; record the paper trail (step 3) and close paused (step 4) in that same turn.
-It also writes the wake note that step 1 describes, beside the brief (`<brief>.resume-note.md`).
+It also writes the wake note that step 1 describes, beside the brief (`<brief>.resume-note.md`), and the brief tells the new session to append its report to that note before it runs the resume.
 Steps 1 and 2 below are the by-hand path for an existing peer.
 
 1. **Capture the resume command.**
@@ -39,7 +39,7 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    The command carries only paths and a guid, so it drops verbatim into a message or a doc without anything mangling it.
 
 2. **Hand that command to the peer with `SendMessage`.**
-   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to run it via its Bash tool at that point.
+   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to append a short report to the note file first (what it did, where to find it, anything that differed from the ask), then run the command via its Bash tool.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    A drainer worker leaves a dated comment on its Trello card noting the pause and naming the session it handed the resume to; a plain session notes it wherever that work is tracked.
