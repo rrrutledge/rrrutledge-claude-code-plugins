@@ -23,6 +23,9 @@ Everything else defaults from the session's own environment:
     --session-id   the session to resume        (default: $CLAUDE_CODE_SESSION_ID)
     --cwd          working dir to resume it in   (default: the current directory)
     --title        a new name for the resumed session (default: keep its own)
+    --note-file    a file handed to the resumed session as its follow-up prompt, so it wakes knowing
+                   why; add --done-title "<launched session's title>" to have this script write the
+                   standard "that work is done, your wait is over" note there
 
 The command is emitted for a Git Bash / Bash-tool caller (the shell a peer or a
 spawned session runs it from). It carries only forward-slash paths, a guid and an
@@ -70,15 +73,34 @@ def fwd(path):
     return path.replace("\\", "/")
 
 
-def resume_command(session_id, cwd, title=None):
+WAKE_NOTE = """The session you launched to do "{done_title}" has run this because its work is done, so your wait is over.
+Pick up your own next step now, from where you paused.
+Read the report below, if it has one, for what that session did and where to find it.
+Then check the card or tracker you left a paper trail on, to see what state it is in.
+"""
+
+
+def write_wake_note(path, done_title):
+    """Write the cue a resumed session reads on waking: the work it was blocked on is done. Passed
+    to the resume as its follow-up prompt file, so the session wakes with a real prompt instead of
+    in place with nothing queued."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(WAKE_NOTE.format(done_title=done_title))
+
+
+def resume_command(session_id, cwd, title=None, note_file=None):
     """The `spawn-session.py --resume` line that brings session_id back in cwd, or None when no
-    launcher can be found. spawn-session.py's --resume-me builds its handoff instruction from this."""
+    launcher can be found. spawn-session.py's --resume-me builds its handoff instruction from this.
+    note_file, when given, rides along as --prompt-file: the follow-up that tells the woken session
+    why it woke."""
     launcher = resolve_launcher()
     if not launcher:
         return None
     command = f'python "{fwd(launcher)}" --resume {session_id} --cwd "{fwd(os.path.abspath(cwd))}"'
     if title:
         command += f' --title "{title}"'
+    if note_file:
+        command += f' --prompt-file "{fwd(os.path.abspath(note_file))}"'
     return command
 
 
@@ -87,6 +109,10 @@ def main(argv=None):
     parser.add_argument("--session-id", default=os.environ.get("CLAUDE_CODE_SESSION_ID"))
     parser.add_argument("--cwd", default=os.getcwd())
     parser.add_argument("--title")
+    parser.add_argument("--note-file", help="file to hand the resumed session as its follow-up prompt; "
+                        "with --done-title the script writes it, otherwise it must already exist")
+    parser.add_argument("--done-title", help="title of the session whose finished work this resume "
+                        "announces; writes the standard wake note to --note-file")
     # Accepted and ignored, so an older caller that still names a terminal window keeps working.
     parser.add_argument("--window", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -96,7 +122,16 @@ def main(argv=None):
               "session via the Bash tool so $CLAUDE_CODE_SESSION_ID is set.", file=sys.stderr)
         return 1
 
-    command = resume_command(args.session_id, args.cwd, args.title)
+    if args.done_title:
+        if not args.note_file:
+            print("schedule-resume: --done-title needs --note-file to write the note to.", file=sys.stderr)
+            return 1
+        write_wake_note(args.note_file, args.done_title)
+    elif args.note_file and not os.path.isfile(args.note_file):
+        print(f"schedule-resume: note file not found: {args.note_file}", file=sys.stderr)
+        return 1
+
+    command = resume_command(args.session_id, args.cwd, args.title, args.note_file)
     if not command:
         print("schedule-resume: could not locate spawn-session.py (no installed copy and no "
               "working-clone sibling).", file=sys.stderr)

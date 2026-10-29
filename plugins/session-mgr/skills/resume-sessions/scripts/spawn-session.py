@@ -28,7 +28,12 @@ coordinate-workers skill.
 --resume-me (fresh --brief launches only) is for a launching session whose own next step waits on the
 new session's work: it appends the instruction to resume the launching session (the command
 schedule-resume.py prints, for $CLAUDE_CODE_SESSION_ID in the current directory) to the end of the
-brief, so the launcher's last step is to close paused. See resume-on-completion.md.
+brief, so the launcher's last step is to close paused. It also writes a wake note beside the brief
+(`<brief>.resume-note.md`) saying the launched session's work is done, and the command hands that
+note to the resume as --prompt-file. A resume with a follow-up continues the launcher under a new
+session id (its old id leaves the live-session registry) and queues the note as its first prompt;
+a bare resume would wake it in place with nothing queued, so it would never learn why it woke.
+See resume-on-completion.md.
 
 What the launching session does next is the launch's third answer, and a fresh launch from inside a
 session records it (launch_marker.py) so the Stop hook can hold the session to it:
@@ -64,7 +69,10 @@ RESUME_ME = """
 """ + RESUME_ME_HEADING + """
 
 The session that launched you closed paused; its own next step waits on this work.
-Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), run this via the Bash tool without waiting to be asked, then tell Russell in one line which session you resumed:
+Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first append a report to `{note}` under a `## Report` heading: a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
+Leave out the steps you took and your internal details.
+The launcher reads that note when it wakes, with its own history but not yours, so the report is how it learns what happened.
+Then run this via the Bash tool without waiting to be asked, and tell Russell in one line which session you resumed:
 
     {command}
 """
@@ -77,17 +85,23 @@ def _schedule_resume():
     return mod
 
 
-def _append_resume_me(brief, session_id, cwd):
-    """Append the resume-the-launcher instruction to the brief, once. Returns the command, or None
+def _append_resume_me(brief, session_id, cwd, done_title):
+    """Write the wake note beside the brief and append the resume-the-launcher instruction to the
+    brief, once. The resume command passes the note as the launcher's follow-up prompt, so the
+    launcher wakes knowing the work it waited on (done_title) is done. Returns the command, or None
     when no launcher can be found to resume with."""
-    command = _schedule_resume().resume_command(session_id, cwd)
+    schedule_resume = _schedule_resume()
+    note = brief + ".resume-note.md"
+    command = schedule_resume.resume_command(session_id, cwd, note_file=note)
     if not command:
         return None
+    schedule_resume.write_wake_note(note, done_title)
+    fwd_note = schedule_resume.fwd(note)
     with open(brief, encoding="utf-8") as f:
         body = f.read()
     if RESUME_ME_HEADING not in body:
         with open(brief, "w", encoding="utf-8") as f:
-            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command))
+            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command, note=fwd_note))
     return command
 
 WORKER_CONTRACT = """
@@ -170,7 +184,8 @@ def main(argv=None):
                          "and registers the worker in job.json")
     ap.add_argument("--resume-me", action="store_true",
                     help="this (launching) session's next step waits on the new session's work: append "
-                         "the command that resumes this session to the brief, then close this one paused")
+                         "the command that resumes this session (with a wake note as its prompt) to "
+                         "the brief, then close this one paused")
     ap.add_argument("--keep-open", action="store_true",
                     help="a side quest: this (launching) session carries on with its own work after "
                          "the launch, so it stays open")
@@ -210,7 +225,7 @@ def main(argv=None):
             print("spawn-session: --resume-me runs from inside the launching session via the Bash tool, "
                   "so $CLAUDE_CODE_SESSION_ID names the session to resume; it is not set here.")
             return 1
-        resume_me = _append_resume_me(brief, launcher_id, os.getcwd())
+        resume_me = _append_resume_me(brief, launcher_id, os.getcwd(), name)
         if not resume_me:
             print("spawn-session: --resume-me could not locate spawn-session.py to build the resume command.")
             return 1
@@ -246,7 +261,8 @@ def main(argv=None):
           f"(id {short_id}, {receipt}; name the session to Russell by its title).")
     if resume_me:
         print("The brief now ends with the command that resumes this session when that work is done. "
-              "Leave the paper trail (a drainer worker: a dated comment on its card), then close this "
+              "Leave the paper trail (a drainer worker: a dated comment on its card, with the card in an "
+              "active list and its Start set to when to check back), then close this "
               "session paused this turn: session-mgr:close with --pause (a drainer worker: close-session.py --pause).")
     _record_launch(a, short_id, name or summary, bool(resume_me), bool(slug))
     return 0
