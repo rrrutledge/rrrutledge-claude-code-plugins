@@ -86,6 +86,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **Frame the ask to match the recipient's role.**
   When their job is to route you to a third party (find a volunteer, recommend a speaker), make the asks conditional on that handoff rather than personal requests to them — and don't narrate the follow-up's timing.
   On a repeat ask to someone with standing local knowledge, lean on that ("you have much more insight than me here") rather than citing a specific thing they said they'd do — the former trusts their judgment, the latter reads as holding them to an obligation.
+  When the third party who must act is known to be unavailable, name that and ask only whether the recipient is tracking it for whenever they return.
 - **When a contact declines or gives a discouraging read, accept it humbly and stop** — don't tack on a new ask.
   This covers someone who already tried the favor and hit repeated friction or failure, e.g. a bug reported after two failed attempts, not just an explicit no. Asking them to try yet again piles on instead of telling them the problem is understood.
   Genuine warmth (a plain thanks, a "no worries") is fine to keep.
@@ -607,4 +608,4 @@ These registers reach outside the palette, and most also stack past the one-emoj
 ### When unsure
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
-If you'd have to invent a personal detail, or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
+If you'd have to invent a personal detail, or a commitment the ask never made (a promise to talk, a change to how Russell works), or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
