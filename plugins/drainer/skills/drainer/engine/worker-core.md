@@ -84,6 +84,12 @@ For an unknown mechanism internal to the user's organization, consult the user's
 The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
 Work out which system would hold the record before a turn ends on that question.
 
+**Search both mailboxes before concluding anything about email.**
+When the question is whether something already happened or a reply already went out, search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive) before answering, whichever mailbox the item arrived in.
+A thread often runs through one mailbox while the evidence sits in the other: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, and an order confirmation can land in either.
+Search two ways: by sender or platform (a ticketing platform like pretix, a vendor name) and by subject or event name, since one narrow keyword search of one mailbox proves nothing.
+A worker that still finds nothing reports "not found in Gmail or Outlook" and names the searches it ran, not "probably not done".
+
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
 The state at capture time is stale by the time you act on it: the contact may have replied since, or - easy to miss - the user may have posted their own follow-up that changes what's actually being waited on (a clarifying question they asked but hasn't been answered yet turns a "ready to act" item into a blocked one).
