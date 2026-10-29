@@ -69,9 +69,7 @@ Anything you learn that the next pass would otherwise re-derive - the thread dee
 CLEAR (advance) then updates that cache.
 Over time a card should carry enough that a follow-up needs almost no re-discovery.
 (A dedicated card schema for this is worth designing - see the project's Trello-caching follow-up.)
-Whenever Russell gives the state of a contact or task the card tracks - a screenshot, pasted text, or his own account of what happened - cache it to a dated comment in that same turn.
-For a contact reached over LinkedIn, those comments are the only record of the thread: only Russell reads LinkedIn, so the pod sees at most an inbound notification's preview and none of his own messages.
-When a notification shows a message the comments don't account for, ask Russell what the thread now says and whether he has already answered, with the conversation's link per the LinkedIn ban, and cache his answer the same way.
+For LinkedIn and anything Russell brings in himself, the card's comments are the only record; the `trello-outreach` skill's "Keep a tracked card current with what only Russell can see" says when to write them and when to ask him.
 
 ## INITIATIVE-LOOKUP
 Many outreach cards share one program - the user is following up with many people to onboard them to the same initiative - so a card like "Acme Corp / Jane Doe" carries no per-card context of its own.
