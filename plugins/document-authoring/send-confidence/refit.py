@@ -14,9 +14,14 @@ One run:
    `features` held - one judge reading per attribute, word count from the draft snapshot, no kind.
    Event v1 rated phrasing complexity and task ambiguity rather than stakes and latitude, so it
    stays out.
+   Only drafts the current judge (`send_confidence.JUDGE_MODEL`) scored count, since another
+   judge's readings sit on a scale of their own.
+   While a live model exists and the current judge has scored fewer than GENERATION_MIN_DRAFTS
+   resolved drafts, the run skips, so the first fit on a new judge's readings is graded against
+   the live model rather than a base rate.
 2. **Noise.** Each judged attribute's noise figure is the pooled within-draft spread of every
-   scored event's three readings, resolved or not; until NOISE_MIN_DRAFTS drafts carry readings
-   for it, the attribute enters as measured.
+   scored event's three readings from the current judge, resolved or not; until
+   NOISE_MIN_DRAFTS drafts carry readings for it, the attribute enters as measured.
 3. **Gate.** Fit on every resolved draft except the last HOLDOUT_DAYS, while the log is young
    capped at the newest half of the drafts so the fit always trains on at least half. The new
    fit ships when its log loss is no worse than the live model's by more than GATE_TOLERANCE,
@@ -56,6 +61,8 @@ import send_confidence_model as scm  # noqa: E402
 HOLDOUT_DAYS = 28
 GATE_TOLERANCE = 0.01
 GATE_MIN_FRESH = 10
+# Enough drafts that the newest half holds GATE_MIN_FRESH for the gate to grade the live model on.
+GENERATION_MIN_DRAFTS = 2 * GATE_MIN_FRESH
 NOISE_MIN_DRAFTS = 10
 SCREEN_MIN_DRAFTS = 15
 SCREEN_MIN_Z = 2.0
@@ -131,14 +138,18 @@ def _draft_text(draft_id):
         return None
 
 
+def judge_model(scored):
+    return scored.get("judge_model") or sc.LEGACY_JUDGE_MODEL
+
+
 def gather(drafts=None):
-    """[{"draft_id", "ts", "attrs", "y"}] for every resolved draft that has a target, oldest first,
-    keeping the earliest scored row of each draft body."""
+    """[{"draft_id", "ts", "attrs", "y"}] for every resolved draft the current judge scored that
+    has a target, oldest first, keeping the earliest scored row of each draft body."""
     drafts = drafts if drafts is not None else sc.fold_drafts()
     rows = []
     for draft_id, d in drafts.items():
         scored, outcome = d["scored"], d["outcome"]
-        if not scored or (scored.get("v") or 1) < 2:
+        if not scored or (scored.get("v") or 1) < 2 or judge_model(scored) != sc.JUDGE_MODEL:
             continue
         y = scm.target(outcome)
         ts = sc._parse_ts(scored.get("ts"))
@@ -159,12 +170,12 @@ def gather(drafts=None):
 # --- 2. noise ---
 
 def pooled_noise(events=None):
-    """{attribute: noise sd or None}: the pooled within-draft standard deviation of every scored
-    event's repeated readings, None until NOISE_MIN_DRAFTS drafts carry two or more."""
+    """{attribute: noise sd or None}: the pooled within-draft standard deviation of the current
+    judge's repeated readings, None until NOISE_MIN_DRAFTS drafts carry two or more."""
     events = events if events is not None else sc.load_events()
     sums = {name: [0.0, 0, 0] for name in scm.JUDGED}
     for e in events:
-        if e.get("event") != "scored" or not e.get("attributes"):
+        if e.get("event") != "scored" or not e.get("attributes") or judge_model(e) != sc.JUDGE_MODEL:
             continue
         for name in scm.JUDGED:
             values = [scm.transform(name, v) for v in scm.readings(e["attributes"], name)]
@@ -410,13 +421,16 @@ def run(*, now=None, dry_run=False, fit_fn=None, sampler=None):
     clusters = _read_json(proposals_path(), {}) or {}
     proposed, rejected = clusters.get("proposed", []), clusters.get("rejected", [])
     record = {"ts": now.isoformat(), "dry_run": dry_run, "n": len(rows),
-              "positives": sum(r["y"] for r in rows), "noise": noise,
+              "positives": sum(r["y"] for r in rows), "noise": noise, "judge_model": sc.JUDGE_MODEL,
               "live_version": (live or {}).get("version"), "shipped": False, "cluster_verdicts": []}
 
     train, hold = split(rows, now)
     record.update(n_train=len(train), n_holdout=len(hold),
                   holdout_from=hold[0]["ts"].isoformat() if hold else None)
-    if not hold or {r["y"] for r in train} != {0, 1}:
+    if live and len(rows) < GENERATION_MIN_DRAFTS:
+        record["skipped"] = (f"{sc.JUDGE_MODEL} has judged {len(rows)} resolved drafts; the first fit on its "
+                             f"readings waits for {GENERATION_MIN_DRAFTS}")
+    elif not hold or {r["y"] for r in train} != {0, 1}:
         record["skipped"] = "the training split needs both a near-as-is draft and another, and the holdout a draft"
     else:
         ys = [r["y"] for r in hold]
@@ -472,6 +486,7 @@ def run(*, now=None, dry_run=False, fit_fn=None, sampler=None):
         if record["shipped"]:
             model = fit_fn(rows, candidate_terms, noise, sampler=sampler)
             model["version"] = ((live or {}).get("version") or 0) + 1
+            model["judge_model"] = sc.JUDGE_MODEL
             model["holdout"] = {"loss": record["candidate_loss"], "live_loss": record["live_loss"],
                                 "n": len(gate), "gate": record["gate"], "from": record["holdout_from"]}
             record["version"] = model["version"]
