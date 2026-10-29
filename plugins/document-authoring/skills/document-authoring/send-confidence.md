@@ -41,7 +41,7 @@ The coefficient file comes from the weekly refit, a plain-code job that fits the
 python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/refit.py [--dry-run] [--json]
 ```
 
-The refit needs PyMC (`pip install pymc`); scoring reads the file with plain arithmetic and needs nothing beyond Python.
+The refit needs PyMC (`pip install pymc`) and samples with nutpie when it's installed (`pip install nutpie`); scoring reads the file with plain arithmetic and needs nothing beyond Python.
 `refit.py`'s docstring holds the full run, and every run appends its record to `refit-runs.jsonl` in the send-confidence log directory for the weekly report.
 
 ## The session's part: rate coverage at mint
