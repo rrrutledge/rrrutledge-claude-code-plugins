@@ -80,6 +80,14 @@ If a fact you'd need for the brief is itself only knowable from him, ask for tha
 Has it already moved or been handled?
 (PR merged? request done? they replied and the user already answered?)
 That changes the right action.
+
+**Check before you ask.**
+Before nudging anyone to make something happen, find out on your own whether it already happened.
+Check each thing the item is waiting on against the system that records it, including both mailboxes per "Search both mailboxes before concluding anything about email" in this section.
+A dated note on the item saying something is still pending is the claim to check, not the answer: it was true when written and may have changed since.
+When a check can't be run - the page URL is unknown, a sign-in has expired - name what's unchecked and what blocked it, and ask Russell for that instead of drafting a nudge on the old note.
+Only a check showing it really hasn't happened leads to a ping, addressed to whoever owns the next step.
+
 For an unknown mechanism internal to the user's organization, consult the user's designated internal knowledge source first (if their `context.md` names one) before asking the user directly.
 The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
 Work out which system would hold the record before a turn ends on that question.
@@ -328,7 +336,8 @@ So before you CLEAR, confirm every ask you grouped out of the span in §2 is com
 If any remains open, do not clear: handle or track it first, or leave the item un-cleared so it comes back around.
 Clearing is the last act after the whole span is handled, never a per-message step.
 
-If the situational check finds nothing to do right now - a thread where they replied and the user already answered (an acknowledgement from the ack sweep is not that answer, per §2), or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: bump the Start date / clear without surfacing anything to Russell.
+If the situational check shows the next step already in motion - a thread where they replied and the user already answered (an acknowledgement from the ack sweep is not that answer, per §2), or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: clear it, or move the Start to the date that check produced, without surfacing anything to Russell.
+A due Trello card ends advanced, pinged, or re-dated to a cited later date, per the trello provider's DUE-CARD OUTCOMES.
 For an outreach card, "not yet time to follow up" means exactly that cadence window, and the interval is defined in the trello provider's CLEAR → Nudge cadence - read it there rather than guessing.
 A card whose Start has arrived, still unanswered, and past its cadence has crossed into "time to follow up": that is a nudge to draft, so keep it needs-you and present it normally, never a silent bump.
 Bumping such a card's Start again instead of drafting the nudge is what turns it into one that gets pushed forever without a follow-up ever going out.
@@ -376,8 +385,8 @@ No pre-existing label or rule predicted this in advance (that's what `auto-handl
 
 When that's the case, treat the close-out like `auto-handle`'s (steps 4-5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
 **When you queue a digest entry, first re-tag the item's `triage` to `"auto-handle"` in `items/<id>.json` (Edit tool) before the `queue-add` - the same re-tag §2c makes for an FYI downgrade.**
-In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (recent activity made a follow-up premature, so Start was bumped and nothing sent) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
-A nudge's `dispositionReason` must state why it was bumped (the hold condition or the evidence you checked) and the new Start date, because the digest lists every nudge with that reason.
+In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (the check found the card's real next date still ahead, so Start moved to that date and nothing was sent) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
+A nudge's `dispositionReason` carries what `engine/auto-handle.md`'s step 4 requires, because the digest lists every nudge with that reason.
 Use the same one-liner you wrote as the source's dated comment for `dispositionReason`, so the digest reports the real outcome ("Abandoned - req closed") instead of guessing at deferral language.
 This files the entry under the digest's **"Auto-handled"** section, so a finished item is shown as handled rather than resurfacing as a live needs-you.
 Queue it via
