@@ -336,13 +336,8 @@ So before you CLEAR, confirm every ask you grouped out of the span in §2 is com
 If any remains open, do not clear: handle or track it first, or leave the item un-cleared so it comes back around.
 Clearing is the last act after the whole span is handled, never a per-message step.
 
-If the situational check shows the next step already in motion - a thread where they replied and the user already answered (an acknowledgement from the ack sweep is not that answer, per §2), or an outreach card still inside its nudge cadence (the follow-up interval hasn't elapsed since the last outbound) - resolve it quietly: clear it, or move the Start to the date that check produced, without surfacing anything to Russell.
-A due Trello card ends advanced, pinged, or re-dated to a cited later date, per the trello provider's DUE-CARD OUTCOMES.
-For an outreach card, "not yet time to follow up" means exactly that cadence window, and the interval is defined in the trello provider's CLEAR → Nudge cadence - read it there rather than guessing.
-A card whose Start has arrived, still unanswered, and past its cadence has crossed into "time to follow up": that is a nudge to draft, so keep it needs-you and present it normally, never a silent bump.
-Bumping such a card's Start again instead of drafting the nudge is what turns it into one that gets pushed forever without a follow-up ever going out.
-The quiet resolve is for an outside party holding the next step, never for a due task whose next step is Russell's own.
-"Not done yet" on a task card is the reason it came due, not a reason to wait: present what he needs to do now, per the trello provider's DUE-TASK.
+If the situational check finds a thread where they replied and the user already answered (an acknowledgement from the ack sweep is not that answer, per §2), resolve it quietly: clear it without surfacing anything to Russell.
+A Trello card whose Start has arrived follows the trello provider's DUE-CARD section, which alone says when its Start may move later.
 
 **Waiting on someone else → tracker card.**
 The delegation case from the framing above.
@@ -385,7 +380,7 @@ No pre-existing label or rule predicted this in advance (that's what `auto-handl
 
 When that's the case, treat the close-out like `auto-handle`'s (steps 4-5 in `engine/auto-handle.md`) even though this item was never labeled or triaged that way: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest queue-add.
 **When you queue a digest entry, first re-tag the item's `triage` to `"auto-handle"` in `items/<id>.json` (Edit tool) before the `queue-add` - the same re-tag §2c makes for an FYI downgrade.**
-In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (the check found the card's real next date still ahead, so Start moved to that date and nothing was sent) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
+In the same edit, **stamp the `disposition` and `dispositionReason`** `engine/auto-handle.md`'s step 4 defines, choosing the value that matches the CLEAR you just performed: a **stop** (moved to Abandoned) is `abandoned`, an **advance** (moved a stage) is `advanced`, a **nudge** (the trello provider's DUE-CARD outcome 4) is `nudged`, and a **briefing** (the work is done and what's left is findings for him to read, below) is `briefed`.
 A nudge's `dispositionReason` carries what `engine/auto-handle.md`'s step 4 requires, because the digest lists every nudge with that reason.
 Use the same one-liner you wrote as the source's dated comment for `dispositionReason`, so the digest reports the real outcome ("Abandoned - req closed") instead of guessing at deferral language.
 This files the entry under the digest's **"Auto-handled"** section, so a finished item is shown as handled rather than resurfacing as a live needs-you.
@@ -399,7 +394,7 @@ Self-close here only when ALL of these are unambiguously true:
 - nothing produced awaits Russell's review, edit, or send - no draft was staged for him (if step 4 staged one, this rule doesn't apply; go present it as usual)
 - no decision remains that only he could make (which option to pursue, whether to escalate, how to word something delicate, whether an ambiguous match is good enough)
 - nothing outbound-to-others or irreversible is pending his OK
-- no next step waits on Russell himself (per the trello provider's DUE-TASK)
+- no next step waits on Russell himself (per the trello provider's DUE-CARD outcome 3)
 
 **A briefing for Russell to read is not, by itself, something waiting on him.**
 Put the summary in the digest and close when all three hold:
