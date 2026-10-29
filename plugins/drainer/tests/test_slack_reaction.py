@@ -68,6 +68,9 @@ check("and counts as an edit", (a["disposition"], outcome(p["draft_id"])["edit_d
 p = run("propose", ts="1761700002.000100", emoji="thumbsup")
 d = run("discard", draft_id=p["draft_id"], reason="a written reply fits better")
 check("a discard records the outcome and reacts nothing", (d["disposition"], len(calls)), ("discarded", 2))
+a = run("approve", ts="1761700009.000100", emoji="eyes")
+check("approving an unstaged proposal just adds it", (calls[-1], a["disposition"]),
+      (("--react", "C0123ABCD", "1761700009.000100", "eyes"), None))
 
 print("with a model that passes reactions, a proposal goes out on its own")
 model = {"version": 3, "fitted_at": "2026-10-28T22:15:00-05:00", "binary_terms": [["kind:reaction"]],

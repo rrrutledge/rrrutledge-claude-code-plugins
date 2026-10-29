@@ -1,6 +1,6 @@
 # Send-confidence: scoring an outward draft
 
-The stage gate scores every outward draft it lets through; the drafting session supplies the reviewer's rule coverage and uncertain spots at mint, below.
+The stage gate scores every written outward draft it lets through, and a proposed reaction is scored by the script that proposes it (Reactions, below); the drafting session supplies the reviewer's rule coverage and uncertain spots at mint, below.
 The scorer estimates how likely the draft is to need a change before Russell sends it, from the aspects of uncertainty described in `send-confidence/uncertainty-aspects.md`: how well the writing rules cover it, how much of its content the ask left open, whether its facts are backed, what's at stake, and how familiar the recipient is.
 A written draft is only measured: none is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
 A reaction is the one draft the model's verdict acts on (Reactions, below).
@@ -25,12 +25,12 @@ A message that reaches Russell through no stage command has nothing for the gate
 
 ## Reactions
 
-A proposed Slack emoji reaction is a draft too, with message type `reaction` where every staged body has type `words`.
+A proposed Slack emoji reaction is a draft too, with message type `reaction`, where a written draft has type `words`.
 The drainer's `slack_reaction.py` stages it, since a reaction has no body file for the gate and no prose for a writing review (the drainer's Slack provider, REACTION-PROPOSAL, has the commands).
 Its kind is `reaction`, set by the stager rather than judged from text, and the snapshot names the emoji and the message it goes on.
-No judge runs, so the stage scores at once and the proposer gets the auto-send verdict back before it decides whether to ask Russell.
-His approve or discard is the outcome: as proposed counts as sent as-is, a different emoji as a full edit.
-A reaction the model sent on its own stays out of the fit, since Russell never ruled on it; undoing one records a discard.
+No judge runs, so the stage scores at once, and the model's auto-send verdict decides whether the reaction goes out or goes to Russell.
+His approve or discard is the outcome: approving the emoji as proposed counts as sent as-is, and approving a different emoji counts as a full edit.
+A reaction the model sent on its own stays out of the fit until Russell undoes it, since he never ruled on it; the undo records a discard, which counts against it.
 
 ## The model and its weekly refit
 

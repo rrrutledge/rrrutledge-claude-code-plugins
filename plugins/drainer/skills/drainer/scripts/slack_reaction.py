@@ -17,6 +17,7 @@ staged and never auto-sends.
 CLI (each prints one JSON object):
     python slack_reaction.py propose --channel <C> --ts <ts> --emoji <name> --permalink <url> [--thread-ts <tts>]
     python slack_reaction.py approve --draft-id <id> [--emoji <name>]
+    python slack_reaction.py approve --channel <C> --ts <ts> --emoji <name>      # a proposal that wasn't staged
     python slack_reaction.py discard --draft-id <id> [--reason "<text>"] [--moot]
     python slack_reaction.py undo    --draft-id <id>
 """
@@ -92,6 +93,11 @@ def cmd_propose(args):
 
 
 def cmd_approve(args):
+    if not args.draft_id:
+        # An unstaged proposal has no outcome to record: add the reaction and stop.
+        emoji = args.emoji.strip().strip(":")
+        slack("--react", args.channel, args.ts, emoji)
+        return {"reacted": emoji, "disposition": None}
     sc = send_confidence()
     scored = _scored(sc, args.draft_id)
     r = scored["reaction"]
@@ -131,10 +137,12 @@ def main():
     ap.add_argument("--reason")
     ap.add_argument("--moot", action="store_true")
     args = ap.parse_args()
-    if args.command == "propose":
-        missing = [f for f in ("channel", "ts", "emoji", "permalink") if not getattr(args, f)]
+    unstaged_approve = args.command == "approve" and not args.draft_id
+    if args.command == "propose" or unstaged_approve:
+        needed = ("channel", "ts", "emoji") + (() if unstaged_approve else ("permalink",))
+        missing = [f for f in needed if not getattr(args, f)]
         if missing:
-            raise SystemExit(f"propose needs --{', --'.join(missing)}")
+            raise SystemExit(f"{args.command} needs --{', --'.join(missing)}")
     elif not args.draft_id:
         raise SystemExit(f"{args.command} needs --draft-id")
     handler = {"propose": cmd_propose, "approve": cmd_approve, "discard": cmd_discard, "undo": cmd_undo}

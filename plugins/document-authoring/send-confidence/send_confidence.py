@@ -4,7 +4,7 @@ before Russell sends it, and decides when a sent draft has something to teach.
 
 For a written draft this is score-and-measure only: nothing here gates or auto-sends it, and no
 score is shown per draft. A proposed reaction is the exception - its proposer acts on the model's
-auto-send verdict (see the reactions section below). The stage gate is the one place a draft gets scored: it calls
+auto-send verdict (see the reactions section below). The stage gate scores every written draft: it calls
 `record_stage` for every stage it lets through, which logs a `staged` event and, when the hash
 has no `scored` row yet, launches a detached `auto-score` process. That process builds the
 context itself - channel, recipient, thread, and account from the stage command; the reviewer's

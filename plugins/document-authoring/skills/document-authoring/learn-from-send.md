@@ -46,7 +46,7 @@ A draft that never gets an outcome recorded here is settled by the outcome sweep
 python ~/.claude/plugins/cache/*/document-authoring/*/send-confidence/send_confidence.py sweep [--dry-run] [--json]
 ```
 
-It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending draft by thread or recipient, send time, and text similarity.
+It reads Russell's sent Gmail, personal Outlook, and Slack history and matches each pending written draft by thread or recipient, send time, and text similarity.
 A match is logged as sent-as-is or edited with its measured edit distance, an earlier revision whose send went to a later one is logged as superseded, and a draft with no match seven days after it was scored is logged as discarded with no reason.
 Every swept outcome carries `source: "sweep"`, and its edits stay unlabelled, so a swept send spawns no learning session.
 The command prints its match rate: the share of settled drafts that matched a send.

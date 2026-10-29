@@ -99,7 +99,7 @@ Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `-
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.
 Take one off with `node slack.js --unreact --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.remove`).
-A reaction is reversible, but a worker still proposes it for Russell to approve, the same as a written reply.
+A reaction is reversible, but a worker still proposes it for Russell to approve, the same as a written reply, through REACTION-PROPOSAL below.
 Whether a reaction ever goes out without his approval is the send-confidence model's call, made from his approve/discard history on reactions, so no rule here approves one in advance.
 
 **React only to a message a 👍 actually fits** - a genuinely positive or acknowledgeable note (a "thanks", a "sounds good", a shared win, a closing agreement aimed at Russell).
@@ -146,7 +146,7 @@ Learning from the send applies: after the user sends, run the document-authoring
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
 
 ## REACTION-PROPOSAL
-A reaction goes through send-confidence like a written draft, so the model learns from Russell's answers when one can go out without him.
+A reaction goes through send-confidence like a written draft, so the model learns, from Russell's answers, which reactions can go out without him.
 Which message gets a reaction, and which emoji, is the worker's call per REACT above; the drainer's `slack_reaction.py` script does everything after that:
 
 ```
@@ -157,8 +157,8 @@ python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of
   Close out per worker-core §6a, with `disposition` `advanced` and the printed `digest` line as `dispositionReason`, so the digest's Auto-handled section shows the emoji, the message permalink, and the undo command.
 - **`auto_sent` false:** present the reaction to Russell like a staged draft, with the emoji and the message's permalink, and wait for his answer.
   Record it with the printed `draft_id`:
-  - he approves: `slack_reaction.py approve --draft-id=<id>`, adding `--emoji=<name>` when he picked a different one; this adds the reaction.
-  - he declines: `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
-  - a `draft_id` of null means send-confidence isn't installed; on approval, add the reaction with REACT's `--react` command.
+  - **He approves:** `slack_reaction.py approve --draft-id=<id>`, adding `--emoji=<name>` when he picked a different one; this adds the reaction.
+  - **He declines:** `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
+  - **No `draft_id` printed:** the reaction wasn't staged (the printed `staged` says why); on approval, run `approve` with the same `--channel`, `--ts`, and `--emoji` in place of `--draft-id`.
 
-`slack_reaction.py undo --draft-id=<id>` takes an auto-sent reaction off and records the undo as a discard, so the model counts it against reactions like that one.
+The undo command in an auto-sent reaction's digest line, `slack_reaction.py undo --draft-id=<id>`, takes the reaction off and records the undo as a discard, so the model counts it against reactions like that one.
