@@ -2,8 +2,9 @@
 """Send-confidence scoring - estimates how likely a drafted message is to need a change
 before Russell sends it, and decides when a sent draft has something to teach.
 
-Stage 1 is score-and-measure only: nothing here gates or auto-sends a message, and no score
-is shown per draft. The stage gate is the one place a draft gets scored: it calls
+For a written draft this is score-and-measure only: nothing here gates or auto-sends it, and no
+score is shown per draft. A proposed reaction is the exception - its proposer acts on the model's
+auto-send verdict (see the reactions section below). The stage gate scores every written draft: it calls
 `record_stage` for every stage it lets through, which logs a `staged` event and, when the hash
 has no `scored` row yet, launches a detached `auto-score` process. That process builds the
 context itself - channel, recipient, thread, and account from the stage command; the reviewer's
@@ -89,6 +90,13 @@ JUDGE_TEMPERATURE = 1
 # The reply types the judge labels; personal-ai-pod's scripts/pod-review.py labels its kind
 # table with the same six.
 MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge", "substantive-reply")
+
+# A draft's message type: words (every staged body) or a reaction (an emoji on a message). The
+# stager sets it; a reaction's kind is "reaction" rather than a judge's label, since it has no
+# text to judge.
+REACTION = "reaction"
+# The edit label a reaction outcome carries when Russell chose a different emoji than proposed.
+REACTION_EMOJI_CHANGE = "different-emoji"
 
 # Gmail and both Outlooks are one "email" value in the scored attributes; any channel outside
 # this table is "other".
@@ -318,24 +326,31 @@ def measure_attributes(body, ctx, readings):
     """Every attribute's raw value at scoring time, the raw inputs a model fit reads.
     Judged attributes keep one value per judge reading so their noise can be measured; they
     are None when no reading succeeded. Latitude and both claim counts are also None when the
-    judge had no ask or inputs to measure against. Plain-code attributes are exact."""
+    judge had no ask or inputs to measure against. Plain-code attributes are exact.
+    A reaction has no readings and no words: its kind is the stager's "reaction" and its word
+    count is None rather than 0, so it never reads as a very short written draft."""
+    reaction = ctx.get("message_type") == REACTION
     grounded = bool(ctx.get("ask") or ctx.get("inputs"))
     sent_count = ctx.get("sent_count")
     coverage = ctx.get("rule_coverage")
     coverage = coverage if isinstance(coverage, int) and 1 <= coverage <= 5 else None
     counts = [_claim_counts(r) for r in readings] if readings and grounded else None
+    if reaction:
+        kind = {"label": REACTION, "agreement": None, "source": "stager"}
+    else:
+        kind = _kind_majority(readings) if readings else None
     return {
         "claims_total": [t for t, _ in counts] if counts else None,
         "claims_unsupported": [u for _, u in counts] if counts else None,
         "content_latitude": [_rating(r, "content_latitude") for r in readings] if readings and grounded else None,
         "stakes": [_rating(r, "stakes") for r in readings] if readings else None,
-        "kind": _kind_majority(readings) if readings else None,
+        "kind": kind,
         "turn_count": ctx.get("turns_before_draft"),
         "familiarity": sent_count,
         "familiarity_missing": sent_count is None,
         "rule_coverage": coverage,
         "rule_coverage_missing": coverage is None,
-        "word_count": len(_plain_text(body).split()),
+        "word_count": None if reaction else len(_plain_text(body).split()),
         "channel": CHANNEL_CLASSES.get(ctx.get("channel"), "other") if ctx.get("channel") else None,
     }
 
@@ -366,7 +381,10 @@ def score_draft(body, ctx, *, weights, aspects, api_key):
     else:
         factors["rule_coverage"] = None
 
-    readings, judge_errors = run_judges(ctx, body, aspects, api_key)
+    if ctx.get("message_type") == REACTION:
+        readings, judge_errors = [], []
+    else:
+        readings, judge_errors = run_judges(ctx, body, aspects, api_key)
     errors.extend(judge_errors)
     attributes = measure_attributes(body, ctx, readings)
 
@@ -508,13 +526,15 @@ def _same_conversation(scored, thread_ref, recipient):
 
 def _supersede_pending(thread_ref, recipient):
     """Mark every pending draft for the same conversation superseded. A direct send (a Slack
-    `--send`) went out as written, so it is never an earlier version of a later draft."""
+    `--send`) went out as written, so it is never an earlier version of a later draft, and a
+    reaction answers alongside a written reply rather than being an earlier version of one."""
     if not thread_ref and not recipient:
         return
     ts = datetime.datetime.now().astimezone().isoformat()
     for draft_id, d in fold_drafts().items():
         scored = d["scored"]
-        if not scored or d["outcome"] is not None or scored.get("stage_kind") == "send":
+        if (not scored or d["outcome"] is not None or scored.get("stage_kind") == "send"
+                or scored.get("message_type") == REACTION):
             continue
         if _same_conversation(scored, thread_ref, recipient):
             _append_event(_superseded_event(draft_id, ts))
@@ -572,7 +592,7 @@ def score_and_log(body, sha256, ctx):
     with open(os.path.join(drafts_dir(), f"{draft_id}.txt"), "w", encoding="utf-8") as fh:
         fh.write(body)
 
-    if ctx.get("stage_kind") != "send":
+    if ctx.get("stage_kind") != "send" and ctx.get("message_type") != REACTION:
         _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
@@ -590,8 +610,11 @@ def score_and_log(body, sha256, ctx):
         "attributes": result["attributes"], "model": model,
         "judge": _judge_log_shape(result["judge"]),
         "uncertain_spots": ctx.get("uncertain_spots"),
+        "message_type": ctx.get("message_type") or "words",
         "errors": result["errors"],
     }
+    if ctx.get("reaction"):
+        event["reaction"] = ctx["reaction"]
     _append_event(event)
     return draft_id
 
@@ -720,20 +743,24 @@ def _claim_job(path, job):
     return True
 
 
-def record_stage(text, sha256, meta, wait=False):
-    """The stage gate's call for every stage it lets through: append a `staged` event, and
-    when that hash has no `scored` row yet, queue a detached scorer. Returns the job path
-    when a scorer launched, else None. `wait` scores in this process instead, for a caller
-    that records the outcome right after (a script that sends from inside itself)."""
-    ts = datetime.datetime.now().astimezone().isoformat()
+def _append_staged(sha256, meta):
     _append_event({
-        "event": "staged", "v": 1, "ts": ts, "machine": socket.gethostname(),
+        "event": "staged", "v": 1, "ts": datetime.datetime.now().astimezone().isoformat(),
+        "machine": socket.gethostname(),
         "sha256": sha256, "channel": meta.get("channel"), "account": meta.get("account"),
         "recipient": meta.get("recipient"), "thread_ref": meta.get("thread_ref"),
         "stage_kind": meta.get("stage_kind"), "script": meta.get("script"),
         "verb": meta.get("verb"), "session_id": meta.get("session_id"),
         "session_kind": meta.get("session_kind"),
     })
+
+
+def record_stage(text, sha256, meta, wait=False):
+    """The stage gate's call for every stage it lets through: append a `staged` event, and
+    when that hash has no `scored` row yet, queue a detached scorer. Returns the job path
+    when a scorer launched, else None. `wait` scores in this process instead, for a caller
+    that records the outcome right after (a script that sends from inside itself)."""
+    _append_staged(sha256, meta)
     if has_scored(sha256):
         return None
     ctx = {
@@ -788,6 +815,52 @@ def cmd_auto_score(job_path):
         except OSError:
             pass
     return 0
+
+
+# --- reactions ---
+#
+# A proposed reaction is a draft like any written one: it is staged and scored, and Russell's
+# approve or discard is its outcome. The stager is the script that proposes it (the drainer's
+# slack_reaction.py), since a reaction has no body file for the stage gate to see and no prose for
+# a writing review. Scoring runs no judge, so it finishes in-process and the proposer gets the
+# model's auto-send verdict back at once.
+
+def reaction_text(emoji, channel, ts):
+    """A reaction draft's snapshot and hashed text: the emoji and the message it goes on, so a
+    different emoji or a different message is a different draft."""
+    return f":{emoji.strip().strip(':')}: on {channel}/{ts}"
+
+
+def stage_reaction(emoji, channel, ts, *, permalink=None, thread_ts=None, session_id=None,
+                   session_kind=None):
+    """Stage and score a proposed Slack reaction; returns its scored event, whose `model` block
+    carries the auto-send verdict. A still-pending row for the same emoji on the same message is
+    returned as is, so proposing it twice stages it once."""
+    text = reaction_text(emoji, channel, ts)
+    sha256 = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    for d in fold_drafts().values():
+        if d["scored"] and d["scored"].get("sha256") == sha256 and d["outcome"] is None:
+            return d["scored"]
+    meta = {"channel": "slack", "recipient": channel, "thread_ref": thread_ts, "stage_kind": "draft",
+            "script": "slack_reaction.py", "verb": "propose", "session_id": session_id,
+            "session_kind": session_kind}
+    _append_staged(sha256, meta)
+    ctx = {**meta, "account": None, "iid": None, "message_type": REACTION,
+           "reaction": {"emoji": emoji.strip().strip(":"), "channel": channel, "ts": ts,
+                        "thread_ts": thread_ts, "permalink": permalink},
+           "sent_count": prior_session_count(channel, session_id)}
+    draft_id = score_and_log(text, sha256, ctx)
+    return fold_drafts()[draft_id]["scored"]
+
+
+def record_auto_sent(draft_id):
+    """Log that a reaction went out on the model's say-so. Russell never ruled on it, so it leaves
+    the model's target; undoing it later records a discard, which the fold reads as the newer
+    outcome."""
+    event = {**_superseded_event(draft_id, datetime.datetime.now().astimezone().isoformat()),
+             "v": 2, "disposition": "auto-sent"}
+    _append_event(event)
+    return event
 
 
 def _edit_distance(draft_text, sent_text):
@@ -977,6 +1050,7 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     sent_as_is_max = thresholds["sent_as_is_max_distance"]
 
     edit_nature = list(edit_nature or [])
+    reaction_emoji = None
     changes = []
     label_error = None
     draft_text = None
@@ -987,7 +1061,15 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         draft_text = _read_draft_text(draft_id)
         if scored.get("channel") in EMAIL_CHANNELS:
             draft_text, sent_text = rendered_text(draft_text), rendered_text(sent_text)
-        if sweep is not None:
+        if scored.get("message_type") == REACTION:
+            # A reaction has no wording to edit: another emoji, or another message, is a whole change.
+            edit_distance = 0.0 if sent_text.strip() == draft_text.strip() else 1.0
+            sent_emoji = re.match(r":([^:\s]+):", sent_text.strip())
+            reaction_emoji = {"proposed": (scored.get("reaction") or {}).get("emoji"),
+                              "sent": sent_emoji.group(1) if sent_emoji else None}
+            if reaction_emoji["sent"] != reaction_emoji["proposed"]:
+                edit_nature = [REACTION_EMOJI_CHANGE]
+        elif sweep is not None:
             edit_distance = sweep["edit_distance"]
         else:
             edit_distance = _edit_distance(draft_text, sent_text)
@@ -995,7 +1077,8 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         os.makedirs(drafts_dir(), exist_ok=True)
         with open(os.path.join(drafts_dir(), f"{draft_id}.sent.txt"), "w", encoding="utf-8") as fh:
             fh.write(sent_text or "")
-        if disposition == "edited" and not edit_nature and sweep is None:
+        if (disposition == "edited" and not edit_nature and sweep is None
+                and scored.get("message_type") != REACTION):
             edit_nature, changes, label_error = label_edits(draft_text, sent_text, _anthropic_api_key())
 
     factors = scored.get("factors", {})
@@ -1037,6 +1120,8 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
     if sweep is not None:
         event["source"] = "sweep"
         event["sent_ref"] = sweep.get("sent_ref")
+    if reaction_emoji:
+        event["reaction_emoji"] = reaction_emoji
     _append_event(event)
 
     dispatch = None
@@ -1127,10 +1212,11 @@ def fetch_sent(channel, since_day):
 
 def _source_key(scored):
     """The channel a draft would have gone out on, or None when the sweep can't read it: a
-    channel with no client, or a second Gmail mailbox, since the Gmail listing reads the
-    default mailbox over IMAP."""
+    channel with no client, a second Gmail mailbox, since the Gmail listing reads the
+    default mailbox over IMAP, or a reaction, which no sent listing shows and whose proposer
+    records its outcome."""
     channel = scored.get("channel")
-    if channel not in SWEEP_CLIENTS:
+    if channel not in SWEEP_CLIENTS or scored.get("message_type") == REACTION:
         return None
     if channel == "gmail" and scored.get("account") in GMAIL_NAMED_ACCOUNTS:
         return None

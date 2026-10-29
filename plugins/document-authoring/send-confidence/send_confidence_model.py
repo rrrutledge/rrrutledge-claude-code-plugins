@@ -16,6 +16,10 @@ A draft's terms come from its scored event's `attributes` block:
 
 A flag reads the low median of a judged attribute's readings, so it sits on the integer scale the
 judge rates on; a missing attribute leaves its flag at 0 and the "no value" markers carry it.
+
+A reaction (an emoji added to a message) is a draft of kind `reaction`. It has no text, so its judged
+attributes and its word count are missing: they enter at the center, its `short` flag stays 0, and the
+`kind:reaction` term alone carries what sets a reaction apart from a written draft.
 """
 
 import itertools
@@ -60,7 +64,10 @@ NUMERIC_FLAGS = (
     ("short", "word_count", "<=", 60),
 )
 FLAG_NAMES = [f for f, _, _, _ in NUMERIC_FLAGS] + ["slack", "familiarity_missing", "rule_coverage_missing"]
+# The judge labels a written draft's kind from its text; the stager sets a reaction's, since an
+# emoji has no text to read.
 MESSAGE_KINDS = ("scheduling", "thanks-ack", "info-request", "decline", "nudge", "substantive-reply")
+STAGER_KINDS = ("reaction",)
 
 
 # --- the target ---
@@ -81,8 +88,9 @@ def is_routing_discard(outcome):
 
 def target(outcome):
     """1 when the draft went out near as-is, 0 when it was edited past that or discarded for its
-    wording, None when the outcome leaves the target (routing discards, superseded drafts, and an
-    outcome with no measured distance)."""
+    wording, None when the outcome leaves the target (routing discards, superseded drafts, an
+    outcome with no measured distance, and a reaction the model sent on its own, which Russell
+    never ruled on)."""
     disposition = (outcome or {}).get("disposition")
     if disposition in ("sent-as-is", "edited"):
         distance = outcome.get("edit_distance")
@@ -144,7 +152,7 @@ def binary_row(attrs, terms):
 def default_binary_terms():
     singles = [[f] for f in FLAG_NAMES]
     pairs = [list(p) for p in itertools.combinations(FLAG_NAMES, 2)]
-    kinds = [[f"kind:{k}"] for k in MESSAGE_KINDS]
+    kinds = [[f"kind:{k}"] for k in MESSAGE_KINDS + STAGER_KINDS]
     return singles + pairs + kinds
 
 

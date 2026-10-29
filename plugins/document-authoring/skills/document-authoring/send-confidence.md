@@ -1,8 +1,9 @@
 # Send-confidence: scoring an outward draft
 
-The stage gate scores every outward draft it lets through; the drafting session supplies the reviewer's rule coverage and uncertain spots at mint, below.
+The stage gate scores every written outward draft it lets through, and a proposed reaction is scored by the script that proposes it (Reactions, below); the drafting session supplies the reviewer's rule coverage and uncertain spots at mint, below.
 The scorer estimates how likely the draft is to need a change before Russell sends it, from the aspects of uncertainty described in `send-confidence/uncertainty-aspects.md`: how well the writing rules cover it, how much of its content the ask left open, whether its facts are backed, what's at stake, and how familiar the recipient is.
-Stage 1 only measures: no draft is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
+A written draft is only measured: none is gated on its score, and no score reaches Russell in a reply - it only ever surfaces in the weekly rollup's trend.
+A reaction is the one draft the model's verdict acts on (Reactions, below).
 Everything here is fail-open: a failed judge call or a scorer exception never blocks staging or the review receipt.
 What happens once he sends or discards the draft is `learn-from-send.md`.
 
@@ -21,6 +22,15 @@ A script that sends from inside its own process, where no PreToolUse hook fires,
 The meta file carries the channel, recipient, and thread, plus the script's own ask and inputs in place of a transcript; the command scores before returning, so the script can record the outcome right after.
 The drainer's acknowledgement sweep does this for every ack.
 A message that reaches Russell through no stage command has nothing for the gate to see, so it goes unscored and has no row for `learn-from-send.md`'s outcome step to record against.
+
+## Reactions
+
+A proposed Slack emoji reaction is a draft too, with message type `reaction`, where a written draft has type `words`.
+The drainer's `slack_reaction.py` stages it, since a reaction has no body file for the gate and no prose for a writing review (the drainer's Slack provider, REACTION-PROPOSAL, has the commands).
+Its kind is `reaction`, set by the stager rather than judged from text, and the snapshot names the emoji and the message it goes on.
+No judge runs, so the stage scores at once, and the model's auto-send verdict decides whether the reaction goes out or goes to Russell.
+His answer is the outcome, one of three: approving the emoji as proposed counts as sent as-is, choosing a different emoji counts as a full edit labelled `different-emoji` with both emoji recorded, and declining is a discard.
+A reaction the model sent on its own stays out of the fit until Russell undoes it, since he never ruled on it; the undo records a discard, which counts against it.
 
 ## The model and its weekly refit
 
