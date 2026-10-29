@@ -65,7 +65,7 @@ def _build_request(prompt, max_tokens):
 
     if anthropic_key:
         data = json.dumps({
-            'model': 'claude-haiku-4-5-20251001',
+            'model': 'claude-haiku-5-5',
             'max_tokens': max_tokens,
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
