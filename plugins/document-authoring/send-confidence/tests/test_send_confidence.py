@@ -1323,3 +1323,70 @@ def test_sweep_skips_a_second_gmail_mailbox():
     assert sc._source_key(scored) is None
     _, scored, _ = _seed_pending("d2", "x", account="isc")
     assert sc._source_key(scored) == "gmail"
+
+
+# --- reactions ---
+
+def _propose(emoji="thumbsup", channel="C0123ABCD", ts="1761700000.000100", **kw):
+    return sc.stage_reaction(emoji, channel, ts, permalink="https://example.slack.com/archives/x", **kw)
+
+
+def test_a_reaction_is_staged_and_scored_without_the_judge(monkeypatch):
+    def no_judge(*args):
+        raise AssertionError("a reaction runs no judge")
+
+    monkeypatch.setattr(sc, "run_judges", no_judge)
+    scored = _propose(":thumbsup:")
+    assert scored["message_type"] == "reaction" and scored["channel"] == "slack"
+    assert scored["attributes"]["kind"] == {"label": "reaction", "agreement": None, "source": "stager"}
+    assert scored["attributes"]["word_count"] is None and scored["attributes"]["stakes"] is None
+    assert scored["reaction"]["emoji"] == "thumbsup" and scored["reaction"]["ts"] == "1761700000.000100"
+    assert sc._read_draft_text(scored["draft_id"]) == ":thumbsup: on C0123ABCD/1761700000.000100"
+    assert [e["event"] for e in sc.load_events()] == ["staged", "scored"]
+
+
+def test_a_written_draft_is_message_type_words(tmp_path):
+    draft_id, _ = _score(tmp_path)
+    assert sc.fold_drafts()[draft_id]["scored"]["message_type"] == "words"
+
+
+def test_proposing_the_same_reaction_twice_stages_it_once():
+    first = _propose()
+    assert _propose()["draft_id"] == first["draft_id"]
+    assert _propose(emoji="tada")["draft_id"] != first["draft_id"]
+
+
+def test_a_reaction_outcome_is_all_or_nothing_and_never_labelled(monkeypatch):
+    monkeypatch.setattr(sc, "label_edits", lambda *a: (_ for _ in ()).throw(AssertionError("no labelling")))
+    same = _propose()
+    out = sc.record_outcome(same["draft_id"], sc.reaction_text("thumbsup", "C0123ABCD", "1761700000.000100"),
+                            discarded=False, edit_nature=[], reason=None)
+    assert (out["disposition"], out["edit_distance"], out["dispatch"]) == ("sent-as-is", 0.0, None)
+    other = _propose(ts="1761700001.000100")
+    out = sc.record_outcome(other["draft_id"], sc.reaction_text("tada", "C0123ABCD", "1761700001.000100"),
+                            discarded=False, edit_nature=[], reason=None)
+    assert (out["disposition"], out["edit_distance"]) == ("edited", 1.0)
+
+
+def test_an_auto_sent_reaction_leaves_the_target_until_undone():
+    import send_confidence_model as scm
+    scored = _propose()
+    sc.record_auto_sent(scored["draft_id"])
+    assert scm.target(sc.fold_drafts()[scored["draft_id"]]["outcome"]) is None
+    sc.record_outcome(scored["draft_id"], None, discarded=True, edit_nature=[], reason="undid an auto-sent reaction")
+    assert scm.target(sc.fold_drafts()[scored["draft_id"]]["outcome"]) == 0
+
+
+def test_a_reaction_and_a_written_draft_never_supersede_each_other(tmp_path):
+    draft_id, _ = _score(tmp_path, channel="slack", recipient="C0123ABCD", thread_ref=None)
+    reaction = _propose()
+    _score(tmp_path, body="A second written draft to the same channel.", channel="slack",
+           recipient="C0123ABCD", thread_ref=None)
+    drafts = sc.fold_drafts()
+    assert drafts[draft_id]["outcome"]["disposition"] == "superseded"
+    assert drafts[reaction["draft_id"]]["outcome"] is None
+
+
+def test_the_sweep_leaves_a_reaction_to_its_proposer():
+    scored = _propose()
+    assert sc._source_key(scored) is None

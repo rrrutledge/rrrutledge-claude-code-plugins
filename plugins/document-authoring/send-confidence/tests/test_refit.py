@@ -68,6 +68,7 @@ EDITED = {"disposition": "edited", "edit_distance": 0.3}
     ({"disposition": "discarded", "reason": "rewrote it himself, too formal", "moot": False}, 0),
     ({"disposition": "discarded", "reason": None, "source": "sweep"}, None),
     ({"disposition": "superseded"}, None),
+    ({"disposition": "auto-sent"}, None),
     (None, None),
 ])
 def test_target(outcome, expected):
@@ -97,7 +98,8 @@ def test_binary_row_evaluates_conjunctions_negations_and_kind():
 
 def test_default_terms_are_flags_pairs_and_kinds():
     terms = scm.default_binary_terms()
-    assert len(terms) == 11 + 55 + 6
+    assert len(terms) == 11 + 55 + 6 + 1
+    assert ["kind:reaction"] in terms
 
 
 # --- scoring ---
@@ -311,6 +313,32 @@ def test_a_rejected_cluster_is_never_proposed_again():
     assert cluster not in _clusters()["proposed"]
 
 
+def _reaction_attrs():
+    return {"claims_total": None, "claims_unsupported": None, "content_latitude": None, "stakes": None,
+            "kind": {"label": "reaction", "agreement": None, "source": "stager"}, "turn_count": None,
+            "familiarity": 2, "familiarity_missing": False, "rule_coverage": None,
+            "rule_coverage_missing": True, "word_count": None, "channel": "slack"}
+
+
+def test_a_reaction_reads_as_its_kind_and_never_as_a_short_draft():
+    f = scm.flags(_reaction_attrs())
+    assert f["short"] == 0 and f["few_claims"] == 0 and f["rule_coverage_missing"] == 1
+    assert scm.binary_row(_reaction_attrs(), [["kind:reaction"], ["kind:thanks-ack"]]) == [1, 0]
+    specs = refit.value_specs([{"attrs": _attrs(word_count=40)}, {"attrs": _attrs(word_count=90)},
+                               {"attrs": _reaction_attrs()}])
+    assert specs["word_count"]["n"] == 2
+
+
+def test_run_fits_a_corpus_holding_reactions():
+    _seed_history()
+    for i in range(12):
+        _seed(f"r-{i:02d}", NOW - datetime.timedelta(days=59 - i * 5), _reaction_attrs(), SENT)
+    stub = StubFit(0.4)
+    record = refit.run(now=NOW, fit_fn=stub, dry_run=True)
+    assert record["n"] == 42 and "skipped" not in record and record["candidate_loss"] is not None
+    assert stub.calls and all(n in (record["n_train"], 42) for n, _ in stub.calls)
+
+
 def test_run_skips_the_gate_without_both_outcomes_in_training():
     for i in range(6):
         _seed(f"d-{i}", NOW - datetime.timedelta(days=60 - i), _attrs(), EDITED)
@@ -339,3 +367,22 @@ def test_real_fit_produces_a_scoreable_model():
     short_p = scm.score(_attrs(word_count=30), model)["probability"]
     long_p = scm.score(_attrs(word_count=200), model)["probability"]
     assert short_p > long_p
+
+
+@pytest.mark.skipif(importlib.util.find_spec("pymc") is None, reason="PyMC not installed")
+def test_real_fit_learns_a_reaction_kind_from_its_approvals():
+    import random
+    rng = random.Random(5)
+    rows = []
+    for i in range(40):
+        attrs = _attrs(word_count=rng.choice([30, 200]), stakes=[rng.randint(1, 5)] * 3)
+        rows.append({"draft_id": f"d-{i}", "attrs": attrs, "y": int(rng.random() < 0.3)})
+    for i in range(25):
+        rows.append({"draft_id": f"r-{i}", "attrs": _reaction_attrs(), "y": int(i != 7)})
+    noise = {"claims_total": None, "claims_unsupported": None, "content_latitude": None, "stakes": 0.5}
+    terms = [["short"], ["kind:reaction"], ["kind:thanks-ack"]]
+    model = refit.fit(rows, terms, noise, sampler={"draws": 100, "tune": 200, "chains": 2})
+    assert ["kind:reaction"] in model["binary_terms"] and "stakes" in model["latent"]
+    reaction_p = scm.score(_reaction_attrs(), model)["probability"]
+    words_p = scm.score(_attrs(), model)["probability"]
+    assert reaction_p > 0.7 > words_p

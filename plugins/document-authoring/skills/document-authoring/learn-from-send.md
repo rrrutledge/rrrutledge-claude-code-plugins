@@ -8,6 +8,7 @@ The drafting session's part is short and mechanical; the learning session, spawn
 ## The drafting session's part
 
 This part covers a draft the stage gate scored - every draft that went through a stage command, per `send-confidence.md`.
+A proposed Slack reaction records its outcome through the script that proposed it instead (`send-confidence.md`, Reactions), and never spawns a learning session, since it has no wording to learn from.
 After Russell sends such a draft (he edited it in the app and clicked Send, or said "sent" or "learn from that") or discards it outright:
 
 1. **Read the actually-sent version from the source** - with a fresh tool call every time, from Teams or Slack by reading the chat (`slack.js --show`), email from the sent item - and write its literal text to a file.

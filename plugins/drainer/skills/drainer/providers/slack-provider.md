@@ -143,3 +143,21 @@ Learning from the send applies: after the user sends, run the document-authoring
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts` (or, on the browser fallback, point `message-draft` slack mode at it).
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
+
+## REACTION-PROPOSAL
+A reaction goes through send-confidence like a written draft, so the model learns from Russell's answers when one can go out without him.
+Which message gets a reaction, and which emoji, is the worker's call per REACT above; the drainer's `slack_reaction.py` script does everything after that:
+
+```
+python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of the message> --emoji=<name> --permalink=<message permalink> [--thread-ts=<threadTs>]
+```
+
+- **`auto_sent` true:** the model's auto-send test passed, and the script already added the reaction.
+  Close out per worker-core §6a, with `disposition` `advanced` and the printed `digest` line as `dispositionReason`, so the digest's Auto-handled section shows the emoji, the message permalink, and the undo command.
+- **`auto_sent` false:** present the reaction to Russell like a staged draft, with the emoji and the message's permalink, and wait for his answer.
+  Record it with the printed `draft_id`:
+  - he approves: `slack_reaction.py approve --draft-id=<id>`, adding `--emoji=<name>` when he picked a different one; this adds the reaction.
+  - he declines: `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
+  - a `draft_id` of null means send-confidence isn't installed; on approval, add the reaction with REACT's `--react` command.
+
+`slack_reaction.py undo --draft-id=<id>` takes an auto-sent reaction off and records the undo as a discard, so the model counts it against reactions like that one.
