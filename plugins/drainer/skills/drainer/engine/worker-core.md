@@ -210,6 +210,9 @@ Route each piece of work by where it belongs - which is also where Russell can r
   The same boundary applies to a browser-chauffeur render-screenshot-verify loop - load a page, screenshot it, check the result, adjust, screenshot again - and to any other heavy tool result whose only value to you is its conclusion, not its content: a long scrape, or a heavy skill pulled in for one lookup.
   **Screenshots and PDFs are the sharpest case - read either one only inside a subagent that returns just the facts you need, never inline in this thread.**
   A screenshot is a large image and a PDF can be several megabytes; read inline, it lands in the prefix and is re-read on every later model call, so the subagent boundary is where the costliest content stays out.
+  **Read a mailbox through its API, never Outlook web or Gmail web in a browser subagent.**
+  When a step needs the content or links of a personal-mailbox email, read it with the `ms-graph` skill (`mail.js --show`, or a Graph message-body fetch for the hrefs); the ISC Gmail equivalent is the `gmail` skill.
+  A browser subagent hits the sign-in wall in the chauffeur profile, where the API reads the same message with no login step.
 - **Handoff (a fresh session):** work that is **unrelated to the seed item** or a **heavy, independent deliverable** - browser automation, drafting through the document-authoring/message-rules stack, a code change or a PR ship.
   A handoff is a full interactive session Russell can talk to, so it also fits iterable work that simply doesn't belong in this session.
   Launch it as a background session, the way the poller launched you:
