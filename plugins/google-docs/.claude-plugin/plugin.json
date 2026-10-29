@@ -1,7 +1,7 @@
 {
   "name": "google-docs",
-  "version": "1.2.0",
-  "description": "Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API — no browser. Append or delete table rows, set a cell to plain text, a bulleted list, or a short clickable hyperlink, or replace a doc's whole body from Markdown while its link stays the same. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API.",
+  "version": "1.1.0",
+  "description": "Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API — no browser. Append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API.",
   "author": {
     "name": "Russell Rutledge"
   },
