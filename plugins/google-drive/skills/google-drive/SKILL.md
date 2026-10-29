@@ -1,15 +1,15 @@
 ---
 name: google-drive
-description: Search, copy, share, and upload Google Drive files, and read or edit Google Slides decks (insert a photo onto a slide found by its title, set or append text in a placeholder), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token and a wrong-account guard. Use for any programmatic Drive or Slides work on an account the claude.ai Drive connector isn't signed in to, and for any Slides edit.
+description: Search, copy, share, and upload Google Drive files, create or edit a Google Doc from Markdown, and read or edit Google Slides decks (insert a photo onto a slide found by its title, set or append text in a placeholder), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token and a wrong-account guard. Use for any programmatic Drive or Slides work on an account the claude.ai Drive connector isn't signed in to, and for any Slides edit.
 ---
 
-# Google Drive + Slides via the Drive and Slides APIs
+# Google Drive, Docs, and Slides via the Drive and Slides APIs
 
-`scripts/google-drive.js` drives Google Drive and Google Slides through Google's official Node client (`googleapis`).
+`scripts/google-drive.js` drives Google Drive, Google Docs, and Google Slides through Google's official Node client (`googleapis`).
 It reuses the Google Cloud OAuth "Desktop app" clients the `gmail` plugin registered - one OAuth client, many scopes - with its own token per account under `~/.claude/google-drive/`.
 The token carries two scopes:
 
-- **`drive`** - search, copy, share, and upload any file the account can reach (the narrower `drive.file` sees only files this app created, so it can't open an existing template or folder).
+- **`drive`** - search, copy, share, and upload any file the account can reach, and create or edit Docs from Markdown (the narrower `drive.file` sees only files this app created, so it can't open an existing template or folder).
 - **`presentations`** - read and edit Slides decks.
 
 ## Accounts
@@ -52,6 +52,11 @@ Every command takes `--account=<name>` for a named account; the listing commands
   Sharing is outward-facing and awkward to take back, so a worker runs it only after Russell's explicit per-message say-so for that file and address (for example "share it" on a Drive share-request email); it never shares on the strength of the request alone.
 - **List permissions:** `--permissions --file=<id>` prints each permission's id, type, role, and address, so a worker can confirm a share landed.
 - **Upload:** `--upload --path=<local file> [--folder=<id>] [--title=<name>]`.
+- **Create a Doc from Markdown:** `--create-doc --path=<local .md file> --title=<name> [--folder=<id>]` prints the new Doc's id and link.
+  Drive converts the Markdown (headings, bullets, numbered items, bold, italic, links) into a Google Doc.
+- **Edit a Doc from Markdown:** `--edit-doc --file=<doc id> --path=<local .md file>` replaces the Doc's whole body with the converted Markdown.
+  The Doc keeps its id and link, so a reviewer on that link sees each round in place.
+  A worker revising a Doc a reviewer is reading uses this command.
 - **Trash:** `--trash --file=<id>` moves the file to Drive's trash, where it stays restorable for 30 days.
 
 ### Slides

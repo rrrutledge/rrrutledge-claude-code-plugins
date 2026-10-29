@@ -106,6 +106,30 @@ async function upload(drive, localPath, folderId, title) {
   return res.data;
 }
 
+// A Google Doc's content goes in and out as Markdown: Drive converts the uploaded Markdown into a Doc
+// (headings, lists, bold, italic, links), so create and edit share one format and one conversion.
+const DOC_MIME = 'application/vnd.google-apps.document';
+
+function markdownMedia(localPath) {
+  return { mimeType: 'text/markdown', body: fs.createReadStream(localPath) };
+}
+
+async function createDoc(drive, localPath, folderId, title) {
+  const res = await drive.files.create({
+    requestBody: { name: title, mimeType: DOC_MIME, parents: folderId ? [folderId] : undefined },
+    media: markdownMedia(localPath),
+    fields: FILE_FIELDS, ...ALL_DRIVES,
+  });
+  return res.data;
+}
+
+async function editDoc(drive, fileId, localPath) {
+  const res = await drive.files.update({
+    fileId, media: markdownMedia(localPath), fields: FILE_FIELDS, ...ALL_DRIVES,
+  });
+  return res.data;
+}
+
 // ---- Slides ----
 
 function textOf(shape) {
@@ -276,6 +300,12 @@ async function setText(slidesApi, deckId) {
   } else if (args.upload) {
     const f = await upload(drive, need('path'), args.folder, args.title);
     console.log(args.json ? JSON.stringify(f, null, 2) : `Uploaded -> ${f.id}  ${f.name}`);
+  } else if (args['create-doc']) {
+    const f = await createDoc(drive, need('path'), args.folder, need('title'));
+    console.log(args.json ? JSON.stringify(f, null, 2) : `Created -> ${f.id}  ${f.name}\n${f.webViewLink}`);
+  } else if (args['edit-doc']) {
+    const f = await editDoc(drive, need('file'), need('path'));
+    console.log(args.json ? JSON.stringify(f, null, 2) : `Edited -> ${f.id}  ${f.name}\n${f.webViewLink}`);
   } else if (args.trash) {
     const f = (await drive.files.update({ fileId: need('file'), requestBody: { trashed: true }, fields: 'id, name', ...ALL_DRIVES })).data;
     console.log(`Trashed ${f.id}  ${f.name}`);
