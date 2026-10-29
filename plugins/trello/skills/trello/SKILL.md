@@ -81,8 +81,8 @@ instructions: |-
 
   - **When the work is done** - move the card to **Finished**.
     Done means the card's outcome is reached: every step the card exists for is complete, with nothing left for anyone to do or decide.
-    A milestone short of that (an application submitted, a draft sent) leaves the card open.
-    A card waiting on a third party (an agency decision, a reply, a follow-up document) or on another session stays in an active list with its Start set to when to check, so the drainer surfaces it again.
+    A milestone short of that leaves the card open.
+    A card waiting on a third party or on another session stays in an active list with its Start set to when to check, so the drainer surfaces it again.
   - **When you take up work on a card sitting in a terminal list** - move it back to an active list first, so the drainer sees it as live work again.
   - **When the work won't finish on this card** - call `retire_card(card_id, reason, session)`.
     It comments the reason on the card, so name where the work went and link to it, then moves the card to **Abandoned**.
