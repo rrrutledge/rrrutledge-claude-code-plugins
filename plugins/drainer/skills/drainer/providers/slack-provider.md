@@ -98,12 +98,13 @@ Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `-
 ## REACT
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.
-Irreversible (reactions cannot be removed by the drainer), so propose and execute only when the reaction is clearly warranted.
-Reactions are visible to everyone in the workspace.
+Take one off with `node slack.js --unreact --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.remove`).
+A reaction is reversible, but a worker still proposes it for Russell to approve, the same as a written reply.
+Whether a reaction ever goes out without his approval is the send-confidence model's call, made from his approve/discard history on reactions, so no rule here approves one in advance.
 
 **React only to a message a 👍 actually fits** - a genuinely positive or acknowledgeable note (a "thanks", a "sounds good", a shared win, a closing agreement aimed at Russell).
-A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and because the reaction can't be undone, the cost of a wrong one is real.
-When no reaction clearly fits, add none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
+A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and others see it before it comes off.
+When no reaction clearly fits, propose none and just clear (mark read); when the message actually warrants a written reply, that's `needs-you`, not a reaction.
 
 ## AUTO-HANDLE
 Standing rules where Russell has decided the answer in advance, so the poller triages the item **`auto-handle`** (per `../engine/triage.md`) and the worker executes it autonomously - no wait for Russell - then records it in the digest's "Auto-handled" section.
