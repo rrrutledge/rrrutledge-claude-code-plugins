@@ -77,7 +77,10 @@ PROCEDURE_PATH = "plugins/document-authoring/skills/document-authoring/learn-fro
 INPUTS_CHAR_CAP = 12000
 DIFF_CHAR_CAP = 20000
 
-JUDGE_MODEL = "claude-haiku-4-5"
+JUDGE_MODEL = "claude-haiku-5-5"
+# A scored event names its judge, since the judged attributes are only comparable within one
+# judge; an event that names no judge came from LEGACY_JUDGE_MODEL.
+LEGACY_JUDGE_MODEL = "claude-haiku-4-5"
 # The judge runs three times at temperature 1, so every draft carries a measure of the judge's
 # self-disagreement on each judged attribute.
 JUDGE_RUNS = 3
@@ -161,16 +164,18 @@ def _anthropic_api_key():
 
 # --- the Haiku calls ---
 
-def _call_model(system, user, api_key, max_tokens, temperature=0):
-    """One JSON-answering Haiku call. Returns (parsed_dict, error)."""
+def _call_model(system, user, api_key, max_tokens, temperature=None):
+    """One JSON-answering Haiku call. Returns (parsed_dict, error). With no `temperature` the
+    request leaves it to the model's default, since Haiku 5.5 rejects any other value."""
     if os.environ.get("SEND_CONFIDENCE_JUDGE") == "off":
         return None, "judge disabled (SEND_CONFIDENCE_JUDGE=off)"
     if not api_key:
         return None, "no API key"
-    payload = json.dumps({
-        "model": JUDGE_MODEL, "max_tokens": max_tokens, "temperature": temperature,
-        "system": system, "messages": [{"role": "user", "content": user}],
-    }).encode("utf-8")
+    request = {"model": JUDGE_MODEL, "max_tokens": max_tokens,
+               "system": system, "messages": [{"role": "user", "content": user}]}
+    if temperature is not None:
+        request["temperature"] = temperature
+    payload = json.dumps(request).encode("utf-8")
     req = Request(
         "https://api.anthropic.com/v1/messages", data=payload, method="POST",
         headers={"anthropic-version": "2023-06-01", "content-type": "application/json",
@@ -571,7 +576,7 @@ def score_and_log(body, sha256, ctx):
         _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
 
     event = {
-        "event": "scored", "v": 5, "draft_id": draft_id,
+        "event": "scored", "v": 6, "draft_id": draft_id,
         "ts": ts.isoformat(), "machine": socket.gethostname(), "sha256": sha256,
         "source": "gate", "stage_kind": ctx.get("stage_kind"),
         "session_id": ctx.get("session_id"),
@@ -580,7 +585,7 @@ def score_and_log(body, sha256, ctx):
         "iid": ctx.get("iid"), "session_kind": ctx.get("session_kind"),
         "turns_before_draft": ctx.get("turns_before_draft"),
         "score": result["score"], "weights_version": weights.get("version"),
-        "aspects_sha": aspects_sha,
+        "aspects_sha": aspects_sha, "judge_model": JUDGE_MODEL,
         "factors": result["factors"], "features": result["features"],
         "attributes": result["attributes"], "model": model,
         "judge": _judge_log_shape(result["judge"]),
