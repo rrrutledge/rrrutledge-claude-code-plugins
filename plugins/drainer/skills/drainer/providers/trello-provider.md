@@ -71,6 +71,7 @@ Anything you learn that the next pass would otherwise re-derive - the thread dee
 CLEAR (advance) then updates that cache.
 Over time a card should carry enough that a follow-up needs almost no re-discovery.
 (A dedicated card schema for this is worth designing - see the project's Trello-caching follow-up.)
+For LinkedIn and anything Russell brings in himself, the card's comments are the only record; the `trello-outreach` skill's "Keep a tracked card current with what only Russell can see" says when to write them and when to ask him.
 
 ## INITIATIVE-LOOKUP
 Many outreach cards share one program - the user is following up with many people to onboard them to the same initiative - so a card like "Acme Corp / Jane Doe" carries no per-card context of its own.

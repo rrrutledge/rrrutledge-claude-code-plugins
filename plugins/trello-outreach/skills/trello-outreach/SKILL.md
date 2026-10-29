@@ -59,6 +59,15 @@ instructions: |-
 
   ---
 
+  ## Keep a tracked card current with what only Russell can see
+
+  A card's comments are the only record of a channel the pod can't read: LinkedIn, and anything Russell brings in himself by a screenshot, pasted text, or his own account of what happened.
+  When Russell gives the state of a card-tracked contact or task through one of those, add it to the card as a dated comment in the turn he gives it, in the shape the drainer's trello provider gives in "Cache back to the card".
+  A channel the pod reads - email, Slack, Teams - is its own record: before acting on the card, search that channel for anything newer than the card's last comment, the way that provider's CAPTURE re-reads a card's thread.
+  When a LinkedIn notification shows a message the comments don't account for, ask Russell what the thread now says and whether he has already answered, with the conversation's link per the LinkedIn ban, and record his answer the same way.
+
+  ---
+
   ## Two card types on the Job Search Outreach board
 
   The Job Search Outreach board (`phRXnOvf`) holds two kinds of card, and keeping them separate is what
