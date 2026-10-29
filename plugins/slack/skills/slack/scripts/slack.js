@@ -43,6 +43,8 @@
 //                 read-only)
 // React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
+// Unreact:      node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>
+//                (reactions.remove; undoes a --react with the same emoji)
 // Mark read:     node slack.js --mark --channel=<C> --ts=<ts> [--thread-ts=<tts>]
 //                (conversations.mark up to <ts>, or subscriptions.thread.mark when --thread-ts is given —
 //                 the conversation/thread's "gone"; reversible, never deletes)
@@ -575,6 +577,13 @@ async function react() {
   console.log(`Reacted :${name}: on message ${args.ts} in ${args.channel}.`);
 }
 
+async function unreact() {
+  if (!args.channel || !args.ts || !args.emoji) throw new Error('--unreact requires --channel, --ts, and --emoji');
+  const name = args.emoji.replace(/^:|:$/g, '');
+  await call('reactions.remove', { channel: args.channel, timestamp: args.ts, name });
+  console.log(`Removed :${name}: from message ${args.ts} in ${args.channel}.`);
+}
+
 // Advance the read cursor to `ts` — subscriptions.thread.mark for a threaded reply, else
 // conversations.mark. Shared by --mark and the post-send auto-mark below.
 async function markRead(channel, ts, threadTs) {
@@ -987,6 +996,7 @@ async function findByDomain() {
   if (args.history) return await history();
   if (args['sent-since']) return await sentSince();
   if (args.react) return await react();
+  if (args.unreact) return await unreact();
   if (args.mark) return await mark();
   if (args['read-cursor']) return await readCursorCmd();
   if (args.send) return await send();
@@ -997,5 +1007,5 @@ async function findByDomain() {
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
