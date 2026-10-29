@@ -69,8 +69,8 @@ Anything you learn that the next pass would otherwise re-derive - the thread dee
 CLEAR (advance) then updates that cache.
 Over time a card should carry enough that a follow-up needs almost no re-discovery.
 (A dedicated card schema for this is worth designing - see the project's Trello-caching follow-up.)
-For a contact reached over LinkedIn, the card's comments are the only record of the thread: only Russell reads LinkedIn, so the pod sees at most an inbound notification's preview and none of his own messages.
-Whenever Russell gives that thread's state - a screenshot, pasted text, or word that he replied - cache it to a dated comment in that same turn.
+Whenever Russell gives the state of a contact or task the card tracks - a screenshot, pasted text, or his own account of what happened - cache it to a dated comment in that same turn.
+For a contact reached over LinkedIn, those comments are the only record of the thread: only Russell reads LinkedIn, so the pod sees at most an inbound notification's preview and none of his own messages.
 When a notification shows a message the comments don't account for, ask Russell what the thread now says and whether he has already answered, with the conversation's link per the LinkedIn ban, and cache his answer the same way.
 
 ## INITIATIVE-LOOKUP
