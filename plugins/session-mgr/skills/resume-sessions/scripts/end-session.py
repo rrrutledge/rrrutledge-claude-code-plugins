@@ -62,6 +62,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import launch_marker  # noqa: E402
 from bg_session import is_background_session  # noqa: E402
 
 PLUGIN_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -220,6 +221,8 @@ def main(argv=None):
     pause = ap.parse_args(argv).pause
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
     claude_pid = os.environ.get("CLAUDE_PID")
+    if session_id:
+        launch_marker.clear(session_id)
 
     if is_background_session():
         # Background session: `claude rm` (or `claude stop`), whatever CLAUDE_HOST_PID says - a
