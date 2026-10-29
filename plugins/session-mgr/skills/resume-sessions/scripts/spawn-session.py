@@ -30,6 +30,12 @@ new session's work: it appends the instruction to resume the launching session (
 schedule-resume.py prints, for $CLAUDE_CODE_SESSION_ID in the current directory) to the end of the
 brief, so the launcher's last step is to close paused. See resume-on-completion.md.
 
+What the launching session does next is the launch's third answer, and a fresh launch from inside a
+session records it (launch_marker.py) so the Stop hook can hold the session to it:
+    (no flag)     the new session takes over: close this session now (the default)
+    --resume-me   this session's next step waits on the new work: close paused (above)
+    --keep-open   a side quest: this session carries on with its own work and stays open
+
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
 
@@ -44,6 +50,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bg_session import launch, session_name  # noqa: E402
+import launch_marker  # noqa: E402
 import worker_job  # noqa: E402
 
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
@@ -164,7 +171,14 @@ def main(argv=None):
     ap.add_argument("--resume-me", action="store_true",
                     help="this (launching) session's next step waits on the new session's work: append "
                          "the command that resumes this session to the brief, then close this one paused")
+    ap.add_argument("--keep-open", action="store_true",
+                    help="a side quest: this (launching) session carries on with its own work after "
+                         "the launch, so it stays open")
     a = ap.parse_args(argv)
+    if a.keep_open and a.resume_me:
+        print("spawn-session: --keep-open and --resume-me contradict each other: one stays open, "
+              "the other closes paused.")
+        return 1
 
     brief = os.path.abspath(a.brief) if a.brief else None
     prompt_file = os.path.abspath(a.prompt_file) if a.prompt_file else None
@@ -234,7 +248,30 @@ def main(argv=None):
         print("The brief now ends with the command that resumes this session when that work is done. "
               "Leave the paper trail (a drainer worker: a dated comment on its card), then close this "
               "session paused this turn: session-mgr:close with --pause (a drainer worker: close-session.py --pause).")
+    _record_launch(a, short_id, name or summary, bool(resume_me), bool(slug))
     return 0
+
+
+def _record_launch(a, short_id, title, resume_me, is_worker):
+    """Record the launch for the Stop hook and print what this session does next. A resume of an
+    existing session, a coordinator's worker, and a launch from outside any session are not a handoff
+    from a session that then has to decide, so they record nothing."""
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if a.resume or is_worker or not session_id:
+        return
+    mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
+    if not launch_marker.write(session_id, mode, title or "", short_id):
+        print(f"WARNING: session {session_id} has no entry in the live-session registry "
+              f"({launch_marker.session_registry.REGISTRY_PATH}), so the Stop hook cannot hold it to this launch. "
+              "A session always registers at start, so this is a bug: the SessionStart hook did not run for "
+              "this session, or another session's registry write overwrote its entry. Tell Russell, then "
+              "follow the close-or-keep-open instruction below by hand.")
+    if mode == "handoff":
+        print("Next for this session: the new session now holds the work, so close this one in this same "
+              "turn with session-mgr:close (a drainer worker: close-session.py). If Russell asked you to "
+              "carry on with your own work after this launch, run `python \""
+              + os.path.join(SCRIPTS, "launch_marker.py") + "\" keep-open` instead. If your own next "
+              "step waits on the launched work, you needed --resume-me.")
 
 
 if __name__ == "__main__":
