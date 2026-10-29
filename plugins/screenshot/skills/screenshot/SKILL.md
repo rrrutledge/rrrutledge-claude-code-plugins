@@ -25,4 +25,6 @@ instructions: |-
      Anything else uses the default.
   2. **Load and display the screenshot(s)** at the printed path(s), using the Read tool.
   3. **Treat extra args as context** - if the user provided additional text in the args beyond a look-back, count, or time-window request, treat it as a question or context about the screenshot.
+  4. **Record it where the work is tracked** - when the screenshot shows the state of a conversation or task that a Trello card tracks, transcribe what it shows to a dated comment on that card in the same turn, per the `trello-outreach` skill's "Keep a tracked card current with what only Russell can see".
+     The image lives only in this session, so the card comment is what a later session reads.
 ---

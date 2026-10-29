@@ -4,7 +4,10 @@ description: Close this session in one shot - a background session stops itself,
 
 Close this Claude Code session the same way a drainer worker self-closes when it's done.
 
-Run, via the Bash tool:
+First, when Russell gave this session the state of a contact or task a Trello card tracks - by a screenshot, pasted text, or his own account of what happened - and the card's comments don't yet record it, write it to that card as a dated comment, per the `trello-outreach` skill's "Keep a tracked card current with what only Russell can see".
+The conversation ends with the close, and the card is what a later session reads.
+
+Then run, via the Bash tool:
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/resume-sessions/scripts/end-session.py"

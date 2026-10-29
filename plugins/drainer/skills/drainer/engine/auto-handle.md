@@ -23,16 +23,14 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
         A real signal, always worth a glance.
       - `advanced` - a state change short of terminal: the item moved a stage, or a standing action ran that changed something (an approved workspace invite).
         Worth a glance.
-      - `nudged` - checked, and the item's real next date is still ahead: nothing was sent or moved, and the item's ping-back date moved to that date.
+      - `nudged` - nothing was sent, and the item's ping-back date moved later under the trello provider's DUE-CARD outcome 4.
         Routine, and the digest lists every nudge individually with its reason.
-        A nudge's `dispositionReason` always states what you checked, the new Start date, and that date's source.
-        An item whose next step waits on Russell himself is never `nudged` - it is needs-you (the trello provider's DUE-TASK).
-        The trello provider's DUE-CARD OUTCOMES, case 3, lists the dated sources a card can nudge on.
+        A nudge's `dispositionReason` always states what happened and when, and the new Start date.
       - `briefed` - done, and what's left is findings for Russell to read (worker-core §6a): `dispositionReason` is a one-line headline, and the briefing itself goes in a `summary` field on the same file, which the digest prints in full.
 
       Pick the value that matches what you actually did, per your source's AUTO-HANDLE / CLEAR mapping, and set `dispositionReason` to the same one-liner you recorded on the source (the dated Trello comment, e.g.): "req closed - posting expired", "moved to Interested - they replied yes".
       The digest prints every item with this reason, `nudged` items included, in separate groups, so a closed-req abandon reads as "Abandoned - req closed", never as a deferral.
-      A nudge example: "they replied and I already answered Oct 1 - follow-up cadence runs to Oct 8; Start moved to Oct 8 2026".
+      A nudge example: "they replied Sep 30 and Russell answered Oct 1, restarting the 1-week cadence; Start moved to Oct 8 2026".
    2. **Queue it:**
       `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
       (`<runtime_dir>` is the parent of the `items/` folder).
