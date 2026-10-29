@@ -26,26 +26,31 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 
 **A fresh spawn does steps 1 and 2 in the launch itself: add `--resume-me` to the `spawn-session.py` call (a drainer worker's `spawn-handoff.py` forwards it).**
 The launcher appends the resume command and the "run it once this is done" instruction to the end of the brief, where the new session reads it with the Read tool (a seed line truncates on the command's quotes), then prints the remaining steps; record the paper trail (step 3) and close paused (step 4) in that same turn.
+It also writes a wake note beside the brief (`<brief>.resume-note.md`) saying the launched session's work is done and the wait is over, and the resume command hands that note to the resumed session as its follow-up prompt.
 Steps 1 and 2 below are the by-hand path for an existing peer.
 
 1. **Capture the resume command.**
    From inside the blocked session, via the Bash tool, run:
    ```
-   python "$HOME/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/schedule-resume.py"
+   python "$HOME/Dev/rrrutledge/rrrutledge-claude-code-plugins/plugins/session-mgr/skills/resume-sessions/scripts/schedule-resume.py" \
+       --note-file ".tmp/resume-note-<slug>.md" --done-title "<the peer session's title>"
    ```
-   It reads this session's id from `$CLAUDE_CODE_SESSION_ID` and its working directory from the current directory (override either with `--session-id` / `--cwd`), and prints the exact `python "<spawn-session.py>" --resume <guid> --cwd "<cwd>"` line that brings this session back as a background session.
+   It reads this session's id from `$CLAUDE_CODE_SESSION_ID` and its working directory from the current directory (override either with `--session-id` / `--cwd`), writes the wake note to `--note-file` (the cue that the peer's work is done), and prints the exact `python "<spawn-session.py>" --resume <guid> --cwd "<cwd>" --prompt-file "<note>"` line that brings this session back as a background session, told why it woke.
    The command carries only paths and a guid, so it drops verbatim into a message or a doc without anything mangling it.
 
 2. **Hand that command to the peer with `SendMessage`.**
-   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to run it via its Bash tool at that point.
+   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to run it via its Bash tool at that point, with the cue that the work this session waits on is done.
+   The note file in the command carries that cue to the resumed session; the message carries it to the peer.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    A drainer worker leaves a dated comment on its Trello card noting the pause and naming the session it handed the resume to; a plain session notes it wherever that work is tracked.
+   When the work is tracked on a Trello card, make sure the card sits in an active list with its Start set to when to check back, alongside the comment, so the drainer surfaces it again even if the resume never lands. A card left in Finished, or with no Start, is parked for good if the resume fails.
 
 4. **Close this session now, paused**, via the **`session-mgr:close`** skill with `--pause` (a drainer worker: `python <skill>/scripts/close-session.py --pause`).
    This fires `SessionEnd` cleanly, so the session deregisters from the live-session registry rather than looking crash-interrupted.
    `--pause` stops the session instead of removing it, because a plain close deletes its worktree and the resume needs that worktree intact.
 
+Because the resume carries the wake note as a follow-up prompt, the session continues under a new session id (the old id leaves the live-session registry) and starts a turn on that note; a resume with no prompt would wake it in place with no turn, and it would sit idle until Russell wrote to it.
 The resumed session comes back under a new session id carrying the full history, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
 
 ## Why this is safe against a duplicate worker (drainer)

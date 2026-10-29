@@ -67,6 +67,35 @@ def test_appends_resume_command_once():
         check("appended only once", text.count(spawn_session.RESUME_ME_HEADING) == 1)
 
 
+def test_command_carries_wake_note():
+    print("test: --resume-me writes a wake note and the resume command passes it as --prompt-file")
+    with tempfile.TemporaryDirectory() as tmp:
+        brief = os.path.join(tmp, "handoff-form.md")
+        with open(brief, "w", encoding="utf-8") as f:
+            f.write("# Fill the form\n")
+        rc, _ = run(["--title", "Fill form", "--cwd", tmp, "--brief", brief, "--model", "m", "--resume-me"])
+        note = os.path.abspath(brief) + ".resume-note.md"
+        text = open(brief, encoding="utf-8").read()
+        check("exit 0", rc == 0, rc)
+        check("note file written beside the brief", os.path.isfile(note), note)
+        body = open(note, encoding="utf-8").read() if os.path.isfile(note) else ""
+        check("note names the launched session and says the wait is over",
+              "Fill form" in body and "your wait is over" in body, body)
+        check("resume command passes the note as the follow-up prompt",
+              f'--prompt-file "{note.replace(chr(92), "/")}"' in text, text)
+
+
+def test_schedule_resume_note_option():
+    print("test: schedule-resume's by-hand path takes a note file")
+    spec = importlib.util.spec_from_file_location("schedule_resume", os.path.join(SCRIPTS, "schedule-resume.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    bare = mod.resume_command(GUID, os.getcwd())
+    withnote = mod.resume_command(GUID, os.getcwd(), note_file="/x/note.md")
+    check("no note -> no --prompt-file", "--prompt-file" not in bare, bare)
+    check("note -> --prompt-file", '--prompt-file "' in withnote and "note.md" in withnote, withnote)
+
+
 def test_refusals():
     print("test: --resume-me refuses a resume launch, a prompt-file launch, and a missing session id")
     with tempfile.TemporaryDirectory() as tmp:
@@ -85,6 +114,8 @@ def test_refusals():
 
 if __name__ == "__main__":
     test_appends_resume_command_once()
+    test_command_carries_wake_note()
+    test_schedule_resume_note_option()
     test_refusals()
     print(f"\n{'ALL PASS' if not failures else f'{len(failures)} FAILED: {failures}'}")
     sys.exit(1 if failures else 0)
