@@ -2,6 +2,10 @@
 // (OAuth path — see google-docs-oauth.js). Built for a board-secretary sensitive-docs tracking
 // table, but generic: any doc with one table and a fixed column count works.
 //
+// Replace body: node google-docs.js --replace-body --doc-id=<id> --markdown-file=<path to .md>
+//               (deletes the whole body and inserts the converted Markdown in one batchUpdate; the
+//                document id, and so its URL, is unchanged. See markdown-to-docs.js for the subset.)
+//
 // Append rows:  node google-docs.js --append-rows --doc-id=<id> --rows-file=<path to JSON> [--table-index=0]
 //               (rows-file is a JSON array of rows, each row an array of per-column cell strings —
 //                the row length must match the target table's column count. --table-index picks which
@@ -43,6 +47,7 @@ const path = require('path');
 
 const { google } = require('googleapis');
 const { getAuthedClient } = require('./google-docs-oauth');
+const { markdownToRequests } = require('./markdown-to-docs');
 
 const args = Object.fromEntries(
   process.argv.slice(2).map(a => {
@@ -251,6 +256,20 @@ async function setCellText(docsClient, docId, tableIndex, rowIndex, colIndex, te
   await batchUpdate(docsClient, docId, requests);
 }
 
+async function replaceBody(docsClient, docId, markdown) {
+  // Clear everything between the body's first character and its final paragraph mark (which a
+  // document can never lose), then insert the converted content in one batch so a failure midway
+  // never leaves a half-written body behind a successful clear.
+  const doc = await getDocument(docsClient, docId);
+  const content = doc.body.content;
+  const bodyEnd = content[content.length - 1].endIndex;
+  const { requests } = markdownToRequests(markdown);
+  const all = [];
+  if (bodyEnd - 1 > 1) all.push({ deleteContentRange: { range: { startIndex: 1, endIndex: bodyEnd - 1 } } });
+  all.push(...requests);
+  if (all.length) await batchUpdate(docsClient, docId, all);
+}
+
 (async () => {
   if (!args['doc-id']) throw new Error('--doc-id required');
   const authClient = getAuthedClient();
@@ -290,7 +309,12 @@ async function setCellText(docsClient, docId, tableIndex, rowIndex, colIndex, te
     if (!args['text']) throw new Error('--text required');
     await setCellText(docsClient, args['doc-id'], tableIndex, parseInt(args['row-index'], 10), parseInt(args['col-index'], 10), args['text'], !!args['bold']);
     console.log(`Set text "${args['text']}" in row ${args['row-index']}, col ${args['col-index']}.`);
+  } else if (args['replace-body']) {
+    if (!args['markdown-file']) throw new Error('--markdown-file required');
+    const markdown = fs.readFileSync(args['markdown-file'], 'utf8');
+    await replaceBody(docsClient, args['doc-id'], markdown);
+    console.log(`Replaced body of https://docs.google.com/document/d/${args['doc-id']}/edit`);
   } else {
-    throw new Error('Nothing to do — pass --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, or --set-cell-text');
+    throw new Error('Nothing to do — pass --replace-body, --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, or --set-cell-text');
   }
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

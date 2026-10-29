@@ -1,12 +1,12 @@
 ---
 name: google-docs
-description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API — no browser. Append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
+description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API — no browser. Append or delete table rows, set a cell to plain text, a bulleted list, or a short clickable hyperlink, or replace a doc's whole body from Markdown while its link stays the same. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
 ---
 
 # Google Docs — Programmatic Content Edits via the Docs API
 
 Edit a Google Doc's content through the Docs API's `batchUpdate` endpoint, using Google's own official Node client library (`googleapis`) rather than hand-built REST calls: `scripts/google-docs.js`.
-Built for appending rows to a tracking table, but generic to any Google Doc.
+Built for appending rows to a tracking table and replacing a doc's body from Markdown, but generic to any Google Doc.
 
 Reuses the same Google Cloud OAuth "Desktop app" client the `gmail` plugin's filter path already registered (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`) - one OAuth client, many scopes.
 This path requests `https://www.googleapis.com/auth/documents`, a scope the gmail client's cached token was never consented for, so it keeps its own token cache (`~/.claude/google-docs/oauth-token.json`) separate from `~/.claude/gmail/oauth-token.json`.
@@ -25,8 +25,12 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 
 ## Commands - `google-docs.js`
 
-Every command takes `--doc-id=<id>` (the doc id from its URL, `docs.google.com/document/d/<id>/edit`) and an optional `--table-index=0` (which table on the page, when a doc has more than one; default the first).
+Every command takes `--doc-id=<id>` (the doc id from its URL, `docs.google.com/document/d/<id>/edit`); the table commands also take an optional `--table-index=0` (which table on the page, when a doc has more than one; default the first).
 
+- **Replace the whole body from Markdown:** `node google-docs.js --replace-body --doc-id=<id> --markdown-file=<path to .md>`
+  Deletes the doc's body and inserts the Markdown in one call, so the doc id and its URL stay the same.
+  Supported Markdown: `#` to `######` headings, `-` or `*` bullets, `1.` numbered items, paragraphs, and inline `**bold**`, `*italic*`, and `[label](url)`.
+  Tables and images are outside the subset, and replacing the body removes any the doc holds.
 - **Append rows to a table:** `node google-docs.js --append-rows --doc-id=<id> --rows-file=<path to JSON>`
   `rows-file` is a JSON array of rows, each row an array of per-column cell strings; row length must match the target table's column count.
   Cells are inserted as plain text.
@@ -39,6 +43,10 @@ Every command takes `--doc-id=<id>` (the doc id from its URL, `docs.google.com/d
   Replaces the cell's entire content with one line of clickable hyperlinked text - the short label is what's shown; clicking it opens the URL.
 - **Set a cell to plain text:** `node google-docs.js --set-cell-text --doc-id=<id> --row-index=<n> --col-index=<n> --text="..." [--bold]`
   Replaces the cell's entire content with one line of plain text, optionally bold - useful for renaming a header cell.
+
+## Revising a doc you created
+
+When a reviewer reads a doc that changes each round, revise it with `--replace-body` and hand over the same link every round.
 
 ## Auth-error handling
 
