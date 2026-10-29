@@ -44,9 +44,9 @@ def _model(binary_terms, beta, intercept=0.0, *, value_terms=(), values=None, la
             "beta": beta, "clear_binary": list(clear), "support_rows": support_rows or []}
 
 
-def _seed(draft_id, ts, attrs, outcome):
-    sc._append_event({"event": "scored", "v": 4, "draft_id": draft_id, "ts": ts.isoformat(),
-                      "channel": "slack", "attributes": attrs})
+def _seed(draft_id, ts, attrs, outcome, judge=sc.JUDGE_MODEL):
+    sc._append_event({"event": "scored", "v": 6, "draft_id": draft_id, "ts": ts.isoformat(),
+                      "channel": "slack", "attributes": attrs, "judge_model": judge})
     sc._append_event({"event": "outcome", "v": 2, "draft_id": draft_id,
                       "ts": (ts + datetime.timedelta(hours=1)).isoformat(), **outcome})
 
@@ -167,12 +167,25 @@ def test_gather_skips_v1_routing_discards_and_superseded():
     assert [r["draft_id"] for r in refit.gather()] == ["d-ok"]
 
 
+def test_gather_keeps_only_the_current_judges_drafts():
+    ts = NOW - datetime.timedelta(days=40)
+    _seed("d-now", ts, _attrs(), SENT)
+    _seed("d-old", ts, _attrs(), SENT, judge="claude-older-judge")
+    sc._append_event({"event": "scored", "v": 5, "draft_id": "d-unnamed", "ts": ts.isoformat(), "attributes": _attrs()})
+    sc._append_event({"event": "outcome", "draft_id": "d-unnamed", "ts": ts.isoformat(), **SENT})
+    expected = ["d-now", "d-unnamed"] if sc.JUDGE_MODEL == sc.LEGACY_JUDGE_MODEL else ["d-now"]
+    assert [r["draft_id"] for r in refit.gather()] == expected
+
+
 def test_pooled_noise_needs_enough_drafts():
-    events = [{"event": "scored", "attributes": _attrs(stakes=[2, 3, 4])} for _ in range(refit.NOISE_MIN_DRAFTS)]
+    events = [{"event": "scored", "attributes": _attrs(stakes=[2, 3, 4]), "judge_model": sc.JUDGE_MODEL}
+              for _ in range(refit.NOISE_MIN_DRAFTS)]
     noise = refit.pooled_noise(events)
     assert noise["stakes"] == 1.0
     assert noise["claims_unsupported"] == 0.05
     assert refit.pooled_noise(events[:-1])["stakes"] is None
+    other = [{**e, "judge_model": "claude-older-judge"} for e in events]
+    assert refit.pooled_noise(other)["stakes"] is None
 
 
 def test_split_holds_out_the_last_four_weeks_capped_at_half():
@@ -234,8 +247,9 @@ def _clusters():
 def test_gather_keeps_one_row_per_draft_body():
     ts = NOW - datetime.timedelta(days=40)
     for draft_id, offset in (("d-first", 0), ("d-second", 1)):
-        sc._append_event({"event": "scored", "v": 4, "draft_id": draft_id, "sha256": "same",
-                          "ts": (ts + datetime.timedelta(hours=offset)).isoformat(), "attributes": _attrs()})
+        sc._append_event({"event": "scored", "v": 6, "draft_id": draft_id, "sha256": "same",
+                          "ts": (ts + datetime.timedelta(hours=offset)).isoformat(), "attributes": _attrs(),
+                          "judge_model": sc.JUDGE_MODEL})
         sc._append_event({"event": "outcome", "draft_id": draft_id, "ts": ts.isoformat(), **SENT})
     assert [r["draft_id"] for r in refit.gather()] == ["d-first"]
 
@@ -273,6 +287,17 @@ def test_gate_grades_the_live_model_only_on_drafts_scored_after_it(monkeypatch):
     assert record["gate"].startswith("live model v4")
     assert record["n_gate"] == 4
     assert record["shipped"] is True and record["version"] == 5
+
+
+def test_a_new_judge_waits_for_enough_drafts_before_replacing_the_live_model():
+    for i in range(refit.GENERATION_MIN_DRAFTS - 1):
+        _seed(f"d-{i:02d}", NOW - datetime.timedelta(days=30 - i), _attrs(), SENT if i % 3 == 0 else EDITED)
+    _write(sc.model_path(), {**StubFit(0.25)([], [], {}), "version": 1})
+    stub = StubFit(0.25)
+    record = refit.run(now=NOW, fit_fn=stub, dry_run=True)
+    assert record["skipped"].startswith(sc.JUDGE_MODEL) and record["shipped"] is False
+    assert stub.calls == []
+    assert record["judge_model"] == sc.JUDGE_MODEL
 
 
 def test_dry_run_writes_nothing():

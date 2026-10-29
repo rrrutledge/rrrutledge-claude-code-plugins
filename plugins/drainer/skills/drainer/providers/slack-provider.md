@@ -99,8 +99,7 @@ Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `-
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).
 Emoji name without colons - e.g. `thumbsup`, `tada`, `white_check_mark`.
 Take one off with `node slack.js --unreact --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.remove`).
-A reaction is reversible, and a worker proposes it to Russell through REACTION-PROPOSAL below until send-confidence's auto-send test passes for it.
-That test is the send-confidence model's call, made from his approve/discard history on reactions, so no rule here approves one in advance.
+A reaction is reversible, and every one goes through REACTION-PROPOSAL below, which adds it at once when send-confidence's auto-send test passes for it and otherwise puts it to Russell first.
 
 **React only to a message a 👍 actually fits** - a genuinely positive or acknowledgeable note (a "thanks", a "sounds good", a shared win, a closing agreement aimed at Russell).
 A question, a lament, or a "where is everyone?" is **not** one of these: a 👍 there reads as tone-deaf, and others see it before it comes off.
