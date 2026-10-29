@@ -307,7 +307,7 @@ def test_kind_majority(labels, expected):
 def test_run_judge_asks_for_kind_at_temperature_1(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, api_key, max_tokens, temperature=0):
+    def fake_call(system, user, api_key, max_tokens, temperature=None):
         seen.update(system=system, temperature=temperature)
         return {"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [],
                 "kind": " Info-Request "}, None
@@ -360,7 +360,8 @@ def test_score_and_log_writes_snapshot_and_scored_row(tmp_path):
     assert scored[0]["channel"] == "gmail"
     assert scored[0]["factors"]["rule_coverage"] == 75
     assert scored[0]["uncertain_spots"] == "the closing line"
-    assert scored[0]["v"] == 5
+    assert scored[0]["v"] == 6
+    assert scored[0]["judge_model"] == sc.JUDGE_MODEL
     assert scored[0]["attributes"]["rule_coverage"] == 4
     assert scored[0]["attributes"]["channel"] == "email"
     assert scored[0]["attributes"]["word_count"] == len(body.split())
