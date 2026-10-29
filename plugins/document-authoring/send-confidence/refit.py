@@ -42,11 +42,13 @@ CLI:
 """
 
 import datetime
+import importlib.util
 import itertools
 import json
 import math
 import os
 import sys
+import traceback
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -69,6 +71,10 @@ EXPECTED_NONZERO = 3
 SLAB_SCALE = 2.0
 SLAB_DF = 4
 SAMPLER = {"draws": 500, "tune": 1000, "chains": 4, "target_accept": 0.95}
+# nutpie runs NUTS in compiled code, where PyMC's own sampler steps through every leapfrog in
+# Python, so sampling runs several times faster. Its chains run on threads, so
+# a killed refit leaves no worker process behind. PyMC's sampler is the fallback when it's absent.
+NUTS_SAMPLER = "nutpie" if importlib.util.find_spec("nutpie") else "pymc"
 
 
 def model_dir():
@@ -251,7 +257,7 @@ def fit(rows, binary_terms, noise, *, sampler=None, seed=1):
         pm.Bernoulli("y", logit_p=intercept + pm.math.dot(x_all, beta), observed=y)
         idata = pm.sample(draws=sampler["draws"], tune=sampler["tune"], chains=sampler["chains"], cores=1,
                           target_accept=sampler["target_accept"], random_seed=seed, progressbar=False,
-                          compute_convergence_checks=False)
+                          compute_convergence_checks=False, nuts_sampler=NUTS_SAMPLER)
 
     # PyMC 6 returns DataTree groups; earlier versions return xarray Datasets.
     post, stats = (g.to_dataset() if hasattr(g, "to_dataset") else g
@@ -499,7 +505,14 @@ def run(*, now=None, dry_run=False, fit_fn=None, sampler=None):
 
 def main():
     argv = sys.argv[1:]
-    record = run(dry_run="--dry-run" in argv)
+    try:
+        record = run(dry_run="--dry-run" in argv)
+    except Exception as e:
+        # The weekly report shows the last line a failed refit printed, and PyMC's warnings can
+        # land after a traceback, so the cause is printed last.
+        traceback.print_exc()
+        print(f"send-confidence refit failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
     if "--json" in argv:
         print(json.dumps(record, indent=2))
         return 0
