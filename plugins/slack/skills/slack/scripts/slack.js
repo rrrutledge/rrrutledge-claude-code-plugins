@@ -236,6 +236,15 @@ async function convInfo(channel) {
   return info;
 }
 
+// A human-readable name for a conversation: @person for a DM, mpdm:<name> for a group DM, #name for a
+// channel, and the raw id only when nothing else resolves.
+async function convDisplayName(channel, info) {
+  if (info.is_im && info.user) return `@${await userName(info.user)}`;
+  if (info.is_mpim) return info.name ? `mpdm:${info.name}` : 'group DM';
+  if (info.name) return `#${info.name}`;
+  return channel;
+}
+
 // The set of channel/DM ids the user has muted. Slack stores this per-conversation under
 // all_notifications_prefs.channels[id].muted; the legacy comma-string `muted_channels` pref is empty on
 // modern accounts. A muted conversation should never surface as a drainer item — muting IS the stop.
@@ -387,7 +396,7 @@ async function listUnread() {
     if (!msgs.length) continue;
     const mentions = msgs.filter(m => (m.text || '').includes(`<@${me}>`));
     const info = await convInfo(c.id);
-    const chName = info.name ? `#${info.name}` : c.id;
+    const chName = await convDisplayName(c.id, info);
     if (mentions.length) {
       for (const m of mentions) {
         const from = await userName(m.user);
@@ -435,7 +444,7 @@ async function listUnread() {
       if (!unread.length) continue;
       const latest = unread[0];
       const info = await convInfo(channel);
-      const chName = info.name ? `#${info.name}` : channel;
+      const chName = await convDisplayName(channel, info);
       const from = await userName(latest.user);
       const mentioned = unread.some(m => (m.text || '').includes(`<@${me}>`));
       const threadTs = root.thread_ts || root.ts;
