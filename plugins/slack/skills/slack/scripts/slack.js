@@ -236,6 +236,25 @@ async function convInfo(channel) {
   return info;
 }
 
+// The one place a conversation's name is resolved: the other person for a DM, the slug for a group DM or
+// channel, and the raw id only when nothing else resolves. `kind` says which, so callers pick their own
+// decoration (see convDisplayName) without re-deriving the lookup.
+async function convName(channel, info) {
+  if (info.is_im && info.user) return { kind: 'im', name: await userName(info.user) };
+  if (info.is_mpim) return { kind: 'mpim', name: info.name || '' };
+  if (info.name) return { kind: 'channel', name: info.name };
+  return { kind: 'id', name: channel };
+}
+
+// The label used in item subjects: @person for a DM, mpdm:<name> for a group DM, #name for a channel.
+async function convDisplayName(channel, info) {
+  const { kind, name } = await convName(channel, info);
+  if (kind === 'im') return `@${name}`;
+  if (kind === 'mpim') return name ? `mpdm:${name}` : 'group DM';
+  if (kind === 'channel') return `#${name}`;
+  return name;
+}
+
 // The set of channel/DM ids the user has muted. Slack stores this per-conversation under
 // all_notifications_prefs.channels[id].muted; the legacy comma-string `muted_channels` pref is empty on
 // modern accounts. A muted conversation should never surface as a drainer item — muting IS the stop.
@@ -363,7 +382,7 @@ async function listUnread() {
       const info = await convInfo(c.id);
       const from = await userName(latest.user);
       const subject = kind === 'ims' ? `DM from ${from}` : `Group DM (${info.name || 'group'})`;
-      const channelName = kind === 'ims' ? `@${from}` : (info.name ? `mpdm:${info.name}` : 'group DM');
+      const channelName = await convDisplayName(c.id, info);
       items.push({
         id: `${c.id}:${latest.ts}`, channel: c.id, channelType: kind === 'ims' ? 'im' : 'mpim',
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject, channelName,
@@ -387,7 +406,7 @@ async function listUnread() {
     if (!msgs.length) continue;
     const mentions = msgs.filter(m => (m.text || '').includes(`<@${me}>`));
     const info = await convInfo(c.id);
-    const chName = info.name ? `#${info.name}` : c.id;
+    const chName = await convDisplayName(c.id, info);
     if (mentions.length) {
       for (const m of mentions) {
         const from = await userName(m.user);
@@ -435,7 +454,7 @@ async function listUnread() {
       if (!unread.length) continue;
       const latest = unread[0];
       const info = await convInfo(channel);
-      const chName = info.name ? `#${info.name}` : channel;
+      const chName = await convDisplayName(channel, info);
       const from = await userName(latest.user);
       const mentioned = unread.some(m => (m.text || '').includes(`<@${me}>`));
       const threadTs = root.thread_ts || root.ts;
@@ -965,9 +984,8 @@ async function resolveName() {
   if (/^U[A-Z0-9]+$/.test(id)) {
     name = await userName(id);
   } else {
-    const info = await convInfo(id);
-    if (info.is_im && info.user) name = await userName(info.user);
-    else if (info.name) name = info.is_channel || info.is_group ? `#${info.name}` : info.name;
+    const r = await convName(id, await convInfo(id));
+    name = r.kind === 'channel' ? `#${r.name}` : (r.name || id);
   }
   if (args.json) { console.log(JSON.stringify({ id, name }, null, 2)); return; }
   console.log(name);
