@@ -72,12 +72,12 @@ VERDICT_TTL = timedelta(hours=24)
 ENUMERATE_PAGE_SIZE = 500
 POLLER_KEY = "_poller"  # the poller's own heartbeat entry in the health file — not a provider; the digest skips it
 # Flags shared by the headless triage and screen calls. Both are pure text-in / JSON-out, so they run
-# with no settings sources and without the Artifact, Workflow, SendFeedback, and PowerShell tools,
-# whose definitions would otherwise ride in every call's prompt (~5.6K tokens). The prompt arrives on
-# stdin, so no positional follows the variadic --disallowedTools; keep it last regardless, since a
-# positional added after it would be swallowed as another tool name.
+# with no settings sources and no built-in tools at all, since the tool definitions would otherwise
+# ride in every call's prompt (~14K tokens of an ~18.5K fixed prompt). The prompt arrives on stdin, so
+# no positional follows the variadic --tools; keep it last regardless, since a positional added
+# after it would be swallowed as another tool name.
 HEADLESS_CLAUDE_FLAGS = ["--output-format", "json", "--setting-sources", "",
-                         "--disallowedTools", "Artifact,Workflow,SendFeedback,PowerShell"]
+                         "--tools", ""]
 
 
 # ---------------------------------------------------------------------------- generic helpers
