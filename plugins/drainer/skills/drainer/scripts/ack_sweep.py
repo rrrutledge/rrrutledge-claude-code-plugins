@@ -3,9 +3,10 @@
 What the sweep is for is in engine/ack-review.md. This module holds everything about it that can be
 written down in advance:
 
-- the eligibility test (still waiting, needs-you, a real person, 48 business hours old, no reply from
-  Russell since, not already acked, not screen-flagged, not a self-email), with the deterministic vetoes
-  that sit on top of triage's `sender` call;
+- the eligibility test (still waiting, needs-you, a real person, 48 business hours since the
+  conversation's newest message that isn't Russell's, no reply from Russell since, not already acked, not
+  screen-flagged, not a self-email), with the deterministic vetoes that sit on top of triage's `sender`
+  call;
 - the business-hours clock;
 - the once-a-day sweep the digest launcher runs before it starts the review, which writes the due list
   and nothing else;
@@ -113,9 +114,22 @@ def conversation_key(provider, item):
 
 
 def wait_started(item):
-    """When the person started waiting: the oldest message in a Slack unread span, else the arrival."""
-    span = [dt for dt in (_parse(m.get("received")) for m in item.get("unread") or []) if dt]
-    return min(span) if span else received_dt(item)
+    """When the wait on Russell started: the newest message in the item, so the newest message in a Slack
+    unread span, else the item's arrival.
+
+    The test: the clock runs from the conversation's newest message that isn't Russell's. An earlier
+    message in the span has, by the time a newer one lands, been answered by another participant, turned
+    out to be a status update that asked Russell for nothing, or been restated by the newer one, and in a
+    group DM or a shared thread most of the span may not be addressed to Russell at all. So every new
+    message from anyone else restarts the wait, a reply from another participant included. The cost is
+    that a nudge restarts it too, delaying that ack by the gap between the two messages; a missed ask
+    can't be told from a status update without reading it, and this script reads nothing.
+
+    Email follows the same rule without a special case: every message in a multi-recipient thread that
+    reaches Russell's inbox is its own waiting item, and the sweep clocks a conversation from its newest
+    waiting item."""
+    span = [_parse(m.get("received")) for m in item.get("unread") or []]
+    return max(filter(None, span + [received_dt(item)]), default=None)
 
 
 def is_relay(provider, item):
@@ -229,7 +243,7 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
 
     candidates = []
     for key, members in convs.items():
-        clock = min(start for _, start, _ in members)
+        clock = max(start for _, start, _ in members)  # the newest waiting message, per wait_started
         hours = business_hours_between(clock, now)
         if hours < ACK_THRESHOLD_HOURS:
             continue
@@ -454,7 +468,14 @@ class Review:
         info = p.thread_state(current)
         if info is None:
             return None, "could not read the thread", None
-        clock = _parse(entry.get("clockStart")) or wait_started(current)
+        # A message that arrived after the sweep restarts the wait (see wait_started), so the clock comes
+        # is the later of the stored clockStart and the live item's wait start, and the threshold is
+        # checked again.
+        clock = max(filter(None, [_parse(entry.get("clockStart")), wait_started(current)]), default=None)
+        if not clock:
+            return None, "no arrival time on the waiting message", None
+        if business_hours_between(clock, _now()) < ACK_THRESHOLD_HOURS:
+            return None, f"a newer message restarted the wait ({_local(clock)})", None
         reason = thread_verdict(info, clock, load_ack_ledger(self.runtime_dir).get(entry["key"]),
                                 relay=is_relay(p, current))
         if reason:
