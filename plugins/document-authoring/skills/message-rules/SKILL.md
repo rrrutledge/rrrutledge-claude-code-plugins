@@ -337,6 +337,7 @@ The specifics that most often separate a message that reads as Russell's from on
   A firm, already-decided commitment doesn't need a vague timing word tacked on either - "We'll get the post up" states it plainly; appending "shortly" gives no timeframe a reader could act on, so it reads as less immediate.
 - **When someone mentions something negative, match your response to its role in the message:**
   - **Personal or career bad news (the main point):** acknowledge briefly ("sorry to hear it") and follow with a genuine check-in ("How are things going for you now?"). Don't narrate the impact on others.
+    - **A peer in the same position as Russell (also job-hunting) gets a well-wish in place of "sorry to hear it"**, then the check-in per **React to the specific thing they shared** (Persona modes).
   - **A stated constraint or caveat** (e.g. "budget climate is tough"): release the pressure plainly ("Either way is fine") and stop; don't echo the framing back.
     When an intermediary relays why a third party is silent (they're busy), name that reason and invite them to reach out once it clears — don't introduce a new or workaround ask.
     Relaying that someone else said the recipient never got back to them goes as a neutral checking question ("Did [name] reach out to you about it?"), so the recipient isn't put on the spot by the complaint itself.
