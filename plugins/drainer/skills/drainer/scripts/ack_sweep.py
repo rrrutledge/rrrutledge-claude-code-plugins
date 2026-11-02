@@ -4,9 +4,9 @@ What the sweep is for is in engine/ack-review.md. This module holds everything a
 written down in advance:
 
 - the eligibility test (still waiting, needs-you, a real person, 48 business hours since the
-  conversation's newest message that isn't Russell's, no reply from Russell since, not already acked, not
-  screen-flagged, not a self-email), with the deterministic vetoes that sit on top of triage's `sender`
-  call;
+  conversation's newest message that isn't Russell's and isn't a chaser, no reply from Russell since, not
+  already acked, not screen-flagged, not a self-email), with the deterministic vetoes that sit on top of
+  triage's `sender` and `chaser` calls;
 - the business-hours clock;
 - the once-a-day sweep the digest launcher runs before it starts the review, which writes the due list
   and nothing else;
@@ -48,6 +48,9 @@ VERDICTS_FILE = "judged-verdicts.json"
 ACK_THRESHOLD_HOURS = 48
 # A message from Russell this long after a ledger entry is a real reply, not the ack itself.
 SUPERSEDE_GRACE = timedelta(minutes=5)
+# A thread message this close before a chaser's arrival is the chaser itself: an email's sent time runs a
+# little ahead of the time it reached the inbox.
+CHASER_GRACE = timedelta(minutes=5)
 ENUMERATE_PAGE_SIZE = 500
 
 # The local part of a sender address that only machines send from.
@@ -114,22 +117,41 @@ def conversation_key(provider, item):
 
 
 def wait_started(item):
-    """When the wait on Russell started: the newest message in the item, so the newest message in a Slack
-    unread span, else the item's arrival.
+    """The newest message in the item (the newest in a Slack unread span, else the item's arrival): the
+    wait's start unless triage judged that message a chaser, which `wait_clock` handles.
 
-    The test: the clock runs from the conversation's newest message that isn't Russell's. An earlier
+    The test: the clock runs from the conversation's newest message that isn't Russell's and moves the
+    conversation forward. An earlier
     message in the span has, by the time a newer one lands, been answered by another participant, turned
     out to be a status update that asked Russell for nothing, or been restated by the newer one, and in a
     group DM or a shared thread most of the span may not be addressed to Russell at all. So every new
-    message from anyone else restarts the wait, a reply from another participant included. The cost is
-    that a nudge restarts it too, delaying that ack by the gap between the two messages; a missed ask
-    can't be told from a status update without reading it, and this script reads nothing.
+    message from anyone else that moves the conversation forward restarts the wait, a reply from another
+    participant included. A message that only chases an earlier one doesn't, which `wait_clock` applies
+    from triage's chaser verdict.
 
     Email follows the same rule without a special case: every message in a multi-recipient thread that
     reaches Russell's inbox is its own waiting item, and the sweep clocks a conversation from its newest
     waiting item."""
     span = [_parse(m.get("received")) for m in item.get("unread") or []]
     return max(filter(None, span + [received_dt(item)]), default=None)
+
+
+def wait_clock(item, info):
+    """The wait's start for a conversation whose newest waiting message is `item`, given its live thread.
+
+    A newest message triage judged a chaser (`chaser`, per engine/triage.md's chaser test: it only presses
+    Russell to answer and moves nothing forward) leaves the wait where it was, so the clock steps back to
+    the newest message before it that isn't Russell's. When Russell wrote after that message, the live
+    thread verdict rules the conversation out as already answered. A chaser with nothing before it in the
+    thread keeps its own time. The step back is one message, since triage judges only the newest: after
+    two chasers in a row the clock lands on the earlier chaser, so that ack comes later than it could,
+    never earlier."""
+    start = wait_started(item)
+    if not start or not item.get("_chaser"):
+        return start
+    before = [t for t in (_parse(m.get("sent")) for m in info.get("messages") or []
+                          if not m.get("fromMe") and not m.get("isDraft")) if t and t < start - CHASER_GRACE]
+    return max(before, default=start)
 
 
 def is_relay(provider, item):
@@ -213,6 +235,7 @@ def _apply_verdict(item, triage, screen):
     if not triage or not screen:
         return False
     item["_bucket"], item["_sender"] = triage.get("bucket"), triage.get("sender")
+    item["_chaser"] = bool(triage.get("chaser"))
     if screen.get("flagged"):
         item["_screen"] = {"flagged": True}
     return True
@@ -222,9 +245,9 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
     """Compute and write the due list from the needs-you items still waiting (enumerated, not yet
     dispatched). Sends nothing, drafts nothing. Returns the due list.
 
-    Only cheap work runs for an item under the threshold: comparing its arrival time to now. The
-    live-thread read runs only for a conversation already past 48 business hours that passes every other
-    test. An item whose correspondent has a worker open is skipped: that person's real reply is already in
+    Only cheap work runs for an item under the threshold: comparing its wait start to now. The live-thread
+    read runs only for a conversation already past 48 business hours that passes every other test, or one
+    whose newest message is a chaser, since that clock needs the thread (see `wait_clock`). An item whose correspondent has a worker open is skipped: that person's real reply is already in
     progress."""
     now = now or datetime.now(timezone.utc)
     ledger = load_ack_ledger(runtime_dir)
@@ -243,13 +266,19 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
 
     candidates = []
     for key, members in convs.items():
-        clock = max(start for _, start, _ in members)  # the newest waiting message, per wait_started
+        target, clock, corr = max(members, key=lambda m: m[1])  # the newest waiting message, per wait_started
+        p = providers_by_name[target["_source"]]
+        info = None
+        if target.get("_chaser"):
+            # Only a chaser's clock depends on the thread, so only it reads the thread before the threshold.
+            info = p.thread_state(target)
+            if info is None:
+                continue  # couldn't read the thread: no ack on a guess
+            clock = wait_clock(target, info)
         hours = business_hours_between(clock, now)
         if hours < ACK_THRESHOLD_HOURS:
             continue
-        target, _, corr = max(members, key=lambda m: m[0].get("received") or "")
-        p = providers_by_name[target["_source"]]
-        info = p.thread_state(target)
+        info = info or p.thread_state(target)
         if info is None:
             continue  # couldn't read the thread: no ack on a guess
         relay = is_relay(p, target)
@@ -451,7 +480,7 @@ class Review:
         current = max(waiting, key=lambda it: it.get("received") or "")
         prior = entry.get("item") or {}
         if current["_id"] == prior.get("_id"):
-            for k in ("_bucket", "_kind", "_sender", "_screen", "_complexity"):
+            for k in ("_bucket", "_kind", "_sender", "_chaser", "_screen", "_complexity"):
                 if k in prior:
                     current[k] = prior[k]
         elif not _apply_verdict(current, *_load_verdict(self.runtime_dir, current["_id"])):
@@ -468,10 +497,10 @@ class Review:
         info = p.thread_state(current)
         if info is None:
             return None, "could not read the thread", None
-        # A message that arrived after the sweep restarts the wait (see wait_started), so the clock comes
-        # is the later of the stored clockStart and the live item's wait start, and the threshold is
-        # checked again.
-        clock = max(filter(None, [_parse(entry.get("clockStart")), wait_started(current)]), default=None)
+        # A message that arrived after the sweep and moves the conversation forward restarts the wait (see
+        # wait_clock), so the clock is the later of the stored clockStart and the live item's wait_clock,
+        # and the threshold is checked again.
+        clock = max(filter(None, [_parse(entry.get("clockStart")), wait_clock(current, info)]), default=None)
         if not clock:
             return None, "no arrival time on the waiting message", None
         if business_hours_between(clock, _now()) < ACK_THRESHOLD_HOURS:

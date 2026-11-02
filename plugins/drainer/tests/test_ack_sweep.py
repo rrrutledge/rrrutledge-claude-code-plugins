@@ -239,6 +239,38 @@ check("so it is not due the Monday after, though the span began the Wednesday be
 due = ack_sweep.sweep([group], {"demo": Demo()}, runtime(), set(), now=local(2026, 11, 4, 8))
 check("it comes due 48 business hours after that ask (Wednesday morning)", [d["itemId"] for d in due], ["mpim"])
 
+
+def theirs(dt):
+    return {"fromMe": False, "sent": dt.astimezone(timezone.utc).isoformat(), "isDraft": False}
+
+
+# A chaser ("Russell, any update?") on Tuesday afternoon, two business days after the real ask.
+chase = item("chase", "c-chase", NEW, _chaser=True)
+chase_thread = {"messages": [theirs(OLD), theirs(NEW - timedelta(minutes=1))], "hasDraft": False,
+                "listUnsubscribe": False, "link": ""}
+check("a chaser steps the clock back to the message before it",
+      ack_sweep.wait_clock(chase, chase_thread), OLD.astimezone(timezone.utc))
+check("a message that moves things forward keeps its own time",
+      ack_sweep.wait_clock(dict(chase, _chaser=False), chase_thread), received_dt(chase))
+check("a chaser with nothing before it keeps its own time",
+      ack_sweep.wait_clock(chase, {"messages": []}), received_dt(chase))
+
+demo = Demo()
+demo.threads["c-chase"] = chase_thread
+due = ack_sweep.sweep([chase], {"demo": demo}, runtime(), set(), now=NOW)
+check("so a chaser doesn't restart the wait: the conversation is still due from the real ask",
+      [(d["itemId"], d["clockStart"]) for d in due], [("chase", OLD.astimezone(timezone.utc).isoformat())])
+
+demo = Demo()
+demo.threads["c-chase"] = dict(chase_thread, messages=[theirs(OLD), mine(OLD + timedelta(hours=2)),
+                                                       theirs(NEW - timedelta(minutes=1))])
+due = ack_sweep.sweep([chase], {"demo": demo}, runtime(), set(), now=NOW)
+check("a chaser pressing on a conversation Russell already answered gets no ack", due, [])
+
+demo = Demo()
+due = ack_sweep.sweep([dict(chase, _chaser=False)], {"demo": demo}, runtime(), set(), now=NOW)
+check("an under-threshold message that isn't a chaser never reads the thread", (due, demo.thread_calls), ([], []))
+
 demo = Demo()
 rt = runtime()
 due = ack_sweep.sweep([item("li", "c-li", OLD, corr="relay|linkedin|sam rivera", fromAddress="messages-noreply@linkedin.com")],
