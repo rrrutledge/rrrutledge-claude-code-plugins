@@ -236,13 +236,23 @@ async function convInfo(channel) {
   return info;
 }
 
-// A human-readable name for a conversation: @person for a DM, mpdm:<name> for a group DM, #name for a
-// channel, and the raw id only when nothing else resolves.
+// The one place a conversation's name is resolved: the other person for a DM, the slug for a group DM or
+// channel, and the raw id only when nothing else resolves. `kind` says which, so callers pick their own
+// decoration (see convDisplayName) without re-deriving the lookup.
+async function convName(channel, info) {
+  if (info.is_im && info.user) return { kind: 'im', name: await userName(info.user) };
+  if (info.is_mpim) return { kind: 'mpim', name: info.name || '' };
+  if (info.name) return { kind: 'channel', name: info.name };
+  return { kind: 'id', name: channel };
+}
+
+// The label used in item subjects: @person for a DM, mpdm:<name> for a group DM, #name for a channel.
 async function convDisplayName(channel, info) {
-  if (info.is_im && info.user) return `@${await userName(info.user)}`;
-  if (info.is_mpim) return info.name ? `mpdm:${info.name}` : 'group DM';
-  if (info.name) return `#${info.name}`;
-  return channel;
+  const { kind, name } = await convName(channel, info);
+  if (kind === 'im') return `@${name}`;
+  if (kind === 'mpim') return name ? `mpdm:${name}` : 'group DM';
+  if (kind === 'channel') return `#${name}`;
+  return name;
 }
 
 // The set of channel/DM ids the user has muted. Slack stores this per-conversation under
@@ -372,7 +382,7 @@ async function listUnread() {
       const info = await convInfo(c.id);
       const from = await userName(latest.user);
       const subject = kind === 'ims' ? `DM from ${from}` : `Group DM (${info.name || 'group'})`;
-      const channelName = kind === 'ims' ? `@${from}` : (info.name ? `mpdm:${info.name}` : 'group DM');
+      const channelName = await convDisplayName(c.id, info);
       items.push({
         id: `${c.id}:${latest.ts}`, channel: c.id, channelType: kind === 'ims' ? 'im' : 'mpim',
         ts: latest.ts, threadTs: '', from, fromId: latest.user, subject, channelName,
@@ -974,9 +984,8 @@ async function resolveName() {
   if (/^U[A-Z0-9]+$/.test(id)) {
     name = await userName(id);
   } else {
-    const info = await convInfo(id);
-    if (info.is_im && info.user) name = await userName(info.user);
-    else if (info.name) name = info.is_channel || info.is_group ? `#${info.name}` : info.name;
+    const r = await convName(id, await convInfo(id));
+    name = r.kind === 'channel' ? `#${r.name}` : (r.name || id);
   }
   if (args.json) { console.log(JSON.stringify({ id, name }, null, 2)); return; }
   console.log(name);
