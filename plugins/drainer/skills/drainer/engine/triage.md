@@ -135,6 +135,18 @@ It feeds the once-a-day 48-hour acknowledgement sweep, which acks only a real pe
 
 When it's genuinely unclear, use `person`: an extra ack to a machine is cheaper than a real person left waiting with no word.
 
+## The chaser test - `chaser` on every item
+
+Every verdict also records whether the item's newest message moved the conversation forward.
+It feeds the 48-hour acknowledgement sweep, which counts the wait from the conversation's newest message that isn't Russell's; a chaser leaves the wait where it was.
+
+- **`chaser: true`** - the newest message carries nothing beyond a request that Russell answer what the conversation already holds.
+- **`chaser: false`** - it carries any content of its own that the conversation didn't already hold.
+  A message that both nudges and adds something new is `false`.
+
+A Slack item whose preview spans several messages carries its newest one as `newestMessage`; judge that message.
+When it's genuinely unclear, use `false`.
+
 ## Tie-breakers
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).

@@ -116,5 +116,11 @@ check("base and knownContact merge when both apply",
       p.triage_signal({"knownContact": True, "fromMe": True, "toMe": True}),
       {"selfEmail": True, "knownContact": True})
 
+span = [{"from": "Pat", "text": "here's the doc"}, {"from": "Pat", "text": "any update?"}]
+check("a multi-message span hands triage its newest message whole, for the chaser test",
+      p.triage_signal({"unread": span}), {"newestMessage": "Pat: any update?"})
+check("a single-message item needs none (its preview is that message)",
+      p.triage_signal({"unread": span[:1]}), None)
+
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

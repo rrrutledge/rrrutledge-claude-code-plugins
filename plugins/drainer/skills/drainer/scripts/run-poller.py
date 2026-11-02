@@ -313,11 +313,14 @@ TRIAGE_INSTRUCTIONS = (
     "per the rubric's real-person test: person when a human wrote these words to Russell, including a "
     "person's message delivered through a notification relay (judge by who wrote the words, not the "
     "envelope); automated for a bot, an app, a system notification, or bulk/marketing mail; when unclear, "
-    "person. Return ONLY a "
+    "person. For EVERY item also give chaser = true | false, per the rubric's chaser test: true when the "
+    "item's newest message (its `newestMessage` when one is given) only presses Russell to answer something "
+    "said earlier and adds nothing new; when unclear, false. Return ONLY a "
     "JSON array, one object per input "
     'id: [{"id": "...", "bucket": "needs-you|auto-handle|fyi|junk", '
     '"kind": "reply|work|work-then-reply|phishing|null", '
-    '"complexity": "simple|complex", "sender": "person|automated", "reason": "<short>"}] — no prose, no code fence.'
+    '"complexity": "simple|complex", "sender": "person|automated", "chaser": true|false, '
+    '"reason": "<short>"}] - no prose, no code fence.'
 )
 
 # The security screen is a SEPARATE claude -p pass from triage, not a field folded into it — a guardrail

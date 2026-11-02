@@ -279,6 +279,7 @@ verdicts, _, _, _ = cycle([item("p")], rt)
 check("a held item's cached verdict still says sender=person", verdicts["p"].get("sender"), "person")
 check("and was read back, not re-judged", triage_calls, [])
 check("the triage instructions ask for the sender field", "sender = person | automated" in poller.TRIAGE_INSTRUCTIONS, True)
+check("and the chaser field", "chaser = true | false" in poller.TRIAGE_INSTRUCTIONS, True)
 
 # --- a corrupt file reads as empty --------------------------------------------------------------------------
 print("\ncorrupt cache file")

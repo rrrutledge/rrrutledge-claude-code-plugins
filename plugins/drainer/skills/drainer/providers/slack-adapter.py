@@ -73,9 +73,15 @@ class Provider(ProviderBase):
         this person/thread before - not just the deterministic post-triage override in run-poller.py
         that guarantees the outcome either way (see `_apply_slack_overrides`)."""
         base = super().triage_signal(item)
+        signal = dict(base or {})
         if item.get("knownContact"):
-            return {**(base or {}), "knownContact": True}
-        return base
+            signal["knownContact"] = True
+        # The preview joins the span oldest first and truncates its tail, so the newest message, the one
+        # the chaser test judges, can be cut off; hand it over whole.
+        unread = item.get("unread") or []
+        if len(unread) > 1:
+            signal["newestMessage"] = f"{unread[-1].get('from') or '?'}: {unread[-1].get('text') or ''}"
+        return signal or None
 
     def enumerate(self, limit):
         res = run_node([self.slackjs, "--list-unread", "--json", f"--top={limit}"])

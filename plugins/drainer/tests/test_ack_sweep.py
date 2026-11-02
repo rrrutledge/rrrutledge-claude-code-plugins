@@ -217,8 +217,59 @@ rt = runtime()
 held = [item("m1", "c-same", OLD), item("m2", "c-same", OLD + timedelta(days=1), corr="m1@example.com")]
 due = ack_sweep.sweep(held, {"demo": demo}, rt, set(), now=NOW)
 check("two waiting messages in one conversation make one entry", len(due), 1)
-check("it replies to the newest and clocks from the oldest",
-      (due[0]["itemId"], due[0]["clockStart"]), ("m2", OLD.astimezone(timezone.utc).isoformat()))
+check("it replies to the newest and clocks from the newest",
+      (due[0]["itemId"], due[0]["clockStart"]), ("m2", (OLD + timedelta(days=1)).astimezone(timezone.utc).isoformat()))
+
+demo = Demo()
+rt = runtime()
+held = [item("e1", "c-cc", OLD), item("e2", "c-cc", NEW, corr="other@example.com")]
+due = ack_sweep.sweep(held, {"demo": demo}, rt, set(), now=NOW)
+check("a newer reply-all from another recipient restarts an email thread's wait", due, [])
+
+# A Slack group DM, Wed 2026-10-28 to Sun 11-01: two status updates from the sender, another
+# participant's reply, a "done today", then the actual ask on Sunday. Russell never wrote in that span.
+group_span = [{"received": t} for t in ("2026-10-28T17:06:14Z", "2026-10-28T17:06:58Z", "2026-10-29T12:30:00Z",
+                                        "2026-10-29T14:39:49Z", "2026-11-01T13:06:58Z")]
+group = item("mpim", "c-mpim", datetime(2026, 11, 1, 13, 6, 58, tzinfo=timezone.utc), corr="slack|sender",
+             unread=group_span)
+check("a group DM clocks from the span's newest message, the Sunday ask",
+      ack_sweep.wait_started(group), datetime(2026, 11, 1, 13, 6, 58, tzinfo=timezone.utc))
+due = ack_sweep.sweep([group], {"demo": Demo()}, runtime(), set(), now=local(2026, 11, 2, 15))
+check("so it is not due the Monday after, though the span began the Wednesday before", due, [])
+due = ack_sweep.sweep([group], {"demo": Demo()}, runtime(), set(), now=local(2026, 11, 4, 8))
+check("it comes due 48 business hours after that ask (Wednesday morning)", [d["itemId"] for d in due], ["mpim"])
+
+
+def theirs(dt):
+    return {"fromMe": False, "sent": dt.astimezone(timezone.utc).isoformat(), "isDraft": False}
+
+
+# A chaser ("Russell, any update?") on Tuesday afternoon, two business days after the real ask.
+chase = item("chase", "c-chase", NEW, _chaser=True)
+chase_thread = {"messages": [theirs(OLD), theirs(NEW - timedelta(minutes=1))], "hasDraft": False,
+                "listUnsubscribe": False, "link": ""}
+check("a chaser steps the clock back to the message before it",
+      ack_sweep.wait_clock(chase, chase_thread), OLD.astimezone(timezone.utc))
+check("a message that moves things forward keeps its own time",
+      ack_sweep.wait_clock(dict(chase, _chaser=False), chase_thread), received_dt(chase))
+check("a chaser with nothing before it keeps its own time",
+      ack_sweep.wait_clock(chase, {"messages": []}), received_dt(chase))
+
+demo = Demo()
+demo.threads["c-chase"] = chase_thread
+due = ack_sweep.sweep([chase], {"demo": demo}, runtime(), set(), now=NOW)
+check("so a chaser doesn't restart the wait: the conversation is still due from the real ask",
+      [(d["itemId"], d["clockStart"]) for d in due], [("chase", OLD.astimezone(timezone.utc).isoformat())])
+
+demo = Demo()
+demo.threads["c-chase"] = dict(chase_thread, messages=[theirs(OLD), mine(OLD + timedelta(hours=2)),
+                                                       theirs(NEW - timedelta(minutes=1))])
+due = ack_sweep.sweep([chase], {"demo": demo}, runtime(), set(), now=NOW)
+check("a chaser pressing on a conversation Russell already answered gets no ack", due, [])
+
+demo = Demo()
+due = ack_sweep.sweep([dict(chase, _chaser=False)], {"demo": demo}, runtime(), set(), now=NOW)
+check("an under-threshold message that isn't a chaser never reads the thread", (due, demo.thread_calls), ([], []))
 
 demo = Demo()
 rt = runtime()
@@ -293,6 +344,14 @@ check("an item whose person now has a worker open is dropped", r.recheck(r.entry
 r, demo = review_for([due_entry(waiting)], [waiting])
 demo.threads["c-w"] = {"messages": [mine(NOW - timedelta(minutes=10))], "listUnsubscribe": False}
 check("a reply Russell sent while reading drops the ack", r.recheck(r.entry("demo|c-w"))[1], "Russell already replied")
+
+newer = item("w2", "c-w", datetime.now(timezone.utc) - timedelta(hours=1), corr="w@example.com")
+r, demo = review_for([due_entry(waiting)], [waiting, newer])
+with open(os.path.join(r.runtime_dir, ack_sweep.VERDICTS_FILE), "w", encoding="utf-8") as f:
+    json.dump({"w2": {"triage": {"verdict": {"bucket": "needs-you", "sender": "person"}},
+                      "screen": {"verdict": {"flagged": False}}}}, f)
+check("a message that arrived after the sweep restarts the wait, so the re-check drops the ack",
+      r.recheck(r.entry("demo|c-w"))[1].startswith("a newer message restarted the wait"), True)
 
 import contextlib  # noqa: E402
 import io  # noqa: E402
