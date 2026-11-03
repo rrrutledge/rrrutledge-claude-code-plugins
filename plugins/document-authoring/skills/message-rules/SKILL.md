@@ -370,7 +370,7 @@ The specifics that most often separate a message that reads as Russell's from on
 **Follow-up nudges** — the thread already holds the history, so nudge lean:
 
 - **Let the thread carry the context.**
-  Ask the shortest open question that covers what you need; don't re-name the deliverable or prior exchange already visible.
+  Ask the shortest open question that covers what you need, referring to a deliverable or prior exchange the recipient already knows by its plain name alone - each added detail is one more thing you could get wrong (see "Don't re-paste" for what a nudge omits and its exceptions).
   **When the original message is auto-quoted in full below the reply (a threaded email) and it holds more than one ask, point at it generically** ("what did you think about the below?") **rather than restating each ask as its own question.** The quote already carries every specific, so this overrides the "nudge on all of them" pattern below once the quote itself makes every ask visible.
 - **A status-check nudge into a stalled thread, where it's unclear whose job the task was, skips Core voice's warmth opener.**
   Lead with the plain fact that prompted the check, not a credit or appreciative line, since this isn't a reply to something the other person just said or did.
