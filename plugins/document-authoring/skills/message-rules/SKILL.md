@@ -614,4 +614,4 @@ These registers reach outside the palette, and most also stack past the one-emoj
 ### When unsure
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
-If you'd have to invent a personal detail, or a commitment the ask never made (a promise to talk, a change to how Russell works), or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
+If you'd have to invent a personal detail, or a commitment the ask never made (a promise to talk, a change to how Russell works), or a statement of scope the ask never gave (what else is or isn't affected, what stays as it was), or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
