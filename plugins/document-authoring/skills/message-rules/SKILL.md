@@ -208,6 +208,7 @@ A single clear sentence ending in a question is usually the whole message — re
   The same holds for something they shared or described: the author already knows what it is, so a reply that names its mechanism or features as praise hands their own description back.
   Give the reaction (what you think of it, what it's good for) and leave the description out.
 - **Accepting an opportunity or proposal about an idea earns one short sentence of your own view of the idea or its goal after the yes.**
+  Adopting an outsider's suggestion counts as accepting it: state your view of the suggestion in a hedged sentence before announcing the change you made.
   The acceptance then reads as engaged rather than bare; a reply confirming a booked call and an accepted introduction ("When a contact offers to connect you with a specific named person") take no added sentence.
 - **A thank-you for a small favor is a name and an exclamation — nothing else.**
   Confirming that something they sent arrived is this same occasion: say "Thank you" in words and close on an exclamation mark; any 🙏 follows the **Warm relationship gratitude** register in Emoji.
