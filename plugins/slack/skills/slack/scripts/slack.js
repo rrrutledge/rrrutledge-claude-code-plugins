@@ -73,7 +73,7 @@
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
 //                 Links written as Slack mrkdwn `<url|anchor text>` become real links, and `<@U...>`,
-//                 `<#C...>`, `<!here>`, `<!channel>` become real mentions, and `*bold*`, `_italic_`,
+//                 `<#C...>` (a private channel is `<#G...>`), `<!here>`, `<!channel>` become real mentions, and `*bold*`, `_italic_`,
 //                 `~strike~` spans become styled text (a lone `*`, snake_case_words, and anything inside
 //                 a URL or `code span` stay literal). Gated by the
 //                 writing-review receipt on <file>, the same as --send.
@@ -811,26 +811,7 @@ function readBody(verb) {
   return text;
 }
 
-// A draft's body is rich_text blocks, not mrkdwn: turn the body into one rich_text section, splitting
-// out each mrkdwn token into its own element so it survives as a link, user chip, channel chip, or
-// @here/@channel broadcast instead of literal `<...>` text. The plain text between tokens carries its
-// *bold*, _italic_, and ~strike~ spans as styled text elements (see rich-text-style.js).
-function richTextBlocks(text) {
-  const { styledTextElements } = require('./rich-text-style');
-  const elements = [];
-  const re = /<(https?:[^|>]+)(?:\|([^>]+))?>|<@([UW][A-Z0-9]+)(?:\|[^>]*)?>|<#(C[A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel)>/g;
-  let last = 0;
-  for (const m of text.matchAll(re)) {
-    if (m.index > last) elements.push(...styledTextElements(text.slice(last, m.index)));
-    if (m[3]) elements.push({ type: 'user', user_id: m[3] });
-    else if (m[4]) elements.push({ type: 'channel', channel_id: m[4] });
-    else if (m[5]) elements.push({ type: 'broadcast', range: m[5] });
-    else elements.push(m[2] ? { type: 'link', url: m[1], text: m[2] } : { type: 'link', url: m[1] });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) elements.push(...styledTextElements(text.slice(last)));
-  return [{ type: 'rich_text', elements: [{ type: 'rich_text_section', elements }] }];
-}
+const { richTextBlocks, rawTokensIn } = require('./draft-body');
 
 // The plain text of a draft's rich_text blocks, for listing.
 function draftText(blocks) {
@@ -861,6 +842,7 @@ async function listDrafts() {
       destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '', broadcast: !!x.broadcast })),
       updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
       text: draftText(d.blocks),
+      rawTokens: rawTokensIn(d.blocks),
     }));
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
@@ -868,6 +850,7 @@ async function listDrafts() {
     const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '') + (x.broadcast ? ' +channel' : '')).join(', ');
     console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
     console.log(d.text || '(no text)');
+    if (d.rawTokens.length) console.log(`!! RAW, not a real mention: ${d.rawTokens.join(', ')}`);
   }
 }
 
@@ -929,6 +912,12 @@ async function createDraft() {
     r = await create();
   }
   const id = (r.draft && r.draft.id) || '';
+  const saved = (await activeDrafts()).find(d => d.id === id);
+  const raw = rawTokensIn((saved || r.draft || {}).blocks);
+  if (raw.length) {
+    if (saved) await deleteDraftById(saved);
+    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
+  }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }
 
