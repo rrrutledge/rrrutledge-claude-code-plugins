@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 import re
+import subprocess
 import tempfile
 
 from .log import log_debug
@@ -299,6 +300,29 @@ def is_path_within_allowed_edits(path):
             log_debug(f"is_path_within_allowed_edits: {path!r} under {allowed!r}")
             return True
     return False
+
+
+def is_untracked_in_git_repo(filename):
+    """True if `filename` sits inside a git work tree but git does not track it.
+
+    Asks git itself rather than looking for a .git directory, because a linked
+    worktree's .git is a file. A script outside any repo, or one git tracks,
+    is False: only an uncommitted file inside a repo reads as scratch.
+    """
+    try:
+        path = os.path.expandvars(os.path.expanduser(convert_msys_path_to_windows(filename)))
+        if not os.path.isabs(path):
+            path = os.path.join(os.environ.get('CLAUDE_CWD', os.getcwd()), path)
+        if not os.path.isfile(path):
+            return False
+        result = subprocess.run(
+            ['git', '-C', os.path.dirname(path), 'ls-files', '--error-unmatch', '--', os.path.basename(path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 1
+    except Exception as e:
+        log_debug(f"is_untracked_in_git_repo failed for {filename!r}: {type(e).__name__}: {e}")
+        return False
 
 
 def read_script_file(filename):

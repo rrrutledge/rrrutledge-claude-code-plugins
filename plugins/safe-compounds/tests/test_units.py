@@ -28,7 +28,7 @@ from safe_compounds.enforce import (  # noqa: E402
     detect_plugin_cache_reference, detect_claude_jobs_write, detect_global_claude_md_read,detect_gh_api_contents_write, detect_raw_trello_write,
     detect_unbounded_wide_find, enforce_bash,
 )
-from safe_compounds.scripts import check_node_segment, get_block_reason, reset_block_reason  # noqa: E402
+from safe_compounds.scripts import check_node_segment, check_python_segment, get_block_reason, reset_block_reason  # noqa: E402
 from safe_compounds import ai  # noqa: E402
 from safe_compounds import workflow  # noqa: E402
 from safe_compounds.workflow import classify_workflow_tool  # noqa: E402
@@ -869,6 +869,68 @@ class TestMissingScriptBlocks(object):
             del os.environ['SAFE_COMPOUNDS_DISABLE_AI']
         # AI is disabled so the verdict is undecided (falls through to a plain
         # prompt), but the missing-script block must not have fired.
+        assert get_block_reason() is None
+
+
+class TestUntrackedScriptBlocks(object):
+    """A script inside a git repo that git doesn't track, outside a trusted
+    script dir, reads as a throwaway helper: block with a move-to-.tmp/ message
+    instead of asking the AI or prompting."""
+
+    def setup_method(self):
+        reset_block_reason()
+
+    def _repo(self, tmp_path):
+        import subprocess
+        subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+        return tmp_path
+
+    def test_untracked_script_in_repo_blocks_with_move_to_tmp(self, tmp_path):
+        set_config()
+        repo = self._repo(tmp_path)
+        script = repo / "sweep.py"
+        script.write_text("print('hi')", encoding="utf-8")
+        os.environ['CLAUDE_CWD'] = str(repo)
+        assert check_python_segment(f'python "{script}"', 'python') is False
+        reason = get_block_reason()
+        assert "BLOCKED" in reason
+        assert ".tmp/" in reason
+        assert "not tracked by git" in reason
+
+    def test_tracked_script_does_not_trip_untracked_block(self, tmp_path):
+        import subprocess
+        set_config()
+        repo = self._repo(tmp_path)
+        script = repo / "tool.py"
+        script.write_text("print('hi')", encoding="utf-8")
+        subprocess.run(['git', '-C', str(repo), 'add', 'tool.py'], check=True)
+        os.environ['CLAUDE_CWD'] = str(repo)
+        os.environ['SAFE_COMPOUNDS_DISABLE_AI'] = '1'
+        try:
+            check_python_segment(f'python "{script}"', 'python')
+        finally:
+            del os.environ['SAFE_COMPOUNDS_DISABLE_AI']
+        assert get_block_reason() is None
+
+    def test_untracked_script_in_tmp_dir_stays_trusted(self, tmp_path):
+        set_config()
+        repo = self._repo(tmp_path)
+        (repo / ".tmp").mkdir()
+        script = repo / ".tmp" / "sweep.py"
+        script.write_text("print('hi')", encoding="utf-8")
+        os.environ['CLAUDE_CWD'] = str(repo)
+        assert check_python_segment(f'python "{script}"', 'python') is True
+
+    def test_script_outside_any_repo_does_not_trip_untracked_block(self, tmp_path):
+        set_config()
+        script = tmp_path / "loose.py"
+        script.write_text("print('hi')", encoding="utf-8")
+        os.environ['CLAUDE_CWD'] = str(tmp_path)
+        os.environ['SAFE_COMPOUNDS_DISABLE_AI'] = '1'
+        try:
+            check_python_segment(f'python "{script}"', 'python')
+        finally:
+            del os.environ['SAFE_COMPOUNDS_DISABLE_AI']
         assert get_block_reason() is None
 
 
