@@ -47,7 +47,6 @@ GitHub's repo-level "auto-delete branch on merge" setting only fires on merge, n
 A separate `git push origin --delete <branch>` (or `git push origin :<branch>`) after the fact is also auto-approved when the branch is not main/master/the default branch and still exists locally, because pushing the local branch again undoes it.
 A delete of a branch with no local copy still prompts.
 
-**Every PR's code takes `pr-code-review` before it opens** (see "Everything in the diff is reviewed before the PR opens" above).
 When Russell asks for a further review on a PR that is already open, run `pr-code-review` on its branch and push the fixes as follow-up commits to the same branch.
 
 **Always branch new work from main.**

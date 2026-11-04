@@ -457,11 +457,10 @@ def test_prose_receipt_does_not_satisfy_code_gate(tmp_path):
 def test_code_mint_keeps_prior_prose_kind(tmp_path):
     receipts = str(tmp_path / "receipts")
     body = write_body(tmp_path, "tool.py", "def f():\n    return 1\n")
-    run(["mint", str(body), "--rule-coverage", "4"], receipt_dir=receipts)
+    run(["mint", str(body)], receipt_dir=receipts)
     run(["mint", "--kind", "code", str(body)], receipt_dir=receipts)
     receipt = read_receipt_for_test(receipts, body)
     assert receipt["kinds"] == ["code", "prose"]
-    assert receipt["rule_coverage"] == 4
 
 
 def test_legacy_receipt_without_kinds_counts_as_prose(tmp_path):
@@ -546,11 +545,44 @@ def test_pending_lists_unreviewed_by_kind(tmp_path):
     code = commit_file(repo, "src/app.py", "print('hi')\n")
     r = run(["pending", "--base", "main"], cwd=str(repo), receipt_dir=receipts)
     assert r.returncode == 1
-    assert "prose: docs/guide.md" in r.stdout
-    assert "code: src/app.py" in r.stdout
-    run(["mint", "--kind", "code", str(code)], receipt_dir=receipts)
+    lines = r.stdout.splitlines()
+    assert any(l.startswith("prose: ") and l.endswith("/docs/guide.md") for l in lines)
+    code_line = next(l for l in lines if l.startswith("code: "))
+    assert code_line.endswith("/src/app.py")
+    # pending prints paths mint can take as-is, from any cwd.
+    run(["mint", "--kind", "code", code_line[len("code: "):]], receipt_dir=receipts)
     r = run(["pending", "--base", "main"], cwd=str(repo), receipt_dir=receipts)
-    assert "code: src/app.py" not in r.stdout
+    assert "src/app.py" not in r.stdout
+
+
+def test_pr_create_head_flag_gates_named_branch(tmp_path):
+    # `--head feature` from a checkout sitting on main still opens a PR of feature's commits.
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "src/app.py", "print('hi')\n")
+    git(str(repo), "checkout", "-q", "main")
+    r = run([], stdin=bash_payload("gh pr create --head feature --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
+    assert "src/app.py" in r.stdout
+
+
+def test_hand_written_do_not_edit_comment_is_still_code(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "src/trust.py", "# Do not edit this set without updating tests\nX = 1\n")
+    r = run([], stdin=bash_payload("gh pr create --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
+
+
+def test_makefile_is_code(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "Makefile", "all:\n\techo hi\n")
+    r = run([], stdin=bash_payload("gh pr create --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
 
 
 def test_pending_clean_branch_exits_zero(tmp_path):
