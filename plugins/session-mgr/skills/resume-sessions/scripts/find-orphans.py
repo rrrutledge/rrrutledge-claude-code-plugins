@@ -6,13 +6,15 @@ those sessions in two places:
   - The live-session registry: entries still listed as open that aren't running.
   - The background service's own job records (bg_session.job_records), for the retired background
     sessions the registry no longer lists. The service retires an idle background session after 8
-    hours (sooner when memory is low) and labels its last turn done or blocked. A blocked one stays
-    listed and revivable, but a done one drops out of `claude agents` and out of the registry -
-    and the label is often wrong, since the session was still waiting on Russell. So every job that
-    isn't live, isn't blocked, and wasn't stopped (an executed `claude stop`) is an orphan too,
-    whatever the service called it - bounded by JOBS_SINCE, and held back by the wake backoff for a
-    session Russell keeps leaving untouched (wake_backoff). A registry entry that has a job record
-    is judged by the job record alone.
+    hours (sooner when memory is low) and labels its last turn done or blocked. A done one drops out
+    of `claude agents` and out of the registry, and the label is often wrong, since the session was
+    still waiting on Russell. A blocked one - a session that ended its turn asking Russell something -
+    stays listed in `claude agents`, but with no process behind it, so it waits on Russell unseen.
+    So every job that isn't live and wasn't stopped (an
+    executed `claude stop`) is an orphan too, whatever the service called it - bounded by JOBS_SINCE
+    (BLOCKED_JOBS_SINCE for a blocked one), and held back by the wake backoff for a session Russell
+    keeps leaving untouched (wake_backoff). A registry entry that has a job record is judged by the
+    job record alone.
 It also repairs live blocked or done background sessions whose Remote Control bridge is down (no
 bridgeSessionId in the job record) - see bridgeless_orphans; one still bridge-less after
 BRIDGE_REPAIR_ATTEMPTS cycles comes back as an orphan.
@@ -48,15 +50,12 @@ SESSION_RE = re.compile(r"--(?:resume|session-id)\s+([0-9a-fA-F-]{36})")
 SELF_CLOSE_RE = re.compile(
     r"taskkill\s+/PID\s+\S+\s+/T\s+/F|close-session\.py|end-session\.py|claude\s+stop\b")
 
-# The `claude agents` states that mean a listed session without a pid is over: stopped, or retired
-# as done (listed only briefly, until the service settles it). A blocked or parked background
-# session also has no pid while it waits, yet the service still holds it, so it is live.
+# The `claude agents` statuses that mean a listed session is over even though it is still listed.
 ENDED_STATES = {"stopped", "done"}
 
 # Job states that are never resumed from the job record. "stopped" is an executed `claude stop` - by
-# the session closing itself or by Russell - so a deliberate close. "blocked" stays listed in `claude
-# agents` and revivable from the app, so it is not lost.
-JOB_STATES_LEFT_ALONE = {"stopped", "blocked"}
+# the session closing itself or by Russell - so a deliberate close.
+JOB_STATES_LEFT_ALONE = {"stopped"}
 # Live background sessions in these states with no Remote Control bridge are repaired by
 # bridgeless_orphans; a working one is left for a later cycle. A session still bridge-less after
 # BRIDGE_REPAIR_ATTEMPTS cycles of failed repair is raised as an orphan.
@@ -67,6 +66,10 @@ BRIDGE_REPAIRS_PATH = os.path.expanduser("~/.claude/session-mgr/bridge-repairs.j
 # began losing sessions on 2026-09-28; everything older predates that and is left where it lies, so
 # older job records aren't mass-resurrected.
 JOBS_SINCE = datetime(2026, 9, 28, tzinfo=timezone.utc)
+# Retired blocked jobs last touched before this date stay where they are: about 170 piled up between
+# JOBS_SINCE and here, and orphans dispatch ahead of all new work, so waking them together would hold up
+# the drain for days.
+BLOCKED_JOBS_SINCE = datetime(2026, 11, 1, tzinfo=timezone.utc)
 # A job touched within this window is left for the next run: a session launched or woken just after
 # `claude agents` was read isn't listed yet, and a retirement may still be settling.
 JOB_SETTLE_GRACE = timedelta(minutes=5)
@@ -79,14 +82,16 @@ WAKE_BACKOFF_CAP = timedelta(days=4)
 
 def agent_session_ids(agents):
     """Session guids `claude agents` reports as live in any account: running (a pid), or listed
-    with a status or state other than stopped or done."""
+    with a status other than stopped or done. An entry with only a `state` (no pid, no status) is a
+    session the service retired - `claude agents` keeps listing a retired blocked session long after
+    its process is gone - so it is not live."""
     ids = set()
     for agent in agents:
         sid = agent.get("sessionId")
         if not sid:
             continue
-        marks = {m for m in (agent.get("status"), agent.get("state")) if m}
-        if agent.get("pid") or (marks and not marks & ENDED_STATES):
+        status = agent.get("status")
+        if agent.get("pid") or (status and status not in ENDED_STATES):
             ids.add(sid)
     return ids
 
@@ -243,9 +248,10 @@ def wake_backoff(session_id, wakes):
 def retired_job_orphans(jobs, active, now=None):
     """Background sessions the service has stopped running without anyone closing them: every job
     record in `jobs` (bg_session.job_records) whose session isn't live, whose state isn't one left
-    alone (JOB_STATES_LEFT_ALONE), and that the service last touched since JOBS_SINCE and outside
-    the settle grace - minus any whose transcript shows an executed self-close or is missing
-    (nothing to resume from), and any still inside its wake backoff."""
+    alone (JOB_STATES_LEFT_ALONE), and that the service last touched since JOBS_SINCE
+    (BLOCKED_JOBS_SINCE for a blocked job) and outside the settle grace - minus any whose transcript
+    shows an executed self-close or is missing (nothing to resume from), and any still inside its
+    wake backoff."""
     now = now or datetime.now(timezone.utc)
     wakes = bg_session.load_wakes()
     orphans, seen = [], set()
@@ -253,8 +259,9 @@ def retired_job_orphans(jobs, active, now=None):
         sid = job["sessionId"]
         if sid in active or sid in seen or job.get("state") in JOB_STATES_LEFT_ALONE:
             continue
+        since = BLOCKED_JOBS_SINCE if job.get("state") == "blocked" else JOBS_SINCE
         ended = _parse_time(job.get("updatedAt") or job.get("lastTerminalAt") or job.get("createdAt"))
-        if ended is None or ended < JOBS_SINCE or now - ended < JOB_SETTLE_GRACE:
+        if ended is None or ended < since or now - ended < JOB_SETTLE_GRACE:
             continue
         if not transcript_path(sid) or closed_itself_on_purpose(sid):
             continue

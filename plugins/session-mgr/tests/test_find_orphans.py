@@ -46,11 +46,11 @@ def agent(session_id, *, pid=None, status=None, state=None, kind="background", c
             "kind": kind, "pid": pid, "status": status, "state": state, "configDir": config_dir}
 
 
-# A recorded snapshot's shapes: a running background session, a parked (blocked, no pid) one, an
-# interactive one, and a stopped one.
+# A recorded snapshot's shapes: a running background session, one blocked on Russell with its process
+# still running, an interactive one, and a stopped one.
 def snapshot(live_running, live_blocked, stopped, other_account_live=None, backup_dir=None):
     entries = [agent(live_running, pid=37636, status="busy", state="working"),
-               agent(live_blocked, state="blocked"),
+               agent(live_blocked, pid=13472, status="idle", state="blocked"),
                agent(new_id(), pid=15244, status="idle", state=None, kind="interactive"),
                agent(stopped, state="stopped")]
     if other_account_live:
@@ -147,8 +147,8 @@ def test_confirmed_orphan_returned():
 
 
 def test_live_bg_sessions_never_orphans():
-    print("test: a live background session (running, or parked with no pid) is never an orphan, "
-          "even with no cmdline/pid match")
+    print("test: a live background session (working, or blocked on Russell with its process running) is "
+          "never an orphan, even with no cmdline/pid match")
     running, blocked, stopped = new_id(), new_id(), new_id()
     with sandbox(snapshot(running, blocked, stopped)) as (seed, _, _b):
         seed(running)
@@ -250,13 +250,15 @@ def test_mention_only_not_pruned():
 
 
 def test_agent_session_ids():
-    print("test: agent_session_ids keeps pid-bearing and blocked entries, drops stopped/done/blank")
+    print("test: agent_session_ids keeps pid-bearing and running-status entries, drops retired "
+          "(state only, no pid), stopped, done, and blank ones")
     ids = find_orphans.agent_session_ids([
         {"sessionId": "a", "pid": 1}, {"sessionId": "b", "state": "blocked"},
         {"sessionId": "c", "status": "idle"}, {"sessionId": "d", "state": "stopped"},
         {"sessionId": "e"}, {"id": "f", "pid": 2},
-        {"sessionId": "g", "state": "done"}, {"sessionId": "h", "pid": 3, "status": "idle", "state": "done"}])
-    check("live set", ids == {"a", "b", "c", "h"}, f"got {ids}")
+        {"sessionId": "g", "state": "done"}, {"sessionId": "h", "pid": 3, "status": "idle", "state": "done"},
+        {"sessionId": "i", "pid": 4, "status": "idle", "state": "blocked"}, {"sessionId": "j", "status": "stopped"}])
+    check("live set", ids == {"a", "c", "h", "i"}, f"got {ids}")
 
 
 def test_retired_done_job_is_orphan():
@@ -283,18 +285,45 @@ def test_retired_job_listed_done_without_pid_is_orphan():
         check("orphan present", sid in orphan_ids())
 
 
-def test_running_or_held_jobs_not_orphans():
-    print("test: a job still running (any state), blocked, or stopped is never an orphan")
-    running, blocked, stopped, held = new_id(), new_id(), new_id(), new_id()
+def test_running_or_stopped_jobs_not_orphans():
+    print("test: a job still running (any state, blocked included) or stopped is never an orphan")
+    running, waiting, stopped = new_id(), new_id(), new_id()
     with sandbox([agent(running, pid=11, status="idle", state="done"),
-                  agent(held, state="blocked")]) as (_, write_transcript, _b):
-        for sid, state in ((running, "done"), (held, "blocked"), (blocked, "blocked"), (stopped, "stopped")):
+                  agent(waiting, pid=12, status="idle", state="blocked")]) as (_, write_transcript, _b):
+        for sid, state in ((running, "done"), (waiting, "blocked"), (stopped, "stopped")):
             write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state=state)
             write_transcript(sid, [said("hi")])
         ids = orphan_ids()
-        for label, sid in (("running done job", running), ("listed blocked job", held),
-                           ("unlisted blocked job", blocked), ("stopped job", stopped)):
+        for label, sid in (("running done job", running), ("running blocked job", waiting),
+                           ("stopped job", stopped)):
             check(f"{label} not an orphan", sid not in ids, f"got {ids}")
+
+
+def test_retired_blocked_job_is_orphan():
+    print("test: a job retired as blocked (waiting on Russell, no process) is an orphan, listed or not")
+    listed, unlisted = new_id(), new_id()
+    with sandbox([agent(listed, state="blocked")]) as (_, write_transcript, _b):
+        for sid in (listed, unlisted):
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state="blocked", updated=ago(hours=9))
+            write_transcript(sid, [said("review Addie's doc")])
+        ids = orphan_ids()
+        check("listed retired blocked job is an orphan", listed in ids, f"got {ids}")
+        check("unlisted retired blocked job is an orphan", unlisted in ids, f"got {ids}")
+
+
+def test_blocked_job_bounded_by_its_own_cutoff():
+    print("test: a retired blocked job last touched before BLOCKED_JOBS_SINCE is left alone, while a "
+          "done job from the same day is still an orphan")
+    when = iso(find_orphans.BLOCKED_JOBS_SINCE - timedelta(days=1))
+    blocked, done = new_id(), new_id()
+    with sandbox([]) as (_, write_transcript, _b):
+        write_job(bg_session.DEFAULT_CONFIG_DIR, blocked, state="blocked", updated=when)
+        write_job(bg_session.DEFAULT_CONFIG_DIR, done, state="done", updated=when)
+        write_transcript(blocked, [said("hi")])
+        write_transcript(done, [said("hi")])
+        ids = orphan_ids()
+        check("pre-cutoff blocked job left alone", blocked not in ids, f"got {ids}")
+        check("same-day done job still an orphan", done in ids, f"got {ids}")
 
 
 def test_job_time_bounds():
@@ -487,7 +516,9 @@ if __name__ == "__main__":
     test_agent_session_ids()
     test_retired_done_job_is_orphan()
     test_retired_job_listed_done_without_pid_is_orphan()
-    test_running_or_held_jobs_not_orphans()
+    test_running_or_stopped_jobs_not_orphans()
+    test_retired_blocked_job_is_orphan()
+    test_blocked_job_bounded_by_its_own_cutoff()
     test_job_time_bounds()
     test_job_self_closed_or_without_transcript_not_orphan()
     test_job_in_backup_account_is_orphan()

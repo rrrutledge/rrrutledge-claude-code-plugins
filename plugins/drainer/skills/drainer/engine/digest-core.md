@@ -54,8 +54,8 @@ A digest ends when the snapshot it opened with is handled, not when the live que
   An entry tagged `help-needed` is a stale gate record (gates live in the worker's open tab, per `engine/browser-gate.md`): `queue-clear` it silently (`node <seen-state.js> queue-clear <runtime_dir> <id>`, no provider CLEAR) and leave it out of the digest.
 - For richer fyi summaries, read each item's captured body when the provider wrote one (its capture writes the body alongside `items/<id>.json`) - don't summarize from the snippet alone when the full body is right there.
 
-If the queue is empty AND no provider is stuck (step 0), tell Russell there's nothing to digest and stop.
-A stuck provider alone is still worth reporting - surface it even when the queue is otherwise empty.
+If the queue is empty AND no provider is stuck (step 0) AND no session is waiting (step 1c), tell Russell there's nothing to digest and stop.
+A stuck provider or a waiting session alone is still worth reporting - surface it even when the queue is otherwise empty.
 
 ## 1b. Backlog depth - the read-only "how much is left" barometer
 
@@ -70,6 +70,14 @@ When a source reads "unavailable this run", say so plainly and move on - a listi
 The barometer is a per-machine toggle (`show_backlog_depth` in `drainer.local.md`, on by default).
 When the runtime facts say it's turned off, skip this step and leave the section out of the digest entirely - no heading, no placeholder.
 Stuck-provider health (step 0) is separate and always runs.
+
+## 1c. Waiting on you - running sessions stuck on Russell's answer
+
+Your launcher listed every running background session that ended its turn asking Russell something and has had no turn for at least 12 hours: its name, when it started waiting, what it asks, and the `claude attach <id>` that opens it.
+A running session is never an orphan, so the poller never brings it back, and in the Claude app it sits among hundreds of retired sessions - this list is where it reaches him.
+Present the block verbatim from the runtime facts, at the spot step 4 places it in the digest.
+When the runtime facts say no session is waiting, leave the section out entirely.
+Each listed session is Russell's to answer or close, inside that session.
 
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)
 
@@ -151,7 +159,7 @@ When the chosen stop is a mail rule, creating or appending it always routes thro
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Waiting on you** sessions (step 1c, when any are listed), the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 
