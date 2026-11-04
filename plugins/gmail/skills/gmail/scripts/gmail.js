@@ -93,7 +93,7 @@
 //                 after the body. --forward-message-id=<id> appends a real Gmail-style forward of that
 //                 message below the body and signature - the "---------- Forwarded message ---------"
 //                 header with the original From/Date/Subject/To/Cc, then the original HTML body. Pass
-//                 --subject="Fwd: <original subject>". Refuses a message that carries attachments.)
+//                 --subject="Fwd: <original subject>". Stops with an error on a message that has attachments.)
 //                (--attach takes one path or a comma-separated list; files ride along as attachments.
 //                 --inline takes image paths the same way but embeds them in the body via cid: references
 //                 (rendered after the body text), so they show inline instead of as a file list. Inline
