@@ -22,7 +22,8 @@ Pass every `<gate>` call the same `--base` and `--head` the PR will use.
 3. **Lean pass.**
    Dispatch a fresh subagent with `lean-reviewer-prompt.md`, giving it the base and head refs, the `code:` files, and one or two sentences on what the change is for.
    The reviewer must come to the diff cold, for the same reason `writing-review` gives for its own reviewer.
-4. Apply the findings you accept from both passes and commit them.
+4. Apply the findings you accept from both passes, run the repo's build and tests (the commands its `CLAUDE.md` or `CONTRIBUTING.md` names), and commit once they pass.
+   A failure from a fix is a new finding for this round: fix it the same way before committing.
 5. Review the fixes: run steps 2 and 3 again, each with a fresh reviewer.
    The lean reviewer gets the fix commits alone, as the range from the last reviewed commit to the head; the correctness pass reviews the whole branch again, since `code-review` takes a branch target.
 6. Repeat from step 4 until both passes return clean, a finding stands that you genuinely disagree with, or you have run three rounds.
