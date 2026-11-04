@@ -62,7 +62,8 @@ What reaches him depends on how the loop ended:
 ## The stage gate
 
 The Verify step is contractual, not advisory: a PreToolUse hook (`hooks/verify_gate.py` in this plugin) blocks the moment a piece of writing would reach Russell until a fresh receipt exists for that exact content.
-It guards the two surfaces that reach him - an outward message when a stage command puts it where he sends it, and shipped prose when a PR opens for him to read on the Files Changed tab.
+It guards the two surfaces that reach him - an outward message when a stage command puts it where he sends it, and a PR when it opens for him to read on the Files Changed tab.
+On a PR the same gate also holds the diff's code to a code review, and its one block message lists both kinds; the `git-workflow` plugin's `pr-code-review` skill is the code half.
 The receipt attests that a review ran against this exact text; it never judges the verdict, so the standing-to-disagree rules below still hold - text you reviewed and chose to keep over a finding mints the same way a clean one does.
 
 **Outward messages.**
@@ -74,9 +75,9 @@ The Teams and Slack composers type into a web page rather than a command argumen
 **Shipped prose.**
 A skill, a README, or a repo doc reaches Russell when a PR opens, so the gate fires on `gh pr create` - the moment the prose lands on the Files Changed tab (a draft PR counts; Russell reviews drafts there).
 It does not fire on `gh pr ready` or `gh pr merge`, which act on an already-open PR whose prose he has already seen - those are the time-to-merge step, not a fresh prose-reaches-Russell moment.
-The hook computes the PR diff itself and blocks unless every changed markdown file that ships has a fresh receipt for its current content.
+The hook computes the PR diff itself and blocks unless every changed markdown file that ships has a fresh writing-review receipt for its current content.
 The receipt is a freshness check on the file's current content: the review itself stays diff-scoped per "How to run it" above, and the mint targets the whole file, per step 6.
-Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts - and a code-only PR passes straight through.
+Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts.
 Mint each changed prose file after its review, so `gh pr create` lets the PR through; a learning session's PR step already runs the review, and mints there so it composes with this gate rather than fighting it.
 
 When a stage or PR is blocked, the block message names the exact file(s) and the mint command to run, so the path through the gate is always one command away.

@@ -21,10 +21,10 @@ This is the case whenever a session started in one repo picks up a task that tur
 Claude Code auto-loads `CLAUDE.md` only from the session's own working-directory tree, so a session editing a different repo never sees that repo's rules on its own - and `CONTRIBUTING.md` and the PR template never auto-load even when the working directory is the repo.
 Launch a fresh session (the handoff-launcher pattern) whose cwd is that repo's local checkout - its `~/Dev` clone, or one made per "Writing files to other repos" below - and write the seed so it tells the new session to read that repo's `CONTRIBUTING.md` and any `.github/PULL_REQUEST_TEMPLATE*`, so the reminder rides in with the launch rather than depending on memory.
 
-## Shipped prose in the diff takes the writing flow before the PR opens
-Before opening any PR, check whether the diff changes prose that ships in Russell's voice; `writing-flow` defines what counts.
-When it does, run that flow's review step first - a cold, independent `writing-review` pass - then open the PR.
-The PR-opening command is that flow's gate.
+## Everything in the diff is reviewed before the PR opens
+A PR exists for Russell to read as a human, so every review runs on the branch's committed work before `gh pr create`.
+Shipped prose takes `writing-flow`'s Review step, a cold `writing-review` pass; code takes the `pr-code-review` skill.
+`gh pr create` is the gate for both; `writing-review`'s **The stage gate** covers how it works.
 
 ## Auto Branch/Commit/PR
 **HARD RULE: Never push directly to main. All changes go through a PR - no exceptions.**
@@ -47,9 +47,7 @@ GitHub's repo-level "auto-delete branch on merge" setting only fires on merge, n
 A separate `git push origin --delete <branch>` (or `git push origin :<branch>`) after the fact is also auto-approved when the branch is not main/master/the default branch and still exists locally, because pushing the local branch again undoes it.
 A delete of a branch with no local copy still prompts.
 
-**Run `/code-review` only when Russell asks for it** - it's token-heavy, so it's opt-in.
-When he does request a review, run it on the local branch diff, apply the findings that make sense, and report what it found and fixed.
-If a PR is already open when a review is requested, push the fixes as follow-up commits to the same branch.
+When Russell asks for a further review on a PR that is already open, run `pr-code-review` on its branch and push the fixes as follow-up commits to the same branch.
 
 **Always branch new work from main.**
 Before creating a branch, check `git status` - if HEAD is not on main, create a worktree from main.
