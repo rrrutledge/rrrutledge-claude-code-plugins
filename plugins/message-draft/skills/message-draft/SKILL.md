@@ -266,6 +266,8 @@ through the cache glob (run the newest if several are cached) from the repo root
    below the new text). Re-apply the `message-rules` Conversational rules; if anything was
    trimmed, rewrite the body file and re-run step 4 (the new draft supersedes the old — delete the
    stale one with `delete <draftId>` if needed).
+   When asked to review a draft reply (including one Russell hand-edited), first read the thread it answers - the other party's last two or three messages - and check every tone claim against what they said (stated timelines, promises, who covers for whom) before calling a line presumptive.
+   Judge paragraph structure with the `--html` view of `mail.js --show` (see the `ms-graph` skill).
 6. **Leave as draft.** Never send. Report where the draft lives (Drafts; `webLink` is the deep link).
 
 ## Done-criteria (report this back)
