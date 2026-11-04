@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
-"""writing-review gate - makes the drafting loop's Verify step contractual.
+"""Review gate - nothing reaches Russell until a fresh review has run on that exact content.
 
-A piece of writing cannot reach Russell until a fresh writing-review pass has run against
-that exact content. The review flow proves it ran by minting a receipt keyed to a hash of
-the reviewed file; this hook, at the moment the writing would reach him, recomputes that
-hash and blocks unless a fresh receipt exists.
+Writing cannot reach him until a writing-review pass has run against it, and code cannot
+reach him in a PR until a code review (git-workflow's pr-code-review skill) has run against
+it. Each review flow proves it ran by minting a receipt keyed to a hash of the reviewed file
+and tagged with its kind ("prose" or "code"); this hook, at the moment the work would reach
+him, recomputes that hash and blocks unless a fresh receipt of the right kind exists.
 
 Two surfaces reach Russell, and the hook gates both against one receipt store:
 
   * An outward message reaches him when a stage command puts it where he'll send it. The
     gate keys on the body FILE that command passes (gmail.js / mail.js --body-file; ms-rest
     outlook-mail.js --json; a browser-chauffeur composer's declared --body-file).
-  * Shipped prose (a SKILL.md, README, repo doc) reaches him when it lands in a PR he reads
-    on the Files Changed tab. The gate keys on each changed markdown file in the PR diff,
-    computed by the hook itself, and fires on `gh pr create` - the moment the PR opens and
-    its prose becomes visible on Files Changed (a draft counts; Russell reviews drafts
-    there). It does NOT fire on `gh pr ready` or `gh pr merge`, which act on an
-    already-open PR whose prose he has already seen - readying and merging are the
-    time-to-merge step, not a fresh prose-reaches-Russell moment.
+  * A PR reaches him when it opens: a PR exists for him to read as a human on the Files
+    Changed tab, so every review runs on the working tree first. The gate fires on
+    `gh pr create` (a draft counts; Russell reviews drafts there), computes the PR diff
+    itself, classifies each changed file as prose, code, or neither, and denies once,
+    listing every unreviewed file of either kind. It does NOT fire on `gh pr ready` or
+    `gh pr merge`, which act on an already-open PR he has already seen - readying and
+    merging are the time-to-merge step, not a fresh reaches-Russell moment.
 
-Four modes in one file (single source of truth for the hash + receipt layout, so the
+Five modes in one file (single source of truth for the hash + receipt layout, so the
 minting side and the gating side can never drift apart):
 
   * hook mode  - no args, reads a PreToolUse payload on stdin. Vetoes (deny) a stage
                  command whose body file has no fresh receipt, or a PR-open whose changed
-                 prose files have no fresh receipt; defers otherwise.
-  * mint <f>   - the review flow's final step: hash file <f>, write its receipt. Optional
-                 `--rule-coverage <1-5>` and `--uncertain-spots-file <file>` record the final
-                 review round's rating and unsettled spots on the receipt, for scoring.
+                 prose or code files have no fresh receipt of their kind; defers otherwise.
+  * mint <f>.. - a review flow's final step: hash each file, write its receipt. `--kind code`
+                 marks a code review (default prose). Optional `--rule-coverage <1-5>` and
+                 `--uncertain-spots-file <file>` record the final writing-review round's
+                 rating and unsettled spots on the receipt, for scoring.
+  * pending [gh pr create args]
+               - list the branch's files the PR gate would deny, as `<kind>: <path>` lines.
   * check <f>  - exit 0 if <f> has a fresh receipt (or is a pure reaction), else exit 1.
                  For surfaces the hook can't see (Teams/Slack composers), where the flow
                  asserts the receipt itself rather than a stage command triggering the gate.
@@ -127,11 +131,25 @@ def receipt_path(h):
     return os.path.join(RECEIPT_DIR, h + ".json")
 
 
-def has_fresh_receipt(h):
+def receipt_kinds(receipt):
+    """Which reviews a receipt attests to: "prose" (writing-review) and/or "code"
+    (pr-code-review). A receipt minted before kinds existed is a writing-review receipt."""
+    return receipt.get("kinds") or ["prose"]
+
+
+def fresh_receipt(h):
+    """The receipt for content hash `h` if one exists within the TTL, else None."""
     path = receipt_path(h)
     if not os.path.isfile(path):
-        return False
-    return (time.time() - os.path.getmtime(path)) <= TTL_SECONDS
+        return None
+    if (time.time() - os.path.getmtime(path)) > TTL_SECONDS:
+        return None
+    return read_receipt(h)
+
+
+def has_fresh_receipt(h, kind="prose"):
+    receipt = fresh_receipt(h)
+    return receipt is not None and kind in receipt_kinds(receipt)
 
 
 # --- command parsing ---
@@ -219,22 +237,55 @@ def find_gh_pr_action(command):
     return None
 
 
-def is_gated_prose(rel_path):
-    """A changed file counts as shipped prose when it is a markdown file that ships and
-    stays. Exclude `.tmp/` (plans, specs, handoffs, scratch) and a top-level `handoffs/`
-    directory - those are change-explanations, reviewed against different rules, so gating
-    them against the shipped-artifact rubric would false-block. A commit message and a PR
-    body are change-explanations too, and never appear as files in a diff, so they need no
-    exclusion here."""
+# Extensions of languages a person writes program logic in. Data and config formats (JSON,
+# YAML, TOML, INI, lockfiles) are deliberately absent: they carry no logic that a
+# correctness, dead-code, or smallest-change review can judge.
+CODE_EXTENSIONS = {
+    ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue", ".svelte",
+    ".ps1", ".psm1", ".sh", ".bash", ".bat", ".cmd",
+    ".go", ".rs", ".java", ".kt", ".cs", ".rb", ".php", ".swift", ".lua",
+    ".c", ".h", ".cpp", ".hpp", ".sql", ".html", ".css", ".scss",
+}
+
+# A file that carries one of these near its top was written by a tool, not a person, so
+# there is no author to hold to the review's checks.
+GENERATED_MARKERS = ("@generated", "do not edit")
+
+
+def file_head(path, limit=2048):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(limit).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def classify_changed_file(rel_path, root):
+    """Which review a changed file in a PR diff needs: "prose", "code", or None.
+
+    The test: a file is prose when it is markdown that ships in Russell's voice, and code
+    when a person wrote program logic in it - a source-language file, or an extensionless
+    script with a shebang - and it does not mark itself generated. Everything else (data,
+    config, lockfiles, binaries, generated output) has nothing either review can judge.
+
+    `.tmp/` (plans, specs, handoffs, scratch) and a top-level `handoffs/` directory are
+    change-explanations, not shipped artifacts, so neither review applies there. A commit
+    message and a PR body are change-explanations too, and never appear as files in a diff,
+    so they need no exclusion here."""
     p = rel_path.replace("\\", "/")
-    if not p.lower().endswith(".md"):
-        return False
     segments = p.split("/")
-    if ".tmp" in segments:
-        return False
-    if segments[0] == "handoffs":
-        return False
-    return True
+    if ".tmp" in segments or segments[0] == "handoffs":
+        return None
+    if p.lower().endswith(".md"):
+        return "prose"
+    ext = os.path.splitext(p)[1].lower()
+    head = file_head(os.path.join(root, rel_path))
+    if ext not in CODE_EXTENSIONS and not (ext == "" and head.startswith("#!")):
+        return None
+    top = "\n".join(head.splitlines()[:5]).lower()
+    if any(marker in top for marker in GENERATED_MARKERS):
+        return None
+    return "code"
 
 
 def git_output(args):
@@ -301,7 +352,7 @@ def cwd_repo_slugs():
 
 def repo_flag_targets_other_repo(args):
     """True when a `--repo`/`-R` flag names a repo other than the cwd's own - the only case
-    where the cwd diff would gate the wrong repo's prose, so the PR gate must defer. Absent
+    where the cwd diff would gate the wrong repo's files, so the PR gate must defer. Absent
     the flag, or when it names this same repo (matching any of the cwd's remotes), returns
     False so the gate runs on the cwd diff. Fails toward deferring (True) when the flag is
     present but the flag value can't be parsed or the cwd's own repo can't be resolved, so an
@@ -343,15 +394,20 @@ def resolve_pr_base(args):
     return None
 
 
-def changed_prose_files(base):
-    """Repo-root-relative paths of the shipped-prose markdown files the PR adds or changes,
+def changed_files(base, root):
+    """(repo-root-relative path, kind) for each prose or code file the PR adds or changes,
     against `base` at the merge base (three-dot, matching the diff GitHub shows). Deletions
     are excluded - a removed file has no content to review."""
     out = git_output(
         ["diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"]
     )
-    return [line.strip() for line in out.splitlines()
-            if line.strip() and is_gated_prose(line.strip())]
+    files = []
+    for line in out.splitlines():
+        rel = line.strip()
+        kind = classify_changed_file(rel, root) if rel else None
+        if kind:
+            files.append((rel, kind))
+    return files
 
 
 # --- hook decision output (the PreToolUse contract) ---
@@ -383,28 +439,36 @@ def stage_block_reason(body_path, h):
     )
 
 
-def pr_block_reason(files):
+def pr_block_reason(unreviewed):
+    """`unreviewed` maps "prose"/"code" to the files of that kind lacking a fresh receipt."""
     script = os.path.abspath(__file__)
+    prose, code = unreviewed.get("prose", []), unreviewed.get("code", [])
     lines = [
-        "Blocked: opening this PR needs a fresh writing-review pass on its changed prose.",
-        "Russell reviews a PR on the Files Changed tab, so shipped prose reaches him the "
-        "moment the PR opens - the same guarantee the message gate gives outward mail.",
-        "These markdown files in the PR diff have no review receipt for their current content:",
+        "Blocked: opening this PR needs a fresh review of everything unreviewed in its diff.",
+        "A PR exists for Russell to read as a human on the Files Changed tab, so every "
+        "review runs on the working tree before the PR opens, never after.",
     ]
-    for f in files:
-        lines.append(f"  - {f}")
-    lines.append("For each, do this, then re-run the gh command unchanged:")
+    if prose:
+        lines.append("Markdown with no writing-review receipt for its current content:")
+        lines.extend(f"  - {f}" for f in prose)
+        lines.append(
+            "  Dispatch the writing-review skill on each as a fresh subagent that did not "
+            "write it, per writing-flow's Review step; when it converges, mint:"
+        )
+        lines.append(f'     python "{script}" mint ' + " ".join(f'"{f}"' for f in prose))
+    if code:
+        lines.append("Code with no code-review receipt for its current content:")
+        lines.extend(f"  - {f}" for f in code)
+        lines.append(
+            "  Run the git-workflow plugin's pr-code-review skill on the branch diff; when "
+            "its loop converges, mint:"
+        )
+        lines.append(f'     python "{script}" mint --kind code '
+                     + " ".join(f'"{f}"' for f in code))
     lines.append(
-        "  1. Dispatch the writing-review skill on the file as a fresh subagent that did "
-        "not write it, per writing-flow's Review step."
-    )
-    lines.append("  2. When the review converges, mint its receipt:")
-    for f in files:
-        lines.append(f'     python "{script}" mint "{f}"')
-    lines.append(
-        "The receipt binds to the file's content, so any later edit needs a fresh review "
-        "and mint. `.tmp/` files, plans, and handoffs are change-explanations and never "
-        "reach this gate."
+        "Then re-run the gh command unchanged. A receipt binds to the file's content, so "
+        "any later edit needs a fresh review and mint. `.tmp/`, `handoffs/`, data, config, "
+        "and generated files never reach this gate."
     )
     return "\n".join(lines)
 
@@ -517,16 +581,42 @@ def record_stage(stage, payload):
         pass
 
 
-def pr_prose_deny_reason(command):
-    """Deny-reason for a `gh pr create` whose changed prose files lack fresh receipts, else
-    None (defer): not a PR-open, no prose changed, all reviewed, or any git step failed
-    (fail-open). Reads each changed file from the working tree, which equals the committed
-    content the PR diff names when the tree is clean at PR time.
+def unreviewed_pr_files(args):
+    """{"prose": [...], "code": [...]} of the PR diff's files that lack a fresh receipt of
+    their kind, or None when the diff can't be computed (fail-open). Reads each changed file
+    from the working tree, which equals the committed content the PR diff names when the
+    tree is clean at PR time."""
+    try:
+        base = resolve_pr_base(args)
+        if not base:
+            return None
+        root = git_output(["rev-parse", "--show-toplevel"]).strip()
+        files = changed_files(base, root)
+    except Exception:
+        return None
+    unreviewed = {}
+    for rel, kind in files:
+        try:
+            text = normalized_text(os.path.join(root, rel))
+        except Exception:
+            continue
+        if not has_prose(text):
+            continue
+        if has_fresh_receipt(content_hash(text), kind):
+            continue
+        unreviewed.setdefault(kind, []).append(rel)
+    return unreviewed
+
+
+def pr_review_deny_reason(command):
+    """Deny-reason for a `gh pr create` whose changed prose or code lacks fresh receipts,
+    else None (defer): not a PR-open, nothing gated changed, all reviewed, or any git step
+    failed (fail-open).
 
     The diff runs in the current directory's repo. A `-R`/`--repo` flag lets the PR target a
     repo named on the command line, which need only differ from the cwd's repo when it names
     a genuinely other one (e.g. `gh pr create -R owner/other` run from an unrelated checkout) -
-    there the cwd diff would gate the wrong repo's prose, so defer. When the flag names this
+    there the cwd diff would gate the wrong repo's files, so defer. When the flag names this
     same repo (the common defensive-habit case of passing the cwd's own repo redundantly), the
     cwd diff is exactly the PR's diff, so gate it normally."""
     action = find_gh_pr_action(command)
@@ -535,26 +625,7 @@ def pr_prose_deny_reason(command):
     _verb, args = action
     if repo_flag_targets_other_repo(args):
         return None
-    try:
-        base = resolve_pr_base(args)
-        if not base:
-            return None
-        root = git_output(["rev-parse", "--show-toplevel"]).strip()
-        files = changed_prose_files(base)
-    except Exception:
-        return None
-    unreviewed = []
-    for rel in files:
-        abspath = os.path.join(root, rel)
-        try:
-            text = normalized_text(abspath)
-        except Exception:
-            continue
-        if not has_prose(text):
-            continue
-        if has_fresh_receipt(content_hash(text)):
-            continue
-        unreviewed.append(rel)
+    unreviewed = unreviewed_pr_files(args)
     if unreviewed:
         return pr_block_reason(unreviewed)
     return None
@@ -573,7 +644,7 @@ def run_hook():
             stage = resolve_stage(command)
             reason = message_stage_deny_reason(stage)
             if reason is None:
-                reason = pr_prose_deny_reason(command)
+                reason = pr_review_deny_reason(command)
             if reason:
                 deny(reason)
             if stage:
@@ -593,9 +664,14 @@ def run_hook():
 
 # --- mint / check subcommands ---
 
-def cmd_mint(path, verdict, rule_coverage=None, uncertain_spots_file=None):
-    if not path or not os.path.isfile(path):
-        print(f"mint: body file not found: {path}", file=sys.stderr)
+def cmd_mint(paths, verdict, rule_coverage=None, uncertain_spots_file=None, kind=None):
+    kind = kind or "prose"
+    if kind not in {"prose", "code"}:
+        print("mint: --kind must be prose or code", file=sys.stderr)
+        return 2
+    missing = [p for p in paths if not os.path.isfile(p)]
+    if not paths or missing:
+        print(f"mint: file not found: {', '.join(missing) or '(none given)'}", file=sys.stderr)
         return 2
     if rule_coverage is not None and rule_coverage not in {"1", "2", "3", "4", "5"}:
         print("mint: --rule-coverage must be 1-5", file=sys.stderr)
@@ -608,22 +684,44 @@ def cmd_mint(path, verdict, rule_coverage=None, uncertain_spots_file=None):
         except OSError as e:
             print(f"mint: could not read --uncertain-spots-file ({e})", file=sys.stderr)
             return 2
-    text = normalized_text(path)
-    h = content_hash(text)
     os.makedirs(RECEIPT_DIR, exist_ok=True)
-    receipt = {
-        "sha256": h,
-        "source_file": os.path.abspath(path),
-        "created_at": datetime.datetime.now().astimezone().isoformat(),
-        "verdict": verdict or "reviewed",
-        "chars": len(text),
-        "rule_coverage": int(rule_coverage) if rule_coverage is not None else None,
-        "uncertain_spots": uncertain_spots,
-    }
-    with open(receipt_path(h), "w", encoding="utf-8") as fh:
-        json.dump(receipt, fh, indent=2)
-    print(f"writing-review receipt minted: {h[:12]}... for {path}")
+    for path in paths:
+        text = normalized_text(path)
+        h = content_hash(text)
+        # A file can carry both reviews (a script whose docstrings also took writing-review),
+        # so minting one kind keeps a fresh receipt's other kind and its review fields.
+        prior = fresh_receipt(h)
+        kinds = set(receipt_kinds(prior)) if prior is not None else set()
+        prior = prior or {}
+        receipt = {
+            "sha256": h,
+            "source_file": os.path.abspath(path),
+            "created_at": datetime.datetime.now().astimezone().isoformat(),
+            "verdict": verdict or "reviewed",
+            "chars": len(text),
+            "kinds": sorted(kinds | {kind}),
+            "rule_coverage": (int(rule_coverage) if rule_coverage is not None
+                              else prior.get("rule_coverage")),
+            "uncertain_spots": uncertain_spots or prior.get("uncertain_spots"),
+        }
+        with open(receipt_path(h), "w", encoding="utf-8") as fh:
+            json.dump(receipt, fh, indent=2)
+        print(f"{kind} review receipt minted: {h[:12]}... for {path}")
     return 0
+
+
+def cmd_pending(args):
+    """Print the current branch's prose and code files that still lack a fresh receipt, one
+    `<kind>: <path>` line each, against the base `gh pr create <args>` would use. Exit 1 when
+    any are pending, 0 when the PR would pass, 2 when the diff can't be computed."""
+    unreviewed = unreviewed_pr_files(args)
+    if unreviewed is None:
+        print("pending: could not compute the PR diff (no base branch resolved?)", file=sys.stderr)
+        return 2
+    for kind in ("prose", "code"):
+        for rel in unreviewed.get(kind, []):
+            print(f"{kind}: {rel}")
+    return 1 if unreviewed else 0
 
 
 def cmd_stage(path, meta_path):
@@ -690,7 +788,8 @@ def main():
     if argv and argv[0] == "mint":
         rest = argv[1:]
         values = {}
-        for flag in ("--verdict", "--rule-coverage", "--uncertain-spots-file", "--score-context"):
+        for flag in ("--verdict", "--rule-coverage", "--uncertain-spots-file", "--score-context",
+                     "--kind"):
             if flag in rest:
                 i = rest.index(flag)
                 values[flag] = rest[i + 1] if i + 1 < len(rest) else None
@@ -698,8 +797,10 @@ def main():
         if "--score-context" in values:
             print("mint: --score-context is ignored - the stage gate scores every staged draft",
                   file=sys.stderr)
-        sys.exit(cmd_mint(rest[0] if rest else None, values.get("--verdict"),
-                          values.get("--rule-coverage"), values.get("--uncertain-spots-file")))
+        sys.exit(cmd_mint(rest, values.get("--verdict"), values.get("--rule-coverage"),
+                          values.get("--uncertain-spots-file"), values.get("--kind")))
+    if argv and argv[0] == "pending":
+        sys.exit(cmd_pending(argv[1:]))
     if argv and argv[0] == "stage":
         rest = argv[1:]
         meta_path = None

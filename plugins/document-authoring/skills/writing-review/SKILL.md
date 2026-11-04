@@ -76,7 +76,8 @@ A skill, a README, or a repo doc reaches Russell when a PR opens, so the gate fi
 It does not fire on `gh pr ready` or `gh pr merge`, which act on an already-open PR whose prose he has already seen - those are the time-to-merge step, not a fresh prose-reaches-Russell moment.
 The hook computes the PR diff itself and blocks unless every changed markdown file that ships has a fresh receipt for its current content.
 The receipt is a freshness check on the file's current content: the review itself stays diff-scoped per "How to run it" above, and the mint targets the whole file, per step 6.
-Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts - and a code-only PR passes straight through.
+Markdown under `.tmp/` and a top-level `handoffs/` is exempt - those are change-explanations, not shipped artifacts.
+The same gate holds the PR's code to a code review in the same pass, and its one block message lists both kinds; the `git-workflow` plugin's `pr-code-review` skill covers the code half.
 Mint each changed prose file after its review, so `gh pr create` lets the PR through; a learning session's PR step already runs the review, and mints there so it composes with this gate rather than fighting it.
 
 When a stage or PR is blocked, the block message names the exact file(s) and the mint command to run, so the path through the gate is always one command away.
