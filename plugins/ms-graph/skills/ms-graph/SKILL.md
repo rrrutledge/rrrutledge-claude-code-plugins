@@ -49,7 +49,7 @@ All under `scripts/`:
   - List unread: `node mail.js --list-unread [--top=30]` (inbox unread, newest-first; one block per message with id + webLink)
   - List inbox (read+unread): `node mail.js --list-inbox [--top=50] [--json]` (inbox items regardless of read state, newest-first, count-capped by `--top`; `--json` emits a structured array for scripts)
   - Search: `node mail.js --search="Okafor" [--top=10]` (flags any hit still sitting in Drafts with `[DRAFT — NOT SENT]`)
-  - Show one: `node mail.js --show=<messageId>` (prints a `*** DRAFT — NOT SENT ***` banner up top if the message is still a draft)
+  - Show one: `node mail.js --show=<messageId>` (prints a `*** DRAFT — NOT SENT ***` banner up top if the message is still a draft). The body prints as plain text with paragraph, line, list, and quoted-reply boundaries kept as line breaks; add `--html` for the raw HTML when paragraph structure matters and the plain-text view is in doubt
   - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker)
   - Sent since: `node mail.js --sent-since=<YYYY-MM-DD> [--json]` (every Sent Items message sent on or after that day, oldest first, with its conversationId, recipients, and plain-text body; read by the send-confidence outcome sweep)
   - Thread: `node mail.js --thread=<conversationId> [--json]` (every message in the conversation across all folders, oldest first, with `fromMe`, the send time, and `isDraft`; read by the drainer's acknowledgement sweep)

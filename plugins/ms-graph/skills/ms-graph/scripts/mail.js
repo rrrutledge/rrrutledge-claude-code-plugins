@@ -131,6 +131,22 @@ const strip = (html) => (html || '')
   .replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
+// Multi-line plain-text view of an HTML body for --show: block boundaries (paragraphs, line breaks,
+// list items, table rows, headings, quoted-reply blocks) become newlines so a reader can see how the
+// message is paragraphed. Runs of blank lines collapse to one.
+const toText = (html) => (html || '')
+  .replace(/<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<\/(p|h[1-6]|blockquote|table)>/gi, '\n\n')
+  .replace(/<\/(div|li|tr|ul|ol)>/gi, '\n')
+  .replace(/<(hr)\b[^>]*>/gi, '\n')
+  .replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&#0*39;/g, "'")
+  .replace(/\r/g, '')
+  .replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n')
+  .replace(/\n{3,}/g, '\n\n').trim();
+
 async function listUnread(client) {
   const data = await client.api('/me/mailFolders/inbox/messages')
     .filter('isRead eq false')
@@ -377,7 +393,7 @@ async function show(client) {
     if (line) console.log(line);
   }
   if (args.html) { console.log('\n' + (m.body?.content || '')); return; }
-  console.log('\n' + strip(m.body?.content));
+  console.log('\n' + toText(m.body?.content));
 }
 
 async function auth(client) {
