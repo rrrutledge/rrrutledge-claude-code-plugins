@@ -90,7 +90,10 @@
 // Draft new:     node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z] [--attach=a.pdf,b.png] [--inline=s1.png,s2.png]
 //                (stages a fresh DRAFT; never sends; prints a draft-id. --body-file is Markdown — bold,
 //                 links, lists all work; HTML tags pass through. Appends GMAIL_SIGNATURE_HTML, if set,
-//                 after the body.)
+//                 after the body. --forward-message-id=<id> appends a real Gmail-style forward of that
+//                 message below the body and signature - the "---------- Forwarded message ---------"
+//                 header with the original From/Date/Subject/To/Cc, then the original HTML body. Pass
+//                 --subject="Fwd: <original subject>". Refuses a message that carries attachments.)
 //                (--attach takes one path or a comma-separated list; files ride along as attachments.
 //                 --inline takes image paths the same way but embeds them in the body via cid: references
 //                 (rendered after the body text), so they show inline instead of as a file list. Inline
@@ -806,12 +809,40 @@ async function reply() {
   console.log(`draft-id: ${draftId}`);
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function forwardAddrs(field) {
+  return field ? field.value.map(a => (a.name ? `${escapeHtml(a.name)} ` : '') + `&lt;${escapeHtml(a.address)}&gt;`).join(', ') : '';
+}
+
+// Gmail's own forward layout: a "Forwarded message" header block, then the original body untouched.
+function forwardBlock(orig) {
+  const sent = orig.date
+    ? orig.date.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/, (\d{1,2}:\d{2})/, ' at $1')
+    : '';
+  const lines = [`From: ${forwardAddrs(orig.from)}`, `Date: ${sent}`, `Subject: ${escapeHtml(orig.subject || '')}`, `To: ${forwardAddrs(orig.to)}`];
+  if (orig.cc) lines.push(`Cc: ${forwardAddrs(orig.cc)}`);
+  return `<br><br><div>---------- Forwarded message ---------<br>${lines.join('<br>')}</div><br>` +
+    (orig.html || escapeHtml(orig.text || '').replace(/\n/g, '<br>'));
+}
+
 async function draftNew() {
   if (!args.to || !args.subject || !args['body-file']) {
     throw new Error('--draft-new requires --to, --subject, and --body-file');
   }
   const html = marked.parse(fs.readFileSync(args['body-file'], 'utf8'));
-  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) });
+  let forwarded = '';
+  if (args['forward-message-id']) {
+    const gid = await findMessageId(args['forward-message-id']);
+    if (!gid) throw new Error('Message to forward not found in inbox or All Mail.');
+    const { parsed: orig } = await getParsed(gid);
+    const carried = (orig.attachments || []).filter(a => !a.related);
+    if (carried.length) throw new Error(`The message to forward carries ${carried.length} attachment(s); --forward-message-id does not carry them.`);
+    forwarded = forwardBlock(orig);
+  }
+  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) + forwarded });
   const draftId = await createDraft(raw, null);
   console.log(`Draft staged in Drafts to ${args.to}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
