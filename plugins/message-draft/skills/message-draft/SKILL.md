@@ -227,9 +227,8 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    A page reload proves nothing: Slack restores the composer from browser-local storage, so a draft can survive a reload and still be missing from the server list and from the user's other devices.
    When the list has no matching draft, create it on the server from the same reviewed body:
    `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
-   A channel mention is `<#C...>`, or `<#G...>` for a private channel; the staged draft must show the channel name, never an id, and `--create-draft` fails when a raw token is left.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
-   For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`; see the **`slack`** skill.
+   For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
 
 ## Mode: `outlook`
 

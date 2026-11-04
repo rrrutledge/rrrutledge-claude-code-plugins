@@ -98,8 +98,8 @@ Under `scripts/` (run with `node`):
     saves the reviewed body as an unsent draft in that conversation, under **Drafts & sent** for Russ to
     review and send himself.
     It reaches no one.
-    The Send mrkdwn (`<url|anchor text>`, `<@U…>`) becomes real links and mentions; `<#C…>`, `<!here>`, and `<!channel>` do too.
-    A private channel or group has an id starting with `G`, so mention it as `<#G…>`; the staged draft must show the channel name, never an id.
+    The Send mrkdwn (`<url|anchor text>`, `<@U…>`) becomes real links and mentions; `<#C…>`, `<#G…>` (a private channel or group), `<!here>`, and `<!channel>` do too.
+    The staged draft shows the channel name.
     After saving, `--create-draft` re-reads the draft and, when any raw `<#…>`, `<@…>`, or bare channel/user id is still in its text, deletes it and fails instead of reporting success; `--list-drafts` flags such a draft with a `!! RAW` line (`rawTokens` in `--json`).
     `*bold*`, `_italic_`, and `~strike~` spans render as styled text; a lone `*`, `snake_case_words`, and anything inside a URL or backtick code span stay literal.
     The writing-review gate requires a receipt on `--body-file`, the same as any other stage.
