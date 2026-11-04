@@ -24,7 +24,7 @@ Launch a fresh session (the handoff-launcher pattern) whose cwd is that repo's l
 ## Everything in the diff is reviewed before the PR opens
 A PR exists for Russell to read as a human, so every review runs on the branch's committed work before `gh pr create`.
 Shipped prose takes `writing-flow`'s Review step, a cold `writing-review` pass; code takes the `pr-code-review` skill.
-`gh pr create` is the gate for both; `pr-code-review`'s **The gate** covers how it works.
+`gh pr create` is the gate for both; `writing-review`'s **The stage gate** covers how it works.
 
 ## Auto Branch/Commit/PR
 **HARD RULE: Never push directly to main. All changes go through a PR - no exceptions.**

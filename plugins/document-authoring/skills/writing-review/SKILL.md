@@ -63,7 +63,7 @@ What reaches him depends on how the loop ended:
 
 The Verify step is contractual, not advisory: a PreToolUse hook (`hooks/verify_gate.py` in this plugin) blocks the moment a piece of writing would reach Russell until a fresh receipt exists for that exact content.
 It guards the two surfaces that reach him - an outward message when a stage command puts it where he sends it, and a PR when it opens for him to read on the Files Changed tab.
-On a PR the same gate also holds the diff's code to a code review, and its one block message lists both kinds; the `git-workflow` plugin's `pr-code-review` skill covers the code half.
+On a PR the same gate also holds the diff's code to a code review, and its one block message lists both kinds; the `git-workflow` plugin's `pr-code-review` skill is the code half.
 The receipt attests that a review ran against this exact text; it never judges the verdict, so the standing-to-disagree rules below still hold - text you reviewed and chose to keep over a finding mints the same way a clean one does.
 
 **Outward messages.**

@@ -619,6 +619,20 @@ def test_unshowable_file_is_skipped_rest_still_gated(tmp_path):
     assert "src/app.py" in r.stdout
 
 
+def test_mint_pending_code_mints_only_pending_code(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "docs/guide.md", "# Guide\n\nUnreviewed prose.\n")
+    commit_file(repo, "src/a.py", "A = 1\n")
+    commit_file(repo, "src/b.py", "B = 2\n")
+    r = run(["mint", "--kind", "code", "--pending", "--base", "main"], cwd=str(repo),
+            receipt_dir=receipts)
+    assert r.returncode == 0
+    r = run(["pending", "--base", "main"], cwd=str(repo), receipt_dir=receipts)
+    assert "code:" not in r.stdout
+    assert "docs/guide.md" in r.stdout
+
+
 def test_mint_kind_without_value_fails(tmp_path):
     body = write_body(tmp_path, "a.py", "A = 1\n")
     r = run(["mint", str(body), "--kind"], receipt_dir=str(tmp_path / "receipts"))

@@ -27,7 +27,8 @@ minting side and the gating side can never drift apart):
                  command whose body file has no fresh receipt, or a PR-open whose changed
                  prose or code files have no fresh receipt of their kind; defers otherwise.
   * mint <f>.. - a review flow's final step: hash each file, write its receipt. `--kind code`
-                 marks a code review (default prose). Optional `--rule-coverage <1-5>` and
+                 marks a code review (default prose); `--pending [--base/--head]` in
+                 place of files mints every file of that kind the PR gate would deny. Optional `--rule-coverage <1-5>` and
                  `--uncertain-spots-file <file>` record the final writing-review round's
                  rating and unsettled spots on the receipt, for scoring.
   * pending [gh pr create args]
@@ -69,6 +70,7 @@ import json
 import time
 import shlex
 import hashlib
+import functools
 import datetime
 import subprocess
 
@@ -299,7 +301,8 @@ def git_output(args):
     """Run a git command in the current working directory and return its stdout, raising on
     any non-zero exit so the caller can fail open."""
     result = subprocess.run(
-        ["git", *args], cwd=os.getcwd(), capture_output=True, text=True
+        ["git", *args], cwd=os.getcwd(), capture_output=True, text=True, encoding="utf-8",
+        errors="replace"
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or f"git {args[0]} failed")
@@ -437,7 +440,7 @@ def head_checkout_root(head):
     for line in git_output(["worktree", "list", "--porcelain"]).splitlines():
         if line.startswith("worktree "):
             worktree = line[len("worktree "):]
-        elif line == f"branch refs/heads/{head}" and worktree:
+        elif line == f"branch refs/heads/{head}":
             return worktree.replace("\\", "/")
     return root
 
@@ -452,13 +455,7 @@ def changed_files(base, head):
     )
     files = []
     for rel in filter(None, out.split("\0")):
-        cache = []
-
-        def read_text():
-            if not cache:
-                cache.append(committed_text(head, rel))
-            return cache[0]
-
+        read_text = functools.cache(lambda: committed_text(head, rel))
         try:
             kind = classify_changed_file(rel, read_text)
             if kind:
@@ -646,7 +643,10 @@ def record_stage(stage, payload):
 def unreviewed_pr_files(args):
     """({"prose": [...], "code": [...]}, repo root) for the PR diff's files that lack a fresh
     receipt of their kind, or None when the diff can't be computed (fail-open). Each file is
-    hashed as committed on the PR's head, the content the PR shows."""
+    hashed as committed on the PR's head, the content the PR shows. A PR aimed at another
+    repo also returns None, since the cwd diff isn't its diff."""
+    if repo_flag_targets_other_repo(args):
+        return None
     try:
         base, head = resolve_pr_base(args), resolve_pr_head(args)
         if not base or not head:
@@ -680,8 +680,6 @@ def pr_review_deny_reason(command):
     if not action:
         return None
     _verb, args = action
-    if repo_flag_targets_other_repo(args):
-        return None
     found = unreviewed_pr_files(args)
     if found and found[0]:
         return pr_block_reason(*found)
@@ -721,7 +719,7 @@ def run_hook():
 
 # --- mint / check subcommands ---
 
-def cmd_mint(paths, verdict, rule_coverage=None, uncertain_spots_file=None, kind="prose"):
+def cmd_mint(paths, verdict, rule_coverage, uncertain_spots_file, kind):
     if kind not in {"prose", "code"}:
         print("mint: --kind must be prose or code", file=sys.stderr)
         return 2
@@ -853,8 +851,21 @@ def main():
         if "--score-context" in values:
             print("mint: --score-context is ignored - the stage gate scores every staged draft",
                   file=sys.stderr)
+        kind = values.get("--kind", "prose")
+        if "--pending" in rest:
+            # The remaining args are the PR's own (--base/--head); mint every file of this
+            # kind the PR gate would deny, so the review flow's last step is one call.
+            found = unreviewed_pr_files([a for a in rest if a != "--pending"])
+            if found is None:
+                print("mint: could not compute the PR diff", file=sys.stderr)
+                sys.exit(2)
+            unreviewed, root = found
+            rest = [f"{root}/{rel}" for rel in unreviewed.get(kind, [])]
+            if not rest:
+                print(f"mint: no pending {kind} files")
+                sys.exit(0)
         sys.exit(cmd_mint(rest, values.get("--verdict"), values.get("--rule-coverage"),
-                          values.get("--uncertain-spots-file"), values.get("--kind", "prose")))
+                          values.get("--uncertain-spots-file"), kind))
     if argv and argv[0] == "pending":
         sys.exit(cmd_pending(argv[1:]))
     if argv and argv[0] == "stage":
