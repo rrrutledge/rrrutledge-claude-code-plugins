@@ -576,6 +576,55 @@ def test_hand_written_do_not_edit_comment_is_still_code(tmp_path):
     assert decision(r.stdout) == "DENY"
 
 
+def test_head_flag_mints_from_the_branch_worktree(tmp_path):
+    # The branch is checked out in another worktree; the block message names files there,
+    # so minting exactly what it prints lets the PR through.
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "src/app.py", "print('hi')\n")
+    git(str(repo), "checkout", "-q", "main")
+    wt = tmp_path / "wt"
+    git(str(repo), "worktree", "add", "-q", str(wt), "feature")
+    r = run(["pending", "--head", "feature", "--base", "main"], cwd=str(repo),
+            receipt_dir=receipts)
+    path = r.stdout.strip()[len("code: "):]
+    assert os.path.isfile(path) and "wt" in path
+    run(["mint", "--kind", "code", path], receipt_dir=receipts)
+    r = run([], stdin=bash_payload("gh pr create --head feature --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DEFER"
+
+
+def test_writes_generated_output_comment_is_still_code(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    commit_file(repo, "src/gen_config.py",
+                "# Writes generated config - do not edit the output by hand\nX = 1\n")
+    r = run([], stdin=bash_payload("gh pr create --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
+
+
+def test_unshowable_file_is_skipped_rest_still_gated(tmp_path):
+    receipts = str(tmp_path / "receipts")
+    repo = make_repo(tmp_path)
+    (tmp_path / "subsrc").mkdir()
+    sub = make_repo(tmp_path / "subsrc")
+    git(str(repo), "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(sub), "vendor/sub")
+    git(str(repo), "commit", "-qm", "add submodule")
+    commit_file(repo, "src/app.py", "print('hi')\n")
+    r = run([], stdin=bash_payload("gh pr create --base main"),
+            cwd=str(repo), receipt_dir=receipts)
+    assert decision(r.stdout) == "DENY"
+    assert "src/app.py" in r.stdout
+
+
+def test_mint_kind_without_value_fails(tmp_path):
+    body = write_body(tmp_path, "a.py", "A = 1\n")
+    r = run(["mint", str(body), "--kind"], receipt_dir=str(tmp_path / "receipts"))
+    assert r.returncode == 2
+
+
 def test_makefile_is_code(tmp_path):
     receipts = str(tmp_path / "receipts")
     repo = make_repo(tmp_path)

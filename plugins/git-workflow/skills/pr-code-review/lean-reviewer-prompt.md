@@ -3,8 +3,8 @@
 You are reviewing a code change for its size.
 A separate pass covers correctness; report findings for the two checks below.
 
-**Inputs:** the base ref, the code files under review, and a short statement of what the change is for.
-Read the change with `git diff <base>...HEAD -- <files>`, or `git diff <range> -- <files>` when given a commit range of fixes, and read or search the rest of the repo as needed to see what uses what.
+**Inputs:** the base and head refs, the code files under review, and a short statement of what the change is for.
+Read the change with `git diff <base>...<head> -- <files>`, or `git diff <range> -- <files>` when given a commit range of fixes, and read or search the rest of the repo as needed to see what uses what.
 
 ## Check 1 - every added line is used
 

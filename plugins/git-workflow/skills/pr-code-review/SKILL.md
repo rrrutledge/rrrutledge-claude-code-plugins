@@ -23,7 +23,7 @@ The steps below call the gate script `<gate>`; `writing-review`'s mint step (How
 2. **Correctness pass.**
    Invoke the `code-review` skill at `medium` effort with the current branch as the target.
 3. **Lean pass.**
-   Dispatch a fresh subagent with `lean-reviewer-prompt.md`, giving it the base ref, the `code:` files, and one or two sentences on what the change is for.
+   Dispatch a fresh subagent with `lean-reviewer-prompt.md`, giving it the base and head refs (`HEAD` unless the PR names another `--head`), the `code:` files, and one or two sentences on what the change is for.
    The reviewer must come to the diff cold, for the same reason `writing-review` gives for its own reviewer.
 4. Apply the findings you accept from both passes and commit them.
 5. Review the fixes: run steps 2 and 3 again, each with a fresh reviewer.
@@ -33,4 +33,4 @@ The steps below call the gate script `<gate>`; `writing-review`'s mint step (How
 7. Run `pending` again, so files the fixes touched are included, and mint every `code:` path it prints: `python <gate> mint --kind code <path> <path> ...`.
    Then open the PR.
 
-The PR body carries one line per finding you rejected and why, and what is still contested after three rounds; a clean loop adds nothing to it.
+The PR body carries one line per finding you rejected and why, and what is still contested after three rounds.

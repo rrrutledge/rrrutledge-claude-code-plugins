@@ -22,9 +22,9 @@ Claude Code auto-loads `CLAUDE.md` only from the session's own working-directory
 Launch a fresh session (the handoff-launcher pattern) whose cwd is that repo's local checkout - its `~/Dev` clone, or one made per "Writing files to other repos" below - and write the seed so it tells the new session to read that repo's `CONTRIBUTING.md` and any `.github/PULL_REQUEST_TEMPLATE*`, so the reminder rides in with the launch rather than depending on memory.
 
 ## Everything in the diff is reviewed before the PR opens
-A PR exists for Russell to read as a human, so every review runs on the working tree before `gh pr create`.
+A PR exists for Russell to read as a human, so every review runs on the branch's committed work before `gh pr create`.
 Shipped prose takes `writing-flow`'s Review step, a cold `writing-review` pass; code takes the `pr-code-review` skill.
-`gh pr create` is the gate for both: one hook lists every changed file still lacking a review receipt and the command that mints each, and the `pr-code-review` skill describes how it decides which review a file needs.
+`gh pr create` is the gate for both; `pr-code-review`'s **The gate** covers how it works.
 
 ## Auto Branch/Commit/PR
 **HARD RULE: Never push directly to main. All changes go through a PR - no exceptions.**

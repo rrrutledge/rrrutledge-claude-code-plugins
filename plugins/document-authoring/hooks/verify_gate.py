@@ -13,7 +13,7 @@ Two surfaces reach Russell, and the hook gates both against one receipt store:
     gate keys on the body FILE that command passes (gmail.js / mail.js --body-file; ms-rest
     outlook-mail.js --json; a browser-chauffeur composer's declared --body-file).
   * A PR reaches him when it opens: a PR exists for him to read as a human on the Files
-    Changed tab, so every review runs on the working tree first. The gate fires on
+    Changed tab, so every review runs before it opens. The gate fires on
     `gh pr create` (a draft counts; Russell reviews drafts there), computes the PR diff
     itself, classifies each changed file as prose, code, or neither, and denies once,
     listing every unreviewed file of either kind. It does NOT fire on `gh pr ready` or
@@ -254,13 +254,18 @@ CODE_EXTENSIONS = {
 # Build files whose fixed name, rather than an extension, marks them as program logic.
 CODE_FILENAMES = {"makefile", "dockerfile", "justfile"}
 
-# A tool's generated-file header: `@generated`, or a line saying the file was generated
-# and is not to be edited. Such a file has no author to hold to the review's checks.
-GENERATED_HEADER = re.compile(r"@generated|generated\b.*\bdo not edit", re.IGNORECASE)
+# A tool's generated-file header: a comment line that opens with `@generated`, or opens by
+# saying the file was generated and goes on to say not to edit it. Such a file has no
+# author to hold to the review's checks.
+GENERATED_HEADER = re.compile(
+    r"^\W*(@generated\b|(code )?generated (by|from)\b.*\bdo not edit)", re.IGNORECASE)
 
 
-def classify_changed_file(rel_path, text):
+def classify_changed_file(rel_path, read_text):
     """Which review a changed file in a PR diff needs: "prose", "code", or None.
+
+    `read_text()` returns the file's content; it is called only when the path alone leaves
+    the kind open, so most files in a large diff are never read.
 
     The test: a file is prose when it is markdown that ships in Russell's voice, and code
     when a person wrote program logic in it - a source-language or build file, or an
@@ -280,8 +285,10 @@ def classify_changed_file(rel_path, text):
         return "prose"
     name = segments[-1].lower()
     ext = os.path.splitext(name)[1]
-    if (ext not in CODE_EXTENSIONS and name not in CODE_FILENAMES
-            and not (ext == "" and text.startswith("#!"))):
+    if ext not in CODE_EXTENSIONS and name not in CODE_FILENAMES and ext != "":
+        return None
+    text = read_text()
+    if ext == "" and name not in CODE_FILENAMES and not text.startswith("#!"):
         return None
     if any(GENERATED_HEADER.search(line) for line in text.splitlines()[:5]):
         return None
@@ -419,22 +426,45 @@ def committed_text(head, rel):
     return normalize(result.stdout)
 
 
+def head_checkout_root(head):
+    """The working tree holding the PR's head, where the review flow mints: the cwd's own
+    repo root for the checked-out branch, else the worktree that has branch `head` checked
+    out, falling back to the cwd's root when none does."""
+    root = git_output(["rev-parse", "--show-toplevel"]).strip()
+    if head == "HEAD":
+        return root
+    worktree = None
+    for line in git_output(["worktree", "list", "--porcelain"]).splitlines():
+        if line.startswith("worktree "):
+            worktree = line[len("worktree "):]
+        elif line == f"branch refs/heads/{head}" and worktree:
+            return worktree.replace("\\", "/")
+    return root
+
+
 def changed_files(base, head):
     """(repo-root-relative path, kind, committed text) for each prose or code file the PR
     adds or changes, against `base` at the merge base (three-dot, matching the diff GitHub
-    shows). Deletions are excluded - a removed file has no content to review."""
+    shows). Deletions are excluded - a removed file has no content to review. A file whose
+    content git can't show (a submodule pointer) is skipped; the rest are still gated."""
     out = git_output(
-        ["diff", "--name-only", "--diff-filter=ACMR", f"{base}...{head}"]
+        ["diff", "--name-only", "-z", "--diff-filter=ACMR", f"{base}...{head}"]
     )
     files = []
-    for line in out.splitlines():
-        rel = line.strip()
-        if not rel:
+    for rel in filter(None, out.split("\0")):
+        cache = []
+
+        def read_text():
+            if not cache:
+                cache.append(committed_text(head, rel))
+            return cache[0]
+
+        try:
+            kind = classify_changed_file(rel, read_text)
+            if kind:
+                files.append((rel, kind, read_text()))
+        except Exception:
             continue
-        text = committed_text(head, rel)
-        kind = classify_changed_file(rel, text)
-        if kind:
-            files.append((rel, kind, text))
     return files
 
 
@@ -479,7 +509,7 @@ def pr_block_reason(unreviewed, root):
     lines = [
         "Blocked: opening this PR needs a fresh review of everything unreviewed in its diff.",
         "A PR exists for Russell to read as a human on the Files Changed tab, so every "
-        "review runs on the working tree before the PR opens.",
+        "review runs on the branch's committed work before the PR opens.",
     ]
     if prose:
         lines.append("Markdown with no writing-review receipt for its current content:")
@@ -621,7 +651,7 @@ def unreviewed_pr_files(args):
         base, head = resolve_pr_base(args), resolve_pr_head(args)
         if not base or not head:
             return None
-        root = git_output(["rev-parse", "--show-toplevel"]).strip()
+        root = head_checkout_root(head)
         files = changed_files(base, head)
     except Exception:
         return None
@@ -691,8 +721,7 @@ def run_hook():
 
 # --- mint / check subcommands ---
 
-def cmd_mint(paths, verdict, rule_coverage=None, uncertain_spots_file=None, kind=None):
-    kind = kind or "prose"
+def cmd_mint(paths, verdict, rule_coverage=None, uncertain_spots_file=None, kind="prose"):
     if kind not in {"prose", "code"}:
         print("mint: --kind must be prose or code", file=sys.stderr)
         return 2
@@ -825,7 +854,7 @@ def main():
             print("mint: --score-context is ignored - the stage gate scores every staged draft",
                   file=sys.stderr)
         sys.exit(cmd_mint(rest, values.get("--verdict"), values.get("--rule-coverage"),
-                          values.get("--uncertain-spots-file"), values.get("--kind")))
+                          values.get("--uncertain-spots-file"), values.get("--kind", "prose")))
     if argv and argv[0] == "pending":
         sys.exit(cmd_pending(argv[1:]))
     if argv and argv[0] == "stage":
