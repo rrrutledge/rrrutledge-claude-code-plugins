@@ -18,7 +18,7 @@ import re
 
 from . import ai, config
 from .log import log_debug
-from .paths import is_in_trusted_script_dir, read_script_file, resolve_against_cwd
+from .paths import is_in_trusted_script_dir, is_untracked_in_git_repo, read_script_file, resolve_against_cwd
 from .shell import ASSIGNMENT_ONLY, has_unquoted_windows_drive_path, shell_tokenize
 from .trust import get_trusted
 
@@ -47,6 +47,16 @@ def _record_block(filename, language, reason):
         'commands. If it is legitimately privileged (e.g. a launcher that spawns sessions), add '
         'its directory to the safe-compounds "trusted_script_dirs" config or add a scoped '
         'Bash(...) allow rule for it instead of broadening the script.'
+    )
+
+
+def _record_untracked_script_block(filename):
+    global _last_block_reason
+    _last_block_reason = (
+        f'BLOCKED: "{filename}" is inside a git repo but not tracked by git, and it is not in a '
+        'trusted script directory, so it reads as a throwaway helper. Move it to .tmp/ '
+        '(e.g. .tmp/<name>.py) and run it from there. If it is real project code, commit it '
+        'first and rerun.'
     )
 
 
@@ -239,6 +249,9 @@ def _check_segment(seg, command, language, inline_flag):
         if content is None:
             _record_missing_script(filename, language)
             return False
+        if is_untracked_in_git_repo(filename):
+            _record_untracked_script_block(filename)
+            return False
         verdict, reason = ask_ai_about_script(content, language, command_line=seg)
         if verdict is False:
             _record_block(filename, language, reason)
@@ -273,6 +286,9 @@ def check_direct_script_segment(seg, language):
         return True
     if content is None:
         _record_missing_script(filename, language)
+        return False
+    if is_untracked_in_git_repo(filename):
+        _record_untracked_script_block(filename)
         return False
     verdict, reason = ask_ai_about_script(content, language, command_line=seg)
     if verdict is False:
