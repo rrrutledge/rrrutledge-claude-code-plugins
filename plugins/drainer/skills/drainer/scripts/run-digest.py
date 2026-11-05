@@ -26,75 +26,21 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from drainer_config import read_config, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 from provider_base import (run_node, spawn_bg, prompt_seed, write_receipt, load_providers,  # noqa: E402
-                           ProviderError, load_seen,  # shared subprocess + background-session launch + adapter loader + seen-state reader
-                           bg_session, claude_agents)  # session-mgr's job records + live-session list
+                           ProviderError, load_seen)  # shared subprocess + background-session launch + adapter loader + seen-state reader
 import ack_sweep  # noqa: E402  (the once-a-day acknowledgement sweep)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
 # the same generous bound the poller enumerates with, so the count reflects the whole current listing.
 ENUMERATE_PAGE_SIZE = 500
-# How long a running background session waits on Russell before the digest lists it (digest-core.md
-# step 1c).
-WAITING_LISTED_AFTER = datetime.timedelta(hours=12)
 
 
-def waiting_sessions(agents, now=None):
-    """The running background sessions waiting on Russell for at least WAITING_LISTED_AFTER, oldest
-    first: each `{id, name, needs, since}`, where `needs` is the ask the service recorded from the
-    session's last turn and `since` is that turn's time. `agents` is the `claude agents` list; None
-    (the list couldn't be read) returns None."""
-    if agents is None:
-        return None
-    now = now or datetime.datetime.now(datetime.timezone.utc)
-    out = []
-    for a in agents:
-        if (a.get("kind") != "background" or not a.get("pid") or a.get("state") != "blocked"
-                or a.get("status") == "busy" or not a.get("id")):
-            continue
-        job = bg_session.find_job(a["id"])[1] or {}
-        try:
-            since = datetime.datetime.fromisoformat(str(job.get("updatedAt")).replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if now - since < WAITING_LISTED_AFTER:
-            continue
-        out.append({"id": a["id"], "name": a.get("name") or job.get("name") or a["id"],
-                    "needs": job.get("needs") or job.get("detail") or "", "since": since.isoformat()})
-    return sorted(out, key=lambda s: s["since"])
-
-
-def format_waiting(sessions):
-    """The waiting-sessions list as a terse block, one line per session with how to open it; None when
-    no session is waiting."""
-    if sessions is None:
-        return "Waiting on you: unavailable this run (the `claude agents` list couldn't be read)."
-    if not sessions:
-        return None
-    lines = [f"Waiting on you ({len(sessions)} running session(s) idle at least "
-             f"{int(WAITING_LISTED_AFTER.total_seconds() // 3600)} hours on a question for Russell):"]
-    for s in sessions:
-        lines.append(f"    \"{s['name']}\" - waiting since {_fmt_local(s['since'])} - "
-                     f"`claude attach {s['id']}`\n        asks: {s['needs'] or '(no ask recorded)'}")
-    return "\n".join(lines)
-
-
-def measure_waiting():
-    """The rendered waiting-sessions block, or None when nothing is waiting. A failure renders as an
-    unavailable line, since it must never keep the digest from launching."""
-    try:
-        return format_waiting(waiting_sessions(claude_agents()))
-    except Exception as e:
-        return f"Waiting on you: unavailable this run ({e})."
-
-
-def write_seed(runtime_dir, repo, cfg, backlog_block, waiting_block=None):
+def write_seed(runtime_dir, repo, cfg, backlog_block):
     """Write the digest session's prompt file: a pointer to digest-core.md plus the few runtime
-    facts it can't infer (where the queue/state live, the providers dir), the pre-computed
+    facts it can't infer (where the queue/state live, the providers dir), and the pre-computed
     backlog-depth barometer the launcher measured for this run (so the session presents real numbers
-    rather than recomputing them), and the waiting-sessions list. A None `backlog_block` means the
-    barometer is toggled off, and the seed says so instead; a None `waiting_block` means no session is
-    waiting."""
+    rather than recomputing them). A None `backlog_block` means the barometer is toggled off, and the
+    seed says so instead."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, "digest.prompt.txt")
@@ -105,11 +51,6 @@ def write_seed(runtime_dir, repo, cfg, backlog_block, waiting_block=None):
     else:
         backlog_fact = ("- Backlog depth measured by the launcher for this run (digest-core step 1b - present "
                         f"it verbatim as the read-only barometer, do not recompute):\n{backlog_block}\n\n")
-    if waiting_block is None:
-        waiting_fact = "- Waiting on you: no running session is waiting - skip digest-core step 1c.\n\n"
-    else:
-        waiting_fact = ("- Sessions waiting on you, listed by the launcher for this run (digest-core step 1c - "
-                        f"present it verbatim):\n{waiting_block}\n\n")
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are the drainer EOD digest session. Read `~/.claude/CLAUDE.md`, then follow the "
@@ -123,7 +64,7 @@ def write_seed(runtime_dir, repo, cfg, backlog_block, waiting_block=None):
             "these (read it for CLEAR and JUNK-LEARNING).\n"
             f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` — read it FIRST "
             "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
-            + backlog_fact + waiting_fact +
+            + backlog_fact +
             "Present the digest to Russell and clear NOTHING until he approves. Draft-only: never send "
             "or post. When the queue is emptied (or Russell defers) and you are done, stop.\n"
         )
@@ -285,7 +226,6 @@ def print_brief(runtime_dir, cfg, repo):
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
     print(measure_backlog(runtime_dir, cfg) or "Backlog depth: turned off (show_backlog_depth: false).")
-    print(measure_waiting() or "Waiting on you: no running session is waiting.")
     try:
         due = ack_sweep.daily_sweep(ack_sweep.Review(repo), dry_run=True)
         print(f"  Acknowledgements due: {len(due)} conversation(s)"
@@ -313,7 +253,7 @@ def main():
         print_brief(runtime_dir, cfg, repo)
         return
 
-    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg), measure_waiting())
+    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg))
     # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
     # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
     # kept in a sibling summary file, the way a worker's is.

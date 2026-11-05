@@ -71,8 +71,9 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     os.makedirs(backup_dir)
     saved = (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
              bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-             bg_session.WAKES_PATH)
+             bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH)
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
+    find_orphans.STALE_RESPAWNS_PATH = os.path.join(tmp, "stale-respawns.json")
     find_orphans.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     find_orphans.active_session_ids = lambda: set(active)
     find_orphans.pid_still_claude = pid_alive
@@ -97,7 +98,7 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     finally:
         (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
          bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-         bg_session.WAKES_PATH) = saved
+         bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH) = saved
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -456,6 +457,44 @@ def test_cli_prints_json():
         check("stdout is valid JSON", False, result.stdout[:200])
 
 
+def test_stale_bridge_respawned_once_per_turn():
+    print("test: a live blocked/done session with a bridge id on record and no turn for STALE_BRIDGE_AFTER "
+          "is respawned once for that turn; a fresh, working, bridge-less or not-live one is left")
+    saved = {k: getattr(bg_session, k) for k in ("respawn_session", "find_job")}
+    saved_path = find_orphans.STALE_RESPAWNS_PATH
+    tmp = tempfile.mkdtemp(prefix="test-stale-bridge-")
+    find_orphans.STALE_RESPAWNS_PATH = os.path.join(tmp, "stale-respawns.json")
+    resumed = []
+    bg_session.find_job = lambda short: (None, {})
+    bg_session.respawn_session = lambda short, cfg: resumed.append(short)
+    try:
+        def job(sid, state, updated, bridge="cse_x"):
+            return ("", {"sessionId": sid, "state": state, "bridgeSessionId": bridge, "backend": "daemon",
+                         "updatedAt": updated})
+        stale, fresh, working, nobridge, notlive = new_id(), new_id(), new_id(), new_id(), new_id()
+        old_turn = ago(hours=9)
+        jobs = [job(stale, "blocked", old_turn), job(fresh, "blocked", ago(hours=1)),
+                job(working, "working", old_turn), job(nobridge, "blocked", old_turn, bridge=None),
+                job(notlive, "blocked", old_turn)]
+        active = {stale, fresh, working, nobridge}
+        short = lambda sid: sid.split("-", 1)[0]
+        check("only the stale idle session is respawned",
+              find_orphans.stale_bridge_respawns(jobs, active) == [short(stale)], resumed)
+        check("a second sweep on the same turn leaves it alone",
+              find_orphans.stale_bridge_respawns(jobs, active) == [], resumed)
+        jobs[0] = job(stale, "blocked", ago(hours=10, minutes=1))
+        check("a new turn that goes stale is respawned again",
+              find_orphans.stale_bridge_respawns(jobs, active) == [short(stale)], resumed)
+        find_orphans.stale_bridge_respawns(jobs, set())
+        check("a session no longer live drops out of the log", find_orphans._load_json(
+            find_orphans.STALE_RESPAWNS_PATH) == {}, find_orphans._load_json(find_orphans.STALE_RESPAWNS_PATH))
+    finally:
+        for k, v in saved.items():
+            setattr(bg_session, k, v)
+        find_orphans.STALE_RESPAWNS_PATH = saved_path
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_bridgeless_live_sessions_repaired_then_raised():
     print("test: a live blocked/done session with no bridge is respawned in place; a working one is left; "
           "one still bridge-less after the attempts is stopped and raised as an orphan")
@@ -529,6 +568,7 @@ if __name__ == "__main__":
     test_self_close_read_from_tail_of_large_transcript()
     test_pid_still_claude_false_for_missing_pid()
     test_cli_prints_json()
+    test_stale_bridge_respawned_once_per_turn()
     test_bridgeless_live_sessions_repaired_then_raised()
     print()
     if failures:

@@ -15,9 +15,11 @@ those sessions in two places:
     (BLOCKED_JOBS_SINCE for a blocked one), and held back by the wake backoff for a session Russell
     keeps leaving untouched (wake_backoff). A registry entry that has a job record is judged by the
     job record alone.
-It also repairs live blocked or done background sessions whose Remote Control bridge is down (no
-bridgeSessionId in the job record) - see bridgeless_orphans; one still bridge-less after
-BRIDGE_REPAIR_ATTEMPTS cycles comes back as an orphan.
+It also repairs live blocked or done background sessions whose job record has lost its
+bridgeSessionId - see bridgeless_orphans; one still bridge-less after
+BRIDGE_REPAIR_ATTEMPTS cycles comes back as an orphan. A bridge can also drop while the job record
+keeps its bridgeSessionId, so a live blocked or done session with no turn for STALE_BRIDGE_AFTER is
+respawned once for that turn too - see stale_bridge_respawns.
 This does NOT run the resume-sessions skill's fallback scan (every session transcript's tail) -
 that stays exclusive to the interactive skill, which calls it as a separate step. This script is
 deliberately fast enough to run every drainer poll cycle (a few seconds' work, mostly the
@@ -56,12 +58,19 @@ ENDED_STATES = {"stopped", "done"}
 # Job states that are never resumed from the job record. "stopped" is an executed `claude stop` - by
 # the session closing itself or by Russell - so a deliberate close.
 JOB_STATES_LEFT_ALONE = {"stopped"}
-# Live background sessions in these states with no Remote Control bridge are repaired by
-# bridgeless_orphans; a working one is left for a later cycle. A session still bridge-less after
+# Live background sessions in these states get their Remote Control bridge repaired - by
+# bridgeless_orphans when the job record has no bridgeSessionId, by stale_bridge_respawns when the
+# bridge is stale; a working one is left for a later cycle. A session still bridge-less after
 # BRIDGE_REPAIR_ATTEMPTS cycles of failed repair is raised as an orphan.
 BRIDGE_REPAIR_STATES = {"blocked", "done"}
 BRIDGE_REPAIR_ATTEMPTS = 2
 BRIDGE_REPAIRS_PATH = os.path.expanduser("~/.claude/session-mgr/bridge-repairs.json")
+# Russell works every session on Remote Control through the day, so a live blocked or done session left
+# this long since its last turn is treated as having a bridge he can't reach, even when its job record
+# still holds a bridgeSessionId. It is respawned once per turn; STALE_RESPAWNS_PATH keeps the turn (the job's
+# updatedAt) each session was last respawned for.
+STALE_BRIDGE_AFTER = timedelta(hours=8)
+STALE_RESPAWNS_PATH = os.path.expanduser("~/.claude/session-mgr/stale-respawns.json")
 # Job records last touched before this are never resumed. The service's mislabelled retirements
 # began losing sessions on 2026-09-28; everything older predates that and is left where it lies, so
 # older job records aren't mass-resurrected.
@@ -277,24 +286,57 @@ def retired_job_orphans(jobs, active, now=None):
     return orphans
 
 
-def _load_repairs():
+def _load_json(path):
     try:
-        with open(BRIDGE_REPAIRS_PATH, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
 
 
-def _save_repairs(repairs):
+def _save_json(path, data):
     try:
-        os.makedirs(os.path.dirname(BRIDGE_REPAIRS_PATH), exist_ok=True)
-        tmp_path = BRIDGE_REPAIRS_PATH + f".tmp.{os.getpid()}"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp_path = path + f".tmp.{os.getpid()}"
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(repairs, f, indent=2)
-        os.replace(tmp_path, BRIDGE_REPAIRS_PATH)
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)
     except OSError:
         pass
+
+
+def _load_repairs():
+    return _load_json(BRIDGE_REPAIRS_PATH)
+
+
+def _save_repairs(repairs):
+    _save_json(BRIDGE_REPAIRS_PATH, repairs)
+
+
+def stale_bridge_respawns(jobs, active, now=None):
+    """Respawn, in place, every live blocked or done background session whose job record still
+    holds a bridgeSessionId but whose last turn is at least STALE_BRIDGE_AFTER old - once per turn,
+    keyed by the job's updatedAt in STALE_RESPAWNS_PATH. A session with no bridge id at all is
+    bridgeless_orphans' to repair. Returns the short ids respawned."""
+    now = now or datetime.now(timezone.utc)
+    done, respawned = _load_json(STALE_RESPAWNS_PATH), []
+    kept = {sid: turn for sid, turn in done.items() if sid in active}
+    for _, job in jobs:
+        sid, short = job["sessionId"], job.get("daemonShort") or job["sessionId"].split("-", 1)[0]
+        turn = job.get("updatedAt")
+        if (sid not in active or job.get("state") not in BRIDGE_REPAIR_STATES or not job.get("bridgeSessionId")
+                or job.get("backend") != "daemon" or kept.get(sid) == turn):
+            continue
+        ended = _parse_time(turn)
+        if ended is None or now - ended < STALE_BRIDGE_AFTER:
+            continue
+        bg_session.respawn_session(short, bg_session.find_job(short)[0] or None)
+        kept[sid] = turn
+        respawned.append(short)
+    if kept != done:
+        _save_json(STALE_RESPAWNS_PATH, kept)
+    return respawned
 
 
 def bridgeless_orphans(jobs, active):
@@ -371,6 +413,7 @@ def find_confirmed_orphans():
         for sid in to_prune:
             registry.pop(sid, None)
         save_registry(registry)
+    stale_bridge_respawns(jobs, active)
     return orphans + retired_job_orphans(jobs, active) + bridgeless_orphans(jobs, active)
 
 

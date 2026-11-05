@@ -1,12 +1,12 @@
 # orphan-sessions provider - crash-recovered and retired Claude Code sessions (highest priority)
 
-A provider for sessions the live-session registry confirms need resuming and aren't currently running: a session interrupted by a crash or forced restart (which never fires `SessionEnd`), or a session Russell started by hand in a terminal whose tab closed abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"`, and the registry hook keeps rather than deregisters, because the entry carries a `host_pid` marking it as a hand-started terminal session the user parked and wants back).
+A provider for sessions the live-session registry confirms need resuming and aren't currently running: a session interrupted by a crash or forced restart (which never fires `SessionEnd`), or a session Russell started by hand in a terminal whose tab closed abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"`, and the registry hook keeps rather than deregisters, because the entry carries a `host_pid` marking it as a hand-started terminal session that Russell parked and wants back).
 It also covers a background session the background service retired for idling (or for low memory) without anyone closing it, found through the service's own job records even after the service drops it from `claude agents` and its registry entry is gone.
 That includes one retired as blocked - waiting on Russell's answer - which `claude agents` keeps listing offline with no process behind it.
-A session still running while it waits on him is not an orphan; the EOD digest lists it instead (`../engine/digest-core.md` step 1c).
 A deliberate end - `/exit`, `/clear`, an executed `claude stop` or `claude rm`, or the `session-mgr:close` self-close - deregisters or stops the session instead, so it is not resumed.
 `find-orphans.py`'s docstring holds the full detection rules, including the wake backoff for a session Russell keeps leaving untouched.
-Implements `../engine/provider.md`'s adapter contract; classify by `../engine/triage.md` - though in practice this source skips AI triage entirely (see below). id prefix: `orphan-`.
+Implements `../engine/provider.md`'s adapter contract; classify by `../engine/triage.md` - though in practice this source skips AI triage entirely (see below).
+id prefix: `orphan-`.
 
 ## Not like the other sources: no worker, no CLEAR, no draft
 
@@ -17,8 +17,8 @@ A retired background session is woken in place instead (see `spawn_bg` in sessio
 Orphans take needs-you worker slots like any other item, ahead of every other source, so a backlog of them comes back a few at a time as the waiting pile drops below `target_reviewable` rather than all at once.
 A resume that returns no session id stays unrecorded and is tried again next cycle.
 The resumed session keeps the orphan's original name, read back from the orphan's transcript (its last custom title, else its AI-generated title), so several resumed sessions stay distinguishable and a second crash still reads the same name; a session with no recorded name is titled `Resume: <directory>`.
-Russell continues in his own resumed conversation from there - there is nothing for a worker to read, act on, or clear, because the "item" isn't a message waiting for a reply, it's Russell's own interrupted work.
-Because of this, the sections below that a normal provider's worker would use are N/A rather than omitted (per `../engine/provider.md`'s "MUST define" contract) - the sections still exist so it's clear they were considered, not forgotten.
+Russell continues in his own resumed conversation from there - there is nothing for a worker to read, act on, or clear, because the item is Russell's own interrupted work.
+Because of this, the sections below that a normal provider's worker would use are N/A rather than omitted (per `../engine/provider.md`'s "MUST define" contract) - the sections still exist so it's clear each was considered.
 
 ## AUTH-GLANCE
 
@@ -43,7 +43,7 @@ Dispatch (successfully launching the resumed session) is recorded as seen the sa
 
 ## JUNK-LEARNING
 
-N/A - a crash-orphaned session is never junk; there's no inbound noise to teach a filter against.
+N/A - an orphaned session is never junk; there's no inbound noise to teach a filter against.
 
 ## DRAFT-MODE
 
