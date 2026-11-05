@@ -293,6 +293,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Say the thing plainly rather than reaching for a punchy interjection, a colorful idiom, or a dry aside — "she had a tough first week", not "she got a rude awakening" followed by "so that was interesting."
   When a warm contact wraps their own news in jokes or wordplay, react to the news itself with plain enthusiasm rather than volleying their wordplay back.
   The plain-speech rule above targets decorating a description, not a genuine reaction to someone else's good news — that's **Warm exclamations used genuinely**, below.
+  **A wry aside about their own circumstances, which isn't news, is the counterpart to the news rule above: answer it with a brief "Haha" beat in the same light tone and a nod to their point,** before the answer, as with the light joking apology under "When someone mentions something negative".
 - **Speak as the org when you represent it, and add a brief warm aside.**
   Writing on behalf of an organization Russell leads, use "we/us" for its appreciation, questions, position, and ongoing activity - not a bare, subject-less verb; open with a short human acknowledgment before getting to the point.
   **When someone else owns the work or the plan, name them rather than saying "we"**, so they get the credit and the recipient knows whose it is and who to expect to hear from.
