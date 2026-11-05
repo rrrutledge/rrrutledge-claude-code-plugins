@@ -312,19 +312,22 @@ def test_retired_blocked_job_is_orphan():
         check("unlisted retired blocked job is an orphan", unlisted in ids, f"got {ids}")
 
 
-def test_blocked_job_bounded_by_its_own_cutoff():
-    print("test: a retired blocked job last touched before BLOCKED_JOBS_SINCE is left alone, while a "
-          "done job from the same day is still an orphan")
-    when = iso(find_orphans.BLOCKED_JOBS_SINCE - timedelta(days=1))
-    blocked, done = new_id(), new_id()
+def test_job_label_does_not_matter():
+    print("test: retired blocked and done jobs share one cutoff - both orphans after JOBS_SINCE, "
+          "both left alone before it")
+    after = iso(find_orphans.JOBS_SINCE + timedelta(days=1))
+    before = iso(find_orphans.JOBS_SINCE - timedelta(days=1))
+    jobs = {(state, when): new_id() for state in ("blocked", "done") for when in (after, before)}
     with sandbox([]) as (_, write_transcript, _b):
-        write_job(bg_session.DEFAULT_CONFIG_DIR, blocked, state="blocked", updated=when)
-        write_job(bg_session.DEFAULT_CONFIG_DIR, done, state="done", updated=when)
-        write_transcript(blocked, [said("hi")])
-        write_transcript(done, [said("hi")])
+        for (state, when), sid in jobs.items():
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state=state, updated=when)
+            write_transcript(sid, [said("hi")])
         ids = orphan_ids()
-        check("pre-cutoff blocked job left alone", blocked not in ids, f"got {ids}")
-        check("same-day done job still an orphan", done in ids, f"got {ids}")
+        for (state, when), sid in jobs.items():
+            if when == after:
+                check(f"{state} job after the cutoff is an orphan", sid in ids, f"got {ids}")
+            else:
+                check(f"{state} job before the cutoff left alone", sid not in ids, f"got {ids}")
 
 
 def test_job_time_bounds():
@@ -557,7 +560,7 @@ if __name__ == "__main__":
     test_retired_job_listed_done_without_pid_is_orphan()
     test_running_or_stopped_jobs_not_orphans()
     test_retired_blocked_job_is_orphan()
-    test_blocked_job_bounded_by_its_own_cutoff()
+    test_job_label_does_not_matter()
     test_job_time_bounds()
     test_job_self_closed_or_without_transcript_not_orphan()
     test_job_in_backup_account_is_orphan()
