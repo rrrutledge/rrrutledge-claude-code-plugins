@@ -46,11 +46,11 @@ def agent(session_id, *, pid=None, status=None, state=None, kind="background", c
             "kind": kind, "pid": pid, "status": status, "state": state, "configDir": config_dir}
 
 
-# A recorded snapshot's shapes: a running background session, a parked (blocked, no pid) one, an
-# interactive one, and a stopped one.
+# A recorded snapshot's shapes: a running background session, one blocked on Russell with its process
+# still running, an interactive one, and a stopped one.
 def snapshot(live_running, live_blocked, stopped, other_account_live=None, backup_dir=None):
     entries = [agent(live_running, pid=37636, status="busy", state="working"),
-               agent(live_blocked, state="blocked"),
+               agent(live_blocked, pid=13472, status="idle", state="blocked"),
                agent(new_id(), pid=15244, status="idle", state=None, kind="interactive"),
                agent(stopped, state="stopped")]
     if other_account_live:
@@ -71,8 +71,9 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     os.makedirs(backup_dir)
     saved = (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
              bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-             bg_session.WAKES_PATH)
+             bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH)
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
+    find_orphans.STALE_RESPAWNS_PATH = os.path.join(tmp, "stale-respawns.json")
     find_orphans.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
     find_orphans.active_session_ids = lambda: set(active)
     find_orphans.pid_still_claude = pid_alive
@@ -97,7 +98,7 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     finally:
         (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
          bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-         bg_session.WAKES_PATH) = saved
+         bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH) = saved
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -147,8 +148,8 @@ def test_confirmed_orphan_returned():
 
 
 def test_live_bg_sessions_never_orphans():
-    print("test: a live background session (running, or parked with no pid) is never an orphan, "
-          "even with no cmdline/pid match")
+    print("test: a live background session (working, or blocked on Russell with its process running) is "
+          "never an orphan, even with no cmdline/pid match")
     running, blocked, stopped = new_id(), new_id(), new_id()
     with sandbox(snapshot(running, blocked, stopped)) as (seed, _, _b):
         seed(running)
@@ -250,13 +251,15 @@ def test_mention_only_not_pruned():
 
 
 def test_agent_session_ids():
-    print("test: agent_session_ids keeps pid-bearing and blocked entries, drops stopped/done/blank")
+    print("test: agent_session_ids keeps pid-bearing and running-status entries, drops retired "
+          "(state only, no pid), stopped, done, and blank ones")
     ids = find_orphans.agent_session_ids([
         {"sessionId": "a", "pid": 1}, {"sessionId": "b", "state": "blocked"},
         {"sessionId": "c", "status": "idle"}, {"sessionId": "d", "state": "stopped"},
         {"sessionId": "e"}, {"id": "f", "pid": 2},
-        {"sessionId": "g", "state": "done"}, {"sessionId": "h", "pid": 3, "status": "idle", "state": "done"}])
-    check("live set", ids == {"a", "b", "c", "h"}, f"got {ids}")
+        {"sessionId": "g", "state": "done"}, {"sessionId": "h", "pid": 3, "status": "idle", "state": "done"},
+        {"sessionId": "i", "pid": 4, "status": "idle", "state": "blocked"}, {"sessionId": "j", "status": "stopped"}])
+    check("live set", ids == {"a", "c", "h", "i"}, f"got {ids}")
 
 
 def test_retired_done_job_is_orphan():
@@ -283,18 +286,48 @@ def test_retired_job_listed_done_without_pid_is_orphan():
         check("orphan present", sid in orphan_ids())
 
 
-def test_running_or_held_jobs_not_orphans():
-    print("test: a job still running (any state), blocked, or stopped is never an orphan")
-    running, blocked, stopped, held = new_id(), new_id(), new_id(), new_id()
+def test_running_or_stopped_jobs_not_orphans():
+    print("test: a job still running (any state, blocked included) or stopped is never an orphan")
+    running, waiting, stopped = new_id(), new_id(), new_id()
     with sandbox([agent(running, pid=11, status="idle", state="done"),
-                  agent(held, state="blocked")]) as (_, write_transcript, _b):
-        for sid, state in ((running, "done"), (held, "blocked"), (blocked, "blocked"), (stopped, "stopped")):
+                  agent(waiting, pid=12, status="idle", state="blocked")]) as (_, write_transcript, _b):
+        for sid, state in ((running, "done"), (waiting, "blocked"), (stopped, "stopped")):
             write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state=state)
             write_transcript(sid, [said("hi")])
         ids = orphan_ids()
-        for label, sid in (("running done job", running), ("listed blocked job", held),
-                           ("unlisted blocked job", blocked), ("stopped job", stopped)):
+        for label, sid in (("running done job", running), ("running blocked job", waiting),
+                           ("stopped job", stopped)):
             check(f"{label} not an orphan", sid not in ids, f"got {ids}")
+
+
+def test_retired_blocked_job_is_orphan():
+    print("test: a job retired as blocked (waiting on Russell, no process) is an orphan, listed or not")
+    listed, unlisted = new_id(), new_id()
+    with sandbox([agent(listed, state="blocked")]) as (_, write_transcript, _b):
+        for sid in (listed, unlisted):
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state="blocked", updated=ago(hours=9))
+            write_transcript(sid, [said("review Addie's doc")])
+        ids = orphan_ids()
+        check("listed retired blocked job is an orphan", listed in ids, f"got {ids}")
+        check("unlisted retired blocked job is an orphan", unlisted in ids, f"got {ids}")
+
+
+def test_job_label_does_not_matter():
+    print("test: retired blocked and done jobs share one cutoff - both orphans after JOBS_SINCE, "
+          "both left alone before it")
+    after = iso(find_orphans.JOBS_SINCE + timedelta(days=1))
+    before = iso(find_orphans.JOBS_SINCE - timedelta(days=1))
+    jobs = {(state, when): new_id() for state in ("blocked", "done") for when in (after, before)}
+    with sandbox([]) as (_, write_transcript, _b):
+        for (state, when), sid in jobs.items():
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, state=state, updated=when)
+            write_transcript(sid, [said("hi")])
+        ids = orphan_ids()
+        for (state, when), sid in jobs.items():
+            if when == after:
+                check(f"{state} job after the cutoff is an orphan", sid in ids, f"got {ids}")
+            else:
+                check(f"{state} job before the cutoff left alone", sid not in ids, f"got {ids}")
 
 
 def test_job_time_bounds():
@@ -427,6 +460,44 @@ def test_cli_prints_json():
         check("stdout is valid JSON", False, result.stdout[:200])
 
 
+def test_stale_bridge_respawned_once_per_turn():
+    print("test: a live blocked/done session with a bridge id on record and no turn for STALE_BRIDGE_AFTER "
+          "is respawned once for that turn; a fresh, working, bridge-less or not-live one is left")
+    saved = {k: getattr(bg_session, k) for k in ("respawn_session", "find_job")}
+    saved_path = find_orphans.STALE_RESPAWNS_PATH
+    tmp = tempfile.mkdtemp(prefix="test-stale-bridge-")
+    find_orphans.STALE_RESPAWNS_PATH = os.path.join(tmp, "stale-respawns.json")
+    resumed = []
+    bg_session.find_job = lambda short: (None, {})
+    bg_session.respawn_session = lambda short, cfg: resumed.append(short)
+    try:
+        def job(sid, state, updated, bridge="cse_x"):
+            return ("", {"sessionId": sid, "state": state, "bridgeSessionId": bridge, "backend": "daemon",
+                         "updatedAt": updated})
+        stale, fresh, working, nobridge, notlive = new_id(), new_id(), new_id(), new_id(), new_id()
+        old_turn = ago(hours=9)
+        jobs = [job(stale, "blocked", old_turn), job(fresh, "blocked", ago(hours=1)),
+                job(working, "working", old_turn), job(nobridge, "blocked", old_turn, bridge=None),
+                job(notlive, "blocked", old_turn)]
+        active = {stale, fresh, working, nobridge}
+        short = lambda sid: sid.split("-", 1)[0]
+        check("only the stale idle session is respawned",
+              find_orphans.stale_bridge_respawns(jobs, active) == [short(stale)], resumed)
+        check("a second sweep on the same turn leaves it alone",
+              find_orphans.stale_bridge_respawns(jobs, active) == [], resumed)
+        jobs[0] = job(stale, "blocked", ago(hours=10, minutes=1))
+        check("a new turn that goes stale is respawned again",
+              find_orphans.stale_bridge_respawns(jobs, active) == [short(stale)], resumed)
+        find_orphans.stale_bridge_respawns(jobs, set())
+        check("a session no longer live drops out of the log", find_orphans._load_json(
+            find_orphans.STALE_RESPAWNS_PATH) == {}, find_orphans._load_json(find_orphans.STALE_RESPAWNS_PATH))
+    finally:
+        for k, v in saved.items():
+            setattr(bg_session, k, v)
+        find_orphans.STALE_RESPAWNS_PATH = saved_path
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_bridgeless_live_sessions_repaired_then_raised():
     print("test: a live blocked/done session with no bridge is respawned in place; a working one is left; "
           "one still bridge-less after the attempts is stopped and raised as an orphan")
@@ -487,7 +558,9 @@ if __name__ == "__main__":
     test_agent_session_ids()
     test_retired_done_job_is_orphan()
     test_retired_job_listed_done_without_pid_is_orphan()
-    test_running_or_held_jobs_not_orphans()
+    test_running_or_stopped_jobs_not_orphans()
+    test_retired_blocked_job_is_orphan()
+    test_job_label_does_not_matter()
     test_job_time_bounds()
     test_job_self_closed_or_without_transcript_not_orphan()
     test_job_in_backup_account_is_orphan()
@@ -498,6 +571,7 @@ if __name__ == "__main__":
     test_self_close_read_from_tail_of_large_transcript()
     test_pid_still_claude_false_for_missing_pid()
     test_cli_prints_json()
+    test_stale_bridge_respawned_once_per_turn()
     test_bridgeless_live_sessions_repaired_then_raised()
     print()
     if failures:
