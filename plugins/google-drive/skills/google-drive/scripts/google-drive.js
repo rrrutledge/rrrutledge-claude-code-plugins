@@ -184,17 +184,56 @@ async function readDeck(slidesApi, deckId) {
   return (await slidesApi.presentations.get({ presentationId: deckId })).data;
 }
 
+function defaultBox(pres) {
+  const pw = pres.pageSize.width.magnitude / EMU_PER_PT;
+  const ph = pres.pageSize.height.magnitude / EMU_PER_PT;
+  return { x: pw * 0.3, y: ph * 0.3, width: pw * 0.4, height: ph * 0.4 };
+}
+
+function elementProps(pageObjectId, box) {
+  return {
+    pageObjectId,
+    size: { width: { magnitude: box.width, unit: 'PT' }, height: { magnitude: box.height, unit: 'PT' } },
+    transform: { scaleX: 1, scaleY: 1, translateX: box.x, translateY: box.y, unit: 'PT' },
+  };
+}
+
+// Places an image on a slide from a public URL, a Drive file id, or a local file (uploaded first).
+// The Slides API fetches an image only from a URL it can reach anonymously, so a Drive-held image gets link
+// access just long enough for the insert - Slides stores its own copy - then it is removed, unless the file
+// already had it. `objectId` optionally names the new image element.
+async function placeImage(drive, slidesApi, deckId, slideId, src, box, objectId) {
+  let url = src.url;
+  let imageId = src.driveFile;
+  if (src.path) {
+    const folder = src.folder || ((await drive.files.get({ fileId: deckId, fields: 'parents', ...ALL_DRIVES })).data.parents || [])[0];
+    imageId = (await upload(drive, src.path, folder)).id;
+    console.log(`Uploaded ${src.path} -> ${imageId}`);
+  }
+  if (!url && !imageId) throw new Error('image needs url, driveFile, or path');
+
+  let tempPermId = null;
+  if (!url) {
+    const perms = (await drive.permissions.list({ fileId: imageId, fields: 'permissions(id,type)', ...ALL_DRIVES })).data.permissions || [];
+    if (!perms.some(p => p.type === 'anyone')) {
+      tempPermId = (await drive.permissions.create({ fileId: imageId, requestBody: { type: 'anyone', role: 'reader' }, fields: 'id', ...ALL_DRIVES })).data.id;
+    }
+    url = `https://drive.google.com/uc?export=download&id=${imageId}`;
+  }
+  try {
+    const createImage = { url, elementProperties: elementProps(slideId, box) };
+    if (objectId) createImage.objectId = objectId;
+    const res = await slidesApi.presentations.batchUpdate({ presentationId: deckId, requestBody: { requests: [{ createImage }] } });
+    return res.data.replies[0].createImage.objectId;
+  } finally {
+    if (tempPermId) await drive.permissions.delete({ fileId: imageId, permissionId: tempPermId, ...ALL_DRIVES });
+  }
+}
+
 async function insertImage(drive, slidesApi, deckId) {
   const pres = await readDeck(slidesApi, deckId);
   const slide = pickSlide(pres);
-
-  let imageId = args['image-file'];
-  if (args['image-path']) {
-    const folder = args.folder || ((await drive.files.get({ fileId: deckId, fields: 'parents', ...ALL_DRIVES })).data.parents || [])[0];
-    imageId = (await upload(drive, args['image-path'], folder)).id;
-    console.log(`Uploaded ${args['image-path']} -> ${imageId}`);
-  }
-  if (!imageId || imageId === true) throw new Error('--image-path=<local file> or --image-file=<drive id> required');
+  if (!args['image-path'] && !args['image-file']) throw new Error('--image-path=<local file> or --image-file=<drive id> required');
 
   let box;
   if (args['box-shape']) {
@@ -204,39 +243,228 @@ async function insertImage(drive, slidesApi, deckId) {
   } else if (args.width && args.height) {
     box = { x: Number(args.x || 0), y: Number(args.y || 0), width: Number(args.width), height: Number(args.height) };
   } else {
-    const pw = pres.pageSize.width.magnitude / EMU_PER_PT;
-    const ph = pres.pageSize.height.magnitude / EMU_PER_PT;
-    box = { x: pw * 0.3, y: ph * 0.3, width: pw * 0.4, height: ph * 0.4 };
+    box = defaultBox(pres);
   }
+  const imageObjectId = await placeImage(drive, slidesApi, deckId, slide.objectId,
+    { path: args['image-path'], driveFile: args['image-file'], folder: args.folder }, box);
+  return { slide: slide.objectId, imageObjectId, box };
+}
 
-  // The Slides API fetches an image only from a URL it can reach anonymously. Grant link access just long
-  // enough for the insert - Slides stores its own copy - then remove it, unless the file already had it.
-  const perms = (await drive.permissions.list({ fileId: imageId, fields: 'permissions(id,type)', ...ALL_DRIVES })).data.permissions || [];
-  const alreadyPublic = perms.some(p => p.type === 'anyone');
-  let tempPermId = null;
-  if (!alreadyPublic) {
-    tempPermId = (await drive.permissions.create({ fileId: imageId, requestBody: { type: 'anyone', role: 'reader' }, fields: 'id', ...ALL_DRIVES })).data.id;
+// ---- Slides: spec-driven operations ----
+//
+// `--slides-apply --deck=<id> --spec=<json file>` runs a list of operations in order, one batchUpdate each,
+// so a later operation can use an element or slide id an earlier one created (name new ids with "id").
+// Boxes are in points. A slide is named by object id, or by its 0-based index as a number or "index:N".
+
+function colorOf(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+  if (!m) throw new Error(`color must be #rrggbb, got "${hex}"`);
+  const n = parseInt(m[1], 16);
+  return { rgbColor: { red: ((n >> 16) & 255) / 255, green: ((n >> 8) & 255) / 255, blue: (n & 255) / 255 } };
+}
+
+function slideIdOf(pres, ref) {
+  const slides = pres.slides || [];
+  if (typeof ref === 'number' || /^(index:)?\d+$/.test(String(ref))) {
+    const i = Number(String(ref).replace('index:', ''));
+    if (!slides[i]) throw new Error(`No slide at index ${i} (deck has ${slides.length})`);
+    return slides[i].objectId;
   }
-  try {
-    const res = await slidesApi.presentations.batchUpdate({
-      presentationId: deckId,
-      requestBody: {
-        requests: [{
-          createImage: {
-            url: `https://drive.google.com/uc?export=download&id=${imageId}`,
-            elementProperties: {
-              pageObjectId: slide.objectId,
-              size: { width: { magnitude: box.width, unit: 'PT' }, height: { magnitude: box.height, unit: 'PT' } },
-              transform: { scaleX: 1, scaleY: 1, translateX: box.x, translateY: box.y, unit: 'PT' },
-            },
-          },
-        }],
-      },
-    });
-    return { slide: slide.objectId, imageObjectId: res.data.replies[0].createImage.objectId, box };
-  } finally {
-    if (tempPermId) await drive.permissions.delete({ fileId: imageId, permissionId: tempPermId, ...ALL_DRIVES });
+  if (!slides.some(s => s.objectId === ref)) throw new Error(`No slide with object id "${ref}"`);
+  return ref;
+}
+
+function newId(op, prefix) {
+  return op.id || `${prefix}_${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
+}
+
+// op.style: { bold, italic, underline, fontSize (pt), fontFamily, color, bgColor, link } over op.range
+// { start, end } of the shape's text (whole text when omitted). op.paragraph: { align, spaceAbove, spaceBelow }.
+function styleRequests(objectId, op, cell) {
+  const reqs = [];
+  const range = op.range ? { type: 'FIXED_RANGE', startIndex: op.range.start, endIndex: op.range.end } : { type: 'ALL' };
+  const base = { objectId, textRange: range };
+  if (cell) base.cellLocation = cell;
+  const s = op.style || {};
+  const style = {};
+  const fields = [];
+  const put = (field, key, val) => { style[key] = val; fields.push(field); };
+  if (s.bold !== undefined) put('bold', 'bold', s.bold);
+  if (s.italic !== undefined) put('italic', 'italic', s.italic);
+  if (s.underline !== undefined) put('underline', 'underline', s.underline);
+  if (s.fontSize !== undefined) put('fontSize', 'fontSize', { magnitude: s.fontSize, unit: 'PT' });
+  if (s.fontFamily !== undefined) put('fontFamily', 'fontFamily', s.fontFamily);
+  if (s.color !== undefined) put('foregroundColor', 'foregroundColor', { opaqueColor: colorOf(s.color) });
+  if (s.bgColor !== undefined) put('backgroundColor', 'backgroundColor', { opaqueColor: colorOf(s.bgColor) });
+  if (s.link !== undefined) put('link', 'link', { url: s.link });
+  if (fields.length) reqs.push({ updateTextStyle: { ...base, style, fields: fields.join(',') } });
+  const p = op.paragraph || {};
+  const pstyle = {};
+  const pfields = [];
+  if (p.align) { pstyle.alignment = p.align; pfields.push('alignment'); }
+  if (p.spaceAbove !== undefined) { pstyle.spaceAbove = { magnitude: p.spaceAbove, unit: 'PT' }; pfields.push('spaceAbove'); }
+  if (p.spaceBelow !== undefined) { pstyle.spaceBelow = { magnitude: p.spaceBelow, unit: 'PT' }; pfields.push('spaceBelow'); }
+  if (pfields.length) reqs.push({ updateParagraphStyle: { ...base, style: pstyle, fields: pfields.join(',') } });
+  return reqs;
+}
+
+function findElement(pres, objectId) {
+  for (const s of pres.slides || []) {
+    for (const el of s.pageElements || []) {
+      if (el.objectId === objectId) return el;
+      for (const child of (el.elementGroup && el.elementGroup.children) || []) if (child.objectId === objectId) return child;
+    }
   }
+  return null;
+}
+
+function replaceTextRequests(objectId, existing, text) {
+  const reqs = [];
+  if (existing.trim().length) reqs.push({ deleteText: { objectId, textRange: { type: 'ALL' } } });
+  if (text) reqs.push({ insertText: { objectId, insertionIndex: 0, text } });
+  return reqs;
+}
+
+function shapeRequests(pres, op) {
+  const id = newId(op, 'shape');
+  const slideId = slideIdOf(pres, op.slide);
+  const box = { x: op.x ?? 36, y: op.y ?? 36, width: op.width ?? 300, height: op.height ?? 100 };
+  const reqs = [{ createShape: { objectId: id, shapeType: op.shape || 'TEXT_BOX', elementProperties: elementProps(slideId, box) } }];
+  if (op.text) reqs.push({ insertText: { objectId: id, insertionIndex: 0, text: op.text } });
+  if (op.text) reqs.push(...styleRequests(id, op));
+  const props = {};
+  const fields = [];
+  if (op.fill) { props.shapeBackgroundFill = { solidFill: { color: colorOf(op.fill) } }; fields.push('shapeBackgroundFill.solidFill.color'); }
+  if (op.outline === 'none') { props.outline = { propertyState: 'NOT_RENDERED' }; fields.push('outline.propertyState'); }
+  else if (op.outline) {
+    props.outline = { outlineFill: { solidFill: { color: colorOf(op.outline) } }, weight: { magnitude: op.outlineWeight || 1, unit: 'PT' } };
+    fields.push('outline.outlineFill.solidFill.color', 'outline.weight');
+  }
+  if (op.contentAlignment) { props.contentAlignment = op.contentAlignment; fields.push('contentAlignment'); }
+  if (fields.length) reqs.push({ updateShapeProperties: { objectId: id, shapeProperties: props, fields: fields.join(',') } });
+  return { reqs, note: { objectId: id } };
+}
+
+function tableRequests(pres, op) {
+  const id = newId(op, 'table');
+  const slideId = slideIdOf(pres, op.slide);
+  const cells = op.cells || [];
+  const rows = op.rows || cells.length;
+  const columns = op.columns || Math.max(0, ...cells.map(r => r.length));
+  if (!rows || !columns) throw new Error('add-table needs rows/columns or cells');
+  const box = { x: op.x ?? 36, y: op.y ?? 36, width: op.width ?? 400, height: op.height ?? rows * 30 };
+  const reqs = [{ createTable: { objectId: id, rows, columns, elementProperties: elementProps(slideId, box) } }];
+  cells.forEach((row, r) => row.forEach((text, c) => {
+    if (text === '' || text == null) return;
+    const cellLocation = { rowIndex: r, columnIndex: c };
+    reqs.push({ insertText: { objectId: id, cellLocation, insertionIndex: 0, text: String(text) } });
+    if (op.style || op.paragraph) reqs.push(...styleRequests(id, { style: op.style, paragraph: op.paragraph }, cellLocation));
+  }));
+  return { reqs, note: { objectId: id } };
+}
+
+// Each operation returns { reqs, note, after } - the requests for one batchUpdate, a result note, and an
+// optional follow-up for work that must wait on that batch's replies.
+async function buildOp(ctx, op) {
+  const { pres } = ctx;
+  switch (op.op) {
+    case 'duplicate-slide': {
+      const slideId = slideIdOf(pres, op.slide);
+      const id = op.id || `${slideId}_copy_${Date.now().toString(36)}`;
+      const reqs = [{ duplicateObject: { objectId: slideId, objectIds: { [slideId]: id } } }];
+      // The copy lands right after the original; move it when "index" asks for another spot.
+      if (op.index !== undefined) reqs.push({ updateSlidesPosition: { slideObjectIds: [id], insertionIndex: op.index } });
+      return { reqs, note: { objectId: id } };
+    }
+    case 'delete-slide':
+      return { reqs: [{ deleteObject: { objectId: slideIdOf(pres, op.slide) } }] };
+    case 'move-slides': {
+      const ids = (op.slides || [op.slide]).map(r => slideIdOf(pres, r));
+      return { reqs: [{ updateSlidesPosition: { slideObjectIds: ids, insertionIndex: op.index } }] };
+    }
+    case 'add-shape': return shapeRequests(pres, op);
+    case 'add-table': return tableRequests(pres, op);
+    case 'replace-all-text': {
+      const req = { replaceAllText: { containsText: { text: op.find, matchCase: !!op.matchCase }, replaceText: op.replace ?? '' } };
+      if (op.slides) req.replaceAllText.pageObjectIds = op.slides.map(r => slideIdOf(pres, r));
+      return { reqs: [req] };
+    }
+    case 'set-text': {
+      const el = findElement(pres, op.shape);
+      if (!el || !el.shape) throw new Error(`set-text: no shape "${op.shape}"`);
+      const existing = textOf(el.shape);
+      let reqs;
+      if (op.append && existing.trim()) reqs = [{ insertText: { objectId: op.shape, insertionIndex: existing.length - 1, text: '\n' + op.text } }];
+      else reqs = replaceTextRequests(op.shape, existing, op.text ?? '');
+      // Styling an appended paragraph would restyle the old text too, so only a replace or an explicit range styles.
+      if (!op.append || op.range) reqs.push(...styleRequests(op.shape, op));
+      return { reqs };
+    }
+    case 'style-text':
+      return { reqs: styleRequests(op.shape, op) };
+    case 'set-notes': {
+      const slide = pres.slides.find(s => s.objectId === slideIdOf(pres, op.slide));
+      const notesId = slide.slideProperties.notesPage.notesProperties.speakerNotesObjectId;
+      const notesEl = (slide.slideProperties.notesPage.pageElements || []).find(e => e.objectId === notesId);
+      return { reqs: replaceTextRequests(notesId, notesEl ? textOf(notesEl.shape) : '', op.text ?? ''), note: { notesObjectId: notesId } };
+    }
+    case 'insert-image': {
+      const slideId = slideIdOf(pres, op.slide);
+      const box = op.width && op.height ? { x: op.x ?? 0, y: op.y ?? 0, width: op.width, height: op.height } : defaultBox(pres);
+      const objectId = await placeImage(ctx.drive, ctx.slidesApi, ctx.deckId, slideId,
+        { url: op.url, driveFile: op.driveFile, path: op.path, folder: op.folder }, box, op.id);
+      return { reqs: [], note: { objectId } };
+    }
+    case 'thumbnail': {
+      const slideId = slideIdOf(pres, op.slide);
+      return { reqs: [], note: await saveThumbnail(ctx.slidesApi, ctx.deckId, slideId, op.out, op.size) };
+    }
+    case 'raw':
+      return { reqs: op.requests };
+    default:
+      throw new Error(`Unknown op "${op.op}"`);
+  }
+}
+
+async function saveThumbnail(slidesApi, deckId, slideId, out, size) {
+  if (!out) throw new Error('thumbnail needs an output path (out)');
+  const res = await slidesApi.presentations.pages.getThumbnail({
+    presentationId: deckId, pageObjectId: slideId,
+    'thumbnailProperties.mimeType': 'PNG', 'thumbnailProperties.thumbnailSize': size || 'LARGE',
+  });
+  const img = await fetch(res.data.contentUrl);
+  if (!img.ok) throw new Error(`thumbnail download failed: HTTP ${img.status}`);
+  fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
+  fs.writeFileSync(out, Buffer.from(await img.arrayBuffer()));
+  return { slide: slideId, out, width: res.data.width, height: res.data.height };
+}
+
+async function applySpec(drive, slidesApi, deckId, specPath) {
+  const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+  const ops = Array.isArray(spec) ? spec : spec.ops;
+  if (!Array.isArray(ops)) throw new Error('spec must be a JSON array of ops, or { "ops": [...] }');
+  const results = [];
+  for (const [i, op] of ops.entries()) {
+    const pres = await readDeck(slidesApi, deckId);
+    const built = await buildOp({ pres, drive, slidesApi, deckId }, op);
+    if (args['dry-run']) { console.log(JSON.stringify({ i, op: op.op, requests: built.reqs }, null, 2)); continue; }
+    let replies = 0;
+    if (built.reqs.length) {
+      const res = await slidesApi.presentations.batchUpdate({ presentationId: deckId, requestBody: { requests: built.reqs } });
+      replies = (res.data.replies || []).length;
+    }
+    results.push({ i, op: op.op, ...(built.note || {}), requests: built.reqs.length, replies });
+    console.log(JSON.stringify(results[results.length - 1]));
+  }
+  return results;
+}
+
+async function applyRaw(slidesApi, deckId, requestsPath) {
+  const body = JSON.parse(fs.readFileSync(requestsPath, 'utf8'));
+  const requests = Array.isArray(body) ? body : body.requests;
+  if (!Array.isArray(requests)) throw new Error('requests file must be a JSON array, or { "requests": [...] }');
+  if (args['dry-run']) return { requests };
+  return (await slidesApi.presentations.batchUpdate({ presentationId: deckId, requestBody: { requests } })).data;
 }
 
 async function setText(slidesApi, deckId) {
@@ -325,6 +553,14 @@ async function setText(slidesApi, deckId) {
     }
   } else if (args['slides-insert-image']) {
     console.log(JSON.stringify(await insertImage(drive, slidesApi, need('deck')), null, 2));
+  } else if (args['slides-apply']) {
+    await applySpec(drive, slidesApi, need('deck'), need('spec'));
+  } else if (args['slides-raw']) {
+    console.log(JSON.stringify(await applyRaw(slidesApi, need('deck'), need('requests-file')), null, 2));
+  } else if (args['slides-thumbnail']) {
+    const pres = await readDeck(slidesApi, need('deck'));
+    const ref = args['slide-index'] !== undefined ? Number(args['slide-index']) : args.slide || pickSlide(pres).objectId;
+    console.log(JSON.stringify(await saveThumbnail(slidesApi, args.deck, slideIdOf(pres, ref), need('out'), args.size), null, 2));
   } else if (args['slides-set-text']) {
     console.log(JSON.stringify(await setText(slidesApi, need('deck')), null, 2));
   } else {

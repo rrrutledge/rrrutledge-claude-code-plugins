@@ -1,6 +1,6 @@
 ---
 name: google-drive
-description: Search, copy, share, and upload Google Drive files, create or edit a Google Doc from Markdown, and read or edit Google Slides decks (insert a photo onto a slide found by its title, set or append text in a placeholder), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token and a wrong-account guard. Use for any programmatic Drive or Slides work on an account the claude.ai Drive connector isn't signed in to, and for any Slides edit.
+description: Search, copy, share, and upload Google Drive files, create or edit a Google Doc from Markdown, and read or edit Google Slides decks (insert a photo onto a slide found by its title, set or append text in a placeholder, or run a JSON spec of slide operations - duplicate, delete, reorder, shapes, tables, text styling, speaker notes, images, thumbnails, raw batchUpdate), via the Drive and Slides APIs - no browser. Serves several Google accounts side by side with --account, each with its own token and a wrong-account guard. Use for any programmatic Drive or Slides work on an account the claude.ai Drive connector isn't signed in to, and for any Slides edit.
 ---
 
 # Google Drive, Docs, and Slides via the Drive and Slides APIs
@@ -73,6 +73,48 @@ A title matches the slide whose title placeholder (or, lacking one, first text b
 - **Set text:** `--slides-set-text --deck=<id> <slide> (--shape=<element id> | --placeholder=BODY|TITLE|SUBTITLE) (--text=<t> | --text-file=<path>) [--append]`.
   Replaces the shape's text, or with `--append` adds the text as a new paragraph after what's there.
   `--placeholder` matches only layout placeholders; a plain text box carries no placeholder type, so it's addressed by `--shape`.
+
+### Slides: spec-driven editing
+
+- **Apply a spec:** `--slides-apply --deck=<id> --spec=<json file> [--dry-run]` runs the operations in order, one batchUpdate each, printing one JSON result line per operation.
+  The spec is a JSON array, or `{"ops": [...]}`.
+  A later operation can use a slide or element an earlier one created, so name new objects with `"id"`.
+  A slide is named by object id or by 0-based index (`1` or `"index:1"`); boxes are `x`, `y`, `width`, `height` in points; colors are `#rrggbb`.
+  `--dry-run` prints the generated Slides requests without sending them.
+- **Fetch a thumbnail:** `--slides-thumbnail --deck=<id> (--slide=<object id> | --slide-index=<n> | --slide-title=<t>) --out=<png path> [--size=SMALL|MEDIUM|LARGE]` saves the slide as a PNG for design review (LARGE is 1600x900).
+- **Raw batchUpdate:** `--slides-raw --deck=<id> --requests-file=<json>` sends a JSON array (or `{"requests": [...]}`) of Slides API requests unchanged and prints the response.
+  Use it for anything the operations below don't cover.
+
+Operations (`"op"` values):
+
+| op | fields |
+|---|---|
+| `duplicate-slide` | `slide`, `id` (new slide id), `index` (move the copy there) |
+| `delete-slide` | `slide` |
+| `move-slides` | `slides` (list), `index` (insertion position) |
+| `add-shape` | `slide`, `id`, `shape` (`TEXT_BOX` default, `RECTANGLE`, `ROUND_RECTANGLE`, ...), `x y width height`, `text`, `style`, `paragraph`, `fill`, `outline` (`#rrggbb` or `none`), `outlineWeight`, `contentAlignment` |
+| `add-table` | `slide`, `id`, `x y width`, `cells` (rows of strings; sets rows and columns) or `rows` + `columns`, `style`, `paragraph` |
+| `replace-all-text` | `find`, `replace`, `matchCase`, `slides` (limit to these slides) |
+| `set-text` | `shape` (element id), `text`, `append`, `style`, `paragraph`, `range` `{start,end}` |
+| `style-text` | `shape`, `style`, `paragraph`, `range` (restyle without changing text) |
+| `set-notes` | `slide`, `text` (replaces the speaker notes) |
+| `insert-image` | `slide`, `id`, one of `url` / `driveFile` / `path` (uploaded to the deck's folder first), `x y width height` (image fits inside, aspect kept) |
+| `thumbnail` | `slide`, `out`, `size` |
+| `raw` | `requests` (Slides API requests) |
+
+`style` takes `bold`, `italic`, `underline`, `fontSize` (pt), `fontFamily`, `color`, `bgColor`, `link`; `paragraph` takes `align` (`START`, `CENTER`, `END`, `JUSTIFIED`), `spaceAbove`, `spaceBelow`.
+
+```json
+[
+  {"op": "duplicate-slide", "slide": 1, "id": "new1", "index": 2},
+  {"op": "add-shape", "slide": "new1", "id": "cap", "x": 40, "y": 330, "width": 400, "height": 40, "text": "Caption", "style": {"bold": true, "fontSize": 18, "color": "#CC0000"}},
+  {"op": "set-notes", "slide": "new1", "text": "Say this out loud."},
+  {"op": "thumbnail", "slide": "new1", "out": ".tmp/new1.png"}
+]
+```
+
+A `path` image leaves its uploaded copy in Drive; trash it with `--trash` when the deck holds its own copy and the upload is surplus.
+A duplicate keeps the original's element ids only inside the original; read the deck again for the copy's element ids.
 
 ## Auth-error handling
 
