@@ -834,16 +834,21 @@ async function draftNew() {
   }
   const html = marked.parse(fs.readFileSync(args['body-file'], 'utf8'));
   let forwarded = '';
+  let threadId = null, inReplyTo, references;
   if (args['forward-message-id']) {
     const gid = await findMessageId(args['forward-message-id']);
     if (!gid) throw new Error('Message to forward not found in inbox or All Mail.');
-    const { parsed: orig } = await getParsed(gid);
+    const given = await getParsed(gid);
+    const orig = given.parsed;
     const carried = (orig.attachments || []).filter(a => !a.related);
     if (carried.length) throw new Error(`The message to forward carries ${carried.length} attachment(s); --forward-message-id does not carry them.`);
     forwarded = forwardBlock(orig);
+    threadId = given.threadId;
+    inReplyTo = orig.messageId;
+    references = [orig.references, orig.messageId].flat().filter(Boolean).join(' ');
   }
-  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) + forwarded });
-  const draftId = await createDraft(raw, null);
+  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) + forwarded, inReplyTo, references });
+  const draftId = await createDraft(raw, threadId);
   console.log(`Draft staged in Drafts to ${args.to}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
 }
