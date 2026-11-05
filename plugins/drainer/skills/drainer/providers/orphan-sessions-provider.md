@@ -1,4 +1,4 @@
-# orphan-sessions provider - crash-recovered and retired Claude Code sessions (highest priority)
+# orphan-sessions provider - crash-recovered and retired Claude Code sessions (recent ones first)
 
 A provider for sessions the live-session registry confirms need resuming and aren't currently running: a session interrupted by a crash or forced restart (which never fires `SessionEnd`), or a session Russell started by hand in a terminal whose tab closed abruptly with the window/tab X (which fires `SessionEnd` with reason `"other"`, and the registry hook keeps rather than deregisters, because the entry carries a `host_pid` marking it as a hand-started terminal session that Russell parked and wants back).
 It also covers a background session the background service retired for idling (or for low memory) without anyone closing it, found through the service's own job records even after the service drops it from `claude agents` and its registry entry is gone.
@@ -14,7 +14,8 @@ Every other provider's needs-you item opens a **fresh** worker session that read
 This source is different: resuming the session (via `run-poller.py`'s dedicated `spawn_resume()`, which reopens it as a background session with `claude --bg --resume <session_id>` in the session's own original `cwd`) IS the entire action.
 The resumed session carries the full history under a new session id, and the launcher drops the old id from session-mgr's live-session registry so it never reads as crashed again.
 A retired background session is woken in place instead (see `spawn_bg` in session-mgr's `bg_session.py`).
-Orphans take needs-you worker slots like any other item, ahead of every other source, so a backlog of them comes back a few at a time as the waiting pile drops below `target_reviewable` rather than all at once.
+Orphans take needs-you worker slots like any other item, so a backlog of them comes back a few at a time as the waiting pile drops below `target_reviewable` rather than all at once.
+An orphan that ended within the last week goes ahead of every other source; an older one waits behind every other needs-you item (`order_needs` in `run-poller.py`).
 A resume that returns no session id stays unrecorded and is tried again next cycle.
 The resumed session keeps the orphan's original name, read back from the orphan's transcript (its last custom title, else its AI-generated title), so several resumed sessions stay distinguishable and a second crash still reads the same name; a session with no recorded name is titled `Resume: <directory>`.
 Russell continues in his own resumed conversation from there - there is nothing for a worker to read, act on, or clear, because the item is Russell's own interrupted work.

@@ -47,7 +47,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           band_rank, slug, self_directed,
+                           band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
@@ -1493,6 +1493,29 @@ def held_for_correspondent(corr, active):
     return bool(corr) and corr in active
 
 
+# An orphan that ended within this window dispatches ahead of every other source; an older one waits
+# behind every other needs-you item, so a backlog of stale sessions comes back only once the current
+# mail, Slack and Trello work is dispatched.
+ORPHAN_RECENT = timedelta(days=7)
+
+
+def order_needs(needs_you_items, now=None):
+    """The needs-you dispatch order. Recent orphans (ended within ORPHAN_RECENT) come first, ahead of
+    any priority band. Then every other source by band_rank (priority, level, referral - the queue
+    policy defined once in provider_base) and `received`, descending. Older orphans come last. Each orphan
+    group runs most recently ended first. An orphan with no readable time counts as recent."""
+    now = now or datetime.now(timezone.utc)
+    orphans = sorted((it for it in needs_you_items if it["_source"] == "orphan-sessions"),
+                     key=lambda it: it.get("received") or "", reverse=True)
+    other = sorted((it for it in needs_you_items if it["_source"] != "orphan-sessions"),
+                   key=lambda it: (*band_rank(it), it.get("received") or ""), reverse=True)
+
+    def recent(it):
+        ended = received_dt(it)
+        return ended is None or now - ended < ORPHAN_RECENT
+    return ([it for it in orphans if recent(it)] + other + [it for it in orphans if not recent(it)])
+
+
 def worker_counts():
     """The two numbers the dynamic-concurrency dispatch rule reads, as `(waiting, total)`:
 
@@ -1925,31 +1948,16 @@ def main():
             save_health(cfg["runtime_dir"], health)
 
     # --- split: needs-you (globally ordered), auto-handle (own worker, no cap), others (digest) ---
-    # Ordered across ALL sources by band_rank (priority, level, referral — the queue policy defined once
-    # in provider_base) then `received` date, descending. Only job-search cards carry a non-neutral value
+    # Ordered by order_needs: recent and older orphan-sessions bracket every other source, which runs by
+    # band_rank (priority, level, referral — the queue policy defined once in provider_base) then
+    # `received` date, descending. Only job-search cards carry a non-neutral value
     # in any band; email/Slack, ordinary Trello cards, and cold Director/VP-level job cards all sit at the
     # shared neutral ranks, so within a priority band those interleave purely by `received` date (an inbox
     # message's arrival time, a card's Start date, or a Start-less card's creation date). Because level
     # leads referral, an IC-level job card drops below that neutral level and waits (a leadership role
     # without a referral is worked before an IC role even with one); within a level a 🤝 Referral card
     # lifts above and leads.
-    needs_you_items = [it for it in needs_and_others if it["_bucket"] == "needs-you"]
-    # orphan-sessions dispatches FIRST, ahead of every other source, explicitly — not via
-    # priority-band/received-timestamp tie-breaking (a coincidentally-recent or high-priority
-    # Slack/Trello item could still slot ahead of that). As worker slots free up cycle over cycle,
-    # they go to the orphan-sessions backlog before any fresh Slack/Trello/mail item, until it's
-    # drained.
-    orphan_needs = sorted(
-        (it for it in needs_you_items if it["_source"] == "orphan-sessions"),
-        key=lambda it: it.get("received") or "",
-        reverse=True,
-    )
-    other_needs = sorted(
-        (it for it in needs_you_items if it["_source"] != "orphan-sessions"),
-        key=lambda it: (*band_rank(it), it.get("received") or ""),
-        reverse=True,
-    )
-    needs = orphan_needs + other_needs
+    needs = order_needs([it for it in needs_and_others if it["_bucket"] == "needs-you"])
     # auto-handle items get a worker too (they need a browser to act), but the worker acts and CLEARs the
     # source without ever waiting on Russell - so they resolve fast and are dispatched unconditionally,
     # never held behind the worker-buffer throttle that gates needs-you below, letting a standing-rule
@@ -1990,7 +1998,8 @@ def main():
             for it in to_rescue:
                 print(f"    [{it['_bucket']:9}] {it['_id']}\n"
                       f"        {it.get('from')} | {it.get('subject')}")
-        print("  needs-you (orphan-sessions first, then priority band, then level band, then referral band, then newest-first):")
+        print("  needs-you (recent orphan-sessions first, then priority band, then level band, then referral band, "
+              "then newest-first, then older orphan-sessions):")
         slots = open_slots(waiting, total, len(auto), cfg)
         for it in needs:
             corr = prov[it["_source"]].correspondent(it)

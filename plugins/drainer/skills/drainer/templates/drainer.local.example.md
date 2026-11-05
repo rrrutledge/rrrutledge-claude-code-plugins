@@ -5,7 +5,7 @@
 # Which providers to run, plus any config each needs. Reference a provider by name (they live in the
 # plugin's providers/ dir). All sources are harvested every run on one schedule.
 providers:
-  orphan-sessions: {}         # crash-recovered Claude Code sessions (session-mgr) - no config; always dispatches first
+  orphan-sessions: {}         # crash-recovered Claude Code sessions (session-mgr) - no config; recent ones dispatch first
   outlook: {}                    # work Outlook on the web (browser) - no config, just sign in
   outlook-graph: {}           # personal Outlook.com via the Microsoft Graph API (ms-graph; no browser)
   teams: {}                      # Microsoft Teams on the web (browser) - no config, just sign in

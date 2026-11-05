@@ -1,4 +1,4 @@
-"""orphan-sessions poller adapter — crash-recovered Claude Code sessions, highest priority.
+"""orphan-sessions poller adapter — crash-recovered Claude Code sessions.
 
 A thin ProviderBase wrapper, same shape as every other drainer provider, but around
 something session-mgr already owns rather than an external service: the live-session
@@ -89,10 +89,9 @@ class Provider(ProviderBase):
                 "cwd": o.get("cwd"),
                 "started_at": o.get("started_at"),
                 "ended_at": o.get("ended_at"),
-                # Orders MULTIPLE simultaneous orphans against each other (most recently
-                # ended first) within run-poller.py's dedicated orphan-dispatch pass —
-                # cross-source priority is enforced structurally there (orphans dispatch
-                # before the rest of needs-you), not by this timestamp.
+                # Orders orphans against each other (most recently ended first) and decides
+                # which ones are recent enough to lead the needs-you queue - see order_needs
+                # in run-poller.py.
                 "received": o.get("ended_at") or o.get("started_at") or "",
             })
         return items
