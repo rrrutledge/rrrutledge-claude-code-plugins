@@ -148,6 +148,10 @@ Under `scripts/` (run with `node`):
     (`--reply` and `--draft-new` each print a `draft-id:` line — the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
     thread, so a thread never carries more than one draft.)
+  - Forward a message (never sends): `node gmail.js --draft-new --to=<addr> --subject="Fwd: <original subject>" --body-file=note.md --forward-message-id=<message-id>`
+    appends a real Gmail-style forward under the note and signature: the "Forwarded message" header with the original From, Date, Subject, To and Cc, then the original HTML body.
+    The draft is filed in the original message's thread, so it sits beside the original in Gmail the way Gmail's own Forward does.
+    Forwarding covers messages without attachments; the command stops with an error on one that has them.
   - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
     (sends that one draft and removes it from Drafts; Gmail files the copy in Sent). See **Sending**
     below — this runs only on Russ's explicit per-message say-so.
