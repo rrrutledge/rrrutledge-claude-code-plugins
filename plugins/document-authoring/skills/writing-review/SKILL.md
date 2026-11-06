@@ -38,10 +38,12 @@ Which mode each case collects - diff or whole-document - is "How to run it" step
    Default to diff mode - `git diff <base>..<head>` restricted to prose-bearing files - any time the text lives in a file that already existed before this change.
    Reserve whole-document mode - the file itself - for a brand-new file with no `<base>` version to diff against, or an explicit, standalone request to review an existing document for its own sake, unrelated to any specific change.
    Whole-document mode has no "stay on what changed" guardrail: it reviews everything the file contains against the rubric, so picking it for an existing file under active change reopens prose the change never touched.
+   When the text is skill prose, also collect the current path of every script the skill runs, for the script test in `authoring-rules`' "Skill prose carries only the steps that need the running Claude session".
+   A change that edits a script brings in every skill that runs it (search the repo for the script's file name), whether or not the skill's own prose changed, because behavior moved into a script is what leaves a skill restating it.
 2. Skip `.tmp/`.
    Plans, specs, handoffs, and staged commit messages live there, and they are change-explanations rather than shipped artifacts.
    Different rules apply to them, so reviewing them against this rubric produces false findings.
-3. Dispatch a subagent using `reviewer-prompt.md`, giving it the text and the rubric path.
+3. Dispatch a subagent using `reviewer-prompt.md`, giving it the text, the rubric path, and any script paths from step 1.
 4. Revise against the findings you accept, then dispatch a **fresh** reviewer on the revised text.
    A reviewer that has already seen an earlier draft reads its own prior findings rather than the words in front of it.
 5. Repeat from step 3 until the reviewer returns clean, a finding stands that you genuinely disagree with, or you have run three rounds.
