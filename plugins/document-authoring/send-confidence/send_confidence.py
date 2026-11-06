@@ -86,6 +86,9 @@ LEGACY_JUDGE_MODEL = "claude-haiku-4-5"
 # self-disagreement on each judged attribute.
 JUDGE_RUNS = 3
 JUDGE_TEMPERATURE = 1
+# Judge user content at least this long (~1000 tokens) is worth a serial first run that writes the
+# cache for the other runs; shorter content saves less than the extra round trip costs.
+CACHE_USER_MIN_CHARS = 4000
 
 # The reply types the judge labels; personal-ai-pod's scripts/pod-review.py labels its kind
 # table with the same six.
@@ -172,15 +175,43 @@ def _anthropic_api_key():
 
 # --- the Haiku calls ---
 
-def _call_model(system, user, api_key, max_tokens, temperature=None):
+def usage_log_path():
+    return os.path.join(data_dir(), f"cache-usage-{socket.gethostname()}.jsonl")
+
+
+def _note_usage(data):
+    """Append the call's token usage, cache fields included, so the caching effect is visible.
+    Best-effort: a write failure never disturbs a score."""
+    usage = data.get("usage") or {}
+    entry = {"ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+             "model": JUDGE_MODEL}
+    for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
+                "output_tokens"):
+        entry[key] = usage.get(key, 0)
+    try:
+        os.makedirs(data_dir(), exist_ok=True)
+        with open(usage_log_path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+
+def _call_model(system, user, api_key, max_tokens, temperature=None, cache_user=False):
     """One JSON-answering Haiku call. Returns (parsed_dict, error). With no `temperature` the
-    request leaves it to the model's default, since Haiku 5.5 rejects any other value."""
+    request leaves it to the model's default, since Haiku 5.5 rejects any other value.
+    The system prompt always carries a cache breakpoint, so it is shared across every call and
+    draft; `cache_user` adds one on the user content, for runs that repeat the same user content."""
     if os.environ.get("SEND_CONFIDENCE_JUDGE") == "off":
         return None, "judge disabled (SEND_CONFIDENCE_JUDGE=off)"
     if not api_key:
         return None, "no API key"
+    ephemeral = {"type": "ephemeral"}
+    user_block = {"type": "text", "text": user}
+    if cache_user:
+        user_block["cache_control"] = ephemeral
     request = {"model": JUDGE_MODEL, "max_tokens": max_tokens,
-               "system": system, "messages": [{"role": "user", "content": user}]}
+               "system": [{"type": "text", "text": system, "cache_control": ephemeral}],
+               "messages": [{"role": "user", "content": [user_block]}]}
     if temperature is not None:
         request["temperature"] = temperature
     payload = json.dumps(request).encode("utf-8")
@@ -194,6 +225,7 @@ def _call_model(system, user, api_key, max_tokens, temperature=None):
             data = json.loads(resp.read().decode("utf-8"))
     except (HTTPError, URLError, TimeoutError, OSError) as e:
         return None, f"model call failed: {e}"
+    _note_usage(data)
     text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     m = re.search(r"\{[\s\S]*\}", text)
     if not m:
@@ -229,16 +261,21 @@ def _rating(reading, key):
     return value if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 5 else None
 
 
-def run_judge(ctx, body, aspects, api_key):
-    """One Haiku call rating content latitude and stakes, auditing claim support, and labelling
-    the kind. Returns (result_dict, error) - result is None and error is set on any failure.
-    A kind outside MESSAGE_KINDS comes back as None rather than failing the reading."""
-    user = json.dumps({
+def _judge_user_content(ctx, body):
+    return json.dumps({
         "channel": ctx.get("channel"), "ask": ctx.get("ask", ""),
         "inputs": (ctx.get("inputs") or "")[:INPUTS_CHAR_CAP], "draft": body,
     })
+
+
+def run_judge(ctx, body, aspects, api_key, cache_user=False):
+    """One Haiku call rating content latitude and stakes, auditing claim support, and labelling
+    the kind. Returns (result_dict, error) - result is None and error is set on any failure.
+    A kind outside MESSAGE_KINDS comes back as None rather than failing the reading."""
+    user = _judge_user_content(ctx, body)
     system = JUDGE_SYSTEM.format(aspects=aspects or "", kinds="|".join(MESSAGE_KINDS))
-    parsed, error = _call_model(system, user, api_key, 2048, temperature=JUDGE_TEMPERATURE)
+    parsed, error = _call_model(system, user, api_key, 2048, temperature=JUDGE_TEMPERATURE,
+                                cache_user=cache_user)
     if error:
         return None, error
     if not (all(_rating(parsed, k) for k in ("content_latitude", "stakes"))
@@ -251,10 +288,19 @@ def run_judge(ctx, body, aspects, api_key):
 
 
 def run_judges(ctx, body, aspects, api_key):
-    """JUDGE_RUNS independent judge readings, made in parallel. Returns (readings, errors):
-    the readings that succeeded in run order, and each distinct error the failed runs hit."""
-    with ThreadPoolExecutor(max_workers=JUDGE_RUNS) as pool:
-        results = list(pool.map(lambda _: run_judge(ctx, body, aspects, api_key), range(JUDGE_RUNS)))
+    """JUDGE_RUNS independent judge readings. Returns (readings, errors): the readings that
+    succeeded in run order, and each distinct error the failed runs hit.
+    The runs share one user content, so when it is long enough to be worth caching the first run
+    goes alone and writes the cache, then the rest run in parallel and read it; a simultaneous
+    fan-out would have every run miss. Short content runs all in parallel, sharing only the
+    system prompt that earlier drafts have already cached."""
+    warm = len(_judge_user_content(ctx, body)) >= CACHE_USER_MIN_CHARS
+    options = {"cache_user": True} if warm else {}
+    first = [run_judge(ctx, body, aspects, api_key, **options)] if warm else []
+    rest = JUDGE_RUNS - len(first)
+    with ThreadPoolExecutor(max_workers=rest) as pool:
+        results = first + list(pool.map(
+            lambda _: run_judge(ctx, body, aspects, api_key, **options), range(rest)))
     readings = [r for r, _ in results if r]
     errors = list(dict.fromkeys(e for _, e in results if e))
     return readings, errors

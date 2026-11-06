@@ -168,7 +168,7 @@ def test_judge_ratings_and_latitude_turn_penalty(monkeypatch):
 def test_judge_prompt_carries_the_aspects_file(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, api_key, max_tokens, temperature=0):
+    def fake_call(system, user, api_key, max_tokens, temperature=0, cache_user=False):
         seen["system"] = system
         return None, "stubbed"
     monkeypatch.setattr(sc, "_call_model", fake_call)
@@ -307,7 +307,7 @@ def test_kind_majority(labels, expected):
 def test_run_judge_asks_for_kind_at_temperature_1(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, api_key, max_tokens, temperature=None):
+    def fake_call(system, user, api_key, max_tokens, temperature=None, cache_user=False):
         seen.update(system=system, temperature=temperature)
         return {"stakes": {"rating": 2}, "content_latitude": {"rating": 3}, "claims": [],
                 "kind": " Info-Request "}, None
@@ -338,13 +338,72 @@ def test_run_judges_makes_three_calls(monkeypatch):
     calls = []
     original = sc.run_judge
 
-    def counting(*a):
+    def counting(*a, **k):
         calls.append(1)
-        return original(*a)
+        return original(*a, **k)
     monkeypatch.setattr(sc, "run_judge", counting)
     readings, errors = sc.run_judges({}, "body", "", None)
     assert len(calls) == sc.JUDGE_RUNS == 3
     assert readings == [] and errors == ["judge disabled (SEND_CONFIDENCE_JUDGE=off)"]
+
+
+def test_run_judges_warms_the_cache_first_for_long_content(monkeypatch):
+    order = []
+
+    def fake_judge(ctx, body, aspects, api_key, **options):
+        order.append(bool(options.get("cache_user")))
+        return {"kind": None}, None
+    monkeypatch.setattr(sc, "run_judge", fake_judge)
+    sc.run_judges({"inputs": "x" * sc.CACHE_USER_MIN_CHARS}, "body", "", "key")
+    assert order == [True] * sc.JUDGE_RUNS
+    order.clear()
+    sc.run_judges({"inputs": "short"}, "body", "", "key")
+    assert order == [False] * sc.JUDGE_RUNS
+
+
+def _capture_request(monkeypatch, usage):
+    sent = {}
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({"content": [{"type": "text", "text": "{\"ok\": 1}"}],
+                               "usage": usage}).encode()
+
+    def fake_urlopen(req, timeout=None):
+        sent["body"] = json.loads(req.data.decode())
+        return Resp()
+    monkeypatch.setattr(sc, "urlopen", fake_urlopen)
+    monkeypatch.setenv("SEND_CONFIDENCE_JUDGE", "on")
+    return sent
+
+
+def test_call_model_caches_the_system_prompt_and_optionally_the_user_content(monkeypatch):
+    usage = {"input_tokens": 10, "cache_creation_input_tokens": 0,
+             "cache_read_input_tokens": 2000, "output_tokens": 5}
+    sent = _capture_request(monkeypatch, usage)
+    parsed, error = sc._call_model("sys", "usr", "key", 100)
+    assert error is None and parsed == {"ok": 1}
+    assert sent["body"]["system"] == [{"type": "text", "text": "sys",
+                                       "cache_control": {"type": "ephemeral"}}]
+    assert sent["body"]["messages"][0]["content"] == [{"type": "text", "text": "usr"}]
+    sc._call_model("sys", "usr", "key", 100, cache_user=True)
+    assert sent["body"]["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_call_model_logs_cache_usage(monkeypatch):
+    usage = {"input_tokens": 10, "cache_creation_input_tokens": 1500,
+             "cache_read_input_tokens": 2000, "output_tokens": 5}
+    _capture_request(monkeypatch, usage)
+    sc._call_model("sys", "usr", "key", 100)
+    entry = json.loads(open(sc.usage_log_path(), encoding="utf-8").read().splitlines()[-1])
+    assert entry["cache_read_input_tokens"] == 2000
+    assert entry["cache_creation_input_tokens"] == 1500
 
 
 # --- score_and_log ---
