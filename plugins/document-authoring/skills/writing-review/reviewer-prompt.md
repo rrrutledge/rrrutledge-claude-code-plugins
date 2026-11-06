@@ -44,6 +44,15 @@ Subagent (general-purpose):
     Otherwise stay on the added prose: a pre-existing issue the diff didn't
     cause is out of scope, even if you notice it while reading for context.
 
+    When the text is skill prose (a SKILL.md or a file a skill loads), read
+    every script in [SCRIPT_PATHS], plus any other script the skill runs that
+    the list leaves out. Hold each sentence that describes a script against
+    the script itself, by the test in the rubric's "Skill prose carries only
+    the steps that need the running Claude session" rule. When the change
+    edited a script, a sentence restating it is in scope wherever it sits in
+    the skill. The scripts are evidence for that test; their code is not under
+    review.
+
     Prose only. Code, tests, config values, and data are out of scope. Inside a
     prose file, review the prose: a code block quoted as an example is not
     subject to the prose rules, and text quoted from someone else (a cited
@@ -94,4 +103,5 @@ Subagent (general-purpose):
 - `[MESSAGE_RULES_PATH]` - only when reviewing an outward message: absolute path to `message-rules/SKILL.md`
 - `[ASPECTS_PATH]` - only when reviewing an outward message: absolute path to `send-confidence/uncertainty-aspects.md`
 - `[TEXT_OR_DIFF_PATH]` - REQUIRED: the file or diff under review
+- `[SCRIPT_PATHS]` - only when reviewing skill prose: absolute paths to the scripts the skill runs
 - `[MODEL]` - the reviewer model
