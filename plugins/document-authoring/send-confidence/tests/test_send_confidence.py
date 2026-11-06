@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -352,10 +353,13 @@ def test_run_judges_warms_the_cache_first_for_long_content(monkeypatch):
 
     def fake_judge(ctx, body, aspects, api_key, **options):
         order.append(bool(options.get("cache_user")))
+        threads.append(threading.current_thread() is threading.main_thread())
         return {"kind": None}, None
+    threads = []
     monkeypatch.setattr(sc, "run_judge", fake_judge)
     sc.run_judges({"inputs": "x" * sc.CACHE_USER_MIN_CHARS}, "body", "", "key")
     assert order == [True] * sc.JUDGE_RUNS
+    assert threads == [True, False, False]
     order.clear()
     sc.run_judges({"inputs": "short"}, "body", "", "key")
     assert order == [False] * sc.JUDGE_RUNS

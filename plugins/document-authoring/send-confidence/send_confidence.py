@@ -298,7 +298,7 @@ def run_judges(ctx, body, aspects, api_key):
     options = {"cache_user": True} if warm else {}
     first = [run_judge(ctx, body, aspects, api_key, **options)] if warm else []
     rest = JUDGE_RUNS - len(first)
-    with ThreadPoolExecutor(max_workers=rest) as pool:
+    with ThreadPoolExecutor(max_workers=max(rest, 1)) as pool:
         results = first + list(pool.map(
             lambda _: run_judge(ctx, body, aspects, api_key, **options), range(rest)))
     readings = [r for r, _ in results if r]
