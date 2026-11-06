@@ -73,10 +73,13 @@ instructions: |-
   The Job Search Outreach board (`phRXnOvf`) holds two kinds of card, and keeping them separate is what
   keeps each follow-up reliably scheduled - a card carries one Start date, so it tracks exactly one clock.
 
-  - **Application card** - one target role. It carries no future Start: it stays startable-now until the
-    application is in, is finished in a single session, then moves to Finished / Abandoned and rests. Every
-    wait a role seems to need - a referrer's name, a recruiter who has gone quiet - is really a wait on a
-    person, so that clock lives on the person's card, never the role card. Created by the job-board poller
+  - **Application card** - one target role. It carries no future Start, with one exception: while referral
+    asks for the role are out, its Start is day 7 after the asks (the apply-by date), because Russell
+    applies by then whether or not an intro has landed. Otherwise it stays startable-now until the
+    application is in, is finished in a single session, then moves to Applied and, once every helper has
+    their update, to Finished / Abandoned and rests. Every other wait a role seems to need - a referrer's
+    name, a recruiter who has gone quiet - is really a wait on a person, so that clock lives on the
+    person's card, never the role card. Created by the job-board poller
     (always in `Identified`, always wearing a `P1`/`P2`/`P3` fit label) or by the apply-for-job flow. It
     never wears the `👤 Contact` label.
   - **Person follow-up card** - one network contact. Its Start tracks the follow-up cadence with that one
@@ -86,7 +89,8 @@ instructions: |-
 
   **Outreach for a role lives on the contact's person card, linked to the application card.** When a
   warm intro for a role goes to a contact, open or update that contact's person card (search first, per
-  above), set its Start to the follow-up cadence, and link the two by URL - the application card names the
+  above), set its Start to the follow-up cadence (day 5 after the ask for a role-specific referral ask, per
+  the job-search initiative's 0 / 5 / 7 day schedule), and link the two by URL - the application card names the
   contacts helping it, the person card names the role(s) it's helping. Bundling several contacts' threads
   onto one application card is what drops follow-ups: four contacts are four clocks, and a card's one Start
   can hold only one. Every contact you reach gets their own person card, even a single cold ask you
