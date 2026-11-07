@@ -55,7 +55,7 @@ const expectEmail = (() => {
   const signedInAs = await fetchAccountEmail(client);
   if (!signedInAs) throw new Error('Could not read the signed-in address from the primary calendar. Not saving the token.');
   if (expectEmail && signedInAs !== expectEmail) {
-    throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
+    throw new Error(`Consent was for ${signedInAs}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
   }
 
   writeTokens({ ...tokens, account_email: signedInAs });
