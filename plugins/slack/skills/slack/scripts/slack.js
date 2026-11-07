@@ -42,10 +42,11 @@
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
 // Unanswered:    node slack.js --unanswered --channel=<C> [--json]
-//                (the DM or group DM messages posted after Russell's last message, thread reply, or
-//                 reaction there, plus any still unread, oldest first; read-only; --json prints null for a
+//                (the DM or group DM messages Russell hasn't answered, as defined in unanswered.js,
+//                 oldest first; read-only; --json prints null for a
 //                 channel. --send and --create-draft run the same check on a new top-level 1:1 DM message
-//                 and refuse while anything is unanswered, unless --answering marks the body as the answer)
+//                 and refuse while anything is unanswered; --handled says the waiting messages are taken
+//                 care of, by this body or by needing no answer)
 // React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
 // Unreact:      node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>
@@ -821,17 +822,17 @@ const { richTextBlocks, rawTokensIn } = require('./draft-body');
 const { unanswered } = require('./unanswered');
 
 // The DM or group DM messages Russell hasn't answered (see unanswered.js), oldest first, in unreadSpan's
-// shape, plus `im`: true for a 1:1 DM. A channel returns null: the answer-before-a-new-message rule
+// shape. A channel returns null: the answer-before-a-new-message rule
 // covers people messaging Russell directly, and a channel message is addressed to the room.
-// The conversations.info lookup is called directly rather than through convInfo, so a failed lookup
-// throws and the send it guards fails closed.
-async function unansweredIn(channel) {
+// conversations.info is called directly so a failed lookup throws (convInfo swallows errors), and the
+// send it guards fails closed. imOnly returns null for a group DM too, before any history fetch.
+async function unansweredIn(channel, imOnly = false) {
   const info = (await call('conversations.info', { channel })).channel || {};
-  if (!info.is_im && !info.is_mpim) return null;
+  if (!info.is_im && (imOnly || !info.is_mpim)) return null;
   const me = (await call('auth.test')).user_id;
   const r = await call('conversations.history', { channel, limit: '200' });
   const waiting = unanswered(r.messages || [], me, info.last_read);
-  return { im: !!info.is_im, messages: await unreadSpan(waiting.reverse()) };
+  return unreadSpan(waiting.reverse());
 }
 
 // A message time in this machine's local zone, with the zone named.
@@ -840,9 +841,8 @@ const localTime = (iso) => new Date(iso).toLocaleString('en-US',
 
 async function unansweredCmd() {
   if (!args.channel || args.channel === true) throw new Error('--unanswered requires --channel');
-  const found = await unansweredIn(args.channel);
-  const out = found && found.messages;
-  if (args.json) { console.log(JSON.stringify(out || null, null, 2)); return; }
+  const out = await unansweredIn(args.channel);
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out) { console.log(`${args.channel} is a channel, not a DM or group DM; nothing to check.`); return; }
   if (!out.length) { console.log(`Nothing unanswered in ${args.channel}.`); return; }
   console.log(`${out.length} unanswered message(s) in ${args.channel}, oldest first:`);
@@ -854,16 +854,16 @@ async function unansweredCmd() {
 
 // A new top-level message in a 1:1 DM waits until the person's unanswered messages are answered.
 // A group DM is left to the session's judgment through --unanswered, since its members also talk
-// to each other. --answering marks a body that answers them; a thread reply is always answering something.
+// to each other. --handled says the waiting messages are taken care of, by this body or by needing no
+// answer; a thread reply is always answering something.
 async function requireNothingUnanswered(verb) {
-  if (args.answering || (args['thread-ts'] && args['thread-ts'] !== true)) return;
-  const found = await unansweredIn(args.channel);
-  if (!found || !found.im || !found.messages.length) return;
-  const out = found.messages;
+  if (args.handled || (args['thread-ts'] && args['thread-ts'] !== true)) return;
+  const out = await unansweredIn(args.channel, true);
+  if (!out || !out.length) return;
   const list = out.map(m => `  ${localTime(m.received)} ${m.from}: ${clean(m.text).slice(0, 200) || '(file)'}`).join('\n');
   throw new Error(`${verb}: ${args.channel} has ${out.length} message(s) Russell hasn't answered yet:\n${list}\n`
-    + 'Answer those before staging a new message (see "Answer before a new message" in the slack skill). '
-    + 'If this body is the answer to them, rerun with --answering.');
+    + 'Handle those before staging a new message (see "Answer before a new message" in the slack skill), '
+    + 'then rerun with --handled.');
 }
 
 // The plain text of a draft's rich_text blocks, for listing.

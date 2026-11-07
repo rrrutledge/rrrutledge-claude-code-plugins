@@ -93,7 +93,7 @@ Under `scripts/` (run with `node`):
     after the post and puts back any the post moved (the drainer's acknowledgement sends use this, so an ack
     never marks the person's still-unhandled message read).
     `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
-    Pass `--answering` when the body answers the person's unanswered messages (see **Answer before a new message**).
+    Takes `--handled` (see **Answer before a new message**).
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
@@ -109,7 +109,7 @@ Under `scripts/` (run with `node`):
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
     Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
     Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
-    Pass `--answering` when the body answers the person's unanswered messages (see **Answer before a new message**).
+    Takes `--handled` (see **Answer before a new message**).
   - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
     It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
@@ -143,20 +143,19 @@ Under `scripts/` (run with `node`):
 ## Answer before a new message
 
 Russell answers what a person already sent him before a new message goes to them.
-`--send` and `--create-draft` enforce it on a top-level 1:1 DM message.
 
 Before authoring a new top-level message to a person or a group DM, whether it stages through `--create-draft` or `message-draft`'s browser composer, run `--unanswered` on that conversation.
-In a 1:1 DM, every message it lists waits on Russell.
-In a group DM, the members also talk to each other, so judge which listed messages were addressed to Russell; those are the ones waiting on him.
-When any are waiting, answer them first:
+Judge which listed messages wait on Russell: the ones that ask him something or expect his reply, and in a group DM, only those addressed to him.
+When any wait on him, answer them first:
 
 1. Launch a session to drain them through session-mgr's `spawn-session.py` with `--resume-me`, per session-mgr's `resume-on-completion.md`.
-   Its brief carries each unanswered message with its time, the research each answer needs, and the conversation id.
-   The drain session stages its replies with `--create-draft --answering`, and Russell sends them himself.
+   Its brief carries each waiting message with its time, the research each answer needs, and the conversation id.
+   The drain session stages its replies with `--create-draft --handled`, and Russell sends them himself.
 2. Close this session paused in the same turn.
-   It resumes once Russell has sent the answers, reruns `--unanswered` to confirm the conversation is clear, and stages the new message.
+   It resumes once Russell has sent the answers, reruns `--unanswered` to judge anything newer the same way, and stages the new message.
 
-Pass `--answering` on any body that answers the waiting messages.
+`--handled` on `--send` or `--create-draft` records that judgment: every waiting message is answered by this body or needs no answer.
+In a 1:1 DM, both commands refuse a top-level message without it while `--unanswered` lists anything.
 
 ## Sending
 

@@ -3,8 +3,8 @@
 // newest top-level message, his reply in a message's thread, or his reaction on a message; each answers
 // that message and everything before it. A message still past his read cursor stays unanswered even
 // after his last word, because a holding acknowledgement sent with --keep-unread leaves the question
-// itself unread. Bot, app, and Slackbot posts never count as unanswered, and neither do join/leave and
-// other system messages.
+// itself unread. Only people's posts count: bot, app, Slackbot, and join/leave and other system
+// messages are skipped.
 //
 // `messages` is a conversations.history page in any order; `me` is Russell's user id; `lastRead` is
 // his read cursor on the conversation ('' or a zero ts when Slack reports none).
