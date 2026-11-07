@@ -1527,9 +1527,6 @@ def _live_worker_items(runtime_dir, live):
             yield receipt, rec
 
 
-# The model that carries a routed item to its conversation's live worker. Delivery is one SendMessage
-# call with no judgment in it, so the smallest model does it.
-FORWARD_MODEL = "haiku"
 FORWARD_PROMPT = """Call the SendMessage tool exactly once, then stop.
 Its `to` is the exact text between the two markers below, copied character for character. It holds single backslashes; double or escape none of them.
 >>>{to}<<<
@@ -1538,27 +1535,29 @@ Its `message` is the exact text between these two markers, copied character for 
 """
 
 
-def session_address(receipt, agents, home=None):
+def _live_agent(receipt, agents):
+    """The live `claude agents` entry a worker receipt (short id or full guid) names, or None."""
+    return next((a for a in agents or []
+                 if receipt in (a.get("id"), a.get("sessionId")) and a.get("pid")), None)
+
+
+def session_address(receipt, agents):
     """`(messaging pipe, config dir)` of the live session a worker receipt names, or None.
 
     A session's cross-session inbox is the named pipe in its `<config dir>/sessions/<pid>.json`. That
     pipe, as a `uds:` address, is the one SendMessage target that names exactly one session: titles
     can repeat (two `Slack: @mention in #channel` workers), and SendMessage takes no session id."""
-    for a in agents or []:
-        if receipt not in (a.get("id"), a.get("sessionId")) or not a.get("pid"):
-            continue
-        root = a.get("configDir") or os.path.join(home or os.path.expanduser("~"), ".claude")
-        try:
-            with open(os.path.join(os.path.expanduser(root), "sessions", f"{a['pid']}.json"),
-                      encoding="utf-8") as f:
-                rec = json.load(f) or {}
-        except (OSError, ValueError):
-            return None
-        pipe = rec.get("messagingSocketPath")
-        if rec.get("sessionId") == a.get("sessionId") and pipe:
-            return pipe, a.get("configDir")
+    a = _live_agent(receipt, agents)
+    if not a:
         return None
-    return None
+    root = os.path.expanduser(a.get("configDir") or os.path.join("~", ".claude"))
+    try:
+        with open(os.path.join(root, "sessions", f"{a['pid']}.json"), encoding="utf-8") as f:
+            rec = json.load(f) or {}
+    except (OSError, ValueError):
+        return None
+    pipe = rec.get("messagingSocketPath")
+    return (pipe, a.get("configDir")) if pipe and rec.get("sessionId") == a.get("sessionId") else None
 
 
 def forward_note(iid, json_file, bucket):
@@ -1571,7 +1570,8 @@ def forward_note(iid, json_file, bucket):
             "one live worker.\n"
             f"Read its captured item at {path} and the body file that item names. Triage judged it {bucket}.\n"
             "Handle it as part of this conversation under worker-core before you close: fold it into the "
-            "reply you are drafting, or work it as its own ask. This session is now its only tracker.")
+            "reply you are drafting, or work it as its own ask. This session is now its only tracker, and "
+            "its source is still uncleared: run its provider's CLEAR on that item when you finish it.")
 
 
 def _forward_delivered(stream, to, message):
@@ -1615,11 +1615,12 @@ def forward_to_worker(address, message, repo):
     env = {**os.environ, "CLAUDE_CONFIG_DIR": config_dir} if config_dir else None
     try:
         res = run_subprocess_bounded(
-            [claude, "-p", "--model", FORWARD_MODEL, "--permission-mode", "manual",
+            # Delivery is one SendMessage call with no judgment in it, so the smallest model makes it.
+            [claude, "-p", "--model", "haiku", "--permission-mode", "manual",
              "--output-format", "stream-json", "--verbose", "--setting-sources", "",
              "--allowedTools", "SendMessage", "--tools", "SendMessage"],
             input=FORWARD_PROMPT.format(to=to, message=message),
-            timeout=180, cwd=repo, env=env, creationflags=NO_WINDOW)
+            timeout=90, cwd=repo, env=env, creationflags=NO_WINDOW)
     except OSError:
         return False
     if getattr(res, "timed_out", False) or res.returncode != 0:
@@ -1630,15 +1631,16 @@ def forward_to_worker(address, message, repo):
 def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     """Hand a new item to the live worker already holding its conversation. Captures the item, sends
     that worker a note naming it, and only on a verified delivery records it: a receipt naming the
-    holder (so reconcile treats the item as live exactly while the holder is), seen-state, then the
-    source's clear, the same order a launch uses. True when the item was handed over; False leaves it
-    unrecorded for the caller to launch normally."""
+    holder (so reconcile treats the item as live exactly while the holder is), then seen-state. The
+    source is left for the holder to clear when it finishes the item: a holder that closes without
+    handling the note leaves an email in the inbox, and reconcile re-queues it once the holder ends.
+    True when the item was handed over; False leaves it unrecorded for the caller to launch."""
     address = session_address(holder, agents)
     if not address:
         return False
     iid = it["_id"]
     json_file = provider.capture(it, iid, runtime_dir)
-    _stamp_item_fields(json_file, conversationKey=key, forwardedTo=holder)
+    _stamp_item_fields(json_file, conversationKey=key)
     if not forward_to_worker(address, forward_note(iid, json_file, it["_bucket"]), repo):
         print(f"{iid}: delivery to the live worker on its conversation failed; launching a worker instead.")
         return False
@@ -1647,19 +1649,10 @@ def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     with open(os.path.join(seeds, f"{iid}.prompt.txt.session"), "w", encoding="utf-8") as f:
         f.write(holder)
     seen_state("record", runtime_dir, it["_source"], iid, it["_bucket"])
-    provider.clear(it)
     return True
 
 
-def session_title_of(receipt, agents):
-    """The title of the live session a worker receipt names, or None."""
-    for a in agents or []:
-        if receipt in (a.get("id"), a.get("sessionId")) and a.get("pid"):
-            return (a.get("name") or "").strip() or None
-    return None
-
-
-def live_peer_lines(agents, limit=40):
+def live_peer_lines(agents):
     """One `- <title> (<state>)` line per live session on this machine, for a new worker's seed, so its
     duplicate-work check (worker-core §2) compares against the sessions that exist instead of depending
     on the worker remembering to look. Background and interactive alike, since Russell's own session
@@ -1668,9 +1661,9 @@ def live_peer_lines(agents, limit=40):
     for a in agents or []:
         if not a.get("pid") or not (a.get("name") or "").strip():
             continue
-        state = a.get("state") or a.get("status") or a.get("kind") or ""
+        state = a.get("state") or a.get("status") or ""  # background sessions carry `state`, interactive `status`
         lines.append(f"- {a['name'].strip()}" + (f" ({state})" if state else ""))
-    return lines[:limit]
+    return lines[:40]
 
 
 def held_for_correspondent(corr, active):
@@ -1684,13 +1677,11 @@ def conversation_route(key, open_convs, claimed, flagged=False):
     holds the conversation but can't take a message yet, "forward" when a live worker from an earlier
     cycle holds it, None to dispatch as usual. A screen-flagged item is never forwarded: it gets its own
     worker, which leads with the warning for Russell."""
-    if not key:
+    if not key or flagged:
         return None
     if key in claimed:
         return "hold"
-    if key in open_convs and not flagged:
-        return "forward"
-    return None
+    return "forward" if key in open_convs else None
 
 
 # An orphan that ended within this window dispatches ahead of every other source; an older one waits
@@ -2183,6 +2174,16 @@ def main():
     peers = live_peer_lines(agents)
 
     if args.dry_run:
+        def print_route(it, key):
+            """Print the conversation-routing action for an item, True when it takes one."""
+            route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
+            if route:
+                action = ("HOLD (same conversation)" if route == "hold"
+                          else f"FORWARD to the live worker {open_convs[key]}")
+                print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
+                      f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
+            return bool(route)
+
         counts = {b: sum(1 for it in all_new if it["_bucket"] == b)
                   for b in ("needs-you", "auto-handle", "fyi", "junk")}
         total_all = sum(totals.values())
@@ -2196,15 +2197,8 @@ def main():
             print("  auto-handle (autonomous worker, not capped):")
             for it in auto:
                 key = prov[it["_source"]].conversation_key(it)
-                route = conversation_route(key, open_convs, claimed_convs)
-                if route:
-                    action = ("HOLD (same conversation)" if route == "hold"
-                              else f"FORWARD to the live worker {open_convs[key]}")
-                    print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
-                          f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
+                if print_route(it, key):
                     continue
-                if key:
-                    claimed_convs.add(key)
                 c = prov[it["_source"]].correspondent(it)
                 if c:
                     active_correspondents.add(c)  # a same-cycle needs-you duplicate waits behind it
@@ -2221,12 +2215,7 @@ def main():
         slots = open_slots(waiting, total, len(auto), cfg)
         for it in needs:
             key = prov[it["_source"]].conversation_key(it)
-            route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
-            if route:
-                action = ("HOLD (same conversation)" if route == "hold"
-                          else f"FORWARD to the live worker {open_convs[key]}")
-                print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
-                      f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
+            if print_route(it, key):
                 continue
             corr = prov[it["_source"]].correspondent(it)
             corr_held = held_for_correspondent(corr, active_correspondents)
@@ -2281,7 +2270,7 @@ def main():
                 return True
             # The hand-over failed, so this item gets its own worker; its seed names the live session
             # already on the conversation, so the two settle which one keeps it (worker-core §2).
-            it["_conversationHolder"] = session_title_of(open_convs[key], agents)
+            it["_conversationHolder"] = ((_live_agent(open_convs[key], agents) or {}).get("name") or "").strip()
         return False
 
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
@@ -2297,11 +2286,11 @@ def main():
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        if key:
-            _stamp_item_fields(json_file, conversationKey=key)
-            claimed_convs.add(key)
+        # An auto-handle worker never holds its conversation: it runs a standing rule and closes without
+        # surfacing anything, so a needs-you follow-up routed to it would never reach Russell.
         spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
                      peers=peers)
+        peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -2319,7 +2308,9 @@ def main():
         if routed(it, provider, key):
             continue
         corr = provider.correspondent(it)
-        if held_for_correspondent(corr, active_correspondents):
+        # A failed hand-over means the holder can't take the item, so it launches rather than waiting
+        # behind that same holder's correspondent; its seed names the holder instead.
+        if "_conversationHolder" not in it and held_for_correspondent(corr, active_correspondents):
             # An earlier item from this correspondent is still open (a live worker, or one dispatched
             # earlier this cycle). Leave this UNRECORDED so it re-enumerates next cycle (its verdicts are
             # read back from the cache, not re-judged); once that worker clears, the hold is gone and one
@@ -2353,6 +2344,7 @@ def main():
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
             spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
                                    peers=peers)
+            peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
         # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on

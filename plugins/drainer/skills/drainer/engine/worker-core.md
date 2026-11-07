@@ -151,7 +151,7 @@ The poller routes a new item in a conversation a live worker already holds (the 
 Same work arriving by another source has no shared key, and the poller can't route it, so this check is how it gets caught.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed lists the sessions live when you launched; compare this item against that list before starting the work, and run `ListAgents` to address a send or to see sessions newer than the list.
-Look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email, a meeting action item and a session already sending that newsletter).
+Look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
 Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
 Russell's own interactive session counts the same as a background worker.
 When a peer looks like it covers the same work, settle which one of you keeps it, so exactly one session does the work:
@@ -176,9 +176,8 @@ The poller says so when it found that session but couldn't hand the item to it.
 Run step 1 with that session before any other work; it started earlier, so it keeps the work by the rule above unless it says it has finished with the conversation.
 
 **A new item in your own conversation arrives as a message from the drainer.**
-It names the new item's captured json and its triage, and says the poller routed it to you instead of launching a second worker.
 Handle it as part of this conversation before you close, the same as an item you were launched on: read it, then fold it into the reply you are drafting or work it as its own ask.
-The poller has recorded it against this session and cleared its source the way it does at a launch, so this session is its only tracker.
+Its source is still uncleared, so run its provider's CLEAR on that item once it is handled, as you do for your own (§2d and §6).
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.

@@ -109,22 +109,23 @@ check("claimed this cycle -> hold", poller.conversation_route(KEY, {}, {KEY}), "
 check("unheld conversation -> dispatch", poller.conversation_route(KEY, {}, set()), None)
 check("no key -> dispatch", poller.conversation_route(None, {KEY: "g"}, {KEY}), None)
 check("a screen-flagged item gets its own worker", poller.conversation_route(KEY, {KEY: "g"}, set(), True), None)
+check("a screen-flagged item is not held behind a same-cycle launch",
+      poller.conversation_route(KEY, {}, {KEY}, True), None)
 
 print("\nsession_address: the receipt's live session -> its messaging pipe, on its own account")
-home = tempfile.mkdtemp(prefix="conv-home-")
-os.makedirs(os.path.join(home, ".claude", "sessions"))
+account = tempfile.mkdtemp(prefix="conv-account-")  # the session's CLAUDE_CONFIG_DIR
+os.makedirs(os.path.join(account, "sessions"))
 PIPE = r"\\.\pipe\LOCAL\cc-msg-abc"
-with open(os.path.join(home, ".claude", "sessions", "4242.json"), "w", encoding="utf-8") as f:
+with open(os.path.join(account, "sessions", "4242.json"), "w", encoding="utf-8") as f:
     json.dump({"pid": 4242, "sessionId": "abc12345-0000", "messagingSocketPath": PIPE}, f)
-agents = [{"id": "abc12345", "sessionId": "abc12345-0000", "pid": 4242, "configDir": None},
-          {"id": "dead0000", "sessionId": "dead0000-0000", "configDir": None}]
-check("a short-id receipt resolves", poller.session_address("abc12345", agents, home=home), (PIPE, None))
-check("a guid receipt resolves", poller.session_address("abc12345-0000", agents, home=home), (PIPE, None))
-check("a pid-less session has no address", poller.session_address("dead0000", agents, home=home), None)
-with open(os.path.join(home, ".claude", "sessions", "4242.json"), "w", encoding="utf-8") as f:
+agents = [{"id": "abc12345", "sessionId": "abc12345-0000", "pid": 4242, "configDir": account},
+          {"id": "dead0000", "sessionId": "dead0000-0000", "configDir": account}]
+check("a short-id receipt resolves", poller.session_address("abc12345", agents), (PIPE, account))
+check("a guid receipt resolves", poller.session_address("abc12345-0000", agents), (PIPE, account))
+check("a pid-less session has no address", poller.session_address("dead0000", agents), None)
+with open(os.path.join(account, "sessions", "4242.json"), "w", encoding="utf-8") as f:
     json.dump({"pid": 4242, "sessionId": "someone-else", "messagingSocketPath": PIPE}, f)
-check("a pid file now owned by another session is not trusted",
-      poller.session_address("abc12345", agents, home=home), None)
+check("a pid file now owned by another session is not trusted", poller.session_address("abc12345", agents), None)
 
 
 def stream(to, message, result):
@@ -192,9 +193,9 @@ try:
     check("handed over", ok, True)
     check("the receipt names the holder, so reconcile reads it live while the holder is", receipt, "guid-live")
     check("recorded seen under its own bucket", recorded, [("record", recorded[0][1], "slack", "slack-new", "needs-you")])
-    check("the source is cleared", cleared, ["slack-new"])
-    check("the captured item names its conversation and holder",
-          (rec.get("conversationKey"), rec.get("forwardedTo")), (KEY, "guid-live"))
+    check("the source is left for the holder to clear", cleared, [])
+    check("the note tells the holder to clear it", "CLEAR" in sent[0], True)
+    check("the captured item names its conversation", rec.get("conversationKey"), KEY)
     check("one note sent", len(sent), 1)
 
     print("\nroute_to_live_worker: a failed delivery leaves the item for a normal launch")
@@ -216,10 +217,6 @@ lines = poller.live_peer_lines([
 check("live named sessions only, with their state", lines, ["- Newsletter (idle)", "- Slack: thread (blocked)"])
 check("a failed scan lists nothing", poller.live_peer_lines(None), [])
 
-print("\nsession_title_of: a receipt -> its live session's title")
-check("live receipt -> title", poller.session_title_of("abc12345", [{"id": "abc12345", "pid": 1, "name": "Slack: x"}]),
-      "Slack: x")
-check("dead receipt -> None", poller.session_title_of("abc12345", [{"id": "abc12345", "name": "Slack: x"}]), None)
 
 
 def seed_for(item):

@@ -182,9 +182,11 @@ class Provider(ProviderBase):
                 "cursor": sent.get("cursor")}
 
     def conversation_key(self, item):
-        """A DM or group DM is one conversation, thread replies included. In a channel the conversation
-        is a thread, keyed by its root ts, and a top-level message is its own root, so a thread's
-        @mention, its later replies, and an `Unread in` item for its root message all share one key."""
+        """A DM or group DM is one conversation. A 1:1 DM's thread replies join it too, since its channel id
+        names it a DM; a thread inside a group DM carries no such marker, so it keys as its own thread.
+        In a channel the conversation is a thread, keyed by its root ts, and a top-level message is its
+        own root, so a thread's @mention, its later replies, and an `Unread in` item whose newest message
+        is the thread's root all share one key."""
         channel = item.get("channel")
         if not channel:
             return None

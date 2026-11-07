@@ -62,7 +62,7 @@ No AI re-implements the loop.
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic):
-   - **needs-you and auto-handle, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one (see "One conversation, one live worker" below).
+   - **needs-you and auto-handle, first** → if a live needs-you worker already holds this item's conversation, hand the item to that worker instead of launching one (see "One conversation, one live worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
      The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
@@ -149,26 +149,28 @@ This extends the grouping the drainer already does before a worker launches.
 A Slack item folds a conversation's whole unread span into one item (`slack-adapter.py` `capture`), and the correspondent hold below keeps a second email from the same person waiting while the first one's worker is open.
 Neither covers a message that arrives after its conversation's worker is live, or the same thread surfacing as a different item type (`@mention in thread`, `Thread reply`, `Unread in`): each of those would get its own worker.
 Instead, each provider gives an item a **conversation key** where its source has one (`conversation_key()`): the Gmail thread id, the Outlook conversation id, the Teams chat id, and for Slack the DM or group DM, or in a channel the thread's root ts, where a top-level message is its own root.
-The poller stamps the key into every launched worker's `items/<id>.json`.
+The poller stamps the key into every launched needs-you worker's `items/<id>.json`.
 
 At dispatch, before the correspondent hold and the worker buffer, a needs-you or auto-handle item whose key a **live** worker holds (`open_conversations`, read off the same live-session signal as the correspondent hold) is handed to that worker:
 
 1. The item is captured as usual.
 2. A note naming the captured json and its bucket goes to the worker's cross-session inbox.
    A script can't post to an inbox itself, so the poller makes one `claude -p` call on the smallest model holding only the SendMessage tool, addressed to the worker's messaging pipe (read from its `sessions/<pid>.json`), the one address that names exactly one session.
-   The note is built from code values only, never the item's text.
+   The note is built from code values only.
    Delivery counts only when the call's own output shows SendMessage carrying exactly that address and text, with a success result.
-3. On delivery, the item gets a receipt naming the holder (so reconcile treats it as live exactly while the holder is), is recorded seen, and its source is cleared, the same order a launch uses.
+3. On delivery, the item gets a receipt naming the holder (so reconcile treats it as live exactly while the holder is) and is recorded seen.
+   Its source stays uncleared for the holder to clear when it finishes the item, so a holder that closes without handling the note leaves an email in the inbox, which reconcile re-queues once the holder ends.
 
 A holder no longer live means the conversation is free, and the item launches its own worker.
-A failed delivery, or a live holder with no address, also launches a worker, so the worst case is a duplicate, never a dropped item.
-That worker's seed names the live session already on its conversation, and worker-core §2 has the two settle which one keeps the work (the earlier-started session does), so even a duplicate ends with one session working.
+A failed delivery, or a live holder with no address, also launches a worker, past the correspondent hold, so the worst case is a duplicate, never a dropped item.
+That worker's seed names the live session already on its conversation, and worker-core §2 has the two settle which one keeps the work, so even a duplicate ends with one session working.
 A screen-flagged item always gets its own worker, which leads with the warning.
-When a conversation gets a new worker this cycle, its later items in the same cycle are held unrecorded for one cycle, until that worker can receive them.
+An auto-handle worker never holds its conversation, since it closes without surfacing anything; a needs-you follow-up in that conversation gets its own worker.
+When a conversation gets a new needs-you worker this cycle, its later items in the same cycle are held unrecorded for one cycle, until that worker can receive them.
 
-Same work arriving by **another source** (a meeting action item to send the newsletter while a session is already sending it) shares no key, and matching it takes judgment.
-So every new worker's seed lists the titles of the sessions live at launch, and worker-core §2 has the worker compare against them before starting the work.
-The list costs a few hundred tokens per worker and needs no extra call; a worker that matches a peer settles with it per worker-core §2 which one keeps the work.
+Same work arriving by **another source** shares no key, and matching it takes judgment.
+So every new worker's seed lists the titles of the sessions live at launch, including those launched earlier in the same cycle, and worker-core §2 has the worker compare against them before starting the work.
+The list costs a few hundred tokens per worker and needs no extra call.
 
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
 
