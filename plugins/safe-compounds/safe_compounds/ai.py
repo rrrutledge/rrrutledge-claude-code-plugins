@@ -15,6 +15,13 @@ import urllib.request
 from .log import log_debug
 
 
+MODEL = 'claude-haiku-5-5'
+
+# Haiku 5.5 thinks by default and thinking counts toward max_tokens, so a
+# one-word verdict cap would be spent before any text; leave room for it.
+_MIN_MAX_TOKENS = 1024
+
+
 def _ai_disabled():
     return os.environ.get('SAFE_COMPOUNDS_DISABLE_AI') == '1'
 
@@ -52,10 +59,11 @@ def _build_request(prompt, max_tokens):
         if not token:
             return None
         url = (f'https://{vertex_region}-aiplatform.googleapis.com/v1/projects/{vertex_project}'
-               f'/locations/{vertex_region}/publishers/anthropic/models/claude-haiku-4-5:rawPredict')
+               f'/locations/{vertex_region}/publishers/anthropic/models/{MODEL}:rawPredict')
         data = json.dumps({
             'anthropic_version': 'vertex-2023-10-16',
-            'max_tokens': max_tokens,
+            'max_tokens': max(max_tokens, _MIN_MAX_TOKENS),
+            'output_config': {'effort': 'low'},
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         return urllib.request.Request(url, data=data, headers={
@@ -65,8 +73,9 @@ def _build_request(prompt, max_tokens):
 
     if anthropic_key:
         data = json.dumps({
-            'model': 'claude-haiku-5-5',
-            'max_tokens': max_tokens,
+            'model': MODEL,
+            'max_tokens': max(max_tokens, _MIN_MAX_TOKENS),
+            'output_config': {'effort': 'low'},
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         return urllib.request.Request(
@@ -94,7 +103,8 @@ def ask(prompt, max_tokens=10):
             return None
         with urllib.request.urlopen(req, timeout=15) as response:
             result = json.loads(response.read().decode('utf-8'))
-            return result.get('content', [{}])[0].get('text', '').strip()
+            blocks = result.get('content', [])
+            return ''.join(b.get('text', '') for b in blocks if b.get('type') == 'text').strip()
     except (urllib.error.URLError, urllib.error.HTTPError,
             json.JSONDecodeError, KeyError, IndexError) as e:
         log_debug(f"AI call failed: {type(e).__name__}: {str(e)[:100]}")
