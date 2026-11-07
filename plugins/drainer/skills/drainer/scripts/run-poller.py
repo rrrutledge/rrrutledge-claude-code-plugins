@@ -40,8 +40,9 @@ each explicit, change how that one conversation dispatches:
 The run ends with `on-demand:` lines, one per outcome:
     nothing to drain in <C>.
     held behind open worker <session id> on <C>.        (a live worker already holds the conversation)
+    held behind paused worker <session id> on <C> - ... (a paused or stopped worker still holds it)
     held behind open worker <session id> on the same person as <id>.
-    launched worker for <id> / launched auto-handle worker for <id>
+    launched worker <session id> for <id> / launched auto-handle worker <session id> for <id>
     filed <id> as fyi|junk (nothing waits on Russell)
     held <id> - <reason>                                (triage, screen, session scan, buffer, a concurrent cycle)
     drain failed - <reason>
@@ -1400,7 +1401,7 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
         write_receipt(prompt_file, bg_id)
         if resume_launcher:
             _mark_launcher_resume(resume_launcher, _worker_title(iid, json_file), bg_id)
-        return True
+        return bg_id  # the worker's session id; truthy, so callers test it as launched
     print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
           "left unrecorded to retry next cycle.")
     return False
@@ -1499,6 +1500,20 @@ def live_session_ids():
         if a.get("kind") == "background" and a.get("pid"):
             live.update(x for x in (a.get("id"), a.get("sessionId")) if x)
     return live
+
+
+def parked_session_ids():
+    """Ids of the background sessions still listed with no process: a worker closed paused (it waits to
+    be resumed) or stopped, which still holds its item unfinished. A finished worker runs `claude rm`
+    and drops off the list. None when the scan can't run."""
+    agents = _claude_agents()
+    if agents is None:
+        return None
+    parked = set()
+    for a in agents:
+        if a.get("kind") == "background" and not a.get("pid"):
+            parked.update(x for x in (a.get("id"), a.get("sessionId")) if x)
+    return parked
 
 
 def open_correspondents(runtime_dir, live):
@@ -1956,6 +1971,12 @@ def main():
         if open_here:
             print(f"on-demand: held behind open worker {', '.join(open_here)} on {args.channel}.")
             return
+        parked_here = [guid for item, guid in live_worker_items(cfg["runtime_dir"], parked_session_ids())
+                       if item.get("channel") == args.channel]
+        if parked_here:
+            print(f"on-demand: held behind paused worker {', '.join(parked_here)} on {args.channel} - "
+                  "it still holds this conversation's earlier messages.")
+            return
 
     if not all_new:
         print(f"on-demand: nothing to drain in {args.channel}." if args.channel
@@ -2154,9 +2175,10 @@ def main():
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        if spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                        resume_launcher=launcher_id):
-            on_demand.append(f"launched auto-handle worker for {iid}")
+        bg = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                          resume_launcher=launcher_id)
+        if bg:
+            on_demand.append(f"launched auto-handle worker {bg} for {iid}")
         elif args.channel:
             on_demand.append(f"drain failed - the worker for {iid} did not launch")
             continue
@@ -2217,7 +2239,7 @@ def main():
             spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
                                    resume_launcher=launcher_id)
             if spawned:
-                on_demand.append(f"launched worker for {iid}")
+                on_demand.append(f"launched worker {spawned} for {iid}")
             elif args.channel:
                 # Left unrecorded, so the next cycle picks it up again.
                 on_demand.append(f"drain failed - the worker for {iid} did not launch")

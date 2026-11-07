@@ -105,7 +105,8 @@ check("nothing launched", launches, [])
 poller._append_resume_launcher = lambda *a: "python spawn-session.py --resume launcher-guid"
 got = poller.spawn_worker("item-c", item_json, rt, rt, "sonnet", local_dir, rt, {"_source": "slack"},
                           resume_launcher="launcher-guid")
-check("with the instruction in place it launches", (got, len(launches)), (True, 1))
+check("with the instruction in place it launches, returning the worker's session id",
+      (got, len(launches)), ("bg-1", 1))
 check("and records the launcher's resume marker", [m[0] for m in marks], ["launcher-guid"])
 
 if failures:
