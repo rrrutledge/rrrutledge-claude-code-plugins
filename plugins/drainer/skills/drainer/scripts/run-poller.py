@@ -40,12 +40,14 @@ each explicit, change how that one conversation dispatches:
 The run ends with `on-demand:` lines, one per outcome:
     nothing to drain in <C>.
     held behind open worker <session id> on <C>.        (a live worker already holds the conversation)
+    held behind open worker <session id> on the same person as <id>.
     launched worker for <id> / launched auto-handle worker for <id>
     filed <id> as fyi|junk (nothing waits on Russell)
     held <id> - <reason>                                (triage, screen, session scan, buffer, a concurrent cycle)
     drain failed - <reason>
 """
 import argparse
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -1281,6 +1283,7 @@ def _skill_dirs_block():
             "Run or import it from there; never search the filesystem for a plugin script:\n" + lines)
 
 
+@functools.lru_cache(maxsize=None)
 def _spawn_session():
     """session-mgr's spawn-session.py, loaded as a module: the one home of --resume-me's instruction
     text and of the launch marker the Stop hook reads. None when session-mgr isn't installed."""
@@ -1306,8 +1309,9 @@ def _mark_launcher_resume(launcher_id, title, short_id):
     """Record the launch for the launcher's Stop hook, as spawn-session.py --resume-me does, so the hook
     holds the launching session to closing paused this turn."""
     module = _spawn_session()
-    if module:
-        module.launch_marker.write(launcher_id, "resume", title, short_id)
+    if not (module and module.launch_marker.write(launcher_id, "resume", title, short_id)):
+        print(f"on-demand: warning - no launch marker for session {launcher_id}, so its Stop hook "
+              "cannot hold it to closing paused; close it paused by hand.")
 
 
 def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item,
@@ -1377,7 +1381,7 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     with open(summary_file, "w", encoding="utf-8") as f:
         f.write(summary_text)
     if resume_launcher and not _append_resume_launcher(prompt_file, resume_launcher, _worker_title(iid, json_file)):
-        # A worker with no resume instruction would leave the launcher paused for good, so nothing launches.
+        # The launcher waits paused on this worker's resume instruction, so a worker without one stays unlaunched.
         print(f"spawn_worker {iid}: --resume-me could not build the resume command; not launched.")
         return False
     # A worker is a headless `claude --bg` background session launched through session-mgr's
@@ -1857,7 +1861,7 @@ def main():
     if args.channel:
         providers = [p for p in providers if p.name == "slack"]
         if not providers:
-            print(f"on-demand: nothing drained - the slack provider is not enabled for {args.channel}.")
+            print(f"on-demand: drain failed - the slack provider is not enabled, so {args.channel} was not checked.")
             return
     if not providers:
         print("No providers with a poller adapter are enabled; nothing to do.")
@@ -1933,12 +1937,16 @@ def main():
             print(f"{provider.name}: {total} enumerated, 0 new.")
     # Dry-run is a manual diagnostic often run from a shell without the User-scope creds; persisting
     # health then would log false failures, so only a live cycle records the outcome.
-    # An on-demand run leaves health to the scheduled cycle, so it never saves over that cycle's copy.
+    # Provider health and the heartbeat are the scheduled cycle's to save; an on-demand run leaves its copy as is.
     if not args.dry_run and not args.channel:
         record_heartbeat(health)  # a full live cycle ran
         save_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
 
     if args.channel:
+        if live is None:
+            print(f"on-demand: held - the session scan failed, so an open worker on {args.channel} "
+                  "can't be ruled out; retry shortly.")
+            return
         # A live worker already on this conversation holds its waiting messages, so the on-demand run
         # names that worker and stops.
         open_here = [guid for item, guid in live_worker_items(cfg["runtime_dir"], live)
@@ -2100,7 +2108,7 @@ def main():
         for it in needs:
             corr = prov[it["_source"]].correspondent(it)
             corr_held = held_for_correspondent(corr, active_correspondents)
-            held = corr_held or (slots <= 0 and not args.now)
+            held = corr_held or (slots <= 0 and not (args.now and wcounts is not None))
             if not held:
                 slots -= 1
                 if corr:
@@ -2169,11 +2177,14 @@ def main():
             # worker has already read the full context.
             held += 1
             held_corr += 1
-            on_demand.append(f"held {iid} behind an open worker on the same person")
+            holder = next((g for item, g in live_worker_items(cfg["runtime_dir"], live)
+                           if item.get("correspondent") == corr), "dispatched this cycle")
+            on_demand.append(f"held behind open worker {holder} on the same person as {iid}.")
             continue
         if iid in load_seen(cfg["runtime_dir"], it["_source"]):
             # A concurrent cycle (the scheduled one, or an on-demand --channel run) dispatched it since
             # this cycle enumerated.
+            held += 1
             on_demand.append(f"held {iid} - another drainer cycle just dispatched it")
             continue
         # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.

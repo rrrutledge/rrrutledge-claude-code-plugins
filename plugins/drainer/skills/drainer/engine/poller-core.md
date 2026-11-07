@@ -151,7 +151,7 @@ The flags and the `on-demand:` outcome lines are in the script's header.
 - Seen-state is a separate id store, not the read/unread flag - losing it re-processes (safe).
 - A seen-id is recorded only **after** dispatch succeeds - an aborted cycle loses no item.
 - Workers are idempotent: a duplicate worker's situational-check resolves quietly.
-  No overlap lock; an item another cycle recorded seen after this one enumerated is skipped at dispatch.
+  No overlap lock; a needs-you item another cycle recorded seen after this one enumerated is skipped at dispatch.
 - Completion is observed on the source, never reported: an item is done because its source object is handled, so a worker that dies, is closed, or fails its own archive call re-queues rather than vanishing.
 
 ## Provider-agnostic orchestration

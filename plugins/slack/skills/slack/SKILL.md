@@ -150,9 +150,9 @@ Act on its `on-demand:` lines:
 - **Nothing waits on Russell:** the run printed "nothing to drain" or filed the item as fyi or junk, so author and stage the new message now.
 - **A worker was launched:** it resumes this session once its item is done.
   Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
-- **An open worker holds it:** that worker already has this person's waiting messages.
-  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names (or finding the worker with `ListAgents`), then close paused.
-- **Held or failed for a reason:** the line names the reason.
+- **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
+  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names, then close paused.
+- **Held or failed for another reason:** the line names the reason.
   Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
 
 When this session resumes, run the command again before staging, since the person may have written since.
