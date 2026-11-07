@@ -45,6 +45,7 @@ All under `scripts/`:
   - Update reminder: `node calendar.js --update --subject="Dentist" --reminder=off`
   - Times are `--tz` (default `America/Chicago`). Events have **no** reminder unless `--reminder=N` (minutes before; 0 = at start).
   - Reusable from other scripts: `require('<…>/calendar.js')` exports `getCalendars()`, `getEvents({calendar,start,end,tz})`, `resolveCalendarId()` (CLI is `require.main`-guarded, so requiring it is side-effect-free).
+    `getEvents` resolves to `[{ id, date, subject, minutes, start, end, allDay }]`; a recurring meeting comes back once per occurrence, each with its own instance id.
 - **`mail.js`**
   - List unread: `node mail.js --list-unread [--top=30]` (inbox unread, newest-first; one block per message with id + webLink)
   - List inbox (read+unread): `node mail.js --list-inbox [--top=50] [--json]` (inbox items regardless of read state, newest-first, count-capped by `--top`; `--json` emits a structured array for scripts)

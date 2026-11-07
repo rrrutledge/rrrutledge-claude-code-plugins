@@ -458,7 +458,8 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
       });
     }
     const next = page['@odata.nextLink'];
-    page = next ? await client.api(next).get() : null;
+    // The nextLink keeps the query but not the Prefer header, so re-send it or later pages come back in UTC.
+    page = next ? await client.api(next).header('Prefer', `outlook.timezone="${tz}"`).get() : null;
   }
   return out;
 }
