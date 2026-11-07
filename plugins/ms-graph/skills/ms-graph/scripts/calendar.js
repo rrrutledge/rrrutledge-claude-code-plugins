@@ -428,8 +428,9 @@ async function resolveCalendarId(client, nameOrId) {
 }
 
 // Events on a NAMED calendar over an explicit date range, as
-// [{ date, subject, minutes, start, end, allDay }]. calendarView expands recurrences;
-// --end is inclusive of the whole day. Paginates through @odata.nextLink.
+// [{ id, date, subject, minutes, start, end, allDay }]. calendarView expands recurrences, so a
+// recurring meeting's id is that one occurrence's instance id; --end is inclusive of the whole day.
+// Paginates through @odata.nextLink.
 async function getEvents({ calendar, start, end, tz = 'America/Chicago', client } = {}) {
   if (!calendar || !start || !end) throw new Error('getEvents requires { calendar, start, end }');
   client = client || await getGraphClient();
@@ -441,12 +442,13 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
     .query({ startDateTime: startISO, endDateTime: endISO })
     .header('Prefer', `outlook.timezone="${tz}"`)
     .top(200).orderby('start/dateTime')
-    .select('subject,start,end,isAllDay')
+    .select('id,subject,start,end,isAllDay')
     .get();
   while (page) {
     for (const e of page.value || []) {
       const minutes = Math.round((new Date(e.end.dateTime) - new Date(e.start.dateTime)) / 60000);
       out.push({
+        id: e.id,
         date: (e.start.dateTime || '').slice(0, 10),
         subject: e.subject || '(no title)',
         minutes: e.isAllDay ? 0 : minutes,
