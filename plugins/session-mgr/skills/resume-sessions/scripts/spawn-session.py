@@ -138,7 +138,8 @@ def live_peers(agents, parent_id):
             parent_title = name
             continue
         state = a.get("state") or a.get("status") or ""  # background carries `state`, interactive `status`
-        lines.append(f"- {name}" + (f" ({state})" if state else ""))
+        tags = ", ".join(t for t in (a.get("kind"), state) if t)  # kind tells Russell's interactive session apart
+        lines.append(f"- {name}" + (f" ({tags})" if tags else ""))
     return lines[-MAX_PEERS:], parent_title
 
 
@@ -160,7 +161,7 @@ def _append_duplicate_check(brief):
                                          peers="\n".join(peers) or "(no other live sessions)")
         with open(brief, "w", encoding="utf-8") as f:
             f.write(body.rstrip() + "\n" + section)
-    except (OSError, ValueError):
+    except Exception:  # the check is best-effort: whatever goes wrong, the launch still happens
         return
 
 
@@ -275,6 +276,9 @@ def main(argv=None):
         return 1
 
     resume_me = None
+    # Before the resume-me tail, so the brief still ends on the resume instruction.
+    if brief and not a.resume and not a.worker_of and not (a.resume_me and not os.environ.get("CLAUDE_CODE_SESSION_ID")):
+        _append_duplicate_check(brief)
     if a.resume_me:
         launcher_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
         if a.resume or not brief or a.worker_of:
@@ -307,9 +311,6 @@ def main(argv=None):
             brief = seed_file
         else:
             prompt_file = seed_file
-
-    if brief and not a.resume and not a.worker_of:
-        _append_duplicate_check(brief)
 
     short_id, receipt = launch(cwd=a.cwd, model=a.model, name=name, brief=brief,
                                prompt_file=prompt_file, lead=summary, resume=a.resume)

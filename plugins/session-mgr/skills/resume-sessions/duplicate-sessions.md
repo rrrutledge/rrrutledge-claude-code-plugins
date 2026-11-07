@@ -1,7 +1,8 @@
 # Duplicate sessions - settle which one keeps the work
 
 Use this when a session may be doing work another live session already has.
-It is the one home of the settle rule: a launched handoff session reaches it from the section `spawn-session.py` appends to its brief, and a drainer worker reaches it from worker-core.
+It is the one home of the settle rule: a launched handoff session reaches it from the section `spawn-session.py` appends to its brief.
+Drainer worker-core states the same rule today and will point here instead.
 
 ## Compare before starting
 

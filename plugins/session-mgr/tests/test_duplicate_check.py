@@ -86,6 +86,18 @@ def test_fresh_launch_lists_peers():
         check("appended once", text.count(spawn_session.DUPLICATE_CHECK_HEADING) == 1)
 
 
+def test_resume_me_tail_stays_last():
+    print("test: with --resume-me the duplicate section comes before the resume instruction; kind is shown")
+    agents = AGENTS + [{"sessionId": "e", "name": "Mine", "pid": 9, "kind": "interactive", "status": "idle"}]
+    with tempfile.TemporaryDirectory() as tmp:
+        brief = make_brief(tmp)
+        run(fresh(tmp, brief, "--resume-me"), agents)
+        text = open(brief, encoding="utf-8").read()
+        dup, res = text.find(spawn_session.DUPLICATE_CHECK_HEADING), text.find(spawn_session.RESUME_ME_HEADING)
+        check("duplicate section precedes resume tail", 0 <= dup < res, f"{dup} {res}")
+        check("kind shown", "- Mine (interactive, idle)" in text, text)
+
+
 def test_cap():
     print("test: the list is capped at 40")
     many = [{"sessionId": str(i), "name": f"s{i}", "pid": i + 10, "state": "working"} for i in range(60)]
@@ -130,6 +142,7 @@ def test_skipped_launches():
 
 if __name__ == "__main__":
     test_fresh_launch_lists_peers()
+    test_resume_me_tail_stays_last()
     test_cap()
     test_skipped_launches()
     print(f"\n{'ALL PASS' if not failures else f'{len(failures)} FAILED: {failures}'}")
