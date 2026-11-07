@@ -2,7 +2,8 @@
 // (OAuth path - see google-calendar-oauth.js).
 //
 // List a range:  node google-calendar.js --start=<date or RFC 3339> --end=<date or RFC 3339> [--calendar=<id>] [--json]
-//                (--calendar defaults to `primary`. A plain YYYY-MM-DD date is local midnight. --end is
+//                (--calendar defaults to `primary`. A plain YYYY-MM-DD date is local midnight; a timestamp
+//                needs its offset, e.g. 2026-10-01T00:00:00-05:00. --end is
 //                exclusive, so --start=2026-10-01 --end=2026-11-01 is all of October. --json prints the raw
 //                Event resources; without it, one line per event.)
 //

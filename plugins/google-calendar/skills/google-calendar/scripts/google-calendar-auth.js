@@ -7,24 +7,28 @@
 //
 //   node google-calendar-auth.js --expect-email=<address>
 //
-// --expect-email is the wrong-account guard: after consent the flow reads the signed-in address and
-// refuses to save the token unless it matches, then records the address for every later run to re-check.
+// --expect-email (required) is the wrong-account guard: after consent the flow reads the signed-in address
+// and refuses to save the token unless it matches, then records the address for every later run to re-check.
 
 const http = require('http');
 const { buildOAuthClient, writeTokens, fetchAccountEmail, SCOPES, REDIRECT_URI } = require('./google-calendar-oauth');
 
 const expectEmail = (() => {
   for (const a of process.argv.slice(2)) {
-    const m = a.match(/^--expect-email=(.*)$/);
+    const m = a.match(/^--expect-email=(.+)$/);
     if (m) return m[1].toLowerCase();
   }
   return null;
 })();
 
 (async () => {
+  if (!expectEmail) throw new Error('--expect-email=<address> is required');
   const client = buildOAuthClient();
+  // The code exchange emits 'tokens', and the cache listener would save the new token before the account
+  // check below runs, overwriting a working token on a wrong-account sign-in. Save only after the check.
+  client.removeAllListeners('tokens');
   // access_type=offline + prompt=consent forces Google to return a refresh_token.
-  const authUrl = client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: SCOPES, login_hint: expectEmail || undefined });
+  const authUrl = client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: SCOPES, login_hint: expectEmail });
   console.log('AUTH_URL: ' + authUrl);
 
   const port = new URL(REDIRECT_URI).port;
@@ -34,7 +38,7 @@ const expectEmail = (() => {
       if (u.pathname === '/callback') {
         const c = u.searchParams.get('code');
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end('<h2>Signed in. You can close this tab.</h2>');
+        res.end(c ? '<h2>Consent received. You can close this tab.</h2>' : '<h2>Sign-in was not completed.</h2>');
         server.close();
         if (c) resolve(c); else reject(new Error('No code in callback: ' + req.url));
       } else {
@@ -53,9 +57,8 @@ const expectEmail = (() => {
 
   client.setCredentials(tokens);
   const signedInAs = await fetchAccountEmail(client);
-  if (!signedInAs) throw new Error('Could not read the signed-in address from the primary calendar. Not saving the token.');
-  if (expectEmail && signedInAs !== expectEmail) {
-    throw new Error(`Consent was for ${signedInAs}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
+  if (signedInAs !== expectEmail) {
+    throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
   }
 
   writeTokens({ ...tokens, account_email: signedInAs });

@@ -17,14 +17,14 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 1. **Enable the Calendar API** on the Cloud project the OAuth client belongs to: `console.cloud.google.com/apis/library/calendar-json.googleapis.com`, select the project, click Enable.
 2. **One-time sign-in** - `node scripts/google-calendar-auth.js --expect-email=<address>`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8714/callback`, and on consent exchanges the code and caches the token.
    The account owner completes the consent step themselves (granting a new scope to an app is their call) - browser-chauffeur opens the URL, they click Allow.
-   `--expect-email` refuses to save a token for any other account, and every later read re-checks the address.
+   `--expect-email` is required: the script saves the token only when the consenting account matches it, so a wrong-account sign-in leaves the existing token in place, and every later read re-checks the address.
    For a Google Workspace account, the Workspace admin may first need to trust the OAuth client under Admin console, Security, API Controls, App Access Control.
 
 ## Commands - `google-calendar.js`
 
 - **List a range:** `node google-calendar.js --start=<date> --end=<date> [--calendar=<id>] [--json]`
   `--calendar` defaults to `primary`, the signed-in account's own calendar.
-  A plain `YYYY-MM-DD` is local midnight, and `--end` is exclusive, so `--start=2026-10-01 --end=2026-11-01` is all of October.
+  A plain `YYYY-MM-DD` is local midnight, a timestamp needs its UTC offset (`2026-10-01T00:00:00-05:00`), and `--end` is exclusive, so `--start=2026-10-01 --end=2026-11-01` is all of October.
   `--json` prints the raw Google `Event` resources; without it, one line per event.
 - **From another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, every page fetched, recurring events expanded to single instances (`singleEvents=true`) and ordered by start time (`orderBy=startTime`).
   Cancelled events are left out, as Google does by default.

@@ -38,7 +38,7 @@ function writeTokens(tokens) {
 function signInCommand() {
   const t = readTokens();
   const expected = t && t.account_email;
-  return `node <google-calendar>/scripts/google-calendar-auth.js${expected ? ` --expect-email=${expected}` : ''}` +
+  return `node <google-calendar>/scripts/google-calendar-auth.js --expect-email=${expected || '<address>'}` +
     ' (via browser-chauffeur; the account owner approves the consent screen)';
 }
 
