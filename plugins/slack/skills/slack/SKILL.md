@@ -181,6 +181,3 @@ These constraints keep send safe:
 - An **item** is one **conversation** for a DM/group-DM (keyed to its latest unread message), one
   **message** for each channel @-mention, and one **thread** for each subscribed thread with unread
   replies (keyed to its latest unread reply).
-- **Drafting is `message-draft`'s `slack` mode (see the intro).** It stages with `--create-draft` and reads
-  the draft back with `--list-drafts`. The one send this script performs is `--send` (see **Sending**), and
-  only on Russ's explicit per-message say-so.

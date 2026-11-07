@@ -72,7 +72,7 @@ The receipt attests that a review ran against this exact text; it never judges t
 The gate blocks the mail-staging commands until a receipt exists for the body file's content.
 It covers personal Gmail and personal Outlook (`--reply` / `--draft-new` / `--send-self`, keyed on `--body-file`), work Outlook (`create-draft` / `create-reply`, keyed on `--json`), Slack (`slack.js --create-draft` / `--send`, keyed on `--body-file`), and the Teams browser composer (a browser-chauffeur `--cdp-port` run that declares its body via `--body-file`), and it denies the native Gmail connector's compose and send verbs with a redirect to the `gmail` skill's `gmail.js`.
 A body with no letters (a bare emoji reaction) carries no prose and is exempt.
-The Teams composer types into a web page rather than a command argument, so `message-draft` routes its body through a reviewed `.tmp` file and drives the composer with `--body-file` on the browser-chauffeur run, which is how the gate reaches them; a composer run that declares no body file is a screenshot or a scrape, not a stage, and passes straight through.
+The Teams composer types into a web page rather than a command argument, so `message-draft` routes its body through a reviewed `.tmp` file and drives the composer with `--body-file` on the browser-chauffeur run, which is how the gate reaches it; a composer run that declares no body file is a screenshot or a scrape, not a stage, and passes straight through.
 
 **Shipped prose.**
 A skill, a README, or a repo doc reaches Russell when a PR opens, so the gate fires on `gh pr create` - the moment the prose lands on the Files Changed tab (a draft PR counts; Russell reviews drafts there).

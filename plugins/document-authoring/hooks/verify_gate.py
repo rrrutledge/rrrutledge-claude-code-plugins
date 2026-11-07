@@ -174,7 +174,7 @@ def find_stage(command):
     composer run is the other: a `--cdp-port` browser session that declares the message it
     will type via `--body-file`. The Teams composer types into a web page rather
     than into a script argument, so message-draft routes its body through a declared file,
-    which is what lets this gate reach them the same way it reaches mail. A browser-chauffeur
+    which is what lets this gate reach it the same way it reaches mail. A browser-chauffeur
     run that carries no `--body-file` (a screenshot, a scrape) is not a stage command and
     passes straight through."""
     try:

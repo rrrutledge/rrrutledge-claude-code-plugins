@@ -178,9 +178,8 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 
 ## Mode: `slack`
 
-The orchestrator runs these steps inline with the **`slack`** skill's `slack.js` (its SKILL.md has every flag).
-The draft is saved on Slack's server, so it reaches no one and syncs to Russell's own Slack: the conversation shows a **Draft** badge and the draft sits under **Drafts & sent**, where he reviews and sends it.
-Sending a reviewed Slack message is the separate, gated `slack.js --send` step in the **`slack`** skill, reserved for Russell's explicit per-message OK, parallel to how Outlook's send is `ms-rest send-draft`.
+The orchestrator runs these steps inline with the **`slack`** skill's `slack.js` (its SKILL.md has every flag and the mrkdwn the body uses).
+Its `--create-draft` saves the draft where Russell reviews and sends it.
 
 Inputs: the target (a person's name for a DM, or a channel/conversation, or - when replying to a captured
 drainer item - its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
@@ -190,12 +189,11 @@ drainer item - its `channel` + `ts` + optional `threadTs` + permalink), the mess
    A person by name resolves through `slack.js --find-dm=<name>`, a known user ID through `--open-dm=<user ID>`.
    Confirm the conversation is the intended one with `slack.js --resolve-name=<channel>` before staging; a person's Slack handle can differ from their real name, so check it is them.
 2. **Check for an existing draft.** `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
-   Slack keeps one draft per conversation and one per thread, so a draft listed there is one the user left.
+   A draft listed there is one the user left.
    Preserve it: surface it verbatim for review, and stage over it with `--replace` only on an explicit OK.
    In an autonomous run with no one to review, leave it and flag the conversation instead.
-3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints.
-   A link is `<url|anchor text>`, a person is `<@U...>`, a channel is `<#C...>`, and `<!here>` / `<!channel>` notify the room, so every reference lands as a real link or mention.
-4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace] [--file=<path>[,<path>...]]`.
+3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints, with every link and mention as its mrkdwn token.
+4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file>`, adding the thread, broadcast, replace, and file flags this draft needs.
    A failure that names a raw token means a mention didn't resolve; fix the token in the body and stage again.
 5. **Voice gate.** Read the staged text back with `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]` and run the **Voice gate** above on it.
 
