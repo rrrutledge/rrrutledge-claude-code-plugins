@@ -52,7 +52,7 @@ The `outlook` mode has no browser flow to isolate - run it inline as its mode st
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
-- **Orchestrator, before it authors a new top-level Slack message to a person:** run the **`slack`** skill's **Answer before a new message** step, which answers that person's waiting messages first.
+- **Orchestrator, before a new Slack message:** run the **`slack`** skill's **Answer before a new message** step, which answers that person's waiting messages first.
 - **Orchestrator, before it spawns the subagent:** author the body in Russell's voice (the **Voice** step), run the `document-authoring` pass, and complete the **Review gate** step (above).
   That is the human-facing writing, and it stays on the main thread.
   The receipt the Review gate mints must exist before the composer runs, so finish it before spawning the subagent.
@@ -227,7 +227,8 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    A draft listed there with the body's text is saved, so it syncs to the user's own Slack - the sidebar shows a **Draft** badge on the conversation and it appears under **Drafts & sent**, which is where they review and send it.
    A page reload proves nothing: Slack restores the composer from browser-local storage, so a draft can survive a reload and still be missing from the server list and from the user's other devices.
    When the list has no matching draft, create it on the server from the same reviewed body:
-   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
+   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--answering]`, then list again to confirm it's there.
+   Pass `--answering` when the body answers the person's waiting messages, per the **`slack`** skill's **Answer before a new message**.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
    For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
 

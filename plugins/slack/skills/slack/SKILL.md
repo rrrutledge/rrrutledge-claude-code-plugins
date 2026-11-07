@@ -143,10 +143,12 @@ Under `scripts/` (run with `node`):
 ## Answer before a new message
 
 Russell answers what a person already sent him before a new message goes to them.
-`--send` and `--create-draft` enforce it on a top-level DM or group DM message.
+`--send` and `--create-draft` enforce it on a top-level 1:1 DM message.
 
-Before authoring a new top-level message to a person, whether it stages through `--create-draft` or `message-draft`'s browser composer, run `--unanswered` on that conversation.
-When it lists messages, answer them first:
+Before authoring a new top-level message to a person or a group DM, whether it stages through `--create-draft` or `message-draft`'s browser composer, run `--unanswered` on that conversation.
+In a 1:1 DM, every message it lists waits on Russell.
+In a group DM, the members also talk to each other, so judge which listed messages were addressed to Russell; those are the ones waiting on him.
+When any are waiting, answer them first:
 
 1. Launch a session to drain them through session-mgr's `spawn-session.py` with `--resume-me`, per session-mgr's `resume-on-completion.md`.
    Its brief carries each unanswered message with its time, the research each answer needs, and the conversation id.

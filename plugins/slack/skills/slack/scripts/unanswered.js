@@ -11,7 +11,7 @@
 // Returns the unanswered messages oldest first.
 const PERSON_SUBTYPES = new Set(['thread_broadcast', 'me_message', 'file_share']);
 
-function unanswered(messages, me, lastRead = '') {
+function unanswered(messages, me, lastRead) {
   const timeline = messages.filter(m => !m.subtype || PERSON_SUBTYPES.has(m.subtype));
   const answered = timeline.filter(m => m.user === me
     || (m.reply_users || []).includes(me)
