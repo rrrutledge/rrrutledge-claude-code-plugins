@@ -155,6 +155,27 @@ def backfill_feedback(rows):
     return out
 
 
+def outcome_class(outcome):
+    """The bucket a draft's newest outcome falls in, by the target and routing rules above, so a
+    report names outcomes without re-deriving them: pending (no outcome yet), auto-sent,
+    discard-route, discard-wording, superseded (replaced with no reading of Russell's feedback),
+    unmeasured (any other outcome with no target, such as a send with no measured distance), edited (edited past near-as-is, or
+    restaged after his feedback), near, as-is."""
+    if not outcome:
+        return "pending"
+    disposition = outcome.get("disposition")
+    if disposition == "auto-sent":
+        return "auto-sent"
+    if disposition == "discarded":
+        return "discard-route" if is_routing_discard(outcome) else "discard-wording"
+    y = target(outcome)
+    if y is None:
+        return "superseded" if disposition == "superseded" else "unmeasured"
+    if y == 0:
+        return "edited"
+    return "as-is" if disposition == "sent-as-is" else "near"
+
+
 # --- attributes to terms ---
 
 def readings(attrs, name):
