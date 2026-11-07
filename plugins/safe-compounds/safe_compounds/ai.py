@@ -93,8 +93,9 @@ def _build_request(prompt, max_tokens):
 
 def ask(prompt, max_tokens=10):
     """Send `prompt` to Haiku and return the response text as-is (stripped), or
-    None if AI is disabled, unconfigured, or the request fails. Callers match
-    keywords case-insensitively (e.g. `'SAFE' in text.upper()`)."""
+    None if AI is disabled, unconfigured, the request fails, or the reply has no
+    text. The reply may run past `max_tokens` (see _MIN_MAX_TOKENS), so callers
+    match the leading word case-insensitively (e.g. `text.upper().startswith('SAFE')`)."""
     if _ai_disabled():
         return None
     try:
@@ -104,9 +105,9 @@ def ask(prompt, max_tokens=10):
         with urllib.request.urlopen(req, timeout=15) as response:
             result = json.loads(response.read().decode('utf-8'))
             blocks = result.get('content', [])
-            return ''.join(b.get('text', '') for b in blocks if b.get('type') == 'text').strip()
-    except (urllib.error.URLError, urllib.error.HTTPError,
-            json.JSONDecodeError, KeyError, IndexError) as e:
+            text = ''.join(b.get('text', '') for b in blocks if b.get('type') == 'text').strip()
+            return text or None
+    except (OSError, json.JSONDecodeError, KeyError, IndexError) as e:
         log_debug(f"AI call failed: {type(e).__name__}: {str(e)[:100]}")
         return None
 
@@ -125,7 +126,7 @@ def call_ai(prompt):
         reason = text.split(':', 1)[1].strip() if ':' in text else ''
         log_debug(f"AI response: {text} -> DANGEROUS")
         return False, (reason or None)
-    if 'SAFE' in upper:
+    if upper.startswith('SAFE'):
         log_debug(f"AI response: {text} -> SAFE")
         return True, None
     log_debug(f"AI response: {text} -> undecided")
