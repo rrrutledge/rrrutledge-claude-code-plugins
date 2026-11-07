@@ -42,6 +42,30 @@ test('bot posts and system messages are never unanswered', () => {
   assert.deepStrictEqual(unanswered(history, ME), []);
 });
 
+test('my reply in a message thread answers that message', () => {
+  const history = [msg('2.0', 'UA'), msg('1.0', 'UA', { reply_users: ['UA', ME] })];
+  assert.deepStrictEqual(tsOf(unanswered(history, ME)), ['2.0']);
+});
+
+test('a message still unread stays unanswered after my holding acknowledgement', () => {
+  const history = [msg('3.0', ME), msg('2.0', 'UA'), msg('1.0', 'UA')];
+  assert.deepStrictEqual(tsOf(unanswered(history, ME, '1.5')), ['2.0']);
+});
+
+test('a zero read cursor leaves the last word in charge', () => {
+  const history = [msg('2.0', ME), msg('1.0', 'UA')];
+  assert.deepStrictEqual(unanswered(history, ME, '0000000000.000000'), []);
+});
+
+test('a file someone shared counts, and so does a file I shared as my answer', () => {
+  assert.deepStrictEqual(tsOf(unanswered([msg('1.0', 'UA', { subtype: 'file_share' })], ME)), ['1.0']);
+  assert.deepStrictEqual(unanswered([msg('2.0', ME, { subtype: 'file_share' }), msg('1.0', 'UA')], ME), []);
+});
+
+test('Slackbot posts are never unanswered', () => {
+  assert.deepStrictEqual(unanswered([msg('1.0', 'USLACKBOT')], ME), []);
+});
+
 test('in a group DM, every other member counts', () => {
   const history = [msg('3.0', 'UB'), msg('2.0', 'UA'), msg('1.0', ME)];
   assert.deepStrictEqual(tsOf(unanswered(history, ME)), ['2.0', '3.0']);

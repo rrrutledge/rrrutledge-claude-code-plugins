@@ -42,8 +42,8 @@
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
 // Unanswered:    node slack.js --unanswered --channel=<C> [--json]
-//                (the DM or group DM messages posted after Russell's last reply or reaction there, oldest
-//                 first; read-only. --send and --create-draft run the same check on a new top-level message
+//                (the DM or group DM messages posted after Russell's last message, thread reply, or
+//                 reaction there, plus any still unread, oldest first; read-only. --send and --create-draft run the same check on a new top-level message
 //                 and refuse while anything is unanswered, unless --answering marks the body as the answer)
 // React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
@@ -820,19 +820,25 @@ const { richTextBlocks, rawTokensIn } = require('./draft-body');
 const { unanswered } = require('./unanswered');
 
 // The DM or group DM messages Russell hasn't answered (see unanswered.js), oldest first, each with
-// from/received/text. A channel returns null: the rule is about a person waiting on him, and a channel
-// has no single person.
+// from/received/text. A channel returns null: the answer-before-a-new-message rule covers people
+// messaging Russell directly, and a channel message is addressed to the room.
+// The conversations.info lookup is called directly rather than through convInfo, so a failed lookup
+// throws and the send it guards fails closed.
 async function unansweredIn(channel) {
-  const info = await convInfo(channel);
+  const info = (await call('conversations.info', { channel })).channel || {};
   if (!info.is_im && !info.is_mpim) return null;
   const me = (await call('auth.test')).user_id;
   const r = await call('conversations.history', { channel, limit: '50' });
   const out = [];
-  for (const m of unanswered(r.messages || [], me)) {
+  for (const m of unanswered(r.messages || [], me, info.last_read)) {
     out.push({ ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await messageText(m) });
   }
   return out;
 }
+
+// A message time in this machine's local zone, with the zone named.
+const localTime = (iso) => new Date(iso).toLocaleString('en-US',
+  { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 
 async function unansweredCmd() {
   if (!args.channel || args.channel === true) throw new Error('--unanswered requires --channel');
@@ -841,7 +847,7 @@ async function unansweredCmd() {
   if (out === null) { console.log(`${args.channel} is a channel, not a DM or group DM; nothing to check.`); return; }
   if (!out.length) { console.log(`Nothing unanswered in ${args.channel}.`); return; }
   console.log(`${out.length} unanswered message(s) in ${args.channel}, oldest first:`);
-  for (const m of out) console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from} (ts=${m.ts})\n${m.text || '(no text)'}`);
+  for (const m of out) console.log(`\n--- ${localTime(m.received)} | ${m.from} (ts=${m.ts})\n${m.text || '(no text)'}`);
 }
 
 // A new top-level message to a person waits until their unanswered messages are answered.
@@ -850,7 +856,7 @@ async function requireNothingUnanswered(verb) {
   if (args.answering || (args['thread-ts'] && args['thread-ts'] !== true)) return;
   const out = await unansweredIn(args.channel);
   if (!out || !out.length) return;
-  const list = out.map(m => `  ${m.received.slice(0, 16)}Z ${m.from}: ${m.text.slice(0, 200)}`).join('\n');
+  const list = out.map(m => `  ${localTime(m.received)} ${m.from}:${m.text.slice(0, 200)}`).join('\n');
   throw new Error(`${verb}: ${args.channel} has ${out.length} message(s) Russell hasn't answered yet:\n${list}\n`
     + 'Answer those before staging a new message (see "Answer before a new message" in the slack skill). '
     + 'If this body is the answer to them, rerun with --answering.');

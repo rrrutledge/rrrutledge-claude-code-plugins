@@ -142,10 +142,10 @@ Under `scripts/` (run with `node`):
 
 ## Answer before a new message
 
-A new message to a person goes out only after Russell has answered what they already sent him.
-`--send` and `--create-draft` hold to this on a top-level message in a DM or group DM: while `--unanswered` lists anything there, they refuse and print the waiting messages.
+Russell answers what a person already sent him before a new message goes to them.
+`--send` and `--create-draft` enforce it on a top-level DM or group DM message.
 
-Before authoring a new top-level message to a person, by either staging path, run `--unanswered` on that conversation.
+Before authoring a new top-level message to a person, whether it stages through `--create-draft` or `message-draft`'s browser composer, run `--unanswered` on that conversation.
 When it lists messages, answer them first:
 
 1. Launch a session to drain them through session-mgr's `spawn-session.py` with `--resume-me`, per session-mgr's `resume-on-completion.md`.
@@ -154,8 +154,7 @@ When it lists messages, answer them first:
 2. Close this session paused in the same turn.
    It resumes once Russell has sent the answers, reruns `--unanswered` to confirm the conversation is clear, and stages the new message.
 
-Pass `--answering` on any body that answers the waiting messages: a drain reply, or a reply to a drainer item.
-A thread reply (`--thread-ts`) is already a reply, so it passes without the flag.
+Pass `--answering` on any body that answers the waiting messages.
 
 ## Sending
 
