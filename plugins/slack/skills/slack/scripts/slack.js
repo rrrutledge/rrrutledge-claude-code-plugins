@@ -886,7 +886,9 @@ async function draftFiles(ids) {
 
 // Best-effort removal of files this run uploaded for a draft that then failed to save, so a failed
 // stage leaves no stray private upload behind.
-const deleteUploads = (ids) => Promise.all(ids.map(id => call('files.delete', { file: id }).catch(() => {})));
+async function deleteUploads(ids) {
+  for (const id of ids) await call('files.delete', { file: id }).catch(() => {});
+}
 
 // Every active draft from drafts.list, paginated.
 async function activeDrafts() {
