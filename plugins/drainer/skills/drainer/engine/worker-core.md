@@ -147,18 +147,38 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-The poller's duplicate guard tracks the item ids it dispatched itself, which excludes sessions Russell or a handoff started.
-A recurring card whose Start date arrives while its work is in motion therefore gets a second worker.
-Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
+The poller routes a new item in a conversation a live worker already holds (the same email thread, Slack thread, DM, or Teams chat) to that worker, so a conversation's own follow-ups never reach you as a separate item.
+Same work arriving by another source has no shared key, and the poller can't route it, so this check is how it gets caught.
+A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
+Your seed lists the sessions live when you launched; compare this item against that list before starting the work, and run `ListAgents` to address a send or to see sessions newer than the list.
+Look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email, a meeting action item and a session already sending that newsletter).
 Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
 Russell's own interactive session counts the same as a background worker.
-When a peer looks like it covers the same work:
+When a peer looks like it covers the same work, settle which one of you keeps it, so exactly one session does the work:
 1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
-2. If the peer confirms, `SendMessage` it everything useful this worker has gathered (card state, thread context, links, findings), then close this worker via `python <skill>/scripts/close-session.py`.
-   Leave a card un-cleared and its Start untouched, so the peer owns the item.
-   Hand the item over without asking Russell whether the peer is fine taking it.
-   Like the silent closes listed in §6a, this queues no digest entry: the peer is the one carrying the item.
-3. If the peer says it is different work, or no peer looks related, carry on as normal.
+   Address it by the name its `ListAgents` row prints, adding the row's ` [ref]` only when two rows share the name.
+2. If it is the same work, **the session that started earlier keeps it** (`ListAgents` shows each row's start).
+   The rule settles it the same way from both sides, so neither session has to wait on Russell to pick.
+   Russell's own interactive session always keeps it, whenever it started.
+3. The session that stands down `SendMessage`s the keeper everything useful it has gathered (card state, thread context, links, findings, any draft it staged), then closes via `python <skill>/scripts/close-session.py`.
+   Leave a card un-cleared and its Start untouched, so the keeper owns the item.
+   Hand the item over without asking Russell whether the keeper is fine taking it.
+   Like the silent closes listed in §6a, this queues no digest entry: the keeper is the one carrying the item.
+4. If you are the keeper, tell the peer so in your reply, and fold what it hands over into your own work.
+5. If the peer says it is different work, or no peer looks related, carry on as normal.
+
+**When a peer asks you whether it is on your work, answer it before going on.**
+A drainer worker or another session may ask this mid-task; reply with what you are working on (item, conversation, card) and whether it matches, and apply the same earlier-start rule to decide which of you keeps it.
+An unanswered ask leaves both sessions working, which is the duplicate this exchange exists to stop.
+
+**When your seed names a live session already on this item's conversation, ask it first.**
+The poller says so when it found that session but couldn't hand the item to it.
+Run step 1 with that session before any other work; it started earlier, so it keeps the work by the rule above unless it says it has finished with the conversation.
+
+**A new item in your own conversation arrives as a message from the drainer.**
+It names the new item's captured json and its triage, and says the poller routed it to you instead of launching a second worker.
+Handle it as part of this conversation before you close, the same as an item you were launched on: read it, then fold it into the reply you are drafting or work it as its own ask.
+The poller has recorded it against this session and cleared its source the way it does at a launch, so this session is its only tracker.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.

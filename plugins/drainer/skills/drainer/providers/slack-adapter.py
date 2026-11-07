@@ -181,6 +181,18 @@ class Provider(ProviderBase):
         return {"channel": sent.get("channel"), "ts": sent.get("ts"), "permalink": sent.get("permalink"),
                 "cursor": sent.get("cursor")}
 
+    def conversation_key(self, item):
+        """A DM or group DM is one conversation, thread replies included. In a channel the conversation
+        is a thread, keyed by its root ts, and a top-level message is its own root, so a thread's
+        @mention, its later replies, and an `Unread in` item for its root message all share one key."""
+        channel = item.get("channel")
+        if not channel:
+            return None
+        if item.get("channelType") in ("im", "mpim") or channel.startswith("D"):
+            return f"{self.name}:{channel}"
+        root = item.get("threadTs") or item.get("ts")
+        return f"{self.name}:{channel}:{root}" if root else None
+
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
         # to a filesystem-safe id and keep it stable across cycles so seen-state dedups on it.

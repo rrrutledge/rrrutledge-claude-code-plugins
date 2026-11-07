@@ -139,6 +139,10 @@ class Provider(ProviderBase):
         res = run_node([self.mailjs, f"--delete={item['id']}"])
         return res.returncode == 0
 
+    def conversation_key(self, item):
+        conversation = item.get("conversationId")
+        return f"{self.name}:{conversation}" if conversation else None
+
     def stable_id(self, item):
         # Timestamp to the second (plus ms when Graph supplies them) so two messages from the same
         # sender with the same opening subject in the same minute don't collide and silently drop one.

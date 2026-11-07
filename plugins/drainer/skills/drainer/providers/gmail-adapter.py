@@ -199,6 +199,10 @@ class Provider(ProviderBase):
         res = run_node([self.gmailjs, f"--archive={item['id']}"])
         return res.returncode == 0
 
+    def conversation_key(self, item):
+        thread = item.get("threadId")
+        return f"{self.name}:{thread}" if thread else None
+
     def stable_id(self, item):
         # Timestamp to the second so two messages from the same sender with the same opening subject in
         # the same minute don't collide and silently drop one. Mirrors the outlook-graph scheme.

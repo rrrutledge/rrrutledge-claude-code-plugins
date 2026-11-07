@@ -835,6 +835,14 @@ class ProviderBase:
         relay = relay_correspondent(item, lambda: self._fetch_body(item))
         return relay if relay is not False else from_identity(item)
 
+    def conversation_key(self, item):
+        """A stable key for the conversation an item belongs to: an email thread, a Slack thread, a chat.
+        The poller hands a new item to the live worker already holding its conversation instead of
+        launching a second worker on it, so one conversation has one live worker. Namespaced by provider
+        so two sources' ids never collide. None (the default) means the source has no conversation to key
+        on, so its items always dispatch on their own."""
+        return None
+
     def stable_id(self, item):
         """A deterministic id for an item (stable across cycles), used for seen-state."""
         raise NotImplementedError
