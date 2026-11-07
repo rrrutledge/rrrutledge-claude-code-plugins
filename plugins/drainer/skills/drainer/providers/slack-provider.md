@@ -48,7 +48,7 @@ Re-read the full surrounding context with `node slack.js --history --channel=<C>
 `--history` surfaces everything posted since, in both directions: the counterparty may have already replied, or - easy to miss - Russell may have posted his own follow-up that's still unanswered, which means the item is blocked on them, not ready to act on.
 Confirm there's not already a reply and the ask is still open before drafting.
 A post the ack ledger lists as a sent acknowledgement is not a reply; check the ledger first, per worker-core §2 "An acknowledgement is not a reply".
-The `message-draft` slack mode stages drafts in the Slack composer - check the conversation in Slack so you don't stack a second draft.
+The `message-draft` slack mode checks the conversation's existing server-side draft before it stages, so a reply never lands on top of one.
 Reply only to what is still open.
 
 A Slack item's body carries the **full unread span** (every unread message since Russell's last read, not just the newest), so apply worker-core §2's group-then-handle model to it: read the whole span and decide how many distinct asks it holds before you draft.
@@ -136,12 +136,11 @@ There is no inbound-mail-style unsubscribe for Slack.
 ## DRAFT-MODE
 Before writing the body, follow the pre-draft step in `email-base.md`.
 Stage the reply the moment it passes `writing-review`, before showing it.
-Write the reviewed body to a `.tmp` file, mint its receipt with `verify_gate.py mint`, and create the server-side draft with the **`slack`** skill's `--create-draft` (it turns `<@U...>` tokens into real mentions; the `slack` skill covers channel mentions and the raw-token check), then confirm it with `--list-drafts`; the **`message-draft`** skill's `slack` mode step 6 lists the flags.
+Stage it through the **`message-draft`** skill's **`slack`** mode, which saves a server-side draft with the `slack` skill's `--create-draft` and owns the existing-draft check and the voice gate.
 The reply shows the staged text and says it sits in the conversation's Slack drafts.
-When the API path fails, stage through the **`message-draft`** skill's **`slack`** mode (browser composer, draft-only); that skill owns the composer mechanics and the voice gate, loading `document-authoring` for the voice.
 Learning from the send applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.
 
-- **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts` (or, on the browser fallback, point `message-draft` slack mode at it).
+- **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts`.
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
 
 ## REACTION-PROPOSAL

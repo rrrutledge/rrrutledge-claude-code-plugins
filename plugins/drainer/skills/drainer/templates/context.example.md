@@ -18,7 +18,7 @@
   (Omit if none.)
 
 ## Staging drafts - use the `message-draft` skill
-The **`message-draft`** skill handles all draft mechanics (voice, composer targeting, never-send) for every source.
+The **`message-draft`** skill handles all draft mechanics (voice, target and identity checks, never-send) for every source.
 Just invoke it in the source's mode.
 
 ## How to decide the ACTION (process)

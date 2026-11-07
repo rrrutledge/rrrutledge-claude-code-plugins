@@ -29,7 +29,8 @@ This section adds the message-specific mechanics on top of it.
 
 Anchor by format:
 - **Confluence**: `<a href="URL">descriptive text</a>` inside the sentence.
-- **Teams / Slack**: anchor via the link dialog (Ctrl+K).
+- **Teams**: anchor via the link dialog (Ctrl+K).
+- **Slack**: anchor with mrkdwn `<URL|descriptive text>`.
 - **Word / email / Markdown / PRs**: anchor to natural words.
   Email is always rich text: a staged email body is Markdown the stage script renders to HTML, so anchor with `[text](URL)` and use any other Markdown formatting the message needs.
 - **Composers with no rich-text anchoring** (e.g. LinkedIn's DM composer): put the plain URL right after the text, in parentheses or angle brackets — `Jordan Avery (https://www.linkedin.com/in/jordan-avery/)`.
@@ -38,7 +39,7 @@ Anchor by format:
 A rendered preview hides which words carry a link, so spell out the URL next to its anchor text — "right on my calendar (links to https://calendly.com/russell-rutledge)" — so the reviewer sees what's clickable before approving.
 
 **Represent every person, channel, event, document, or call a message references — never leave it as bare text.**
-- **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention via the platform's mention picker, never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @dana", not "Hi Dana") — not only when notifying them is the point.
+- **A person on a platform with @-mentions (Slack, Teams)** — reference them by a real @-mention (Teams: the mention picker; Slack: a `<@U...>` token), never their plain name and never a typed `@Name` (which doesn't notify them). This is the default for every reference to them on that platform, the opening address or greeting included ("Hi @dana", not "Hi Dana") — not only when notifying them is the point.
 - **A person not reachable by an @-mention** — someone off that platform, or in a medium with no mentions — link their name to their profile on whatever platform they are on, otherwise to their LinkedIn profile.
 - **A channel on a platform with channel mentions (Slack, Teams)** — reference it by a real channel mention, never typed text.
 - **An event** — link its name to the event's own page URL, the one on the organizer's site.
