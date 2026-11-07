@@ -135,7 +135,7 @@ There is no inbound-mail-style unsubscribe for Slack.
 ## DRAFT-MODE
 Before writing the body, follow the pre-draft step in `email-base.md`.
 Stage the reply the moment it passes `writing-review`, before showing it.
-Stage it through the **`message-draft`** skill's **`slack`** mode, which saves a server-side draft with the `slack` skill's `--create-draft` and owns the existing-draft check and the voice gate.
+Stage it through the **`message-draft`** skill's **`slack`** mode.
 The reply shows the staged text and says it sits in the conversation's Slack drafts.
 Learning from the send applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.
 

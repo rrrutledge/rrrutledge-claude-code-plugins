@@ -192,7 +192,6 @@ Inputs: the target (a person's name for a DM, or a channel/conversation, or - wh
    In an autonomous run with no one to review, leave it and flag the conversation instead.
 3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints, with every link and mention as its mrkdwn token.
 4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file>`, adding the thread, broadcast, replace, and file flags this draft needs.
-   A failure that names a raw token means a mention didn't resolve; fix the token in the body and stage again.
    An auth failure that `slack.js`'s own refresh can't fix is the sign-in case in the done-criteria: Russell signs back in to Slack in the persistent browser, and nothing is staged until he does.
 5. **Voice gate.** Run the **Voice gate** above on the staged draft.
 
