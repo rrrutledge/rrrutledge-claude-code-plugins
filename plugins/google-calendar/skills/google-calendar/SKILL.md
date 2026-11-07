@@ -1,6 +1,6 @@
 ---
 name: google-calendar
-description: Read a Google Calendar's events over a time range via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate read-only token scoped to calendar.readonly. Use when a script needs a Google Workspace calendar's events (e.g. the ISC calendar) that the claude.ai Google Calendar connector would otherwise have to fetch.
+description: Read a Google Calendar's events over a time range via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate read-only token scoped to calendar.readonly. Use when a script needs a Google Calendar's events.
 ---
 
 # Google Calendar - Read-Only Event Listing via the Calendar API
@@ -14,22 +14,17 @@ This path requests the read-only `https://www.googleapis.com/auth/calendar.reado
 
 Claude Code installs the script dependencies (`googleapis`, `google-auth-library`) automatically from the plugin-root `package.json` and lockfile whenever it installs or updates the plugin.
 
-1. **Enable the Calendar API** on the Cloud project the OAuth client belongs to: `console.cloud.google.com/apis/library/calendar-json.googleapis.com`, select the project, click Enable.
-2. **One-time sign-in** - `node scripts/google-calendar-auth.js --expect-email=<address>`, driven via **browser-chauffeur**: it prints an `AUTH_URL:` line, serves `http://localhost:8714/callback`, and on consent exchanges the code and caches the token.
+1. **Enable the Calendar API on the project** the OAuth client belongs to: `console.cloud.google.com/apis/library/calendar-json.googleapis.com`, select the project, click Enable.
+2. **One-time sign-in for the token** - `node scripts/google-calendar-auth.js --expect-email=<address>`, driven via **browser-chauffeur**: open the `AUTH_URL:` line it prints.
    The account owner completes the consent step themselves (granting a new scope to an app is their call) - browser-chauffeur opens the URL, they click Allow.
-   `--expect-email` is required: the script saves the token only when the consenting account matches it, so a wrong-account sign-in leaves the existing token in place, and every later read re-checks the address.
+   Pass `--expect-email` so the token can only be saved for that account.
    For a Google Workspace account, the Workspace admin may first need to trust the OAuth client under Admin console, Security, API Controls, App Access Control.
 
 ## Commands - `google-calendar.js`
 
-- **List a range:** `node google-calendar.js --start=<date> --end=<date> [--calendar=<id>] [--json]`
+- **List a calendar's events by range:** `node google-calendar.js --start=<date> --end=<date> [--calendar=<id>] [--json]`
   `--calendar` defaults to `primary`, the signed-in account's own calendar.
-  A plain `YYYY-MM-DD` is local midnight, a timestamp needs its UTC offset (`2026-10-01T00:00:00-05:00`), and `--end` is exclusive, so `--start=2026-10-01 --end=2026-11-01` is all of October.
+  A plain `YYYY-MM-DD` is local midnight, a timestamp needs its UTC offset (`2026-10-01T00:00:00-05:00`), and `--end` is exclusive.
   `--json` prints the raw Google `Event` resources; without it, one line per event.
-- **From another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, every page fetched, recurring events expanded to single instances (`singleEvents=true`) and ordered by start time (`orderBy=startTime`).
-  Cancelled events are left out, as Google does by default.
-
-## Auth-error handling
-
-A "Not signed in" error means the one-time sign-in must be (re-)run, via browser-chauffeur.
-If Google declines to return a refresh token, revoke prior access at `https://myaccount.google.com/permissions` first, then re-run so a fresh one is issued.
+- **Call it from another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, recurring events expanded to single instances and ordered by start time.
+  Cancelled events are left out.

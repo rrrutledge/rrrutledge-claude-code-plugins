@@ -46,7 +46,7 @@ const expectEmail = (() => {
       }
     });
     server.listen(port, () => console.log(`Listening on ${REDIRECT_URI}`));
-    // unref so a finished sign-in exits now instead of waiting out the timer.
+    // unref so the process exits as soon as sign-in finishes; the timer only ends an abandoned sign-in.
     setTimeout(() => { server.close(); reject(new Error('Auth flow timed out after 15 min')); }, 900000).unref();
   });
 
