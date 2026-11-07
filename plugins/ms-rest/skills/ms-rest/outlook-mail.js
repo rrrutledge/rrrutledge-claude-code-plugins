@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// outlook-mail.js — fast Outlook (WORK account) mailbox operations: read, delete, compose.
+// outlook-mail.js - fast Outlook (WORK account) mailbox operations: read, delete, compose.
 //
 // Owned by the `ms-rest` skill. Calls the Outlook REST API v2.0
 // (https://outlook.office.com/api/v2.0) directly. Reading is a single paged REST sweep instead of
@@ -14,7 +14,7 @@
 // Mail scopes.) See SKILL.md for the full token + endpoint rationale.
 //
 // This is the WORK account. For Russell's PERSONAL Microsoft account use the `ms-graph` skill
-// (MSAL + Graph SDK) — a different auth path and a different mailbox.
+// (MSAL + Graph SDK) - a different auth path and a different mailbox.
 //
 // REQUIREMENT for a (re)sniff: Russell signed in to Outlook web in the CDP browser (port 9222).
 // AUTH-GLANCE in SKILL.md establishes that sign-in.
@@ -171,7 +171,7 @@ async function cmdCreateReply(id, jsonPath) {
   process.stdout.write(JSON.stringify({ draftId: draft.Id, webLink: d.WebLink, folder: 'Drafts', sent: false }) + '\n');
 }
 
-// send-draft: SENDS an existing draft. Gated — refuses without --yes. Sending mail is in the
+// send-draft: SENDS an existing draft. Gated - refuses without --yes. Sending mail is in the
 // "requires Russell's OK" set; default everywhere else is draft-only.
 async function cmdSendDraft(id, confirmed) {
   if (!id) throw new Error('send-draft needs the draft <id>');

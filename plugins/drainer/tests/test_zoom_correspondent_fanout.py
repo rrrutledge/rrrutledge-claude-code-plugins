@@ -1,4 +1,4 @@
-"""Tests for providers/zoom-adapter.py's correspondent override — the fan-out dispatch guarantee.
+"""Tests for providers/zoom-adapter.py's correspondent override - the fan-out dispatch guarantee.
 
 A meeting fans out into one needs-you item per owner-assigned next step plus one recap. Every candidate
 carries the meeting topic as its `from`, so the default correspondent (which keys on `from`) would give
@@ -54,7 +54,7 @@ failures = []
 
 def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
-    print(f"  {status}: {name}" + (f" — {detail}" if detail and not condition else ""))
+    print(f"  {status}: {name}" + (f" - {detail}" if detail and not condition else ""))
     if not condition:
         failures.append(name)
 
@@ -93,7 +93,7 @@ def test_whole_meeting_dispatches_in_one_cycle():
 
     # Replays the needs-loop's correspondent discipline (run-poller.main): an item is held when its
     # correspondent is already active this cycle; on dispatch its correspondent is registered. Tab cap is
-    # left out on purpose — this isolates the correspondent throttle, which is what the fix addresses.
+    # left out on purpose - this isolates the correspondent throttle, which is what the fix addresses.
     active = set()
     dispatched = 0
     for it in actions:
@@ -106,7 +106,7 @@ def test_whole_meeting_dispatches_in_one_cycle():
     check("all 10 dispatch in the same cycle (none held behind another)", dispatched == 10, dispatched)
 
     # Contrast: the shared meeting-topic identity the DEFAULT correspondent would have produced collapses
-    # the same 10 to a single dispatch per cycle — the starvation this override removes.
+    # the same 10 to a single dispatch per cycle - the starvation this override removes.
     shared = "2026 innersource summit planning"
     active = set()
     collapsed = 0

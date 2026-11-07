@@ -1,5 +1,5 @@
 /**
- * CDPSession — reusable direct WebSocket connection to a CDP target.
+ * CDPSession - reusable direct WebSocket connection to a CDP target.
  *
  * Use this when you need to talk directly to an out-of-process iframe (or any
  * CDP target) that Playwright's connectOverCDP cannot reach because site
@@ -19,7 +19,7 @@
  *   const title  = await evalIn(session, ctxId, 'document.title');
  *   session.close();
  *
- * The ws package is bundled with playwright-core — no extra npm install needed.
+ * The ws package is bundled with playwright-core - no extra npm install needed.
  */
 
 const http = require('http');

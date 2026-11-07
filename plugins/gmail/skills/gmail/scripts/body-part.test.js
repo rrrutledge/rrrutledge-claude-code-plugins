@@ -41,5 +41,5 @@ test('returns null when the message has no text part', () => {
 test('the wrapped part decodes its transfer encoding and charset', async () => {
   const picked = { part: '1', type: 'text/plain', charset: 'UTF-8', encoding: 'quoted-printable' };
   const parsed = await simpleParser(partAsMime(picked, Buffer.from('caf=C3=A9 =E2=80=94 done=\r\n')));
-  assert.strictEqual(parsed.text.trim(), 'café — done');
+  assert.strictEqual(parsed.text.trim(), 'café - done');
 });

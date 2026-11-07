@@ -1,4 +1,4 @@
-"""physical-task poller adapter — a dedicated Outlook calendar of physical-world to-dos, drained
+"""physical-task poller adapter - a dedicated Outlook calendar of physical-world to-dos, drained
 through the Microsoft Graph API via the ms-graph skill's calendar.js.
 
 All physical-task mechanics live HERE, alongside the prose contract in
@@ -9,19 +9,19 @@ interface.
 
 The model: a task is QUEUED while it sits on the dedicated calendar with a start date today-or-earlier
 AND a start time landing EXACTLY on the overnight parking grid (`:00` at midnight, `:00/:15/:30/:45`
-at 1 AM, `:00/:30` at 2 AM — see calendar.js's isQueuedSlot) — mirrors the old pre-drainer habit of
+at 1 AM, `:00/:30` at 2 AM - see calendar.js's isQueuedSlot) - mirrors the old pre-drainer habit of
 staging a to-do in an overnight band and dragging it out once picked up. Exact-slot matching (not just
 "somewhere in that hour") matters because CLEAR's "started" step moves start to the moment the worker
-session launched, which can itself fall inside 00:00-02:59 if Russell's up working late — a real timestamp
+session launched, which can itself fall inside 00:00-02:59 if Russell's up working late - a real timestamp
 essentially never lands exactly on a slot, so alignment is what actually distinguishes "still sitting
 untouched" from "just started." Nothing here ever moves a queued task on its own, so an undone one just
-keeps coming back until it's started — for as long as it stays within the scan's lookback window
+keeps coming back until it's started - for as long as it stays within the scan's lookback window
 (`lookback_days`, default a year), set well past a month so a task waiting through a long stretch keeps
 surfacing rather than silently aging out of view. There is no delete and no second archive calendar. What's unique
-to this source is a SECOND gate on top of "queued": a physical task also needs a live free gap —
-computed fresh every cycle — of at least its own duration (plus a buffer) before Russell's next real
+to this source is a SECOND gate on top of "queued": a physical task also needs a live free gap -
+computed fresh every cycle - of at least its own duration (plus a buffer) before Russell's next real
 calendar commitment (any non-all-day event, solo or not, on any of his editable calendars, except the
-Physical Tasks calendar itself — always excluded from the gap check, since it's the queue, not a
+Physical Tasks calendar itself - always excluded from the gap check, since it's the queue, not a
 commitment), because unlike every other source, nobody but Russell can do the actual work. A THIRD,
 opt-in gate sits alongside it: a task with a `Window: HH:MM-HH:MM` body marker
 (or any task, when `default_window` is configured) only enumerates while local now falls inside that
@@ -56,7 +56,7 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _find_calendar_js():
-        """Locate ms-graph's calendar.js — same search shape as outlook-graph-adapter's `_find_mail_js`."""
+        """Locate ms-graph's calendar.js - same search shape as outlook-graph-adapter's `_find_mail_js`."""
         path = find_skill_script(__file__, "ms-graph", os.path.join("scripts", "calendar.js"))
         if not path:
             raise ProviderError("Could not locate ms-graph calendar.js for physical-task.", kind="config")
@@ -65,11 +65,11 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- config
     def configure(self, cfg):
         """`providers.physical-task` in drainer.local.md: `calendar` (default "Physical Tasks"),
-        `lookahead_hours` (default 2 — how far ahead the gap check looks for the next real
-        commitment; short on purpose, since no task should ever be sized past an hour — see
-        CAPTURE's duration note), `buffer_minutes` (default 20 — added on top of a task's own
+        `lookahead_hours` (default 2 - how far ahead the gap check looks for the next real
+        commitment; short on purpose, since no task should ever be sized past an hour - see
+        CAPTURE's duration note), `buffer_minutes` (default 20 - added on top of a task's own
         duration before it counts as eligible, covering the lag between a gap being detected and
-        Russell actually opening the worker session), `lookback_days` (default 365 — how far back the
+        Russell actually opening the worker session), `lookback_days` (default 365 - how far back the
         queued scan reaches, so a task that has sat unstarted for months keeps re-surfacing rather
         than dropping out of view; raise it toward the Graph ceiling of 1825 to widen that margin),
         `exclude` (calendar names to leave out of the gap check, e.g. a read-only subscription),
@@ -125,7 +125,7 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- reads
     def _due_tasks(self):
         """Every due (start date today-or-earlier) task on the configured calendar, regardless of
-        current gap — the full candidate set. `lookback_days` bounds how far back the scan reaches
+        current gap - the full candidate set. `lookback_days` bounds how far back the scan reaches
         (calendar.js requires a finite window and Graph caps it at 1825 days), set well past a
         month so a task that sits unstarted for a long stretch keeps re-surfacing instead of
         silently dropping off once it ages out of the window. Raises ProviderError on an auth/API
@@ -148,7 +148,7 @@ class Provider(ProviderBase):
 
     def _gap_minutes(self):
         # Always exclude the Physical Tasks calendar itself, on top of whatever the user
-        # configured in `self.exclude` — otherwise the drainer's own queue (parked task start
+        # configured in `self.exclude` - otherwise the drainer's own queue (parked task start
         # times, plus any task mid-work) would gate dispatch of the *next* physical task now that
         # solo events count as real commitments. A single-flight hold via `correspondent()`
         # already keeps two physical tasks from running at once (see `correspondent` below), so
@@ -172,11 +172,11 @@ class Provider(ProviderBase):
         gap = self._gap_minutes()
         # `buffer_minutes` covers the lag between a gap being detected here and Russell actually
         # opening the worker session (a worker-slot budget it has to wait for, or just not being the session he's
-        # on right now) — a task only counts as fitting once its own duration PLUS that buffer is
+        # on right now) - a task only counts as fitting once its own duration PLUS that buffer is
         # covered, not just its bare duration.
         eligible = [t for t in due if t["minutes"] + self.buffer_minutes <= gap]
         # Newest-due first, same as email (drain today's backlog before working backwards into
-        # older stale items) — then, among tasks that became due on the same day, the longest one
+        # older stale items) - then, among tasks that became due on the same day, the longest one
         # that fits so a big gap isn't wasted on a short task.
         eligible.sort(key=lambda t: (t["date"], t["minutes"]), reverse=True)
         for t in eligible:
@@ -200,7 +200,7 @@ class Provider(ProviderBase):
     def still_in_inbox_ids(self):
         """Reconcile's analog of "still in the inbox": every currently-queued task's id, gap or no
         gap. A task the poller dispatched whose worker session later closed without being started (still sitting
-        exactly on the parking grid — see CLEAR) is still queued — dropping its seen key here lets it
+        exactly on the parking grid - see CLEAR) is still queued - dropping its seen key here lets it
         dispatch again next time a real gap opens, instead of being silently forgotten for good."""
         try:
             return {t["id"] for t in self._due_tasks()}
@@ -212,7 +212,7 @@ class Provider(ProviderBase):
         # task's whole queued lifetime (nothing here ever recreates or re-stamps it). For a recurring
         # series it's the most recent queued occurrence's own id (see the adapter's _due_tasks/
         # listDueTasks), which legitimately changes as a fresh occurrence becomes the representative
-        # one — exactly like Trello's Start-stamped id scheme, just keyed on Graph's own instance id
+        # one - exactly like Trello's Start-stamped id scheme, just keyed on Graph's own instance id
         # instead of a date string.
         #
         # This id becomes part of the worker's prompt-file NAME (run-poller.py's spawn_worker), which
@@ -228,11 +228,11 @@ class Provider(ProviderBase):
     def correspondent(self, item):
         # Every physical task shares ONE identity, not a per-item one: Russell can only physically do
         # one task at a time, so a second eligible task must wait behind whichever one already has an
-        # open worker session — the same hold the poller uses to keep two messages from the same person out
+        # open worker session - the same hold the poller uses to keep two messages from the same person out
         # of dispatch together (see provider_base.ProviderBase.correspondent / run-poller.py's
         # held_for_correspondent). Returning a constant here reuses that existing mechanism instead of
         # needing a bespoke single-flight lock: once the open task's worker session closes (started, finished, or
-        # deferred — see CLEAR), the hold releases and the next-longest eligible task dispatches.
+        # deferred - see CLEAR), the hold releases and the next-longest eligible task dispatches.
         return "physical-task"
 
     def capture(self, item, iid, runtime_dir):

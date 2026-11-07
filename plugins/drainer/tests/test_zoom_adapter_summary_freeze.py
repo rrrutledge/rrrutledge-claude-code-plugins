@@ -1,12 +1,12 @@
-"""Tests for providers/zoom-adapter.py's summary-finality logic — the next_steps-presence signal that keeps
+"""Tests for providers/zoom-adapter.py's summary-finality logic - the next_steps-presence signal that keeps
 a meeting's action items from being dropped when its recap is read before the action items land.
 
 The bug this guards against: the adapter used to freeze a summary as final as soon as it had any content
 and had been quiet for the cooldown, so a read that saw a recap with no next_steps yet cached the recap
-and never re-fetched — the action items, added later, were lost for good once the meeting aged out.
+and never re-fetched - the action items, added later, were lost for good once the meeting aged out.
 
 The fix keys on a concrete Zoom signal (verified against a month of real meetings): Zoom omits the
-`next_steps` key entirely while a summary is still generating and includes it — as a populated list — once
+`next_steps` key entirely while a summary is still generating and includes it - as a populated list - once
 generation finishes, never as a stray empty list. So the presence of `next_steps` is the "done" signal; a
 summary whose `next_steps` is absent is still generating and is re-fetched, not frozen.
 
@@ -51,7 +51,7 @@ failures = []
 
 def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
-    print(f"  {status}: {name}" + (f" — {detail}" if detail and not condition else ""))
+    print(f"  {status}: {name}" + (f" - {detail}" if detail and not condition else ""))
     if not condition:
         failures.append(name)
 
@@ -128,7 +128,7 @@ def test_summary_generated_helper():
 
 
 def test_recap_before_next_steps_is_not_frozen():
-    print("test: a summary read before next_steps land does NOT freeze — the action items surface later")
+    print("test: a summary read before next_steps land does NOT freeze - the action items surface later")
     now = datetime.now(timezone.utc)
     rt = tempfile.mkdtemp()
     fake = FakeZoom(iso(now - timedelta(hours=3)), [
@@ -155,7 +155,7 @@ def test_recap_without_next_steps_key_never_freezes():
     print("test: even a recap present WITHOUT a next_steps key is treated as still-generating, not final")
     now = datetime.now(timezone.utc)
     rt = tempfile.mkdtemp()
-    # A hypothetical Zoom state the survey never actually produced — a recap but no next_steps key. The gate
+    # A hypothetical Zoom state the survey never actually produced - a recap but no next_steps key. The gate
     # must still wait: presence of next_steps, not of the recap, is the done signal.
     recap_only = {"summary_overview": "recap only",
                   "summary_last_modified_time": iso(now - timedelta(hours=1)),
@@ -172,7 +172,7 @@ def test_recap_without_next_steps_key_never_freezes():
 
 
 def test_generated_summary_freezes_and_serves_from_cache():
-    print("test: the healthy path — a generated summary is captured and then served from cache")
+    print("test: the healthy path - a generated summary is captured and then served from cache")
     now = datetime.now(timezone.utc)
     rt = tempfile.mkdtemp()
     fake = FakeZoom(iso(now - timedelta(hours=3)),

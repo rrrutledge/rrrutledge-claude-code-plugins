@@ -71,7 +71,7 @@ check("the same person yields the same key across notices", sam, sam2)
 check("two different people on the same From address do NOT collapse", sam == jane, False)
 
 print("\nrelay correspondent: the name can live in the body when the preview is truncated before it")
-# A preview cut off before the name — extraction must fall through to the fetched body, not the address.
+# A preview cut off before the name - extraction must fall through to the fetched body, not the address.
 short = {"from": "Securus eMessaging <donotreply@jpay.com>", "fromAddress": "donotreply@jpay.com",
          "subject": "New Mail From A Correctional Facility", "preview": "You have received a new message"}
 check("body fetch resolves the correspondent",

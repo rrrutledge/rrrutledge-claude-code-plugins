@@ -3,16 +3,16 @@
 Two independent paths can auto-allow a call:
 
 1. A *saved* workflow (`tool_input.name` referencing a fixed, previously
-   authored script — built-in or from `.claude/workflows/`) is blanket-trusted
+   authored script - built-in or from `.claude/workflows/`) is blanket-trusted
    the same way `trusted_script_dirs` trusts a directory's contents rather than
    re-inspecting every run, via `workflow_blanket_names` in config. An
    inline/dynamic script's own self-declared `meta.name` is never consulted for
-   this path — nothing in that text is proof of what the script actually does.
+   this path - nothing in that text is proof of what the script actually does.
 
 2. An inline/dynamic `script` (or a `scriptPath` file) is read and sent to
    `scripts.ask_ai_about_workflow_script`, mirroring the existing node/python
    file-script AI check. A workflow script has no filesystem/network access of
-   its own — its only real-world effect is the prompts it hands to `agent()`,
+   its own - its only real-world effect is the prompts it hands to `agent()`,
    and once the call is approved every subagent it spawns runs unattended with
    full tool access. So the check reads those prompts and applies the same
    read-only-or-reversible standard used everywhere else in this hook.
@@ -42,7 +42,7 @@ def _record_block(reason):
     detail = f': {reason}' if reason else ''
     _last_block_reason = (
         f'BLOCKED: this Workflow script was judged unsafe to auto-run{detail}. '
-        'Rewrite the agent() prompts so they only read, investigate, and return data — '
+        'Rewrite the agent() prompts so they only read, investigate, and return data - '
         'no writes, commits, pushes, posts, or sends. If it is legitimately privileged, '
         'save it under .claude/workflows/ and add its name to the safe-compounds '
         '"workflow_blanket_names" config instead of broadening the inline script.'

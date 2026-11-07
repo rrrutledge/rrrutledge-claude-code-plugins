@@ -1,7 +1,7 @@
 """Cross-platform path reasoning for "is this path inside an allowed area?".
 
 On Windows/MSYS, os.getcwd() yields /c/Users/... while commands may use
-C:/Users/... — every comparison here normalizes both forms to a canonical
+C:/Users/... - every comparison here normalizes both forms to a canonical
 lowercase forward-slash Windows path so the two compare equal.
 """
 import itertools
@@ -114,7 +114,7 @@ def _is_sensitive_read_path(path):
 
 def is_safe_read_location(path):
     """True if `path` is under the user's home, Downloads, Desktop, Documents,
-    or a system/session temp dir — locations safe to read from as a copy
+    or a system/session temp dir - locations safe to read from as a copy
     source. These are read-only checks: the destination-containment check
     (_dest_allowed) is what keeps the write side safe, so this only needs to
     keep sensitive files (SSH keys, credentials, tokens) out of the source
@@ -186,7 +186,7 @@ TRUSTED_DESTINATION_DIRS = ['~/Downloads']
 def is_path_within_trusted_destination(path):
     """True if `path` is within TRUSTED_DESTINATION_DIRS (built in, e.g.
     ~/Downloads) or a `trusted_destination_dirs` entry from
-    safe-compounds-config.json (machine-local extras) — dirs that cp/mv/ln
+    safe-compounds-config.json (machine-local extras) - dirs that cp/mv/ln
     may write to even though they're outside the repo."""
     from .config import get_config
     bases = list(TRUSTED_DESTINATION_DIRS) + get_config().get('trusted_destination_dirs', [])

@@ -1,12 +1,12 @@
 // Read / draft / clear personal Gmail (or Google Workspace) mail via the Gmail REST API over OAuth.
 //
-// Auth: a single OAuth token (shared with filters.js) authorizes every operation — see gmail-oauth.js
+// Auth: a single OAuth token (shared with filters.js) authorizes every operation - see gmail-oauth.js
 // for the client and gmail-auth.js for the one-time sign-in. Secrets are the OAuth client id/secret in
 // GMAIL_OAUTH_CLIENT_ID / GMAIL_OAUTH_CLIENT_SECRET; the token caches to ~/.claude/gmail/oauth-token.json
 // and auto-refreshes, so this runs silently after the first consent. The account is whatever that token
-// authorizes (read from the profile) — no address env var needed.
+// authorizes (read from the profile) - no address env var needed.
 //
-// Multiple accounts: pass --account=<name> to operate on a second mailbox (its own token file — see
+// Multiple accounts: pass --account=<name> to operate on a second mailbox (its own token file - see
 // gmail-oauth.js); no flag = the default account. Every run asserts the token still authorizes the mailbox
 // it was set up for, so an operation can't land on the wrong account.
 //
@@ -14,7 +14,7 @@
 // "Name<br>Title<br><a href=\"...\">...</a>"). When set, --draft-new and --reply append it to every
 // staged draft (after a blank line; before the quoted original on replies) so it isn't retyped by hand.
 // The signature is per-account: with --account=<name>, the env var read is GMAIL_SIGNATURE_HTML_<NAME>
-// (uppercased) instead, so a second mailbox never inherits the default account's signature — an unset
+// (uppercased) instead, so a second mailbox never inherits the default account's signature - an unset
 // per-account var means no signature, which is the right default for staging a draft in someone else's box.
 //
 // List inbox:    node gmail.js --list-inbox [--top=50] [--json]
@@ -37,7 +37,7 @@
 //                 over IMAP, so it needs GMAIL_ADDRESS + GMAIL_APP_PASSWORD like --list-inbox-imap and
 //                 reads the default account only)
 // Search:        node gmail.js --search=<query> [--folder=all|inbox|sent] [--top=50] [--json]
-//                (search for messages matching query; --folder defaults to "all" (All Mail — everything
+//                (search for messages matching query; --folder defaults to "all" (All Mail - everything
 //                 except Spam/Trash); --query is Gmail's own search syntax, matching headers + body;
 //                 newest-first)
 // Show one:      node gmail.js --show=<message-id>
@@ -46,7 +46,7 @@
 //                 an "Attachments:" header line names each file attachment when it carries any)
 // Auth headers:  node gmail.js --auth=<message-id>
 //                (emits a JSON object with the message's envelope-authentication headers as Gmail
-//                 stamped them — the raw Authentication-Results value(s) and any Received-SPF value(s),
+//                 stamped them - the raw Authentication-Results value(s) and any Received-SPF value(s),
 //                 plus the From. This is the SPF/DKIM/DMARC provenance the spoofable From: line can't
 //                 give; the drainer's security screen reads it per item. Looked up in All Mail like --show.)
 // Show one (IMAP):  node gmail.js --show-imap=<uid>
@@ -82,13 +82,13 @@
 //                 threading off a no-reply relay whose real correspondent is in Reply-To, e.g. a Google
 //                 "shared a file" notification). --exclude=<addr[,addr]> removes those addresses from the
 //                 computed To and CC (case-insensitive, matched on the bare address), to reply-all
-//                 without someone. --body-file is Markdown — bold, links, lists all work;
+//                 without someone. --body-file is Markdown - bold, links, lists all work;
 //                 HTML tags pass through. Appends GMAIL_SIGNATURE_HTML, if set, after the body and before
 //                 the quoted original. --no-quote suppresses the auto-appended quoted original (threading
 //                 still set), for an interleaved reply where --body-file supplies its own quote with
 //                 responses spliced between the sender's lines.)
 // Draft new:     node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z] [--attach=a.pdf,b.png] [--inline=s1.png,s2.png]
-//                (stages a fresh DRAFT; never sends; prints a draft-id. --body-file is Markdown — bold,
+//                (stages a fresh DRAFT; never sends; prints a draft-id. --body-file is Markdown - bold,
 //                 links, lists all work; HTML tags pass through. Appends GMAIL_SIGNATURE_HTML, if set,
 //                 after the body.)
 //                (--attach takes one path or a comma-separated list; files ride along as attachments.
@@ -97,17 +97,17 @@
 //                 images render at about half the message width by default; --inline-width=<css width>
 //                 overrides it. Both flags may be combined.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
-//                (promotes one already-staged draft: sends it, then removes it from Drafts — Gmail files
+//                (promotes one already-staged draft: sends it, then removes it from Drafts - Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
-//                 staged the draft; its last line is `sent-id: <Gmail id>` of the sent message. SENDS REAL MAIL — only invoke on Russ's explicit per-message say-so
+//                 staged the draft; its last line is `sent-id: <Gmail id>` of the sent message. SENDS REAL MAIL - only invoke on Russ's explicit per-message say-so
 //                 after he has reviewed that exact draft.)
 // Delete a draft: node gmail.js --delete-draft=<draft-id>
-//                (discards one staged draft that's no longer wanted — e.g. the outreach it belonged to
+//                (discards one staged draft that's no longer wanted - e.g. the outreach it belonged to
 //                 was abandoned. Removes it from Drafts entirely; drafts have no other home, so this isn't
 //                 recoverable the way --archive is. The <draft-id> is the same id --reply / --draft-new
 //                 printed when the draft was staged.)
 // Archive one:   node gmail.js --archive=<message-id>
-//                (removes the message from the inbox but keeps it in All Mail — the way mail is cleared)
+//                (removes the message from the inbox but keeps it in All Mail - the way mail is cleared)
 // Auth glance:   node gmail.js --check
 //                (signs in and reports the inbox count; non-zero exit on auth failure)
 
@@ -262,7 +262,7 @@ async function findMessageId(messageId) {
   return msgs.length ? msgs[0].id : null;
 }
 
-// Fetch one message's raw RFC822 and parse it — reused by every path that needs the full body, headers,
+// Fetch one message's raw RFC822 and parse it - reused by every path that needs the full body, headers,
 // or attachments (--show, --auth, --reply, --save-attachments). Also returns the message's threadId and
 // labels so callers that need them (reply threading) don't refetch.
 async function getParsed(gmailId) {
@@ -271,7 +271,7 @@ async function getParsed(gmailId) {
   return { parsed, threadId: r.data.threadId, labelIds: r.data.labelIds || [], internalDate: r.data.internalDate };
 }
 
-// Bounded-concurrency map — the enumerate/search/list-drafts paths fetch per-message metadata, and a
+// Bounded-concurrency map - the enumerate/search/list-drafts paths fetch per-message metadata, and a
 // small pool keeps that fast without tripping Gmail's per-user rate limits. Preserves input order.
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -448,10 +448,10 @@ function renderShow(parsed) {
   return lines.join('\n');
 }
 
-// The --auth JSON object — the envelope-authentication headers Gmail stamped onto the message — from a
+// The --auth JSON object - the envelope-authentication headers Gmail stamped onto the message - from a
 // parsed message. Authentication-Results carries the SPF/DKIM/DMARC verdicts (and the domains that
 // actually authenticated); Received-SPF carries the SPF check on its own. Both can appear more than once
-// (each relay adds its own), so headerLines is read directly to keep every instance — the value is the
+// (each relay adds its own), so headerLines is read directly to keep every instance - the value is the
 // header line with its "Name:" prefix stripped. Interpretation lives in the drainer's Python adapters, so
 // this just exposes the raw values. Factored out so REST --auth and IMAP --auth-imap emit the same object.
 function renderAuth(parsed) {
@@ -657,7 +657,7 @@ async function listDrafts() {
 }
 
 function inlineList() {
-  // --inline=<path[,path]> — images embedded in the body via cid: references (see inlineImagesHtml),
+  // --inline=<path[,path]> - images embedded in the body via cid: references (see inlineImagesHtml),
   // so they render in-line where the reader is looking rather than as a file list at the bottom. Each
   // gets a stable index-based cid so attachments() and inlineImagesHtml() agree on the same reference.
   //
@@ -665,7 +665,7 @@ function inlineList() {
   // for the review-then-send-in-the-web-UI path: when someone opens an API-created draft in Gmail's
   // compose editor and clicks Send, Gmail re-serializes the whole message. With an arbitrary cid (and no
   // matching X-Attachment-Id, added in attachments()), that re-serialization blanks the image's
-  // Content-ID, demotes it from inline to a plain attachment, and orphans the <img> reference — so the
+  // Content-ID, demotes it from inline to a plain attachment, and orphans the <img> reference - so the
   // image renders in the draft but is broken in the Sent copy and for the recipient. Matching Gmail's
   // native ii_ + X-Attachment-Id shape makes the editor recognize the part as a real inline image and
   // preserve the cid link through send. Verified empirically against live Sent copies.
@@ -689,19 +689,19 @@ function inlineImagesHtml() {
 }
 
 function attachments() {
-  // --attach=<path[,path]> — regular file attachments (comma-separated for several). --inline=<path[,path]>
-  // — images cid-embedded in the body instead. Both flags may be used together.
+  // --attach=<path[,path]> - regular file attachments (comma-separated for several). --inline=<path[,path]>
+  // - images cid-embedded in the body instead. Both flags may be used together.
   const regular = args.attach
     ? String(args.attach).split(',').map(s => s.trim()).filter(Boolean).map(p => ({ filename: path.basename(p), path: p }))
     : [];
   // X-Attachment-Id must equal the Content-ID (the cid) so Gmail's compose editor keeps the image inline
-  // when it re-serializes the message on send — see inlineList() for the full rationale.
+  // when it re-serializes the message on send - see inlineList() for the full rationale.
   const inline = inlineList().map(a => ({ ...a, contentDisposition: 'inline', headers: { 'X-Attachment-Id': a.cid } }));
   const all = [...regular, ...inline];
   return all.length ? all : undefined;
 }
 
-// Build the outgoing RFC822 MIME (a Buffer) with MailComposer — transport-independent; the Gmail API
+// Build the outgoing RFC822 MIME (a Buffer) with MailComposer - transport-independent; the Gmail API
 // takes it base64url-encoded as the draft/message `raw`. htmlToPlainText supplies the text alternative;
 // In-Reply-To/References thread a reply.
 async function buildMime({ to, cc, subject, html, inReplyTo, references }) {
@@ -728,7 +728,7 @@ async function createDraft(rawBuffer, threadId) {
 
 async function dropDraftsInThread(threadId) {
   // Before staging a fresh reply, remove any prior draft on the same thread so only one draft per thread
-  // ever exists — kills the "opened the wrong (stale) draft" hazard. drafts.list carries each draft's
+  // ever exists - kills the "opened the wrong (stale) draft" hazard. drafts.list carries each draft's
   // message.threadId, so matching by thread is a single list call plus a delete per stale draft.
   if (!threadId) return 0;
   const r = await gmail.users.drafts.list({ userId: USER_ID, maxResults: 500 });
@@ -819,7 +819,7 @@ async function draftNew() {
 
 async function sendDraft() {
   // Promote ONE staged draft to a real send: drafts.send transmits it and removes it from Drafts (Gmail
-  // files the sent copy in Sent). This is the only path that emits real mail — gated upstream on Russ's
+  // files the sent copy in Sent). This is the only path that emits real mail - gated upstream on Russ's
   // explicit per-message instruction after he reviewed this draft.
   if (!args['draft-id']) throw new Error('--send-draft requires --draft-id (the id printed when the draft was staged)');
   const draftId = String(args['draft-id']);
@@ -853,7 +853,7 @@ async function deleteDraft() {
 async function archive() {
   const gid = await findMessageId(args.archive);
   if (!gid) { console.log('Message not found (already cleared?).'); return; }
-  // Removing the INBOX label leaves the message in All Mail — Gmail's archive. Unlike Trash there's no
+  // Removing the INBOX label leaves the message in All Mail - Gmail's archive. Unlike Trash there's no
   // 30-day purge timer; the message just leaves the inbox. A no-op if it's already out of the inbox.
   await gmail.users.messages.modify({ userId: USER_ID, id: gid, requestBody: { removeLabelIds: ['INBOX'] } });
   console.log(`Archived (left the inbox, kept in All Mail) id ${stripId(args.archive).slice(0, 40)}.... Find it in All Mail or search.`);
@@ -866,14 +866,14 @@ async function check() {
 }
 
 // Surface API/auth failures with an actionable hint. An insufficient-scope or invalid-grant error means
-// the cached token predates a scope change (or was revoked) — the fix is re-running the one-time sign-in.
+// the cached token predates a scope change (or was revoked) - the fix is re-running the one-time sign-in.
 function describeError(e) {
   const data = e.response && e.response.data;
   let msg = e.message;
   if (data && data.error) msg = data.error.message || data.error_description || data.error || msg;
   const blob = `${msg} ${JSON.stringify(data || {})}`;
   if (/insufficient|scope|invalid_grant|unauthorized/i.test(blob) && !msg.includes('gmail-auth.js')) {
-    return `${msg} — sign in again, then retry: ${signInCommand()}`;
+    return `${msg} - sign in again, then retry: ${signInCommand()}`;
   }
   return msg;
 }
