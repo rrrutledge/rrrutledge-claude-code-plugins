@@ -734,11 +734,14 @@ async function send() {
   if (args.broadcast && !(args['thread-ts'] && args['thread-ts'] !== true)) {
     throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
   }
-  if (args.broadcast && args.file && args.file !== true) {
+  const filePaths = filePathsArg('--send');
+  if (args.broadcast && filePaths.length) {
     throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
   }
+  if (args['keep-unread'] && filePaths.length) {
+    throw new Error('--keep-unread applies to a plain-text send, not --file');
+  }
 
-  const filePaths = filePathsArg('--send');
   if (filePaths.length) {
     const fileEntry = (await uploadFiles('--send', filePaths, args.channel, text, args['thread-ts']))[0] || {};
     const ts = postedTs(fileEntry, args.channel);
@@ -762,9 +765,6 @@ async function send() {
   // the post and again after, and puts back any cursor the post moved. The drainer's acknowledgement
   // sweep sends with it, because its ack must not mark the person's still-unhandled message read.
   const keepUnread = !!args['keep-unread'];
-  if (keepUnread && args.file && args.file !== true) {
-    throw new Error('--keep-unread applies to a plain-text send, not --file');
-  }
   const before = keepUnread ? await cursors(args.channel, params.thread_ts) : null;
   const r = await call('chat.postMessage', params);
   let cursor = null;
@@ -843,18 +843,17 @@ async function listDrafts() {
   const drafts = await activeDrafts();
   const channel = args.channel && args.channel !== true ? args.channel : '';
   const threadTs = args['thread-ts'] && args['thread-ts'] !== true ? args['thread-ts'] : '';
-  const out = [];
-  for (const d of drafts.filter(d => !channel || (d.destinations || []).some(x =>
-    x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))) {
-    out.push({
+  const out = await Promise.all(drafts
+    .filter(d => !channel || (d.destinations || []).some(x =>
+      x.channel_id === channel && (!threadTs || x.thread_ts === threadTs)))
+    .map(async d => ({
       id: d.id,
       destinations: (d.destinations || []).map(x => ({ channel: x.channel_id, threadTs: x.thread_ts || '', broadcast: !!x.broadcast })),
       updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
       text: draftText(d.blocks),
       rawTokens: rawTokensIn(d.blocks),
       files: await draftFiles(d.file_ids),
-    });
-  }
+    })));
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
   for (const d of out) {
@@ -862,20 +861,31 @@ async function listDrafts() {
     console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
     console.log(d.text || '(no text)');
     if (d.rawTokens.length) console.log(`!! RAW, not a real mention: ${d.rawTokens.join(', ')}`);
-    for (const f of d.files) console.log(`[Attachment: ${f.name} (${f.mimetype})]`);
+    for (const f of d.files) console.log(`[Attachment: ${f.name}${f.mimetype ? ` (${f.mimetype})` : ''}]`);
   }
 }
 
-// A draft carries only its attachments' ids; files.info names each one. A file Slack no longer knows
-// keeps its id as the name, so the listing still shows that the draft points at it.
+// A draft carries only its attachments' ids; files.info names each one. A file Slack no longer has
+// keeps its id as the name, so the listing still shows that the draft points at it; any other lookup
+// failure (auth, scope) fails the listing rather than passing for a missing file.
 async function draftFiles(ids) {
-  const out = [];
-  for (const id of ids || []) {
-    let f = {};
-    try { f = (await call('files.info', { file: id })).file || {}; } catch { /* keep the id */ }
-    out.push({ id, name: f.name || f.title || id, mimetype: f.mimetype || f.filetype || '' });
+  return Promise.all((ids || []).map(async id => {
+    try {
+      const [meta] = fileMeta([(await call('files.info', { file: id })).file || {}]);
+      return { id, name: meta.name, mimetype: meta.mimetype };
+    } catch (e) {
+      if (!/file_not_found|file_deleted/.test(e.message)) throw e;
+      return { id, name: id, mimetype: '' };
+    }
+  }));
+}
+
+// Best-effort removal of files this run uploaded for a draft that then failed to save, so a failed
+// stage leaves no stray private upload behind.
+async function deleteUploads(ids) {
+  for (const id of ids) {
+    try { await call('files.delete', { file: id }); } catch { /* the original error is what matters */ }
   }
-  return out;
 }
 
 // Every active draft from drafts.list, paginated.
@@ -929,23 +939,28 @@ async function createDraft() {
   });
   let r;
   try {
-    r = await create();
+    try {
+      r = await create();
+    } catch (e) {
+      if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
+      const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
+        x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
+      for (const d of stale) await deleteDraftById(d);
+      r = await create();
+    }
   } catch (e) {
-    if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
-    const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
-      x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
-    for (const d of stale) await deleteDraftById(d);
-    r = await create();
+    await deleteUploads(fileIds);
+    throw e;
   }
   const id = (r.draft && r.draft.id) || '';
   const saved = (await activeDrafts()).find(d => d.id === id);
   const raw = rawTokensIn((saved || r.draft || {}).blocks);
   if (raw.length) {
     if (saved) await deleteDraftById(saved);
+    await deleteUploads(fileIds);
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
   }
-  const attached = fileIds.length ? ` with ${fileIds.length === 1 ? '1 file' : `${fileIds.length} files`}` : '';
-  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}${attached}. Not sent.`);
+  console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }
 
 async function check() {

@@ -229,7 +229,7 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
    For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
-   A draft that carries an image or other file goes straight to `--create-draft --file=<path>[,<path>...]`, which attaches the files without sharing them anywhere before Russell sends.
+   A draft that carries an image or other file stages with `--create-draft --file=<path>[,<path>...]` in place of the browser composer (steps 1-5), and the **`slack`** skill covers how the files stay private until Russell sends.
 
 ## Mode: `outlook`
 

@@ -107,8 +107,8 @@ Under `scripts/` (run with `node`):
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
     Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
     Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
-    Add `--file=<path>` to attach local files to the draft, comma-separated for several, the way the Slack composer holds an attachment on an unsent message.
-    Each file is uploaded with no channel, so it stays private to Russ and shared nowhere until he sends the draft.
+    Add `--file=<path>` to attach local files to the draft, comma-separated for several.
+    The files stay private to Russ until he sends the draft.
     The draft shows the files under **Drafts & sent** and in the conversation's composer.
   - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
     It reaches no one.
@@ -138,6 +138,7 @@ Under `scripts/` (run with `node`):
 - `drafts.list` / `drafts.create` / `drafts.delete` - read the server-side draft list, save an unsent draft,
   and delete one (`--list-drafts`, `--create-draft`, `--delete-draft`, `--create-draft --replace`).
 - `files.info` - name each file a listed draft carries (`--list-drafts`).
+- `files.delete` - remove the files a `--create-draft --file` run uploaded when that draft then fails to save.
 - `conversations.open` - open or find the existing 1:1 DM for a known user ID (`--open-dm`; also used
   internally by `--find-dm` once it's matched a name to a user).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).
