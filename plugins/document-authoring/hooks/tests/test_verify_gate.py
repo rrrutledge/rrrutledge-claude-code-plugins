@@ -257,8 +257,8 @@ def test_grep_mentioning_script_not_gated(tmp_path):
 
 def test_browser_composer_with_body_file_gated(tmp_path):
     receipts = str(tmp_path / "receipts")
-    write_body(tmp_path, "slack-body.md", "Hey folks - here is the update.")
-    r = run([], stdin=bash_payload("node .tmp/compose-slack.js --cdp-port=9222 --body-file=slack-body.md"),
+    write_body(tmp_path, "teams-body.md", "Hey folks - here is the update.")
+    r = run([], stdin=bash_payload("node .tmp/compose-teams.js --cdp-port=9222 --body-file=teams-body.md"),
             cwd=str(tmp_path), receipt_dir=receipts)
     assert decision(r.stdout) == "DENY"
 

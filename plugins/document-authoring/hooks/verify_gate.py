@@ -34,7 +34,7 @@ minting side and the gating side can never drift apart):
   * pending [gh pr create args]
                - list the branch's files the PR gate would deny, as `<kind>: <path>` lines.
   * check <f>  - exit 0 if <f> has a fresh receipt (or is a pure reaction), else exit 1.
-                 For surfaces the hook can't see (Teams/Slack composers), where the flow
+                 For surfaces the hook can't see (the Teams composer), where the flow
                  asserts the receipt itself rather than a stage command triggering the gate.
   * stage <f> --meta <m.json>
                - the hook's stage recording, for a script that sends from inside itself
@@ -172,9 +172,9 @@ def find_stage(command):
     Two shapes count as a stage command. A named script (gmail.js / mail.js /
     outlook-mail.js / slack.js) carrying its compose verb and body flag is one. A browser-chauffeur
     composer run is the other: a `--cdp-port` browser session that declares the message it
-    will type via `--body-file`. The Slack and Teams composers type into a web page rather
-    than into a script argument, so message-draft routes their body through a declared file,
-    which is what lets this gate reach them the same way it reaches mail. A browser-chauffeur
+    will type via `--body-file`. The Teams composer types into a web page rather
+    than into a script argument, so message-draft routes its body through a declared file,
+    which is what lets this gate reach it the same way it reaches mail. A browser-chauffeur
     run that carries no `--body-file` (a screenshot, a scrape) is not a stage command and
     passes straight through."""
     try:
@@ -622,7 +622,7 @@ def stage_meta(stage, payload):
             pass
     else:
         joined = " ".join(stage["tokens"]).lower()
-        meta["channel"] = "teams" if "teams" in joined else "slack" if "slack" in joined else "other"
+        meta["channel"] = "teams" if "teams" in joined else "other"
     return meta
 
 

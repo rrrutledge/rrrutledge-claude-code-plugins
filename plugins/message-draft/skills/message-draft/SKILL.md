@@ -1,6 +1,6 @@
 ---
 name: message-draft
-description: Draft a message and NEVER send it. Three modes — `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, typed into the Slack composer via browser-chauffeur and left as an auto-saved draft, or saved through `slack.js --create-draft` when it carries files), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated — hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
+description: Draft a message and NEVER send it. Three modes — `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, saved as a server-side draft through the `slack` skill's `slack.js --create-draft`), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated — hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
 ---
 
 # message-draft
@@ -12,13 +12,11 @@ Stage a **draft** and stop — a human reviews and sends. Pick a mode:
 - **`outlook`** — a work-email reply or new email, created as an Outlook **draft** via the **`ms-rest`**
   skill's REST API (no browser composer). `ms-rest` is the WORK-account Outlook plugin; don't
   confuse it with the personal `ms-graph` skill.
-- **`slack`** — a Slack DM, group DM, channel message, or threaded reply, typed into the Slack composer
-  (you drive **browser-chauffeur**) and left as Slack's auto-saved draft, or saved through `slack.js --create-draft` when it carries files.
+- **`slack`** — a Slack DM, group DM, channel message, or threaded reply, saved as a server-side draft through the **`slack`** skill's `slack.js --create-draft`.
 
 **Staging is automatic.**
 In every mode, a message drafted for Russell is staged the moment it passes `writing-review`, before it is shown.
 The reply shows the staged text and where it lives, and the only question left is about sending.
-The source's provider doc (for Slack, `slack-provider.md` DRAFT-MODE) names the fastest staging route.
 
 **LinkedIn is never automated.** LinkedIn suspended Russell's account for automation in July 2026 —
 never drive browser-chauffeur/Playwright against linkedin.com for any reason. For a LinkedIn reply,
@@ -29,35 +27,34 @@ to paste into the LinkedIn composer and send himself.
 content in Russell's voice. Pass the drafted text to the mode steps below for staging.
 
 **Voice gate (stage-time — load-bearing):** After the draft is staged, read it back from where it
-lives (Teams/Slack: the composer; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
+lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
 Conversational writing rules as a review pass. If anything was trimmed, re-stage the gated version
-(Teams/Slack: re-type it; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
+(Teams: re-type it; Slack: re-run the same `--create-draft` command, every flag included, with `--replace` added; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
 the done-criteria once it has run.
-For Teams and composer-staged Slack drafts this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
+For Teams this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
 
 **Review gate (mint a receipt for the reviewed body):** every mode is harness-enforced through
 `writing-review`'s stage gate. Compose the final body into a file, run the Verify loop against that file,
 then mint its receipt (see `writing-review`'s **The stage gate** for the `verify_gate.py mint` command).
 For **Outlook**, that file is the `--json` payload the create-draft / create-reply command already uses.
-For **Teams** and **Slack**, the orchestrator writes the reviewed body to a `.tmp` file and mints its receipt there, then hands that `--body-file` path to the browser subagent (below).
+For **Slack**, it is the `--body-file` the `--create-draft` command already takes.
+For **Teams**, the orchestrator writes the reviewed body to a `.tmp` file and mints its receipt there, then hands that `--body-file` path to the browser subagent (below).
 The subagent invokes every browser-chauffeur run with `--body-file=<that file>` alongside the usual `--cdp-port`, so the gate sees the body on the command line and blocks a composer run whose body has no receipt.
 Report the receipt hash in the done-criteria.
 
-## `teams` and `slack` stage in a browser subagent
+## `teams` stages in a browser subagent
 
-The `teams` and `slack` modes drive browser-chauffeur through a long open-tab then find-target then identity-gate then compose then verify flow.
+The `teams` mode drives browser-chauffeur through a long open-tab then find-target then identity-gate then compose then verify flow.
 Run that whole flow inside a browser subagent, per browser-chauffeur's **"Running in a subagent"** section - one in-process subagent for the single coherent task of staging this one message.
 The driving turns stay entirely in the subagent's isolated context, and the orchestrator (the session that invoked message-draft) gets back only the result.
-The `outlook` mode has no browser flow to isolate - run it inline as its mode steps describe.
-A `slack` draft that carries an image or other file has no browser flow either: the orchestrator stages it inline with the **`slack`** skill's `slack.js --create-draft --file=<path>[,<path>...]`, which covers how the files stay private until Russell sends, and runs the voice-gate read-back from `slack.js --list-drafts`.
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
 - **Orchestrator, before it spawns the subagent:** author the body in Russell's voice (the **Voice** step), run the `document-authoring` pass, and complete the **Review gate** step (above).
   That is the human-facing writing, and it stays on the main thread.
   The receipt the Review gate mints must exist before the composer runs, so finish it before spawning the subagent.
-- **Browser subagent:** the composer staging - every step of **Mode: `teams`** or **Mode: `slack`** below.
-  It opens its own tab, finds and identity-gates the target, types the reviewed body read from `--body-file`, inserts links, runs the stage-time voice read-back, saves and verifies the draft, and leaves it staged.
+- **Browser subagent:** the composer staging - every step of **Mode: `teams`** below.
+  It opens its own tab, finds and identity-gates the target, types the reviewed body read from `--body-file`, inserts links, runs the stage-time voice read-back, and leaves the draft staged.
 
 **Every load-bearing invariant below still holds inside the subagent** - identity-gate before and during typing, never a bare Enter, preserve an existing draft rather than typing over it, content-is-ground-truth read-back.
 The subagent boundary moves where the flow runs, not what it must guarantee.
@@ -66,8 +63,8 @@ The subagent boundary moves where the flow runs, not what it must guarantee.
 
 - **`DONE`** - the draft is staged.
   Return the recipient, the conversation the draft sits in, a screenshot of the staged composer, and the done-criteria line.
-  The subagent never presses Send - message-draft stages and stops, so a `teams`/`slack` task's endpoint is a staged draft with nothing sent.
-- **`HELP_NEEDED`** - a Teams or Slack sign-in wall (or other human-only gate) blocked the run.
+  The subagent never presses Send - message-draft stages and stops, so a `teams` task's endpoint is a staged draft with nothing sent.
+- **`HELP_NEEDED`** - a Teams sign-in wall (or other human-only gate) blocked the run.
   Return the reason and a `findTab` locator so the orchestrator can resume the same tab, and leave the tab open on the correct page.
 
 **On `HELP_NEEDED`, the orchestrator surfaces the gate through `AskUserQuestion`** - naming the site and that the browser is open on the right tab - waits for Russell to sign in, then resumes the subagent via SendMessage.
@@ -76,16 +73,16 @@ The subagent re-finds its tab with the `findTab` locator it returned and continu
 **Spawn brief (copy into the Agent call):**
 
 ```
-Invoke the message-draft skill's <teams|slack> mode and browser-chauffeur, and stage this one message inside your own context.
+Invoke the message-draft skill's teams mode and browser-chauffeur, and stage this one message inside your own context.
 Target: <recipient / conversation>.
 Body: read it from <path to the reviewed --body-file>, and pass --body-file=<that file> on every browser-chauffeur run so the composer run is gated.
 Links: <display text + URL, or none>.
-Run the full mode flow yourself - open your own tab, find and identity-gate the target, type the reviewed body (Shift+Enter line breaks, never a bare Enter), insert links, run the stage-time voice read-back, save and verify the draft, and leave it staged.
+Run the full mode flow yourself - open your own tab, find and identity-gate the target, type the reviewed body (Shift+Enter line breaks, never a bare Enter), insert links, run the stage-time voice read-back, and leave the draft staged.
 Hold every load-bearing invariant: identity-gate before and during typing, never type over an existing draft, content-is-ground-truth read-back.
 Return one of two results:
   DONE - recipient, the conversation the draft is staged in, a screenshot of the staged composer, and the done-criteria line.
     Never press Send.
-  HELP_NEEDED - the gate (a Teams/Slack sign-in wall), the URL, a findTab predicate that re-finds the tab, and how far you got.
+  HELP_NEEDED - the gate (a Teams sign-in wall), the URL, a findTab predicate that re-finds the tab, and how far you got.
     Leave the tab open on the correct page.
 Never send, and never prompt Russell directly - hand a gate back to me.
 ```
@@ -101,7 +98,7 @@ Never send, and never prompt Russell directly - hand a gate back to me.
   to everyone without opening a side panel. Reserve actual Slack Threads for busier channels, where
   keeping the main feed clean matters more than single-glance visibility.
 
-## Load-bearing invariants (apply to ALL modes — violating these has typed into the WRONG place)
+## Load-bearing invariants for the Teams composer (violating these has typed into the WRONG place)
 
 1. **The composer is not unique — target the `:visible` one and bind every keystroke to it.**
    Web apps keep many editors mounted (Teams keeps every recent chat's `div[data-tid="ckeditor"]`
@@ -109,7 +106,7 @@ Never send, and never prompt Russell directly - hand a gate back to me.
    browser-chauffeur → **Composing in rich editors**); never hand-roll raw key/text events, or text
    leaks into another conversation.
 2. **Identity-gate before AND during typing.** Confirm the active conversation header matches the
-   intended recipient (Teams: first+last name; Outlook: the expected sender/subject) BEFORE the
+   intended recipient (first+last name) BEFORE the
    first keystroke, and re-assert before each segment. Abort on mismatch.
 3. **Content is ground truth.** After typing, read the composer back and verify the expected
    greeting + body (+ links) are present. Let selector drift fail loudly, not silently.
@@ -126,7 +123,7 @@ Never send, and never prompt Russell directly - hand a gate back to me.
    clean future sends.)
    **Narrow exception — a composer holding text that exactly matches an already-sent message needs no OK.**
    Before treating the composer content as an ambiguous draft, check it against this conversation's own
-   recent sent history (Slack: `node slack.js --history --channel=<C>`; Teams: `node teams-chat.js messages <convId> --top 20`).
+   recent sent history (`node teams-chat.js messages <convId> --top 20`).
    If the composer text is an exact or near-exact match (allowing for markdown-link-vs-plain-text
    rendering differences and whitespace) to a message Russell already sent in this same conversation,
    it already went out. Clear it and proceed with the new draft; note in the done-criteria which stale
@@ -137,7 +134,7 @@ Never send, and never prompt Russell directly - hand a gate back to me.
 
 ## Mode: `teams`
 
-**These steps run inside the browser subagent** (see **`teams` and `slack` stage in a browser subagent**).
+**These steps run inside the browser subagent** (see **`teams` stages in a browser subagent**).
 The orchestrator has already minted the reviewed body's receipt into the `--body-file` it hands over.
 
 Addresses either a **1:1 chat** (recipient name + email) or a **group/meeting chat** (chat name).
@@ -180,56 +177,25 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 
 ## Mode: `slack`
 
-**These steps run inside the browser subagent** (see **`teams` and `slack` stage in a browser subagent**).
-The orchestrator has already minted the reviewed body's receipt into the `--body-file` it hands over.
-
-Stages a draft in the **Slack composer** (web) for a DM, group DM, channel message, or threaded reply.
-Typing into the composer and stopping leaves Slack's own per-conversation auto-saved **draft**, and the
-**`slack`** skill's `slack.js --list-drafts` reads Slack's server-side draft list to prove it saved.
-You drive **browser-chauffeur**; never Playwright directly. This skill never sends;
-sending a reviewed Slack message is the separate, gated `slack.js --send` step in the **`slack`** skill,
-reserved for Russell's explicit per-message OK, parallel to how Outlook's send is `ms-rest send-draft`.
+The orchestrator runs these steps inline with the **`slack`** skill's `slack.js` (its SKILL.md has every flag and the mrkdwn the body uses).
+Its `--create-draft` saves the draft where Russell reviews and sends it.
 
 Inputs: the target (a person's name for a DM, or a channel/conversation, or — when replying to a captured
-drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links.
+drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
 
-0. **Open your OWN Slack tab — never adopt an existing one.** Open a fresh `app.slack.com/client/<teamId>`
-   tab of your own (browser-chauffeur owns the how); the persistent profile loads it already signed in. If
-   a sign-in wall shows, have the user sign in, then continue. Reuse that one tab for every later step.
-1. **Open the target conversation.**
-   - **From a captured item** (the reliable path): open the message's **permalink** (the item's `url`) —
-     it lands directly in the right DM/channel/thread. For a thread reply, the permalink opens the thread.
-   - **By person/channel name:** press `Ctrl+K` (quick switcher — it searches ALL members, unlike the
-     paginated `users.list` API), type the full name or channel, wait ~1.5s for autocomplete, and open the
-     top match with Enter. A person's Slack handle can differ from their real name — confirm it's them.
-2. **Identity-gate before typing.** Read the conversation header (`[data-qa="channel_name"]`,
-   `.p-view_header__channel_title`) and confirm it matches the intended recipient/channel BEFORE the first
-   keystroke. On mismatch, don't type — re-navigate. Typing into a stranger's DM is the failure to avoid.
-3. **Compose.** Click the composer (`[data-qa="message_input"] .ql-editor`,
-   `.ql-editor[contenteditable="true"]`, `div[role="textbox"][contenteditable="true"]` — target the
-   `:visible` one), check it for an existing draft per invariant 5, clear it (Ctrl+A, Backspace), then
-   type the body. Line breaks are **Shift+Enter**; a bare **Enter sends**, so never press it. (Use
-   browser-chauffeur's bare-Enter-refusing composer primitives.) Source the body from the reviewed
-   `--body-file` and pass that flag on the browser-chauffeur run, per **Review gate** above, so the run
-   is gated.
-4. **Links.** Slack renders a pasted URL as a link automatically; for anchor-text links, type the phrase
-   and apply a link via the composer's link affordance (Ctrl+K inside the Slack composer opens its
-   link dialog — distinct from the quick switcher, which is Ctrl+K when no composer is focused).
-   **Mentions.** Typing `<@U...>` into the composer lands as literal text.
-   For a real mention, mount the chip from the autocomplete as in `teams` step 5.
-   A body that carries `<@U...>` tokens is simpler to stage with `slack.js --create-draft` (step 6), which turns them into real mentions.
-5. **Save the draft, then leave it.** Do NOT press Enter / click Send.
-   A Slack composer draft is saved only once the composer loses focus and Slack's save request fires, so typing and then immediately navigating to another conversation (or ending the script) discards it before it ever saves.
-   After typing, blur the composer (`el.blur()`) and let the save settle (`page.waitForLoadState('networkidle')`) before moving to the next conversation or finishing.
-   When staging several drafts in one run, save each one before opening the next, since a not-yet-saved draft is the one a navigation silently drops.
-6. **Verify the save on the server.** Back in the orchestrator, list the conversation's server-side drafts with the **`slack`** skill:
-   `node slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
-   A draft listed there with the body's text is saved, so it syncs to the user's own Slack - the sidebar shows a **Draft** badge on the conversation and it appears under **Drafts & sent**, which is where they review and send it.
-   A page reload proves nothing: Slack restores the composer from browser-local storage, so a draft can survive a reload and still be missing from the server list and from the user's other devices.
-   When the list has no matching draft, create it on the server from the same reviewed body:
-   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
-   `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
-   For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
+1. **Resolve the conversation and identity-gate it.**
+   A captured item already carries its `channel` (and `threadTs` for a thread reply).
+   A person by name resolves through `slack.js --find-dm=<full name>`, a known user ID through `--open-dm=<user ID>`.
+   A person `--find-dm` can't find (a Slack Connect or external contact) is reached through a link Russell gives to the conversation, whose path carries the channel id.
+   Confirm the conversation is the intended one with `slack.js --resolve-name=<channel>` before staging; a person's Slack handle can differ from their real name, so check it is them.
+2. **Check for an existing draft.** `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
+   A listed draft whose destination is this exact target is one the user left: for a top-level message, that is a destination line with no `thread:`.
+   Preserve it: surface it verbatim for review, and stage over it with `--replace` only on an explicit OK.
+   In an autonomous run with no one to review, leave it and flag the conversation instead.
+3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints, with every link and mention as its mrkdwn token.
+4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file>`, adding the thread, broadcast, replace, and file flags this draft needs.
+   An auth failure that `slack.js`'s own refresh can't fix is the sign-in case in the done-criteria: Russell signs back in to Slack in the persistent browser, and nothing is staged until he does.
+5. **Voice gate.** Run the **Voice gate** above on the staged draft.
 
 ## Mode: `outlook`
 
@@ -276,7 +242,7 @@ through the cache glob (run the newest if several are cached) from the repo root
 `mode=<teams|slack|outlook> recipient=<who> drafted=true sent=false voice-gate=passed links=<n>` plus a
 one-line note of where the draft lives (Outlook: the `webLink`/draftId; Teams/Slack: the conversation the
 draft is staged in). If identity-gate failed or sign-in was needed, say so and that nothing was staged.
-For **Teams** and **Slack**, this line is what the browser subagent returns in its `DONE` result.
+For **Teams**, this line is what the browser subagent returns in its `DONE` result.
 The orchestrator relays it.
 For a LinkedIn reply, report `mode=linkedin drafted=true staged_for_manual_send=true` and give the user
 the composed text to paste in himself.
