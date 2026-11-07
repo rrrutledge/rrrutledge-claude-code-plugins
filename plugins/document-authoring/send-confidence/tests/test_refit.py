@@ -78,6 +78,23 @@ def test_target(outcome, expected):
     assert scm.target(outcome) == expected
 
 
+@pytest.mark.parametrize("outcome,expected", [
+    (None, "pending"),
+    ({"disposition": "auto-sent"}, "auto-sent"),
+    ({"disposition": "sent-as-is", "edit_distance": 0.0}, "as-is"),
+    ({"disposition": "edited", "edit_distance": 0.04}, "near"),
+    ({"disposition": "edited", "edit_distance": 0.3}, "edited"),
+    ({"disposition": "edited", "edit_distance": None}, "unmeasured"),
+    ({"disposition": "discarded", "reason": "the tone was off"}, "discard-wording"),
+    ({"disposition": "discarded", "reason": None, "source": "sweep"}, "discard-route"),
+    ({"disposition": "superseded"}, "superseded"),
+    ({"disposition": "superseded", "feedback": False}, "superseded"),
+    ({"disposition": "superseded", "feedback": True}, "edited"),
+])
+def test_outcome_class(outcome, expected):
+    assert scm.outcome_class(outcome) == expected
+
+
 # --- terms ---
 
 def test_flags_read_the_low_median_and_the_cuts():

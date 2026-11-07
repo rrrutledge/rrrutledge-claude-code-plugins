@@ -68,7 +68,7 @@
 //                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
 //                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
-//                 the proof a staged draft actually saved; a browser reload can restore a local-only copy.
+//                 where a staged draft's saved text is read back.
 //                 Each draft lists its attached files by name, via files.info)
 // Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace] [--file=<path>[,<path>...]]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
@@ -79,8 +79,8 @@
 //                 a URL or `code span` stay literal). Gated by the
 //                 writing-review receipt on <file>, the same as --send.
 //                 --broadcast stages the thread reply with "Also send to <channel>" ticked. Slack allows
-//                 one draft per thread, so a second create fails with attached_draft_exists unless
-//                 --replace deletes the thread's existing draft first.
+//                 one draft per conversation and one per thread, so a second create fails with
+//                 attached_draft_exists unless --replace deletes the existing draft first.
 //                 --file attaches local files: each is uploaded with no channel, so it is shared nowhere,
 //                 and the draft carries the file ids until Russell sends it)
 // Delete draft:  node slack.js --delete-draft=<draft id>
@@ -919,8 +919,8 @@ async function deleteDraft() {
 }
 
 // Create an unsent draft on the server - reaches no one; Russell sends it himself from his own Slack.
-// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the thread's
-// existing draft (Slack allows one per thread) instead of failing with attached_draft_exists.
+// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the existing
+// draft (Slack allows one per conversation and one per thread) instead of failing with attached_draft_exists.
 async function createDraft() {
   if (!args.channel || args.channel === true) throw new Error('--create-draft requires --channel');
   const text = readBody('--create-draft');

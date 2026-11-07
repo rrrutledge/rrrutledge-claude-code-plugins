@@ -71,7 +71,8 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     os.makedirs(backup_dir)
     saved = (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
              bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-             bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH)
+             bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH, find_orphans.RETIRED_VERDICTS_PATH)
+    find_orphans.RETIRED_VERDICTS_PATH = os.path.join(tmp, "retired-verdicts.json")
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
     find_orphans.STALE_RESPAWNS_PATH = os.path.join(tmp, "stale-respawns.json")
     find_orphans.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
@@ -98,7 +99,7 @@ def sandbox(agents, active=(), pid_alive=lambda pid: False):
     finally:
         (find_orphans.REGISTRY_PATH, find_orphans.active_session_ids, find_orphans.pid_still_claude,
          bg_session.claude_agents, bg_session.account_config_dirs, bg_session.DEFAULT_CONFIG_DIR,
-         bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH) = saved
+         bg_session.WAKES_PATH, find_orphans.STALE_RESPAWNS_PATH, find_orphans.RETIRED_VERDICTS_PATH) = saved
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -355,6 +356,34 @@ def test_job_self_closed_or_without_transcript_not_orphan():
         check("job with no transcript left alone", missing not in ids, f"got {ids}")
 
 
+def test_retired_verdict_cached_per_turn():
+    print("test: a retired job's transcript verdict is reused until its updatedAt changes, "
+          "and cache entries for jobs that no longer exist are pruned")
+    sid, gone = new_id(), new_id()
+    reads = []
+    real_closed = find_orphans.closed_itself_on_purpose
+    find_orphans.closed_itself_on_purpose = lambda s: reads.append(s) or real_closed(s)
+    try:
+        with sandbox([]) as (_, write_transcript, _b):
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=2))
+            write_transcript(sid, [said("hi")])
+            find_orphans._save_json(find_orphans.RETIRED_VERDICTS_PATH,
+                                    {gone: {"updatedAt": "2026-10-01T00:00:00Z", "resumable": True}})
+            check("first run reports the orphan", sid in orphan_ids())
+            check("first run reads the transcript", reads == [sid], reads)
+            reads.clear()
+            check("second run still reports it", sid in orphan_ids())
+            check("second run reads no transcript", reads == [], reads)
+            cache = find_orphans._load_json(find_orphans.RETIRED_VERDICTS_PATH)
+            check("stale id pruned, live id kept", list(cache) == [sid], list(cache))
+            write_transcript(sid, [said("hi"), ran("claude stop " + sid[:8])])
+            check("transcript change alone, same updatedAt: cached verdict stands", sid in orphan_ids())
+            write_job(bg_session.DEFAULT_CONFIG_DIR, sid, updated=ago(hours=1))
+            check("new updatedAt forces a recheck", sid not in orphan_ids() and reads == [sid], reads)
+    finally:
+        find_orphans.closed_itself_on_purpose = real_closed
+
+
 def test_job_in_backup_account_is_orphan():
     print("test: a retired job held by the backup account is found too")
     sid = new_id()
@@ -563,6 +592,7 @@ if __name__ == "__main__":
     test_job_label_does_not_matter()
     test_job_time_bounds()
     test_job_self_closed_or_without_transcript_not_orphan()
+    test_retired_verdict_cached_per_turn()
     test_job_in_backup_account_is_orphan()
     test_registry_entry_judged_by_its_job()
     test_wake_backoff()

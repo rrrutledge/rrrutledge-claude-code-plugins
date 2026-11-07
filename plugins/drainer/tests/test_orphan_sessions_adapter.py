@@ -113,7 +113,32 @@ def test_stable_id_follows_retirement():
             check("capture records ended_at", json.load(f).get("ended_at") == "2026-10-14T20:09:25.380Z")
 
 
+def test_timeout_is_its_own_transient_kind():
+    print("test: a scan that outlives its limit raises kind=timeout, with a limit that covers the "
+          "scan's own inner waits")
+    check("limit covers a 60s respawn plus listing", adapter_mod.SCAN_TIMEOUT_SECONDS >= 90)
+    saved = adapter_mod.run_subprocess_bounded
+    timed_out = subprocess.CompletedProcess([], 1, "", "timed out")
+    timed_out.timed_out = True
+    seen = {}
+
+    def fake(args, timeout, **kw):
+        seen["timeout"] = timeout
+        return timed_out
+    adapter_mod.run_subprocess_bounded = fake
+    try:
+        adapter_mod.Provider().enumerate(5)
+        check("raises", False, "no ProviderError")
+    except adapter_mod.ProviderError as e:
+        check("kind is timeout", e.kind == "timeout", e.kind)
+        check("message names the limit", str(adapter_mod.SCAN_TIMEOUT_SECONDS) in str(e), str(e))
+    finally:
+        adapter_mod.run_subprocess_bounded = saved
+    check("bounded call got the scan limit", seen.get("timeout") == adapter_mod.SCAN_TIMEOUT_SECONDS, seen)
+
+
 if __name__ == "__main__":
+    test_timeout_is_its_own_transient_kind()
     test_resolver_finds_find_orphans()
     test_enumerate_returns_seeded_orphan()
     test_capture_writes_json()

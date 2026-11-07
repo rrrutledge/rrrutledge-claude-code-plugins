@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / @-mentions / unread thread replies (muted conversations skipped), show a message with its permalink, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting stays with the message-draft skill's `slack` mode (browser, draft-only); this skill's send posts an already-reviewed body.
+description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / @-mentions / unread thread replies (muted conversations skipped), show a message with its permalink, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting runs through the message-draft skill's `slack` mode, which stages with this skill's `--create-draft`; this skill's send posts an already-reviewed body.
 ---
 
 # Slack — Read/Mark a Workspace via the Web API
@@ -8,13 +8,9 @@ description: Read, mark-read, and (on explicit approval) send in a Slack workspa
 Read and clear a Slack workspace directly over the **Slack Web API** with a token call — no browser. Zero
 npm dependencies: `slack.js` uses Node's built-in `fetch` (Node 18+).
 
-**This skill reads unread items and advances read cursors; drafting is elsewhere; the one gated send is
-`--send`.** Composing a reply is a separate, general capability - the **`message-draft`** skill's `slack`
-mode stages a reply in the Slack composer (browser) and leaves it unsent for Russ to review in his own
-Slack. Keep those two apart: reads go through `slack.js`, drafts go through `message-draft`. The one write
-in this script that reaches another person is `--send` (see **Sending** below): it posts a body Russ has
-already reviewed and explicitly told you to send this turn, which is why the send belongs next to the
-token-call plumbing here rather than in the browser composer.
+**This skill reads unread items, advances read cursors, and saves drafts; the one gated send is `--send`.**
+Composing a reply is the **`message-draft`** skill's `slack` mode: it authors and reviews the body, then stages it with this skill's `--create-draft` and leaves it unsent for Russ to review in his own Slack.
+The one write in this script that reaches another person is `--send` (see **Sending** below): it posts a body Russ has already reviewed and explicitly told you to send this turn.
 
 ## Auth
 
@@ -93,7 +89,7 @@ Under `scripts/` (run with `node`):
     `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
-    This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
+    This server list is what the user's own Slack syncs from, so it is where a staged draft's text is read back.
     Each draft lists its attached files by name (`files` in `--json`, `[Attachment: ...]` lines otherwise).
   - Create a draft: `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace] [--file=<path>[,<path>...]]` -
     saves the reviewed body as an unsent draft in that conversation, under **Drafts & sent** for Russ to
@@ -105,8 +101,8 @@ Under `scripts/` (run with `node`):
     `*bold*`, `_italic_`, and `~strike~` spans render as styled text; a lone `*`, `snake_case_words`, and anything inside a URL or backtick code span stay literal.
     The writing-review gate requires a receipt on `--body-file`, the same as any other stage.
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
-    Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
-    Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
+    Slack keeps one draft per conversation and one per thread, so a second create fails with `attached_draft_exists`.
+    Pass `--replace` to delete the existing draft and stage the new one in its place.
     Add `--file=<path>` to attach local files to the draft, comma-separated for several.
     The files stay private to Russ until he sends the draft.
     The draft shows the files under **Drafts & sent** and in the conversation's composer.
@@ -152,11 +148,11 @@ receipt on `--body-file` proves that exact body was reviewed, so the gate blocks
 fresh receipt.
 
 **The terminal preview is the review surface for a direct send, and it shows only a body that has already passed `writing-review`.**
-Print the exact message text in the terminal - that is what Russ reads to decide, usually without opening the browser-staged draft.
+Print the exact message text in the terminal - that is what Russ reads to decide, usually without opening the staged draft.
 Two outcomes follow from what he reads there:
 
 - **Looks good:** he says to send it, and you run `--send` on that exact body.
-- **Wants changes:** he makes them in the browser composer and sends there himself, so the send is his.
+- **Wants changes:** he edits the staged draft in his own Slack and sends it there himself, so the send is his.
 
 When you author the body, before printing it:
 
@@ -185,7 +181,3 @@ These constraints keep send safe:
 - An **item** is one **conversation** for a DM/group-DM (keyed to its latest unread message), one
   **message** for each channel @-mention, and one **thread** for each subscribed thread with unread
   replies (keyed to its latest unread reply).
-- **Drafting stays in `message-draft` (see the intro); only the approved send is here.** A reply is
-  composed in the browser composer over there, which then confirms the save with `--list-drafts` and falls
-  back to `--create-draft` when the server has no copy. The one send this script performs is `--send` (see
-  **Sending**), and only on Russ's explicit per-message say-so.

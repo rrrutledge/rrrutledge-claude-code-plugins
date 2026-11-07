@@ -33,7 +33,7 @@
     {
       "name": "message-draft",
       "source": "./plugins/message-draft",
-      "description": "Draft a message in the active web composer — Teams chat or Outlook-web email reply — via browser automation. Stages a draft in the correct conversation and NEVER sends. Supersedes teams-message."
+      "description": "Draft a message and NEVER send it: a Teams chat staged in the web composer via browser automation, a Slack message saved as a server-side draft through the Slack API, or a work Outlook email created as a draft through REST. Supersedes teams-message and slack-message."
     },
     {
       "name": "document-authoring",
@@ -88,7 +88,7 @@
     {
       "name": "slack",
       "source": "./plugins/slack",
-      "description": "Read and mark-read a Slack workspace via the Slack Web API. List unread DMs, group DMs, @-mentions, and unread thread replies (muted conversations skipped), show a message with its permalink, read recent thread/channel history, or mark a conversation or thread read. No browser; reply drafting is handled separately by the message-draft skill."
+      "description": "Read and mark-read a Slack workspace via the Slack Web API. List unread DMs, group DMs, @-mentions, and unread thread replies (muted conversations skipped), show a message with its permalink, read recent thread/channel history, mark a conversation or thread read, and list or create server-side drafts. No browser; the message-draft skill's slack mode stages replies through these drafts."
     },
     {
       "name": "safe-compounds",
