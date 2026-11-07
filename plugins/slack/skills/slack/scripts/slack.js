@@ -852,18 +852,17 @@ async function unansweredCmd() {
   }
 }
 
-// A new top-level message in a 1:1 DM waits until the person's unanswered messages are answered.
-// A group DM is left to the session's judgment through --unanswered, since its members also talk
-// to each other. --handled says the waiting messages are taken care of, by this body or by needing no
-// answer; a thread reply is always answering something.
+// A new top-level message in a 1:1 DM is refused while anything is unanswered, unless --handled is
+// passed. A group DM is left to the session's judgment through --unanswered, since its members also
+// talk to each other. A thread reply is always answering something.
 async function requireNothingUnanswered(verb) {
   if (args.handled || (args['thread-ts'] && args['thread-ts'] !== true)) return;
   const out = await unansweredIn(args.channel, true);
   if (!out || !out.length) return;
   const list = out.map(m => `  ${localTime(m.received)} ${m.from}: ${clean(m.text).slice(0, 200) || '(file)'}`).join('\n');
   throw new Error(`${verb}: ${args.channel} has ${out.length} message(s) Russell hasn't answered yet:\n${list}\n`
-    + 'Handle those before staging a new message (see "Answer before a new message" in the slack skill), '
-    + 'then rerun with --handled.');
+    + 'Judge them per "Answer before a new message" in the slack skill; rerun with --handled once this body '
+    + 'answers them or they need no answer.');
 }
 
 // The plain text of a draft's rich_text blocks, for listing.

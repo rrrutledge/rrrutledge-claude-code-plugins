@@ -154,8 +154,7 @@ When any wait on him, answer them first:
 2. Close this session paused in the same turn.
    It resumes once Russell has sent the answers, reruns `--unanswered` to judge anything newer the same way, and stages the new message.
 
-`--handled` on `--send` or `--create-draft` records that judgment: every waiting message is answered by this body or needs no answer.
-In a 1:1 DM, both commands refuse a top-level message without it while `--unanswered` lists anything.
+Pass `--handled` to `--send` or `--create-draft` once every listed message is answered by this body or needs no answer.
 
 ## Sending
 
