@@ -147,7 +147,7 @@ def backfill_feedback(rows):
         for later in ordered:
             if later is row or (later.get("ts") or "") <= (row.get("ts") or ""):
                 continue
-            if later.get("stage_kind") != "send" and same_conversation(
+            if later.get("stage_kind") != "send" and later.get("message_type") != "reaction" and same_conversation(
                     row, later.get("thread_ref"), later.get("recipient")):
                 feedback = restage_feedback(row, later.get("session_id"), later.get("turns_before_draft"))
                 break

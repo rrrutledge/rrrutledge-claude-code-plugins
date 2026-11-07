@@ -441,6 +441,20 @@ def test_legacy_superseded_outcome_reads_feedback_from_its_replacement(tmp_path)
     assert sc.fold_drafts(events)[id1]["outcome"]["feedback"] is True
 
 
+def test_legacy_backfill_skips_a_reaction_between_a_draft_and_its_replacement(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0, thread_ref="t-r",
+                    body="First draft written before a reaction landed on the same thread.")
+    _score(tmp_path, session_id="s9", turns_before_draft=7, thread_ref="t-r", message_type="reaction",
+           body="eyes")
+    _score(tmp_path, session_id="s1", turns_before_draft=2, thread_ref="t-r",
+           body="Second draft written after the reaction landed on the same thread.")
+    events = sc.load_events()
+    for e in events:
+        if e["event"] == "outcome":
+            e.pop("feedback", None)
+    assert sc.fold_drafts(events)[id1]["outcome"]["feedback"] is True
+
+
 def test_restage_from_another_session_or_unknown_turns_is_unattributed(tmp_path):
     id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0, thread_ref="t-a",
                     body="First draft of a reply that a different session picks up later.")

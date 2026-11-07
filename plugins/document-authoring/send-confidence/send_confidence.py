@@ -521,7 +521,7 @@ def _read_draft_text(draft_id):
         return _plain_text(fh.read())
 
 
-def _supersede_pending(thread_ref, recipient, session_id=None, turns_before_draft=None):
+def _supersede_pending(thread_ref, recipient, session_id, turns_before_draft):
     """Mark every pending draft for the same conversation superseded, recording whether Russell's
     feedback drove the restage. A direct send (a Slack `--send`) went out as written, so it is
     never an earlier version of a later draft, and a reaction answers alongside a written reply
