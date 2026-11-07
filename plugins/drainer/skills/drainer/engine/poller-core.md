@@ -149,7 +149,7 @@ This extends the grouping the drainer already does before a worker launches.
 A Slack item folds a conversation's whole unread span into one item (`slack-adapter.py` `capture`), and the correspondent hold below keeps a second email from the same person waiting while the first one's worker is open.
 Neither covers a message that arrives after its conversation's worker is live, or the same thread surfacing as a different item type (`@mention in thread`, `Thread reply`, `Unread in`): each of those would get its own worker.
 Instead, each provider gives an item a **conversation key** where its source has one (`conversation_key()`): the Gmail thread id, the Outlook conversation id, the Teams chat id, and for Slack the DM or group DM, or in a channel the thread's root ts, where a top-level message is its own root.
-The poller stamps the key into every launched needs-you worker's `items/<id>.json`.
+The poller stamps the key into the `items/<id>.json` of each needs-you worker it launches as the conversation's holder.
 
 At dispatch, before the correspondent hold and the worker buffer, a needs-you item whose key a **live** worker holds (`open_conversations`, read off the same live-session signal as the correspondent hold) is handed to that worker:
 

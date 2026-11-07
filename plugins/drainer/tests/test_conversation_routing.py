@@ -170,6 +170,9 @@ class FakeProvider:
         self.cleared.append(item["_id"])
         return True
 
+    def correspondent(self, item):
+        return None
+
 
 def hand_over(delivered, address=(PIPE, None)):
     rt = workspace([])
