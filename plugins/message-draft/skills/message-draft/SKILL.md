@@ -1,6 +1,6 @@
 ---
 name: message-draft
-description: Draft a message and NEVER send it. Three modes — `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, typed into the Slack composer via browser-chauffeur and left as an auto-saved draft), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated — hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
+description: Draft a message and NEVER send it. Three modes — `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, typed into the Slack composer via browser-chauffeur and left as an auto-saved draft, or saved through `slack.js --create-draft` when it carries files), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated — hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
 ---
 
 # message-draft
@@ -13,7 +13,7 @@ Stage a **draft** and stop — a human reviews and sends. Pick a mode:
   skill's REST API (no browser composer). `ms-rest` is the WORK-account Outlook plugin; don't
   confuse it with the personal `ms-graph` skill.
 - **`slack`** — a Slack DM, group DM, channel message, or threaded reply, typed into the Slack composer
-  (you drive **browser-chauffeur**) and left as Slack's auto-saved draft.
+  (you drive **browser-chauffeur**) and left as Slack's auto-saved draft, or saved through `slack.js --create-draft` when it carries files.
 
 **Staging is automatic.**
 In every mode, a message drafted for Russell is staged the moment it passes `writing-review`, before it is shown.
@@ -33,7 +33,7 @@ lives (Teams/Slack: the composer; Outlook: `ms-rest get <draftId>`) and re-apply
 Conversational writing rules as a review pass. If anything was trimmed, re-stage the gated version
 (Teams/Slack: re-type it; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
 the done-criteria once it has run.
-For Teams and Slack this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
+For Teams and composer-staged Slack drafts this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
 
 **Review gate (mint a receipt for the reviewed body):** every mode is harness-enforced through
 `writing-review`'s stage gate. Compose the final body into a file, run the Verify loop against that file,
@@ -49,6 +49,7 @@ The `teams` and `slack` modes drive browser-chauffeur through a long open-tab th
 Run that whole flow inside a browser subagent, per browser-chauffeur's **"Running in a subagent"** section - one in-process subagent for the single coherent task of staging this one message.
 The driving turns stay entirely in the subagent's isolated context, and the orchestrator (the session that invoked message-draft) gets back only the result.
 The `outlook` mode has no browser flow to isolate - run it inline as its mode steps describe.
+A `slack` draft that carries an image or other file has no browser flow either: the orchestrator stages it inline with the **`slack`** skill's `slack.js --create-draft --file=<path>[,<path>...]`, which covers how the files stay private until Russell sends, and runs the voice-gate read-back from `slack.js --list-drafts`.
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
