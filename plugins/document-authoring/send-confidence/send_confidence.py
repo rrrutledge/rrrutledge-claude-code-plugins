@@ -486,7 +486,17 @@ def fold_drafts(events=None):
             d["scored"] = {**e, "factors": _normalize_factors(e.get("factors"))}
         elif d["outcome"] is None or e.get("ts", "") >= d["outcome"].get("ts", ""):
             d["outcome"] = e
+    _backfill_feedback(drafts)
     return drafts
+
+
+def _backfill_feedback(drafts):
+    """Give a superseded outcome logged before restages recorded `feedback` the reading the model
+    module derives from the draft that replaced it."""
+    import send_confidence_model as scm
+    rows = [{**d["scored"], "outcome": d["outcome"]} for d in drafts.values() if d["scored"]]
+    for draft_id, outcome in scm.backfill_feedback(rows).items():
+        drafts[draft_id]["outcome"] = outcome
 
 
 def _plain_text(text):
@@ -511,33 +521,24 @@ def _read_draft_text(draft_id):
         return _plain_text(fh.read())
 
 
-def _same_conversation(scored, thread_ref, recipient):
-    """True when a pending row is an earlier version of the draft at (thread_ref, recipient).
-    Within one thread a recipient the row or the new draft doesn't know (a reply's stage
-    command carries the thread but not the addressee) still matches; outside a thread the
-    recipient must match exactly."""
-    if thread_ref:
-        if scored.get("thread_ref") != thread_ref:
-            return False
-        other = scored.get("recipient")
-        return other == recipient or other is None or recipient is None
-    return not scored.get("thread_ref") and recipient is not None and scored.get("recipient") == recipient
-
-
-def _supersede_pending(thread_ref, recipient):
-    """Mark every pending draft for the same conversation superseded. A direct send (a Slack
-    `--send`) went out as written, so it is never an earlier version of a later draft, and a
-    reaction answers alongside a written reply rather than being an earlier version of one."""
+def _supersede_pending(thread_ref, recipient, session_id, turns_before_draft):
+    """Mark every pending draft for the same conversation superseded, recording whether Russell's
+    feedback drove the restage. A direct send (a Slack `--send`) went out as written, so it is
+    never an earlier version of a later draft, and a reaction answers alongside a written reply
+    rather than being an earlier version of one."""
     if not thread_ref and not recipient:
         return
+    import send_confidence_model as scm
     ts = datetime.datetime.now().astimezone().isoformat()
     for draft_id, d in fold_drafts().items():
         scored = d["scored"]
         if (not scored or d["outcome"] is not None or scored.get("stage_kind") == "send"
                 or scored.get("message_type") == REACTION):
             continue
-        if _same_conversation(scored, thread_ref, recipient):
-            _append_event(_superseded_event(draft_id, ts))
+        if scm.same_conversation(scored, thread_ref, recipient):
+            event = _superseded_event(draft_id, ts)
+            event["feedback"] = scm.restage_feedback(scored, session_id, turns_before_draft)
+            _append_event(event)
 
 
 def _superseded_event(draft_id, ts):
@@ -593,7 +594,8 @@ def score_and_log(body, sha256, ctx):
         fh.write(body)
 
     if ctx.get("stage_kind") != "send" and ctx.get("message_type") != REACTION:
-        _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"))
+        _supersede_pending(ctx.get("thread_ref"), ctx.get("recipient"),
+                           ctx.get("session_id"), ctx.get("turns_before_draft"))
 
     event = {
         "event": "scored", "v": 6, "draft_id": draft_id,

@@ -87,17 +87,72 @@ def is_routing_discard(outcome):
 
 
 def target(outcome):
-    """1 when the draft went out near as-is, 0 when it was edited past that or discarded for its
-    wording, None when the outcome leaves the target (routing discards, superseded drafts, an
-    outcome with no measured distance, and a reaction the model sent on its own, which Russell
-    never ruled on)."""
+    """1 when the draft went out near as-is, 0 when it was edited past that, discarded for its
+    wording, or restaged after Russell's feedback, None when the outcome leaves the target
+    (routing discards, a draft the worker restaged on its own or whose restage the log can't
+    attribute, an outcome with no measured distance, and a reaction the model sent on its own,
+    which Russell never ruled on)."""
     disposition = (outcome or {}).get("disposition")
     if disposition in ("sent-as-is", "edited"):
         distance = outcome.get("edit_distance")
         return None if distance is None else int(distance <= NEAR_AS_IS_MAX_DISTANCE)
     if disposition == "discarded":
         return None if is_routing_discard(outcome) else 0
+    if disposition == "superseded":
+        return 0 if outcome.get("feedback") is True else None
     return None
+
+
+def restage_feedback(earlier, session_id, turns_before_draft):
+    """Whether Russell spoke between an earlier staged draft (its scored row) and its restage:
+    True when both come from one session and the restage has seen more human messages than the
+    earlier draft had, so the rewrite answers his feedback; False when the same session restaged
+    with no new message, a rewrite of its own; None when the two sessions differ or a turn count
+    is missing, which the log can't tell apart."""
+    before = earlier.get("turns_before_draft")
+    if not session_id or earlier.get("session_id") != session_id:
+        return None
+    if before is None or turns_before_draft is None:
+        return None
+    return turns_before_draft > before
+
+
+def same_conversation(row, thread_ref, recipient):
+    """True when a scored row is an earlier version of the draft at (thread_ref, recipient).
+    Within one thread a recipient the row or the new draft doesn't know (a reply's stage
+    command carries the thread but not the addressee) still matches; outside a thread the
+    recipient must match exactly."""
+    if thread_ref:
+        if row.get("thread_ref") != thread_ref:
+            return False
+        other = row.get("recipient")
+        return other == recipient or other is None or recipient is None
+    return not row.get("thread_ref") and recipient is not None and row.get("recipient") == recipient
+
+
+def backfill_feedback(rows):
+    """{draft_id: outcome with `feedback` filled} for each row whose superseded outcome predates
+    the field. `rows` are scored rows (draft_id, ts, session_id, turns_before_draft, thread_ref,
+    recipient, stage_kind) each carrying its newest `outcome`. The reading comes from the first
+    draft scored in the same conversation after it, the one that replaced it; a supersession the
+    outcome sweep logged knows no restage and stays unread."""
+    ordered = sorted(rows, key=lambda r: r.get("ts") or "")
+    out = {}
+    for row in ordered:
+        outcome = row.get("outcome")
+        if (not outcome or outcome.get("disposition") != "superseded"
+                or "feedback" in outcome or outcome.get("source") == "sweep"):
+            continue
+        feedback = None
+        for later in ordered:
+            if later is row or (later.get("ts") or "") <= (row.get("ts") or ""):
+                continue
+            if later.get("stage_kind") != "send" and later.get("message_type") != "reaction" and same_conversation(
+                    row, later.get("thread_ref"), later.get("recipient")):
+                feedback = restage_feedback(row, later.get("session_id"), later.get("turns_before_draft"))
+                break
+        out[row["draft_id"]] = {**outcome, "feedback": feedback}
+    return out
 
 
 # --- attributes to terms ---
