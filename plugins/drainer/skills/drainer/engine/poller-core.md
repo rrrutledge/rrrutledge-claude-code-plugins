@@ -140,12 +140,18 @@ For a recognized relay the identity is instead the name parsed out of the notifi
 The per-relay recognition and extraction live in `provider_base.RELAY_CORRESPONDENTS`; each captured email item persists its resolved `correspondent` in `items/<id>.json` so `open_correspondents` can read it back off a live session.
 New relays plug in by adding a registry entry.
 
+## On demand: drain one Slack conversation now
+
+`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs this same cycle on one Slack conversation, so an item drained on demand gets the triage, screen, hold, and worker a scheduled cycle gives it.
+A session about to send someone a new Slack message runs it first, per the `slack` skill's **Answer before a new message**.
+The flags and the `on-demand:` outcome lines are in the script's header.
+
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
 
 - Seen-state is a separate id store, not the read/unread flag - losing it re-processes (safe).
 - A seen-id is recorded only **after** dispatch succeeds - an aborted cycle loses no item.
 - Workers are idempotent: a duplicate worker's situational-check resolves quietly.
-  No overlap lock.
+  No overlap lock; an item another cycle recorded seen after this one enumerated is skipped at dispatch.
 - Completion is observed on the source, never reported: an item is done because its source object is handled, so a worker that dies, is closed, or fails its own archive call re-queues rather than vanishing.
 
 ## Provider-agnostic orchestration

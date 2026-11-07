@@ -41,12 +41,6 @@
 // Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
-// Unanswered:    node slack.js --unanswered --channel=<C> [--json]
-//                (the DM or group DM messages Russell hasn't answered, as defined in unanswered.js,
-//                 oldest first; read-only; --json prints null for a
-//                 channel. --send and --create-draft run the same check on a new top-level 1:1 DM message
-//                 and refuse while anything is unanswered; --handled says the waiting messages are taken
-//                 care of, by this body or by needing no answer)
 // React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
 // Unreact:      node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>
@@ -733,7 +727,6 @@ async function send() {
   if (args.broadcast && args.file && args.file !== true) {
     throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
   }
-  await requireNothingUnanswered('--send');
 
   if (args.file && args.file !== true) {
     const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
@@ -819,51 +812,6 @@ function readBody(verb) {
 }
 
 const { richTextBlocks, rawTokensIn } = require('./draft-body');
-const { unanswered } = require('./unanswered');
-
-// The DM or group DM messages Russell hasn't answered (see unanswered.js), oldest first, in unreadSpan's
-// shape. A channel returns null: the answer-before-a-new-message rule
-// covers people messaging Russell directly, and a channel message is addressed to the room.
-// conversations.info is called directly so a failed lookup throws (convInfo swallows errors), and the
-// send it guards fails closed. imOnly returns null for a group DM too, before any history fetch.
-async function unansweredIn(channel, imOnly = false) {
-  const info = (await call('conversations.info', { channel })).channel || {};
-  if (!info.is_im && (imOnly || !info.is_mpim)) return null;
-  const me = (await call('auth.test')).user_id;
-  const r = await call('conversations.history', { channel, limit: '200' });
-  const waiting = unanswered(r.messages || [], me, info.last_read);
-  return unreadSpan(waiting.reverse());
-}
-
-// A message time in this machine's local zone, with the zone named.
-const localTime = (iso) => new Date(iso).toLocaleString('en-US',
-  { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-
-async function unansweredCmd() {
-  if (!args.channel || args.channel === true) throw new Error('--unanswered requires --channel');
-  const out = await unansweredIn(args.channel);
-  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
-  if (!out) { console.log(`${args.channel} is a channel, not a DM or group DM; nothing to check.`); return; }
-  if (!out.length) { console.log(`Nothing unanswered in ${args.channel}.`); return; }
-  console.log(`${out.length} unanswered message(s) in ${args.channel}, oldest first:`);
-  for (const m of out) {
-    console.log(`\n--- ${localTime(m.received)} | ${m.from} (ts=${m.ts})\n${m.text || '(no text)'}`);
-    for (const f of m.files || []) console.log(`[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
-  }
-}
-
-// A new top-level message in a 1:1 DM is refused while anything is unanswered, unless --handled is
-// passed. A group DM is left to the session's judgment through --unanswered, since its members also
-// talk to each other. A thread reply is always answering something.
-async function requireNothingUnanswered(verb) {
-  if (args.handled || (args['thread-ts'] && args['thread-ts'] !== true)) return;
-  const out = await unansweredIn(args.channel, true);
-  if (!out || !out.length) return;
-  const list = out.map(m => `  ${localTime(m.received)} ${m.from}: ${clean(m.text).slice(0, 200) || '(file)'}`).join('\n');
-  throw new Error(`${verb}: ${args.channel} has ${out.length} message(s) Russell hasn't answered yet:\n${list}\n`
-    + 'Judge them per "Answer before a new message" in the slack skill; rerun with --handled once this body '
-    + 'answers them or they need no answer.');
-}
 
 // The plain text of a draft's rich_text blocks, for listing.
 function draftText(blocks) {
@@ -946,7 +894,6 @@ async function createDraft() {
     if (!destination.thread_ts) throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
     destination.broadcast = true;
   }
-  await requireNothingUnanswered('--create-draft');
   const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
     blocks: JSON.stringify(richTextBlocks(text)),
@@ -1066,7 +1013,6 @@ async function findByDomain() {
   if (args.unreact) return await unreact();
   if (args.mark) return await mark();
   if (args['read-cursor']) return await readCursorCmd();
-  if (args.unanswered) return await unansweredCmd();
   if (args.send) return await send();
   if (args['list-drafts']) return await listDrafts();
   if (args['create-draft']) return await createDraft();
@@ -1075,5 +1021,5 @@ async function findByDomain() {
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --unanswered, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

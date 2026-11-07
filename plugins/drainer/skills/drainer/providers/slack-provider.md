@@ -136,7 +136,7 @@ There is no inbound-mail-style unsubscribe for Slack.
 ## DRAFT-MODE
 Before writing the body, follow the pre-draft step in `email-base.md`.
 Stage the reply the moment it passes `writing-review`, before showing it.
-Write the reviewed body to a `.tmp` file, mint its receipt with `verify_gate.py mint`, and create the server-side draft with the **`slack`** skill's `--create-draft --handled` (the reply answers the item's messages; `--create-draft` turns `<@U...>` tokens into real mentions; the `slack` skill covers channel mentions and the raw-token check), then confirm it with `--list-drafts`; the **`message-draft`** skill's `slack` mode step 6 lists the flags.
+Write the reviewed body to a `.tmp` file, mint its receipt with `verify_gate.py mint`, and create the server-side draft with the **`slack`** skill's `--create-draft` (it turns `<@U...>` tokens into real mentions; the `slack` skill covers channel mentions and the raw-token check), then confirm it with `--list-drafts`; the **`message-draft`** skill's `slack` mode step 6 lists the flags.
 The reply shows the staged text and says it sits in the conversation's Slack drafts.
 When the API path fails, stage through the **`message-draft`** skill's **`slack`** mode (browser composer, draft-only); that skill owns the composer mechanics and the voice gate, loading `document-authoring` for the voice.
 Learning from the send applies: after the user sends, run the document-authoring skill's Learn step, `learn-from-send.md`.

@@ -67,8 +67,6 @@ Under `scripts/` (run with `node`):
   - Read cursor: `node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]` - your `last_read`
     ts on the conversation, plus on the thread when `--thread-ts` is given.
     Read-only.
-  - Unanswered: `node slack.js --unanswered --channel=<C> [--json]` - the messages in a DM or group DM that Russell hasn't answered yet, oldest first.
-    Read-only; see **Answer before a new message** below.
   - React: `node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.add`; emoji name without colons.
     Reversible with `--unreact`.
   - Unreact: `node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.remove`; takes off the reaction `--react` added.
@@ -93,7 +91,6 @@ Under `scripts/` (run with `node`):
     after the post and puts back any the post moved (the drainer's acknowledgement sends use this, so an ack
     never marks the person's still-unhandled message read).
     `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
-    Takes `--handled` (see **Answer before a new message**).
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
@@ -109,7 +106,6 @@ Under `scripts/` (run with `node`):
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
     Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
     Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
-    Takes `--handled` (see **Answer before a new message**).
   - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
     It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
@@ -142,19 +138,23 @@ Under `scripts/` (run with `node`):
 
 ## Answer before a new message
 
-Russell answers what a person already sent him before a new message goes to them.
+Russell answers what a person already sent him before a new message goes to them, and the drainer is what answers it.
+This covers a message that starts something new; a reply to the person's waiting messages is the drain's own work.
+Before authoring a new top-level message to a person or a group DM, drain that conversation now:
 
-Before authoring a new top-level message to a person or a group DM, whether it stages through `--create-draft` or `message-draft`'s browser composer, run `--unanswered` on that conversation.
-Judge which listed messages wait on Russell: the ones that ask him something or expect his reply, and in a group DM, only those addressed to him.
-When any wait on him, answer them first:
+    python ~/.claude/drainer/launch-drainer.py --mode poller --repo <drainer project> --channel=<C> --now --resume-me
 
-1. Launch a session to drain them through session-mgr's `spawn-session.py` with `--resume-me`, per session-mgr's `resume-on-completion.md`.
-   Its brief carries each waiting message with its time, the research each answer needs, and the conversation id.
-   The drain session stages its replies with `--create-draft --handled`, and Russell sends them himself.
-2. Close this session paused in the same turn.
-   It resumes once Russell has sent the answers, reruns `--unanswered` to judge anything newer the same way, and stages the new message.
+`--repo` is the project the scheduled DrainerKeeper task drains (on this machine, `C:/Users/russe/Dev/personal-ai-pod`).
+Act on its `on-demand:` lines:
 
-Pass `--handled` to `--send` or `--create-draft` once every listed message is answered by this body or needs no answer.
+- **Nothing to drain, or filed as fyi or junk:** nothing waits on Russell, so author and stage the new message now.
+- **Launched a worker:** that worker resumes this session once Russell has sent its reply.
+  Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
+- **Held behind an open worker:** that worker already holds this person's waiting messages.
+  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, then close paused.
+- **Held because triage or the screen was unavailable:** rerun the command a few minutes later.
+
+When this session resumes, run the command again before staging, since the person may have written since.
 
 ## Sending
 

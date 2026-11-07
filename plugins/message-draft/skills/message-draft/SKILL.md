@@ -227,8 +227,7 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    A draft listed there with the body's text is saved, so it syncs to the user's own Slack - the sidebar shows a **Draft** badge on the conversation and it appears under **Drafts & sent**, which is where they review and send it.
    A page reload proves nothing: Slack restores the composer from browser-local storage, so a draft can survive a reload and still be missing from the server list and from the user's other devices.
    When the list has no matching draft, create it on the server from the same reviewed body:
-   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>] [--handled]`, then list again to confirm it's there.
-   Pass `--handled` per the **`slack`** skill's **Answer before a new message**.
+   `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
    For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
 

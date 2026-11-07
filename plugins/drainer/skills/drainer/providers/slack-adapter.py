@@ -165,9 +165,8 @@ class Provider(ProviderBase):
 
     def send_reply(self, item, body_file):
         """Post the reviewed body into the conversation with --keep-unread, which reads the read cursor
-        before and after the post and puts it back if the post moved it, so the item stays unread.
-        --handled: the drainer is handling the item's own messages, so the unanswered-messages check passes."""
-        cmd = [self.slackjs, "--send", "--keep-unread", "--handled", "--json", f"--channel={item['channel']}",
+        before and after the post and puts it back if the post moved it, so the item stays unread."""
+        cmd = [self.slackjs, "--send", "--keep-unread", "--json", f"--channel={item['channel']}",
                f"--body-file={body_file}"]
         post_thread = self._reply_thread(item)
         if post_thread:
