@@ -151,7 +151,7 @@ Act on its `on-demand:` lines:
 - **A worker was launched:** it resumes this session once its item is done.
   Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
 - **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
-  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names, then close paused.
+  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names (the first, when it names several), then close paused.
 - **Held or failed for another reason:** the line names the reason.
   Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
 

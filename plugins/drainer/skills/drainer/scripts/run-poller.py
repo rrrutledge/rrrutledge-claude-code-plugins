@@ -47,7 +47,6 @@ The run ends with `on-demand:` lines, one per outcome:
     drain failed - <reason>
 """
 import argparse
-import functools
 import glob
 import hashlib
 import importlib.util
@@ -1283,7 +1282,6 @@ def _skill_dirs_block():
             "Run or import it from there; never search the filesystem for a plugin script:\n" + lines)
 
 
-@functools.lru_cache(maxsize=None)
 def _spawn_session():
     """session-mgr's spawn-session.py, loaded as a module: the one home of --resume-me's instruction
     text and of the launch marker the Stop hook reads. None when session-mgr isn't installed."""
@@ -1292,7 +1290,11 @@ def _spawn_session():
         return None
     spec = importlib.util.spec_from_file_location("spawn_session", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    saved_path = list(sys.path)  # spawn-session.py puts its own dir first; the drainer's imports keep theirs
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = saved_path
     return module
 
 
@@ -2177,9 +2179,10 @@ def main():
             # worker has already read the full context.
             held += 1
             held_corr += 1
-            holder = next((g for item, g in live_worker_items(cfg["runtime_dir"], live)
-                           if item.get("correspondent") == corr), "dispatched this cycle")
-            on_demand.append(f"held behind open worker {holder} on the same person as {iid}.")
+            if args.channel:
+                holder = next((g for item, g in live_worker_items(cfg["runtime_dir"], live)
+                               if item.get("correspondent") == corr), "dispatched this cycle")
+                on_demand.append(f"held behind open worker {holder} on the same person as {iid}.")
             continue
         if iid in load_seen(cfg["runtime_dir"], it["_source"]):
             # A concurrent cycle (the scheduled one, or an on-demand --channel run) dispatched it since
