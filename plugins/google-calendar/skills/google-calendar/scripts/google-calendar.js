@@ -1,7 +1,7 @@
 // Read a Google Calendar's events over a time range, via the official `googleapis` Calendar v3 client
 // (OAuth path - see google-calendar-oauth.js).
 //
-// List a range:  node google-calendar.js --list --start=<date or RFC 3339> --end=<date or RFC 3339> [--calendar=<id>] [--json]
+// List a range:  node google-calendar.js --start=<date or RFC 3339> --end=<date or RFC 3339> [--calendar=<id>] [--json]
 //                (--calendar defaults to `primary`. A plain YYYY-MM-DD date is local midnight. --end is
 //                exclusive, so --start=2026-10-01 --end=2026-11-01 is all of October. --json prints the raw
 //                Event resources; without it, one line per event.)
@@ -19,10 +19,10 @@ function toRfc3339(value) {
 
 // Every event on `calendar` that overlaps [start, end), as the raw Google Calendar `Event` resources, with
 // every page fetched. Recurring events are expanded into their single instances (singleEvents=true), ordered
-// by start time. Cancelled instances are included as Google returns them (status 'cancelled').
-async function listEvents({ calendar = 'primary', start, end, client } = {}) {
+// by start time. Cancelled events are left out (Google's default without showDeleted).
+async function listEvents({ calendar = 'primary', start, end } = {}) {
   if (!start || !end) throw new Error('listEvents requires { start, end }');
-  const auth = client || getAuthedClient();
+  const auth = getAuthedClient();
   await assertAccountEmail(auth);
   const api = google.calendar({ version: 'v3', auth });
   const out = [];
@@ -53,8 +53,7 @@ if (require.main === module) {
     })
   );
   (async () => {
-    if (!args.list) throw new Error('Nothing to do - pass --list --start=<date> --end=<date>');
-    const events = await listEvents({ calendar: args.calendar || 'primary', start: args.start, end: args.end });
+    const events = await listEvents({ calendar: args.calendar, start: args.start, end: args.end });
     if (args.json) { console.log(JSON.stringify(events, null, 2)); return; }
     console.log(`${events.length} event(s) on ${args.calendar || 'primary'} ${args.start}..${args.end}:`);
     for (const e of events) {

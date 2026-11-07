@@ -42,7 +42,8 @@ const expectEmail = (() => {
       }
     });
     server.listen(port, () => console.log(`Listening on ${REDIRECT_URI}`));
-    setTimeout(() => { server.close(); reject(new Error('Auth flow timed out after 15 min')); }, 900000);
+    // unref so a finished sign-in exits now instead of waiting out the timer.
+    setTimeout(() => { server.close(); reject(new Error('Auth flow timed out after 15 min')); }, 900000).unref();
   });
 
   const { tokens } = await client.getToken(code);
@@ -52,6 +53,7 @@ const expectEmail = (() => {
 
   client.setCredentials(tokens);
   const signedInAs = await fetchAccountEmail(client);
+  if (!signedInAs) throw new Error('Could not read the signed-in address from the primary calendar. Not saving the token.');
   if (expectEmail && signedInAs !== expectEmail) {
     throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
   }

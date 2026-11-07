@@ -22,12 +22,12 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 
 ## Commands - `google-calendar.js`
 
-- **List a range:** `node google-calendar.js --list --start=<date> --end=<date> [--calendar=<id>] [--json]`
+- **List a range:** `node google-calendar.js --start=<date> --end=<date> [--calendar=<id>] [--json]`
   `--calendar` defaults to `primary`, the signed-in account's own calendar.
   A plain `YYYY-MM-DD` is local midnight, and `--end` is exclusive, so `--start=2026-10-01 --end=2026-11-01` is all of October.
   `--json` prints the raw Google `Event` resources; without it, one line per event.
 - **From another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, every page fetched, recurring events expanded to single instances (`singleEvents=true`) and ordered by start time (`orderBy=startTime`).
-  Cancelled instances come back as Google returns them, with `status: 'cancelled'`.
+  Cancelled events are left out, as Google does by default.
 
 ## Auth-error handling
 
