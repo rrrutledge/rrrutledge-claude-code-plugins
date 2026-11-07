@@ -15,6 +15,13 @@ import urllib.request
 from .log import log_debug
 
 
+MODEL = 'claude-haiku-5-5'
+
+# Haiku 5.5 thinks by default and thinking counts toward max_tokens, so a
+# one-word verdict cap would be spent before any text; leave room for it.
+_MIN_MAX_TOKENS = 1024
+
+
 def _ai_disabled():
     return os.environ.get('SAFE_COMPOUNDS_DISABLE_AI') == '1'
 
@@ -52,10 +59,11 @@ def _build_request(prompt, max_tokens):
         if not token:
             return None
         url = (f'https://{vertex_region}-aiplatform.googleapis.com/v1/projects/{vertex_project}'
-               f'/locations/{vertex_region}/publishers/anthropic/models/claude-haiku-4-5:rawPredict')
+               f'/locations/{vertex_region}/publishers/anthropic/models/{MODEL}:rawPredict')
         data = json.dumps({
             'anthropic_version': 'vertex-2023-10-16',
-            'max_tokens': max_tokens,
+            'max_tokens': max(max_tokens, _MIN_MAX_TOKENS),
+            'output_config': {'effort': 'low'},
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         return urllib.request.Request(url, data=data, headers={
@@ -65,8 +73,9 @@ def _build_request(prompt, max_tokens):
 
     if anthropic_key:
         data = json.dumps({
-            'model': 'claude-haiku-5-5',
-            'max_tokens': max_tokens,
+            'model': MODEL,
+            'max_tokens': max(max_tokens, _MIN_MAX_TOKENS),
+            'output_config': {'effort': 'low'},
             'messages': [{'role': 'user', 'content': prompt}],
         }).encode('utf-8')
         return urllib.request.Request(
@@ -84,8 +93,9 @@ def _build_request(prompt, max_tokens):
 
 def ask(prompt, max_tokens=10):
     """Send `prompt` to Haiku and return the response text as-is (stripped), or
-    None if AI is disabled, unconfigured, or the request fails. Callers match
-    keywords case-insensitively (e.g. `'SAFE' in text.upper()`)."""
+    None if AI is disabled, unconfigured, the request fails, or the reply has no
+    text. The reply may run past `max_tokens` (see _MIN_MAX_TOKENS), so callers
+    match the leading word case-insensitively (e.g. `text.upper().startswith('SAFE')`)."""
     if _ai_disabled():
         return None
     try:
@@ -94,9 +104,10 @@ def ask(prompt, max_tokens=10):
             return None
         with urllib.request.urlopen(req, timeout=15) as response:
             result = json.loads(response.read().decode('utf-8'))
-            return result.get('content', [{}])[0].get('text', '').strip()
-    except (urllib.error.URLError, urllib.error.HTTPError,
-            json.JSONDecodeError, KeyError, IndexError) as e:
+            blocks = result.get('content', [])
+            text = ''.join(b.get('text', '') for b in blocks if b.get('type') == 'text').strip()
+            return text or None
+    except (OSError, json.JSONDecodeError, KeyError, IndexError) as e:
         log_debug(f"AI call failed: {type(e).__name__}: {str(e)[:100]}")
         return None
 
@@ -115,7 +126,7 @@ def call_ai(prompt):
         reason = text.split(':', 1)[1].strip() if ':' in text else ''
         log_debug(f"AI response: {text} -> DANGEROUS")
         return False, (reason or None)
-    if 'SAFE' in upper:
+    if upper.startswith('SAFE'):
         log_debug(f"AI response: {text} -> SAFE")
         return True, None
     log_debug(f"AI response: {text} -> undecided")
