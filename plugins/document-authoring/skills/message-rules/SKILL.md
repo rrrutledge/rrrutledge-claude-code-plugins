@@ -109,6 +109,9 @@ Don't present a menu of options or stack a numbered list of questions.
   When their draft misses a decision the group already made, state the decision as a bare fact and ask whether the document should reflect it, so the gap is about the document and not their omission.
   Drop edit points the group has already settled or that don't change the document's outcome.
   For a next step you believe is ready, ask whether the group is ready for it (see the recast list under **Keep asks open and tentative**).
+- **Check a commitment document was expected.**
+  When sending someone a document that commits them to something new, ask whether they were told it was coming, and offer to talk it through if not (per the call-offer rule under **Links**).
+  The recipient has no context for it if nobody briefed them.
 - **When a decision-relevant fact is still outstanding, get it before committing — and don't let the wait look like stalling.**
   Hold off until the number, document, or valuation is in hand even if the other side wants a yes now; keep the tone warm and move straight to what you still need, so it reads as diligence.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
