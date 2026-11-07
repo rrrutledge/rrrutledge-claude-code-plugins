@@ -159,7 +159,7 @@ def outcome_class(outcome):
     """The bucket a draft's newest outcome falls in, by the target and routing rules above, so a
     report names outcomes without re-deriving them: pending (no outcome yet), auto-sent,
     discard-route, discard-wording, superseded (replaced with no reading of Russell's feedback),
-    unmeasured (sent or edited with no measured distance), edited (edited past near-as-is, or
+    unmeasured (any other outcome with no target, such as a send with no measured distance), edited (edited past near-as-is, or
     restaged after his feedback), near, as-is."""
     if not outcome:
         return "pending"
