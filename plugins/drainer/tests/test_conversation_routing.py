@@ -199,9 +199,10 @@ try:
     check("one note sent", len(sent), 1)
 
     print("\nroute_to_live_worker: a failed delivery leaves the item for a normal launch")
-    ok, recorded, cleared, receipt, _, _ = hand_over(False)
+    ok, recorded, cleared, receipt, rec, _ = hand_over(False)
     check("not handed over", ok, False)
     check("nothing recorded, cleared, or receipted", (recorded, cleared, receipt), ([], [], None))
+    check("the failed holder is noted so a later cycle doesn't re-send", rec.get("forwardFailedTo"), "guid-live")
     ok, recorded, _, _, _, sent = hand_over(True, address=None)
     check("no address -> not handed over, nothing sent", (ok, recorded, sent), (False, [], []))
 finally:
@@ -216,7 +217,12 @@ lines = poller.live_peer_lines([
 ])
 check("live named sessions only, with their state", lines, ["- Newsletter (idle)", "- Slack: thread (blocked)"])
 check("a failed scan lists nothing", poller.live_peer_lines(None), [])
+check("a multi-line title stays one line", poller.live_peer_lines([{"name": "a\nb  c", "pid": 1}]), ["- a b c"])
 
+print("\n_failed_forward: reads back the holder a failed hand-over noted")
+rt = workspace([("held-item", "x", {"forwardFailedTo": "guid-live"})])
+check("noted holder", poller._failed_forward(rt, "held-item"), "guid-live")
+check("no capture yet -> None", poller._failed_forward(rt, "missing"), None)
 
 
 def seed_for(item):

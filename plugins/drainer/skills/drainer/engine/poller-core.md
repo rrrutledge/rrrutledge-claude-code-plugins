@@ -62,7 +62,7 @@ No AI re-implements the loop.
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic):
-   - **needs-you and auto-handle, first** → if a live needs-you worker already holds this item's conversation, hand the item to that worker instead of launching one (see "One conversation, one live worker" below).
+   - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one (see "One conversation, one live worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
      The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
@@ -151,7 +151,7 @@ Neither covers a message that arrives after its conversation's worker is live, o
 Instead, each provider gives an item a **conversation key** where its source has one (`conversation_key()`): the Gmail thread id, the Outlook conversation id, the Teams chat id, and for Slack the DM or group DM, or in a channel the thread's root ts, where a top-level message is its own root.
 The poller stamps the key into every launched needs-you worker's `items/<id>.json`.
 
-At dispatch, before the correspondent hold and the worker buffer, a needs-you or auto-handle item whose key a **live** worker holds (`open_conversations`, read off the same live-session signal as the correspondent hold) is handed to that worker:
+At dispatch, before the correspondent hold and the worker buffer, a needs-you item whose key a **live** worker holds (`open_conversations`, read off the same live-session signal as the correspondent hold) is handed to that worker:
 
 1. The item is captured as usual.
 2. A note naming the captured json and its bucket goes to the worker's cross-session inbox.
@@ -162,10 +162,12 @@ At dispatch, before the correspondent hold and the worker buffer, a needs-you or
    Its source stays uncleared for the holder to clear when it finishes the item, so a holder that closes without handling the note leaves an email in the inbox, which reconcile re-queues once the holder ends.
 
 A holder no longer live means the conversation is free, and the item launches its own worker.
-A failed delivery, or a live holder with no address, also launches a worker, past the correspondent hold, so the worst case is a duplicate, never a dropped item.
+A failed delivery, or a live holder with no address, also launches a worker, past the correspondent hold, so the worst case is a duplicate.
+The item tries each holder once: a send that timed out may still have landed, so an item held for the buffer never re-sends the note on a later cycle.
 That worker's seed names the live session already on its conversation, and worker-core §2 has the two settle which one keeps the work, so even a duplicate ends with one session working.
+It leaves the conversation's key to the holder, which keeps receiving the conversation's later items.
 A screen-flagged item always gets its own worker, which leads with the warning.
-An auto-handle worker never holds its conversation, since it closes without surfacing anything; a needs-you follow-up in that conversation gets its own worker.
+Auto-handle sits outside routing both ways: its worker runs a standing rule and closes without surfacing anything, so it holds no conversation, and a needs-you holder has no standing rule to run an auto-handle item.
 When a conversation gets a new needs-you worker this cycle, its later items in the same cycle are held unrecorded for one cycle, until that worker can receive them.
 
 Same work arriving by **another source** shares no key, and matching it takes judgment.

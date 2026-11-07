@@ -147,8 +147,7 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-The poller routes a new item in a conversation a live worker already holds (the same email thread, Slack thread, DM, or Teams chat) to that worker, so a conversation's own follow-ups never reach you as a separate item.
-Same work arriving by another source has no shared key, and the poller can't route it, so this check is how it gets caught.
+Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one live worker"), so the poller can't route it and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed lists the sessions live when you launched; compare this item against that list before starting the work, and run `ListAgents` to address a send or to see sessions newer than the list.
 Look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).

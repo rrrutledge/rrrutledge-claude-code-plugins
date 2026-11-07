@@ -1550,14 +1550,15 @@ def session_address(receipt, agents):
     a = _live_agent(receipt, agents)
     if not a:
         return None
-    root = os.path.expanduser(a.get("configDir") or os.path.join("~", ".claude"))
+    config_dir = os.path.expanduser(a["configDir"]) if a.get("configDir") else None
     try:
-        with open(os.path.join(root, "sessions", f"{a['pid']}.json"), encoding="utf-8") as f:
+        with open(os.path.join(config_dir or os.path.expanduser(os.path.join("~", ".claude")), "sessions",
+                               f"{a['pid']}.json"), encoding="utf-8") as f:
             rec = json.load(f) or {}
     except (OSError, ValueError):
         return None
     pipe = rec.get("messagingSocketPath")
-    return (pipe, a.get("configDir")) if pipe and rec.get("sessionId") == a.get("sessionId") else None
+    return (pipe, config_dir) if pipe and rec.get("sessionId") == a.get("sessionId") else None
 
 
 def forward_note(iid, json_file, bucket):
@@ -1628,6 +1629,15 @@ def forward_to_worker(address, message, repo):
     return _forward_delivered(res.stdout, to, message)
 
 
+def _failed_forward(runtime_dir, iid):
+    """The holder an earlier cycle's hand-over of this item failed to reach, or None."""
+    try:
+        with open(os.path.join(runtime_dir, "items", f"{iid}.json"), encoding="utf-8") as f:
+            return (json.load(f) or {}).get("forwardFailedTo")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     """Hand a new item to the live worker already holding its conversation. Captures the item, sends
     that worker a note naming it, and only on a verified delivery records it: a receipt naming the
@@ -1643,6 +1653,7 @@ def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     _stamp_item_fields(json_file, conversationKey=key)
     if not forward_to_worker(address, forward_note(iid, json_file, it["_bucket"]), repo):
         print(f"{iid}: delivery to the live worker on its conversation failed; launching a worker instead.")
+        _stamp_item_fields(json_file, forwardFailedTo=holder)  # read back by _failed_forward next cycle
         return False
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
@@ -1662,7 +1673,7 @@ def live_peer_lines(agents):
         if not a.get("pid") or not (a.get("name") or "").strip():
             continue
         state = a.get("state") or a.get("status") or ""  # background sessions carry `state`, interactive `status`
-        lines.append(f"- {a['name'].strip()}" + (f" ({state})" if state else ""))
+        lines.append(f"- {' '.join(a['name'].split())}" + (f" ({state})" if state else ""))  # one line per title
     return lines[:40]
 
 
@@ -2196,9 +2207,6 @@ def main():
         if auto:
             print("  auto-handle (autonomous worker, not capped):")
             for it in auto:
-                key = prov[it["_source"]].conversation_key(it)
-                if print_route(it, key):
-                    continue
                 c = prov[it["_source"]].correspondent(it)
                 if c:
                     active_correspondents.add(c)  # a same-cycle needs-you duplicate waits behind it
@@ -2265,7 +2273,10 @@ def main():
             held_conv += 1
             return True
         if route == "forward":
-            if route_to_live_worker(it, provider, key, open_convs[key], agents, cfg["runtime_dir"], repo):
+            # One attempt per holder: a send that timed out may still have landed, so a held item never
+            # re-sends the same note to the same holder on a later cycle.
+            if (_failed_forward(cfg["runtime_dir"], it["_id"]) != open_convs[key]
+                    and route_to_live_worker(it, provider, key, open_convs[key], agents, cfg["runtime_dir"], repo)):
                 forwarded += 1
                 return True
             # The hand-over failed, so this item gets its own worker; its seed names the live session
@@ -2280,17 +2291,15 @@ def main():
     for it in auto:
         provider = prov[it["_source"]]
         iid = it["_id"]
-        key = provider.conversation_key(it)
-        if routed(it, provider, key):
-            continue
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        # An auto-handle worker never holds its conversation: it runs a standing rule and closes without
-        # surfacing anything, so a needs-you follow-up routed to it would never reach Russell.
-        spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                     peers=peers)
-        peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
+        # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
+        # closes without surfacing anything, so it can't hold a needs-you follow-up, and a needs-you
+        # holder lacks the standing rule to run an auto-handle item.
+        if spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
+                        peers=peers):
+            peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -2328,9 +2337,10 @@ def main():
             stamp["screen"] = it["_screen"]  # so the worker leads with the injection warning
         if it.get("_selfAuthenticated"):
             stamp["selfAuthenticated"] = True  # so the worker's own re-screen acts on Russell's own directive
-        if key:
-            stamp["conversationKey"] = key  # so the conversation's later items find this worker
-            claimed_convs.add(key)
+        if key and "_conversationHolder" not in it:
+            # So the conversation's later items find this worker. A fallback launch beside a live holder
+            # doesn't claim it: the holder started earlier, keeps the work, and keeps receiving them.
+            stamp["conversationKey"] = key
         if stamp:
             _stamp_item_fields(json_file, **stamp)
         spawned = False
@@ -2344,7 +2354,10 @@ def main():
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
             spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
                                    peers=peers)
-            peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
+            if spawned:
+                peers.append(f"- {_worker_title(iid, json_file)} (launched this cycle)")
+                if "conversationKey" in stamp:
+                    claimed_convs.add(key)
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
         # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
         # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
