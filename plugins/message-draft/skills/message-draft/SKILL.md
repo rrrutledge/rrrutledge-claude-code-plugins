@@ -181,6 +181,7 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 
 **These steps run inside the browser subagent** (see **`teams` and `slack` stage in a browser subagent**).
 The orchestrator has already minted the reviewed body's receipt into the `--body-file` it hands over.
+A draft that carries an image or other file skips the browser subagent: the orchestrator stages it with the **`slack`** skill's `slack.js --create-draft --file=<path>[,<path>...]`, which covers how the files stay private until Russell sends.
 
 Stages a draft in the **Slack composer** (web) for a DM, group DM, channel message, or threaded reply.
 Typing into the composer and stopping leaves Slack's own per-conversation auto-saved **draft**, and the
@@ -229,8 +230,6 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    `node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts>]`, then list again to confirm it's there.
    `--create-draft` only saves an unsent draft, so it reaches no one; the same writing-review receipt that gated the browser run covers it.
    For a thread reply, `--create-draft` also takes `--broadcast` and `--replace`, and the **`slack`** skill covers channel mentions and the raw-token check.
-   A draft that carries an image or other file stages with `--create-draft --file=<path>[,<path>...]` in place of the browser composer (steps 1-5), and the **`slack`** skill covers how the files stay private until Russell sends.
-
 ## Mode: `outlook`
 
 Creates an Outlook **draft** for the WORK account via the **`ms-rest`** skill's REST API — no browser

@@ -133,9 +133,7 @@ Under `scripts/` (run with `node`):
   prints for the message it just posted).
 - `chat.postMessage` - post one reviewed message as the signed-in user (`--send`; needs the `d` cookie; `reply_broadcast` for `--broadcast`).
 - `files.getUploadURLExternal` / `files.completeUploadExternal` - reserve an upload slot per file, then post
-  the uploaded files into the conversation with the reviewed body as their caption (`--send --file=<path>[,<path>...]`).
-  `--create-draft --file` finishes the upload with no channel, which leaves each file unshared, and hands its id to `drafts.create`.
-- `drafts.list` / `drafts.create` / `drafts.delete` - read the server-side draft list, save an unsent draft,
+  the uploaded files into the conversation with the reviewed body as their caption (`--send --file=<path>[,<path>...]`).- `drafts.list` / `drafts.create` / `drafts.delete` - read the server-side draft list, save an unsent draft,
   and delete one (`--list-drafts`, `--create-draft`, `--delete-draft`, `--create-draft --replace`).
 - `files.info` - name each file a listed draft carries (`--list-drafts`).
 - `files.delete` - remove the files a `--create-draft --file` run uploaded when that draft then fails to save.
