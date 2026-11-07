@@ -41,6 +41,10 @@
 // Read cursor:   node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]
 //                (your last_read ts on the conversation, plus on the thread when --thread-ts is given;
 //                 read-only)
+// Unanswered:    node slack.js --unanswered --channel=<C> [--json]
+//                (the DM or group DM messages posted after Russell's last reply or reaction there, oldest
+//                 first; read-only. --send and --create-draft run the same check on a new top-level message
+//                 and refuse while anything is unanswered, unless --answering marks the body as the answer)
 // React:        node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>
 //                (reactions.add; emoji name without colons, e.g. "thumbsup", "+1", "tada")
 // Unreact:      node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>
@@ -727,6 +731,7 @@ async function send() {
   if (args.broadcast && args.file && args.file !== true) {
     throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
   }
+  await requireNothingUnanswered('--send');
 
   if (args.file && args.file !== true) {
     const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
@@ -812,6 +817,44 @@ function readBody(verb) {
 }
 
 const { richTextBlocks, rawTokensIn } = require('./draft-body');
+const { unanswered } = require('./unanswered');
+
+// The DM or group DM messages Russell hasn't answered (see unanswered.js), oldest first, each with
+// from/received/text. A channel returns null: the rule is about a person waiting on him, and a channel
+// has no single person.
+async function unansweredIn(channel) {
+  const info = await convInfo(channel);
+  if (!info.is_im && !info.is_mpim) return null;
+  const me = (await call('auth.test')).user_id;
+  const r = await call('conversations.history', { channel, limit: '50' });
+  const out = [];
+  for (const m of unanswered(r.messages || [], me)) {
+    out.push({ ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await messageText(m) });
+  }
+  return out;
+}
+
+async function unansweredCmd() {
+  if (!args.channel || args.channel === true) throw new Error('--unanswered requires --channel');
+  const out = await unansweredIn(args.channel);
+  if (args.json) { console.log(JSON.stringify(out || [], null, 2)); return; }
+  if (out === null) { console.log(`${args.channel} is a channel, not a DM or group DM; nothing to check.`); return; }
+  if (!out.length) { console.log(`Nothing unanswered in ${args.channel}.`); return; }
+  console.log(`${out.length} unanswered message(s) in ${args.channel}, oldest first:`);
+  for (const m of out) console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from} (ts=${m.ts})\n${m.text || '(no text)'}`);
+}
+
+// A new top-level message to a person waits until their unanswered messages are answered.
+// --answering marks a body that answers them; a thread reply is always answering something.
+async function requireNothingUnanswered(verb) {
+  if (args.answering || (args['thread-ts'] && args['thread-ts'] !== true)) return;
+  const out = await unansweredIn(args.channel);
+  if (!out || !out.length) return;
+  const list = out.map(m => `  ${m.received.slice(0, 16)}Z ${m.from}: ${m.text.slice(0, 200)}`).join('\n');
+  throw new Error(`${verb}: ${args.channel} has ${out.length} message(s) Russell hasn't answered yet:\n${list}\n`
+    + 'Answer those before staging a new message (see "Answer before a new message" in the slack skill). '
+    + 'If this body is the answer to them, rerun with --answering.');
+}
 
 // The plain text of a draft's rich_text blocks, for listing.
 function draftText(blocks) {
@@ -894,6 +937,7 @@ async function createDraft() {
     if (!destination.thread_ts) throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
     destination.broadcast = true;
   }
+  await requireNothingUnanswered('--create-draft');
   const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
     blocks: JSON.stringify(richTextBlocks(text)),
@@ -1013,6 +1057,7 @@ async function findByDomain() {
   if (args.unreact) return await unreact();
   if (args.mark) return await mark();
   if (args['read-cursor']) return await readCursorCmd();
+  if (args.unanswered) return await unansweredCmd();
   if (args.send) return await send();
   if (args['list-drafts']) return await listDrafts();
   if (args['create-draft']) return await createDraft();
@@ -1021,5 +1066,5 @@ async function findByDomain() {
   if (args['open-dm']) return await openDm();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --unanswered, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

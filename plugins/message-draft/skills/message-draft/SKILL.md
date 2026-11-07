@@ -52,6 +52,7 @@ The `outlook` mode has no browser flow to isolate - run it inline as its mode st
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
+- **Orchestrator, before it authors a new top-level Slack message to a person:** run the **`slack`** skill's **Answer before a new message** step, which answers that person's waiting messages first.
 - **Orchestrator, before it spawns the subagent:** author the body in Russell's voice (the **Voice** step), run the `document-authoring` pass, and complete the **Review gate** step (above).
   That is the human-facing writing, and it stays on the main thread.
   The receipt the Review gate mints must exist before the composer runs, so finish it before spawning the subagent.

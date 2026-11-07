@@ -67,6 +67,8 @@ Under `scripts/` (run with `node`):
   - Read cursor: `node slack.js --read-cursor --channel=<C> [--thread-ts=<tts>] [--json]` - your `last_read`
     ts on the conversation, plus on the thread when `--thread-ts` is given.
     Read-only.
+  - Unanswered: `node slack.js --unanswered --channel=<C> [--json]` - the messages in a DM or group DM that Russell hasn't answered yet, oldest first.
+    Read-only; see **Answer before a new message** below.
   - React: `node slack.js --react --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.add`; emoji name without colons.
     Reversible with `--unreact`.
   - Unreact: `node slack.js --unreact --channel=<C> --ts=<ts> --emoji=<name>` - `reactions.remove`; takes off the reaction `--react` added.
@@ -91,6 +93,7 @@ Under `scripts/` (run with `node`):
     after the post and puts back any the post moved (the drainer's acknowledgement sends use this, so an ack
     never marks the person's still-unhandled message read).
     `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
+    Pass `--answering` when the body answers the person's unanswered messages (see **Answer before a new message**).
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is the proof a browser-staged draft saved.
@@ -106,6 +109,7 @@ Under `scripts/` (run with `node`):
     Add `--broadcast` to a `--thread-ts` draft to stage the reply with "Also send to #channel" ticked; `--list-drafts` shows it as `+channel` (`broadcast: true` in `--json`).
     Slack keeps one draft per thread, so a second create fails with `attached_draft_exists`.
     Pass `--replace` to delete the thread's existing draft and stage the new one in its place.
+    Pass `--answering` when the body answers the person's unanswered messages (see **Answer before a new message**).
   - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
     It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
@@ -135,6 +139,23 @@ Under `scripts/` (run with `node`):
 - `conversations.open` - open or find the existing 1:1 DM for a known user ID (`--open-dm`; also used
   internally by `--find-dm` once it's matched a name to a user).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).
+
+## Answer before a new message
+
+A new message to a person goes out only after Russell has answered what they already sent him.
+`--send` and `--create-draft` hold to this on a top-level message in a DM or group DM: while `--unanswered` lists anything there, they refuse and print the waiting messages.
+
+Before authoring a new top-level message to a person, by either staging path, run `--unanswered` on that conversation.
+When it lists messages, answer them first:
+
+1. Launch a session to drain them through session-mgr's `spawn-session.py` with `--resume-me`, per session-mgr's `resume-on-completion.md`.
+   Its brief carries each unanswered message with its time, the research each answer needs, and the conversation id.
+   The drain session stages its replies with `--create-draft --answering`, and Russell sends them himself.
+2. Close this session paused in the same turn.
+   It resumes once Russell has sent the answers, reruns `--unanswered` to confirm the conversation is clear, and stages the new message.
+
+Pass `--answering` on any body that answers the waiting messages: a drain reply, or a reply to a drainer item.
+A thread reply (`--thread-ts`) is already a reply, so it passes without the flag.
 
 ## Sending
 
