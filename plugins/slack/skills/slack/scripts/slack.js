@@ -68,8 +68,9 @@
 //                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
 //                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
-//                 the proof a staged draft actually saved; a browser reload can restore a local-only copy)
-// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace]
+//                 where a staged draft's saved text is read back.
+//                 Each draft lists its attached files by name, via files.info)
+// Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace] [--file=<path>[,<path>...]]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
 //                 Links written as Slack mrkdwn `<url|anchor text>` become real links, and `<@U...>`,
@@ -78,8 +79,10 @@
 //                 a URL or `code span` stay literal). Gated by the
 //                 writing-review receipt on <file>, the same as --send.
 //                 --broadcast stages the thread reply with "Also send to <channel>" ticked. Slack allows
-//                 one draft per thread, so a second create fails with attached_draft_exists unless
-//                 --replace deletes the thread's existing draft first)
+//                 one draft per conversation and one per thread, so a second create fails with
+//                 attached_draft_exists unless --replace deletes the existing draft first.
+//                 --file attaches local files: each is uploaded with no channel, so it is shared nowhere,
+//                 and the draft carries the file ids until Russell sends it)
 // Delete draft:  node slack.js --delete-draft=<draft id>
 //                (drafts.delete of one unsent draft, found via --list-drafts; it never reaches anyone)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
@@ -659,22 +662,32 @@ async function mark() {
   console.log(`Marked ${args.channel} read up to ${args.ts}. Reversible — re-reading the conversation re-surfaces it.`);
 }
 
+// The --file paths, comma-separated; [] when --file is absent.
+function filePathsArg(verb) {
+  if (!args.file) return [];
+  const paths = args.file === true ? [] : String(args.file).split(',').map(p => p.trim()).filter(Boolean);
+  if (!paths.length) throw new Error(`${verb}: --file names no files`);
+  return paths;
+}
+
 // Upload one or more local files to Slack via the current (v2) upload flow: for each file, reserve an
 // upload URL sized to it and POST the raw bytes there (multipart/form-data — the one call in this script
 // that isn't a plain call() since it hits the reserved upload_url, not api/<method>, and carries a file
-// body instead of form params). Then ONE files.completeUploadExternal call with every file id is what
-// actually posts them into the conversation (with channel_id/initial_comment/thread_ts, same as
-// chat.postMessage's params), so the body and all the files land as a single message. Every file is
-// read before anything is uploaded, so a bad path fails before Slack sees a byte. Returns the
-// completeUploadExternal response's first file entry.
-async function uploadFiles(filePaths, channel, initialComment, threadTs) {
+// body instead of form params). Then ONE files.completeUploadExternal call with every file id finishes
+// the upload. With a channel (--send) it also posts them into the conversation (with
+// channel_id/initial_comment/thread_ts, same as chat.postMessage's params), so the body and all the files
+// land as a single message. Without one (--create-draft) the files stay private to the uploader, shared
+// nowhere, until the draft that carries their ids is sent. Every file is read before anything is
+// uploaded, so a bad path fails before Slack sees a byte. Returns every uploaded file id, plus the first
+// file entry completeUploadExternal reports (where --send finds the posted message).
+async function uploadFiles(verb, filePaths, channel, initialComment, threadTs) {
   const fs = require('fs');
   const path = require('path');
   const loaded = filePaths.map(filePath => {
     try {
       return { data: fs.readFileSync(filePath), filename: path.basename(filePath) };
     } catch {
-      throw new Error(`--send: cannot read --file ${filePath}`);
+      throw new Error(`${verb}: cannot read --file ${filePath}`);
     }
   });
 
@@ -688,14 +701,12 @@ async function uploadFiles(filePaths, channel, initialComment, threadTs) {
     uploaded.push({ id: reserved.file_id, title: filename });
   }
 
-  const completeParams = {
-    files: JSON.stringify(uploaded),
-    channel_id: channel,
-  };
+  const completeParams = { files: JSON.stringify(uploaded) };
+  if (channel) completeParams.channel_id = channel;
   if (initialComment) completeParams.initial_comment = initialComment;
   if (threadTs) completeParams.thread_ts = threadTs;
   const r = await call('files.completeUploadExternal', completeParams);
-  return (r.files && r.files[0]) || {};
+  return { ids: uploaded.map(u => u.id), first: (r.files && r.files[0]) || {} };
 }
 
 // A freshly-uploaded file's message ts, if Slack's response says where it landed — used only to mark
@@ -724,14 +735,16 @@ async function send() {
   if (args.broadcast && !(args['thread-ts'] && args['thread-ts'] !== true)) {
     throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
   }
-  if (args.broadcast && args.file && args.file !== true) {
+  const filePaths = filePathsArg('--send');
+  if (args.broadcast && filePaths.length) {
     throw new Error('--broadcast cannot be combined with --file (file uploads have no also-send-to-channel option)');
   }
+  if (args['keep-unread'] && filePaths.length) {
+    throw new Error('--keep-unread applies to a plain-text send, not --file');
+  }
 
-  if (args.file && args.file !== true) {
-    const filePaths = String(args.file).split(',').map(p => p.trim()).filter(Boolean);
-    if (!filePaths.length) throw new Error('--send: --file names no files');
-    const fileEntry = await uploadFiles(filePaths, args.channel, text, args['thread-ts']);
+  if (filePaths.length) {
+    const fileEntry = (await uploadFiles('--send', filePaths, args.channel, text, args['thread-ts'])).first;
     const ts = postedTs(fileEntry, args.channel);
     if (ts) {
       try {
@@ -753,9 +766,6 @@ async function send() {
   // the post and again after, and puts back any cursor the post moved. The drainer's acknowledgement
   // sweep sends with it, because its ack must not mark the person's still-unhandled message read.
   const keepUnread = !!args['keep-unread'];
-  if (keepUnread && args.file && args.file !== true) {
-    throw new Error('--keep-unread applies to a plain-text send, not --file');
-  }
   const before = keepUnread ? await cursors(args.channel, params.thread_ts) : null;
   const r = await call('chat.postMessage', params);
   let cursor = null;
@@ -843,7 +853,9 @@ async function listDrafts() {
       updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
       text: draftText(d.blocks),
       rawTokens: rawTokensIn(d.blocks),
+      files: d.file_ids,
     }));
+  for (const d of out) d.files = await draftFiles(d.files);
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
   for (const d of out) {
@@ -851,7 +863,31 @@ async function listDrafts() {
     console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
     console.log(d.text || '(no text)');
     if (d.rawTokens.length) console.log(`!! RAW, not a real mention: ${d.rawTokens.join(', ')}`);
+    for (const f of d.files) console.log(`[Attachment: ${f.name}${f.mimetype ? ` (${f.mimetype})` : ''}]`);
   }
+}
+
+// A draft carries only its attachments' ids; files.info names each one. A file Slack no longer has
+// keeps its id as the name, so the listing still shows that the draft points at it; any other lookup
+// failure (auth, scope) fails the listing rather than passing for a missing file. One lookup at a
+// time, so a listing of many drafts never bursts into Slack's rate limit.
+async function draftFiles(ids) {
+  const out = [];
+  for (const id of ids || []) {
+    try {
+      out.push({ id, ...fileMeta([(await call('files.info', { file: id })).file || {}])[0] });
+    } catch (e) {
+      if (!/file_not_found|file_deleted/.test(e.message)) throw e;
+      out.push({ id, name: id, mimetype: '' });
+    }
+  }
+  return out;
+}
+
+// Best-effort removal of files this run uploaded for a draft that then failed to save, so a failed
+// stage leaves no stray private upload behind.
+async function deleteUploads(ids) {
+  for (const id of ids) await call('files.delete', { file: id }).catch(() => {});
 }
 
 // Every active draft from drafts.list, paginated.
@@ -883,8 +919,8 @@ async function deleteDraft() {
 }
 
 // Create an unsent draft on the server - reaches no one; Russell sends it himself from his own Slack.
-// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the thread's
-// existing draft (Slack allows one per thread) instead of failing with attached_draft_exists.
+// --broadcast ticks the thread reply's "Also send to <channel>" box; --replace swaps out the existing
+// draft (Slack allows one per conversation and one per thread) instead of failing with attached_draft_exists.
 async function createDraft() {
   if (!args.channel || args.channel === true) throw new Error('--create-draft requires --channel');
   const text = readBody('--create-draft');
@@ -894,28 +930,38 @@ async function createDraft() {
     if (!destination.thread_ts) throw new Error('--broadcast only applies to a thread reply (pass --thread-ts)');
     destination.broadcast = true;
   }
+  const filePaths = filePathsArg('--create-draft');
+  const fileIds = filePaths.length ? (await uploadFiles('--create-draft', filePaths)).ids : [];
   const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
     blocks: JSON.stringify(richTextBlocks(text)),
-    file_ids: '[]',
+    file_ids: JSON.stringify(fileIds),
     destinations: JSON.stringify([destination]),
     is_from_composer: 'false',
   });
   let r;
   try {
-    r = await create();
+    try {
+      r = await create();
+    } catch (e) {
+      if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
+      const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
+        x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
+      for (const d of stale) await deleteDraftById(d);
+      r = await create();
+    }
   } catch (e) {
-    if (!args.replace || !e.message.includes('attached_draft_exists')) throw e;
-    const stale = (await activeDrafts()).filter(d => (d.destinations || []).some(x =>
-      x.channel_id === destination.channel_id && (x.thread_ts || '') === (destination.thread_ts || '')));
-    for (const d of stale) await deleteDraftById(d);
-    r = await create();
+    await deleteUploads(fileIds);
+    throw e;
   }
   const id = (r.draft && r.draft.id) || '';
   const saved = (await activeDrafts()).find(d => d.id === id);
   const raw = rawTokensIn((saved || r.draft || {}).blocks);
   if (raw.length) {
-    if (saved) await deleteDraftById(saved);
+    if (saved) {
+      await deleteDraftById(saved);
+      await deleteUploads(fileIds);
+    }
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);

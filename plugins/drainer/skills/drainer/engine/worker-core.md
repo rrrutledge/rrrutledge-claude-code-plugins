@@ -281,7 +281,7 @@ Advance the card (CLEAR) at the end - the one place its Start moves.
 This applies whether Trello is your own source or you found the card from another source entirely.
 
 ## 4. Contact the person (draft-only by default)
-**After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all composer mechanics, leaving the draft un-sent.
+**After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all staging mechanics, leaving the draft un-sent.
 The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
 The draft is already staged when you show it (per the provider's DRAFT-MODE); the reply shows the staged text plus where it lives.
 Don't send on your own initiative - only on Russell's explicit per-message instruction this turn, reviewing this exact draft (per the send exception in §0's framing above); silence or a generic go-ahead earlier in the conversation doesn't count.
@@ -291,7 +291,7 @@ It describes what step 3 finished - the form filled, the link or fact supplied, 
 Before staging, confirm every ask the draft mentions is one step 3 finished; for any that isn't, return to step 3, do it, and rewrite the draft.
 When the ask depends on an input the sender or a system still owes (an invite not yet sent, a document still coming), tell Russell what it's waiting on and hold the reply until it can report the ask done.
 
-Teams staging runs inside message-draft's own browser subagent (its **`teams` and `slack` stage in a browser subagent** section), as does Slack's browser fallback.
+Teams staging runs inside message-draft's own browser subagent (its **`teams` stages in a browser subagent** section).
 If that subagent returns `HELP_NEEDED` instead of `DONE`, follow §2e.
 
 If no message is needed (automated reminder, pure action item), skip to step 6.
