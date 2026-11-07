@@ -142,7 +142,7 @@ New relays plug in by adding a registry entry.
 
 ## On demand: drain one Slack conversation now
 
-`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs this same cycle on one Slack conversation, so an item drained on demand gets the triage, screen, hold, and worker a scheduled cycle gives it.
+`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs the cycle's enumerate, triage, screen, and dispatch on one Slack conversation, so an item drained on demand gets the same verdicts and worker a scheduled cycle gives it.
 A session about to send someone a new Slack message runs it first, per the `slack` skill's **Answer before a new message**.
 The flags and the `on-demand:` outcome lines are in the script's header.
 

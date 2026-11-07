@@ -138,21 +138,22 @@ Under `scripts/` (run with `node`):
 
 ## Answer before a new message
 
-Russell answers what a person already sent him before a new message goes to them, and the drainer is what answers it.
-This covers a message that starts something new; a reply to the person's waiting messages is the drain's own work.
-Before authoring a new top-level message to a person or a group DM, drain that conversation now:
+Before a new message goes to a person, the drainer handles what they already sent Russell, so he answers them first.
+This covers a message that starts something new in a DM or group DM; a reply to the person's waiting messages is the drain's own work.
+Before authoring that new top-level message, drain the conversation now:
 
     python ~/.claude/drainer/launch-drainer.py --mode poller --repo <drainer project> --channel=<C> --now --resume-me
 
 `--repo` is the project the scheduled DrainerKeeper task drains (on this machine, `C:/Users/russe/Dev/personal-ai-pod`).
 Act on its `on-demand:` lines:
 
-- **Nothing to drain, or filed as fyi or junk:** nothing waits on Russell, so author and stage the new message now.
-- **Launched a worker:** that worker resumes this session once Russell has sent its reply.
+- **Nothing waits on Russell:** the run printed "nothing to drain" or filed the item as fyi or junk, so author and stage the new message now.
+- **A worker was launched:** it resumes this session once its item is done.
   Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
-- **Held behind an open worker:** that worker already holds this person's waiting messages.
-  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, then close paused.
-- **Held because triage or the screen was unavailable:** rerun the command a few minutes later.
+- **An open worker holds it:** that worker already has this person's waiting messages.
+  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names (or finding the worker with `ListAgents`), then close paused.
+- **Held or failed for a reason:** the line names the reason.
+  Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
 
 When this session resumes, run the command again before staging, since the person may have written since.
 

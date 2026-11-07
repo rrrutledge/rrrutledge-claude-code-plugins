@@ -88,6 +88,26 @@ check("the seed carries the resume heading",
 check("the seed carries the command", (command or "") in body, True)
 check("the wake note sits beside the seed", os.path.exists(seed + ".resume-note.md"), True)
 
+print("\nspawn_worker with --resume-me: a worker that can't carry the resume instruction never launches")
+launches, marks = [], []
+poller.spawn_bg = lambda *a, **k: launches.append(a) or "bg-1"
+poller._append_resume_launcher = lambda *a: None
+poller._mark_launcher_resume = lambda *a: marks.append(a)
+item_json = os.path.join(rt, "items", "item-c.json")
+with open(item_json, "w", encoding="utf-8") as f:
+    json.dump({"id": "c", "source": "slack", "subject": "DM from Addie"}, f)
+local_dir = os.path.join(rt, "config")
+os.makedirs(local_dir)
+got = poller.spawn_worker("item-c", item_json, rt, rt, "sonnet", local_dir, rt, {"_source": "slack"},
+                          resume_launcher="launcher-guid")
+check("spawn_worker reports no launch", got, False)
+check("nothing launched", launches, [])
+poller._append_resume_launcher = lambda *a: "python spawn-session.py --resume launcher-guid"
+got = poller.spawn_worker("item-c", item_json, rt, rt, "sonnet", local_dir, rt, {"_source": "slack"},
+                          resume_launcher="launcher-guid")
+check("with the instruction in place it launches", (got, len(launches)), (True, 1))
+check("and records the launcher's resume marker", [m[0] for m in marks], ["launcher-guid"])
+
 if failures:
     print(f"\n{len(failures)} check(s) FAILED")
     sys.exit(1)
