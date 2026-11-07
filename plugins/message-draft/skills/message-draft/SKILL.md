@@ -27,7 +27,7 @@ to paste into the LinkedIn composer and send himself.
 content in Russell's voice. Pass the drafted text to the mode steps below for staging.
 
 **Voice gate (stage-time - load-bearing):** After the draft is staged, read it back from where it
-lives (Teams: the composer; Slack: `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
+lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
 Conversational writing rules as a review pass. If anything was trimmed, re-stage the gated version
 (Teams: re-type it; Slack: re-create it with `--replace`; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
 the done-criteria once it has run.
@@ -47,7 +47,6 @@ Report the receipt hash in the done-criteria.
 The `teams` mode drives browser-chauffeur through a long open-tab then find-target then identity-gate then compose then verify flow.
 Run that whole flow inside a browser subagent, per browser-chauffeur's **"Running in a subagent"** section - one in-process subagent for the single coherent task of staging this one message.
 The driving turns stay entirely in the subagent's isolated context, and the orchestrator (the session that invoked message-draft) gets back only the result.
-The `slack` and `outlook` modes are API calls the orchestrator runs inline, as their mode steps describe.
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
@@ -181,21 +180,21 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 The orchestrator runs these steps inline with the **`slack`** skill's `slack.js` (its SKILL.md has every flag and the mrkdwn the body uses).
 Its `--create-draft` saves the draft where Russell reviews and sends it.
 
-Inputs: the target (a person's name for a DM, or a channel/conversation, or - when replying to a captured
-drainer item - its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
+Inputs: the target (a person's name for a DM, or a channel/conversation, or - when replying to a captured drainer item - its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
 
 1. **Resolve the conversation and identity-gate it.**
    A captured item already carries its `channel` (and `threadTs` for a thread reply).
-   A person by name resolves through `slack.js --find-dm=<name>`, a known user ID through `--open-dm=<user ID>`.
+   A person by name resolves through `slack.js --find-dm=<full name>`, a known user ID through `--open-dm=<user ID>`.
    Confirm the conversation is the intended one with `slack.js --resolve-name=<channel>` before staging; a person's Slack handle can differ from their real name, so check it is them.
 2. **Check for an existing draft.** `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
-   A draft listed there is one the user left.
+   A listed draft whose destination is this exact target is one the user left: for a top-level message, that is a destination line with no `thread:`.
    Preserve it: surface it verbatim for review, and stage over it with `--replace` only on an explicit OK.
    In an autonomous run with no one to review, leave it and flag the conversation instead.
 3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints, with every link and mention as its mrkdwn token.
 4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file>`, adding the thread, broadcast, replace, and file flags this draft needs.
    A failure that names a raw token means a mention didn't resolve; fix the token in the body and stage again.
-5. **Voice gate.** Read the staged text back with `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]` and run the **Voice gate** above on it.
+   An auth failure that `slack.js`'s own refresh can't fix is the sign-in case in the done-criteria: Russell signs back in to Slack in the persistent browser, and nothing is staged until he does.
+5. **Voice gate.** Run the **Voice gate** above on the staged draft.
 
 ## Mode: `outlook`
 
