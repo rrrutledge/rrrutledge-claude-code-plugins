@@ -1,0 +1,9 @@
+{
+  "name": "google-calendar",
+  "version": "1.0.0",
+  "description": "Read a Google Calendar's events over a time range via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate read-only token scoped to calendar.readonly.",
+  "author": {
+    "name": "Russell Rutledge"
+  },
+  "license": "MIT"
+}
