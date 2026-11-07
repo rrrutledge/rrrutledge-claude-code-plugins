@@ -1,5 +1,5 @@
 // Tests for calendar.js's from-completion repeat helpers (marker parse + interval date math).
-// These are pure functions — no Graph calls — so they run offline. Run: node --test calendar.repeat.test.js
+// These are pure functions - no Graph calls - so they run offline. Run: node --test calendar.repeat.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
 

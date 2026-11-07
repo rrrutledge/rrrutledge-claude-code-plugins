@@ -1,4 +1,4 @@
-"""orphan-sessions poller adapter — crash-recovered Claude Code sessions.
+"""orphan-sessions poller adapter - crash-recovered Claude Code sessions.
 
 A thin ProviderBase wrapper, same shape as every other drainer provider, but around
 something session-mgr already owns rather than an external service: the live-session
@@ -8,13 +8,13 @@ plugin's find-orphans.py (the same version-pinned resolver pattern the drainer's
 close-session.py already uses to reach session-mgr's end-session.py) rather than
 re-implementing any registry/liveness logic here.
 
-Unlike every other source, this one has no draft/reply/CLEAR cycle — resuming the session
+Unlike every other source, this one has no draft/reply/CLEAR cycle - resuming the session
 itself, in the background, IS the whole action. See orphan-sessions-provider.md for the (empty)
 worker-facing contract, and run-poller.py for the dedicated spawn_resume() dispatch path and the
 deterministic pre-triage bypass (this source never reaches the AI triage call).
 
-id scheme: `orphan-<session_id>-<slug(started_at)>` — see stable_id() for why started_at
-(not just session_id) is baked into the id. No body file — capture() writes only
+id scheme: `orphan-<session_id>-<slug(started_at)>` - see stable_id() for why started_at
+(not just session_id) is baked into the id. No body file - capture() writes only
 `<id>.json`.
 """
 import json
@@ -39,7 +39,7 @@ def _parse_version(name):
 
 
 def _find_orphans_script():
-    """Locate the newest INSTALLED session-mgr plugin's find-orphans.py — same version-sort
+    """Locate the newest INSTALLED session-mgr plugin's find-orphans.py - same version-sort
     resolver pattern as the drainer's close-session.py, so this adapter is never tied to a
     floating working-clone branch of session-mgr. Falls back to the working-clone path when
     no installed copy exists yet (a fresh dev machine)."""

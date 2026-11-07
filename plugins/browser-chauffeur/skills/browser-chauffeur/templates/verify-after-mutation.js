@@ -1,4 +1,4 @@
-// Post-mutation verification — use after any create, update, or delete action on a SPA.
+// Post-mutation verification - use after any create, update, or delete action on a SPA.
 // `networkidle` fires when the network goes quiet, but virtualized SPA grids (Outlook
 // calendar, Teams, SharePoint lists) re-render asynchronously after a server response.
 // Checking DOM state immediately after networkidle produces false negatives: the mutated
@@ -8,7 +8,7 @@
 //
 //   const { verifyAfterMutation } = require('browser-chauffeur-helpers');
 //
-// Example — confirm a deleted event no longer appears:
+// Example - confirm a deleted event no longer appears:
 //
 //   const gone = await verifyAfterMutation(page, async () => {
 //     const events = await page.locator('.calendar-event').allTextContents();
@@ -17,8 +17,8 @@
 //   if (!gone) throw new Error('Verify FAILED: event still present after delete');
 //
 // Options:
-//   settleMs (default 1500) — max ms to wait for networkidle before each check
-//   retries  (default 3)   — how many times to retry before declaring failure
+//   settleMs (default 1500) - max ms to wait for networkidle before each check
+//   retries  (default 3) - how many times to retry before declaring failure
 //
 // Returns true if predicate eventually passes, false after all retries exhausted.
 

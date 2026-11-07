@@ -197,7 +197,7 @@ check(
 # --- context.md section gating ---------------------------------------------
 print("\ncontext.md section gating")
 
-CONTEXT = """# drainer context — the shared brain
+CONTEXT = """# drainer context - the shared brain
 
 Preamble that belongs in every prompt.
 

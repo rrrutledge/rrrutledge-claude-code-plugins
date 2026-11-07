@@ -1,7 +1,7 @@
-"""outlook-graph-junk poller adapter — Junk Email folder via the ms-graph skill's mail.js.
+"""outlook-graph-junk poller adapter - Junk Email folder via the ms-graph skill's mail.js.
 
 Sibling of outlook-graph-adapter.py: same mailbox, same mail.js, same id scheme and captured item
-shape — the only difference is which folder gets enumerated (Junk Email instead of Inbox), so
+shape - the only difference is which folder gets enumerated (Junk Email instead of Inbox), so
 `name` alone drives the id prefix and body-file naming inherited by stable_id()/capture()'s shape.
 It never dispatches a worker: misfiled mail is un-junked (rescue) and the outlook-graph provider
 handles it from the Inbox, so one message is never worked from both providers.

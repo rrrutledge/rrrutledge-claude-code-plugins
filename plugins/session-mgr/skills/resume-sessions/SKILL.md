@@ -6,7 +6,7 @@ instructions: |-
   as a background session (`claude --bg --remote-control`), reached from claude.ai/code and the
   Claude phone app. Skip sessions that are currently open.
 
-  ## Step 1 — Find confirmed orphans (shared script)
+  ## Step 1 - Find confirmed orphans (shared script)
 
   Run the shared detection script:
 
@@ -18,12 +18,12 @@ instructions: |-
   1. Builds the active set: every session `claude agents --json` reports live, read across every
      Claude account, plus the session ID on each running `claude.exe` command line
      (`--resume`/`--session-id`).
-  2. Reads the live-session registry (`~/.claude/session-mgr/live-sessions.json` — a dict of
+  2. Reads the live-session registry (`~/.claude/session-mgr/live-sessions.json` - a dict of
      `{session_id: {cwd, started_at, pid, host_pid}}` for every session that has started but not
      cleanly ended, maintained by this plugin's `SessionStart`/`SessionEnd` hooks) and returns every
      entry whose session isn't in the active set from part 1 **and** whose recorded `pid`
-     isn't a still-live `claude.exe` either. That `pid` — the launching `claude.exe`'s PID,
-     found by walking the hook's own process ancestry at `SessionStart` — is what actually
+     isn't a still-live `claude.exe` either. That `pid` - the launching `claude.exe`'s PID,
+     found by walking the hook's own process ancestry at `SessionStart` - is what actually
      covers a terminal session started bare, with no `--resume`/`--session-id`: without the pid
      check a still-open bare-launched session would be misdetected as an orphan and get a
      duplicate resume spawned on top of it. Two kinds of session survive both checks as a
@@ -43,14 +43,14 @@ instructions: |-
   itself by force-killing its own process dies before the harness can fire `SessionEnd`, so its
   registry entry survives even though the close was deliberate. The proper self-close
   primitive (`scripts/end-session.py`, next to the launcher) fires the SessionEnd hooks first
-  and can't leave this residue, but entries written before a session's tooling adopted it —
-  or by any independently-authored force-kill — still can. The script scans each candidate's
-  last ~30 transcript entries for an **executed** self-close among its final actions — a
+  and can't leave this residue, but entries written before a session's tooling adopted it -
+  or by any independently-authored force-kill - still can. The script scans each candidate's
+  last ~30 transcript entries for an **executed** self-close among its final actions - a
   `taskkill /PID <pid> /T /F`, a `close-session.py` / `end-session.py` run, or a
   `session-mgr:close` skill call that actually ran, not merely a passing mention of those names
   in the session's context (a session editing the drainer references them without closing
   itself). A match means it closed itself on purpose, so the script excludes it from the output
-  AND deletes its entry from `live-sessions.json` (so a later run doesn't re-litigate it) — you
+  AND deletes its entry from `live-sessions.json` (so a later run doesn't re-litigate it) - you
   don't need to re-check this by hand.
 
   Prints a JSON array to stdout: `[{"session_id", "cwd", "started_at"}, ...]`, with `ended_at`
@@ -64,7 +64,7 @@ instructions: |-
   clean exit fires `SessionEnd` (removing it) - so nothing needs manual pruning beyond what the
   script already does for self-closed sessions.
 
-  ## Step 2 — Fallback scan for sessions the registry doesn't cover
+  ## Step 2 - Fallback scan for sessions the registry doesn't cover
 
   The registry only covers sessions started after this hook was installed. For completeness (and
   as a safety net if a registry write ever fails), also run the content-heuristic scan below, then
@@ -76,7 +76,7 @@ instructions: |-
   from datetime import datetime
 
   PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
-  # Reuse Step 1's script for the active-process scan rather than re-implementing it —
+  # Reuse Step 1's script for the active-process scan rather than re-implementing it -
   # step1_orphans is the JSON list Step 1's `python find-orphans.py` call printed.
   spec = importlib.util.spec_from_file_location(
       "find_orphans",
@@ -148,16 +148,16 @@ instructions: |-
   abrupt.sort(key=lambda x: x["mtime"])
   ```
 
-  ### Exclusions — apply only these, and only in this fallback scan
+  ### Exclusions - apply only these, and only in this fallback scan
 
   Exclude a session found by the fallback scan only if its last_user_text matches one of these
-  exact machine-generated patterns — do NOT apply any other judgment about whether a session looks
+  exact machine-generated patterns - do NOT apply any other judgment about whether a session looks
   "complete" or "worth resuming":
 
   - Proper exit: last_user_text is exactly `<local-command-stdout>Goodbye!</local-command-stdout>`
     or `<local-command-stdout>Bye!</local-command-stdout>`
   - Automated triage prompt: last_user_text starts with `You are the drainer poller's triage step`
-    (a self-contained classification job that completes and ends on its own — never a live
+    (a self-contained classification job that completes and ends on its own - never a live
     conversation to resume)
   - Deliberate self-close: the transcript tail shows the session closing itself - the same
     self-close tail check Step 1's find-orphans.py applies to registry entries (a
@@ -171,12 +171,12 @@ instructions: |-
   mid-way through replying to a recruiter DM about a job posting reads exactly like one, right up
   to the moment a restart killed its background browser action. A `<status>killed</status>`
   field inside the notification is an especially strong signal the restart is exactly what
-  interrupted it. If the notification instead shows a passive timeout (e.g. "Monitor timed out —
+  interrupted it. If the notification instead shows a passive timeout (e.g. "Monitor timed out -
   re-arm if needed") and you want extra confidence before launching a whole session for it, it's fine
   to spot-check whether the underlying thing being watched (a PR, a deployment) is already resolved
   - but default to including it.
 
-  Launch everything else — short replies, drainer seeds, mid-sentence messages, one-word answers,
+  Launch everything else - short replies, drainer seeds, mid-sentence messages, one-word answers,
   all of it. Do not guess whether the user considered a session finished.
 
   ## Step 3 - Resume each session in the background
@@ -223,7 +223,7 @@ instructions: |-
     tail of each (last user message), so it completes in a few seconds.
   - The live-session registry (`hooks/session_registry.py`, wired in `hooks/hooks.json`) is what
     makes Step 1's find-orphans.py authoritative instead of another heuristic. It only reflects
-    sessions started since the hook was installed — plan on the fallback scan doing more of the
+    sessions started since the hook was installed - plan on the fallback scan doing more of the
     work until the registry has enough history built up.
   - `scripts/end-session.py` (next to the launcher) is the correct way for a session to close
     itself: it fires this plugin's SessionEnd hooks with the same payload the harness would send,

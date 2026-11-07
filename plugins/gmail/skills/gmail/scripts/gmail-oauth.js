@@ -3,9 +3,9 @@
 // one cached token, so a single sign-in covers the whole skill.
 //
 // Scopes (least-privilege union of what the two scripts need):
-//   - gmail.modify   — read messages + threads, modify labels (archive = remove the INBOX label).
-//   - gmail.compose  — create/update/delete drafts and send messages/drafts.
-//   - gmail.settings.basic — list/create/delete filters (filters.js).
+//   - gmail.modify - read messages + threads, modify labels (archive = remove the INBOX label).
+//   - gmail.compose - create/update/delete drafts and send messages/drafts.
+//   - gmail.settings.basic - list/create/delete filters (filters.js).
 // This grants no permanent-delete: archive and draft/message removal go to All Mail / Trash, never a
 // bypassing purge.
 //
@@ -17,13 +17,13 @@
 // Pass --account=<name> (or set GMAIL_ACCOUNT=<name>) to serve a second mailbox alongside the first: the
 // token then caches to ~/.claude/gmail/oauth-token-<name>.json, so signing in as one account never
 // overwrites another's token. No flag = the default single-file behavior. A named account can also carry
-// its own OAuth client via GMAIL_OAUTH_CLIENT_ID_<NAME> / _SECRET (see buildOAuthClient) — needed when the
+// its own OAuth client via GMAIL_OAUTH_CLIENT_ID_<NAME> / _SECRET (see buildOAuthClient) - needed when the
 // default client can't consent that account, e.g. a personal mailbox and a default client that is Internal
 // to one Workspace org.
 //
 // Wrong-mailbox guard. A token minted with an --expect-email records the address it was authorized for
 // (account_email) in its token file. assertAccountEmail() then asserts, on every run, that the mailbox
-// the token actually authorizes still matches that recorded address — so an operation can never land on
+// the token actually authorizes still matches that recorded address - so an operation can never land on
 // the wrong account, whatever name (or none) was passed. A legacy token with no account_email recorded
 // skips the check, so the default account still works until it's re-signed with --expect-email.
 //
@@ -40,7 +40,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 // Which account this invocation serves. --account=<name> on the command line wins; GMAIL_ACCOUNT is the
 // fallback; neither set means the default (single-file) account. The name is a filename fragment, so it's
-// held to a strict slug — a bad name should fail loudly here, never silently point at a surprise path.
+// held to a strict slug - a bad name should fail loudly here, never silently point at a surprise path.
 function resolveAccount() {
   let name = null;
   for (const a of process.argv.slice(2)) {
@@ -79,7 +79,7 @@ function writeTokens(tokens) {
 }
 
 // The address this token was authorized for at sign-in, if it was recorded (see gmail-auth.js). null for a
-// legacy token minted before the wrong-mailbox guard existed — such a token skips the guard entirely.
+// legacy token minted before the wrong-mailbox guard existed - such a token skips the guard entirely.
 function readAccountEmail() {
   const t = readTokens();
   return t && t.account_email ? String(t.account_email).toLowerCase() : null;
@@ -99,7 +99,7 @@ function signInCommand() {
 }
 
 // The wrong-mailbox guard: refuse to operate when the mailbox the token authorizes differs from the one it
-// was set up for. Cheap — one profile GET — and a no-op for a legacy token with no recorded address, so it
+// was set up for. Cheap - one profile GET - and a no-op for a legacy token with no recorded address, so it
 // never disturbs an account that predates this. `authedClient` is the raw OAuth2Client (both gmail.js and
 // filters.js hold one), so this works whatever REST wrapper the caller layers on top.
 async function assertAccountEmail(authedClient) {
@@ -118,8 +118,8 @@ async function assertAccountEmail(authedClient) {
 
 // A named account can point at its own OAuth client via GMAIL_OAUTH_CLIENT_ID_<NAME> /
 // GMAIL_OAUTH_CLIENT_SECRET_<NAME>, falling back to the shared GMAIL_OAUTH_CLIENT_ID / _SECRET. This lets
-// an account the default client can't serve — e.g. a personal mailbox that the default Internal Workspace
-// client refuses — sign in through its own client, and its token then refreshes silently against that same
+// an account the default client can't serve - e.g. a personal mailbox that the default Internal Workspace
+// client refuses - sign in through its own client, and its token then refreshes silently against that same
 // client. <NAME> is the account name uppercased with hyphens turned to underscores.
 function accountEnv(base) {
   if (ACCOUNT_NAME) {
@@ -137,7 +137,7 @@ function buildOAuthClient() {
   if (!clientSecret) throw new Error(`GMAIL_OAUTH_CLIENT_SECRET${suffix} env var not set`);
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri: REDIRECT_URI });
   // On a silent refresh the client emits 'tokens' with a fresh access_token (and usually no
-  // refresh_token — that only arrives on first consent). Merge so the refresh_token (and the recorded
+  // refresh_token - that only arrives on first consent). Merge so the refresh_token (and the recorded
   // account_email) are never lost.
   client.on('tokens', (tokens) => {
     writeTokens({ ...(readTokens() || {}), ...tokens });

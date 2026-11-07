@@ -1,4 +1,4 @@
-// Screenshot-on-failure — call from catch blocks when the app fails to load,
+// Screenshot-on-failure - call from catch blocks when the app fails to load,
 // and from any browser fallback loop so each failed attempt produces a
 // screenshot for debugging. The screenshots help diagnose whether the failure
 // was a login page, an overlay, a CAPTCHA, or something else.

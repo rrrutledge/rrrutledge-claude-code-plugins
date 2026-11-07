@@ -1,9 +1,9 @@
-"""outlook-rest poller adapter — Outlook mail via the ms-rest skill's outlook-mail.js.
+"""outlook-rest poller adapter - Outlook mail via the ms-rest skill's outlook-mail.js.
 
 All outlook-rest mechanics live HERE, alongside the prose contract in `outlook-rest-provider.md`:
 locating ms-rest's outlook-mail.js, the `enumerate` read, the Outlook REST id scheme, and the captured
 item shape. The poller (`scripts/run-poller.py`) loads this adapter dynamically and drives it through
-the `ProviderBase` interface — it contains no Outlook specifics.
+the `ProviderBase` interface - it contains no Outlook specifics.
 
 This is the REST-transport sibling of the Graph-transport `outlook-graph-adapter.py`: same
 operations, a different transport (the ms-rest plugin's Outlook REST v2.0 path with a bearer token

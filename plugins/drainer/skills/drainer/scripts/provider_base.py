@@ -2,7 +2,7 @@
 
 Each source the poller drives ships a `providers/<name>-adapter.py` next to its prose
 `providers/<name>-provider.md`, defining a `Provider(ProviderBase)` with `name` + `enumerate` +
-`stable_id` + `capture`. `run-poller.py` loads these dynamically — no provider mechanics live in the
+`stable_id` + `capture`. `run-poller.py` loads these dynamically - no provider mechanics live in the
 poller itself. This module is the small shared surface (subprocess + slug helpers + the interface).
 """
 import glob
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 # under pythonw (no parent console). 0 on non-Windows.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# The neutral priority band — the rank of any drained item carrying no priority label (all email/Slack,
+# The neutral priority band - the rank of any drained item carrying no priority label (all email/Slack,
 # and every Trello card the job-board poller didn't tag). The trello adapter assigns it to unlabeled
 # cards and run-poller falls back to it in the cross-source sort, so both agree on where "no priority"
 # sits. Which fit tiers rank above or below neutral is defined in one place: the trello adapter's
@@ -32,8 +32,8 @@ def band_rank(it):
     """The cross-source queue order, defined in ONE place: priority band, then level, then referral.
     Every drained item (email/Slack, ordinary Trello cards, and job-search cards) is ranked by this
     tuple; only job-search cards carry a non-neutral value in any band (the trello adapter stamps
-    `_priority_band`/`_level_band`/`_referral_band` — see its _PRIORITY_BAND, _level_band, _referral_band
-    for what each value means). To reorder the whole queue — e.g. put referral back ahead of level —
+    `_priority_band`/`_level_band`/`_referral_band` - see its _PRIORITY_BAND, _level_band, _referral_band
+    for what each value means). To reorder the whole queue - e.g. put referral back ahead of level -
     change the tuple HERE; both sort sites (trello-adapter._enumerate and run-poller's cross-source
     needs-you sort) and the band-ranking test read it, so the policy lives at one spot. Each caller
     appends its own trailing date key (the adapter's `_sort_dt`, the poller's `received`), which breaks
@@ -71,9 +71,9 @@ class ProviderError(Exception):
     others; it records the failure to provider-health.json so the daily digest can surface a stuck
     provider for Russell to fix. `kind` distinguishes the two failure modes the digest reports
     differently:
-      - "auth"   — a transient credential / network failure (expired token, network blip). Expected
+      - "auth" - a transient credential / network failure (expired token, network blip). Expected
                    occasionally; self-heals once the credential is refreshed.
-      - "config" — a deploy/config error: a helper .js couldn't be located, or a helper ran but
+      - "config" - a deploy/config error: a helper .js couldn't be located, or a helper ran but
                    crashed on a missing npm dependency (its skill's shared node_modules store lacks a
                    required package). Rare and loud; it won't self-heal until a human reinstalls, so the
                    poller escalates it immediately and the digest flags it distinctly.
@@ -174,7 +174,7 @@ def run_node(args, **kw):
 
 
 # A Node helper that dies on `Error: Cannot find module 'x'` failed because a required npm package is
-# absent from its skill's shared node_modules store — a broken deploy, not a credential problem. It will
+# absent from its skill's shared node_modules store - a broken deploy, not a credential problem. It will
 # fail identically every cycle until someone reinstalls the dependency, so it must be classified "config"
 # (loud, won't self-heal, escalated at once), never lumped into the transient "auth" bucket. An adapter
 # routes its enumerate's nonzero-exit stderr through here to pick the right kind for the ProviderError.
@@ -205,7 +205,7 @@ def find_skill_script(start_file, plugin, rel_path, skill=None):
     matches.
 
     Deliberately never falls back to a bare recursive glob under `<plugins>/`: that would also match
-    `<plugins>/marketplaces/<marketplace>/plugins/<skill>/...` — a raw git checkout of the plugin
+    `<plugins>/marketplaces/<marketplace>/plugins/<skill>/...` - a raw git checkout of the plugin
     source kept in sync for `claude plugin update` to read, never `npm install`-ed, so a script found
     there can't actually run (e.g. a missing `node_modules` dependency). Only the two layouts a plugin
     is actually installed/run from are searched.
@@ -494,17 +494,17 @@ def relay_correspondent(item, get_body):
       - a RELAY: a shared no-reply that fronts many real people and so does not identify who wrote
         (e.g. Securus/JPay). Its identity has to be extracted from the subject/preview/body instead.
       - a SELF-NOTE (`fromMe` and `toMe` both set): every self-note shares the account owner's own
-        address, so using that address as-is would collapse them all into one correspondent — one open
+        address, so using that address as-is would collapse them all into one correspondent - one open
         self-note worker would then silently hold every other self-note out of dispatch, indefinitely and
         without a trace, until it closed. Content extraction is the wrong tool here too (recurring or
         near-duplicate subjects, e.g. two "Research plane ticket prices" notes sent seconds apart, would
-        collide and reintroduce the same bug) — a self-note is always exempt, full stop.
+        collide and reintroduce the same bug) - a self-note is always exempt, full stop.
 
     Returns one of three things:
       - a namespaced identity string when the item is from a known relay and the correspondent's name is
         extractable from its subject / preview / body (e.g. Securus's "Message from: SAM RIVERA"),
-      - None when there is no identity to hold on — a relay whose name can't be extracted, or a
-        self-note — so the caller holds nothing rather than falling back to the shared From address,
+      - None when there is no identity to hold on - a relay whose name can't be extracted, or a
+        self-note - so the caller holds nothing rather than falling back to the shared From address,
         which would wrongly collapse two different real people (or every self-note) onto one key,
       - False when the sender is a plain direct sender, so the caller uses the ordinary from-address
         identity.
@@ -794,7 +794,7 @@ class ProviderBase:
         """The body text the triage step shows the model for this item. Default: the light `preview`
         that `enumerate` already attached. Adapters whose `enumerate` returns no usable body (e.g. the
         gmail adapter, where the envelope listing carries no preview) override this to fetch a
-        quote-stripped excerpt of the new message — so triage classifies on real content, not just the
+        quote-stripped excerpt of the new message - so triage classifies on real content, not just the
         subject line. Called only for the NEW items being triaged, so a per-item fetch here stays cheap."""
         return item.get("preview") or ""
 
@@ -830,7 +830,7 @@ class ProviderBase:
         """A stable identity for WHO an item is from, used to hold a second item from the same
         correspondent out of dispatch while an earlier one of theirs is still being worked. A direct
         sender keys on their from-address; a sender whose address shouldn't be used as-is (a relay
-        fronting many real people, or a self-note) is resolved by `relay_correspondent` instead — see
+        fronting many real people, or a self-note) is resolved by `relay_correspondent` instead - see
         its docstring. None means there is no identity to hold on, so the item always dispatches."""
         relay = relay_correspondent(item, lambda: self._fetch_body(item))
         return relay if relay is not False else from_identity(item)

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// teams-chat.js — fast Microsoft Teams chat operations for the drainer teams provider.
+// teams-chat.js - fast Microsoft Teams chat operations for the drainer teams provider.
 //
 // Replaces slow browser automation (20–30 s hydrate + per-conversation open) with direct REST
 // calls to the Teams internal services that Teams web itself uses, hosted on the Teams web origin
@@ -7,7 +7,7 @@
 // become single ~1 s HTTP calls.
 //
 // WHY NOT MICROSOFT GRAPH: the current Teams web build (new Teams 2.0, teams.cloud.microsoft)
-// never calls graph.microsoft.com for chat — a live sniff presented no graph token. Chat runs on
+// never calls graph.microsoft.com for chat - a live sniff presented no graph token. Chat runs on
 // the Skype-spaces / IC3 services. We target those.
 //
 // TWO TOKENS (both sniffed from the live Teams web session over CDP, cached together in
@@ -20,7 +20,7 @@
 //   - aud=https://ic3.teams.office.com            -> the IC3 chat-service ("chatsvc"). Used to
 //     list CHANNELS (team threads), to read a conversation's messages, and to mark read.
 //
-// IMPORTANT — isRead is NOT the same as IC3 consumptionhorizon. A chat can have its
+// IMPORTANT - isRead is NOT the same as IC3 consumptionhorizon. A chat can have its
 // consumptionhorizon caught up to the last message yet still be unread (isRead=false). So unread
 // detection for chats MUST use the aggregator's isRead, never the horizon.
 //
@@ -30,9 +30,9 @@
 // opens the conversation via browser-chauffeur). See teams-provider.md § CLEAR.
 //
 // CONFIG (env vars; sensible defaults for Russell's setup):
-//   DRAINER_TEAMS_WATCHED_TEAM_ID    — the watched team's space id (threadProperties.spaceId / General id)
-//   DRAINER_TEAMS_WATCHED_TEAM_NAME  — display name for that team
-//   DRAINER_SELF_NAME                — your display name (labels 1:1/group chats by the other member[s])
+//   DRAINER_TEAMS_WATCHED_TEAM_ID - the watched team's space id (threadProperties.spaceId / General id)
+//   DRAINER_TEAMS_WATCHED_TEAM_NAME - display name for that team
+//   DRAINER_SELF_NAME - your display name (labels 1:1/group chats by the other member[s])
 //
 // REQUIREMENT: signed in to Teams web in the CDP browser (port 9222). The one-time sniff needs
 // `playwright` (the drainer adapter exports NODE_PATH=<repo>/node_modules so it resolves).
@@ -61,7 +61,7 @@ const SNIFF_WAIT_MS = 45000;
 const EXPIRY_SKEW_S = 120;
 const SELF_NAME = process.env.DRAINER_SELF_NAME || 'Russell Rutledge';
 
-// Channel watching is scoped to ONE team — the only team whose channels the user cares about.
+// Channel watching is scoped to ONE team - the only team whose channels the user cares about.
 // Every other team's channels are intentionally ignored (the rest are noise). Channels within this
 // team are matched by their parent-team space id (threadProperties.spaceId), or the General channel
 // which IS the team space id itself. Overridable via env for other setups.
@@ -232,7 +232,7 @@ async function fetchChats(top) {
 // list every team's channels: there is no clean REST signal for which arbitrary channel is unread
 // (that lives only in the fragile delta-sync /updates feed), and the user only cares about this one
 // team. Within it, unread = last message past the IC3 read horizon. Only channels with recent
-// activity appear (the IC3 conversation list is recency-bounded) — exactly what a drainer wants.
+// activity appear (the IC3 conversation list is recency-bounded) - exactly what a drainer wants.
 async function fetchWatchedChannels(top) {
   const res = await call('ic3', 'GET', `/v1/users/ME/conversations?view=msnp24Equivalent&pageSize=${top}&startTime=1`);
   if (res.status !== 200) throw new Error(`channels HTTP ${res.status}: ${res.body.slice(0, 400)}`);
@@ -288,7 +288,7 @@ async function cmdMessages(convId, top) {
   const value = JSON.parse(msgRes.body).messages || [];
   const kind = (convId.includes('@thread.skype') || convId.includes('@thread.tacv2')) ? 'channel' : 'chat';
 
-  // Parse the read watermark: consumptionhorizon is "<messageId>;<timestamp>;..." — take the first segment.
+  // Parse the read watermark: consumptionhorizon is "<messageId>;<timestamp>;..." - take the first segment.
   let lastReadId = null;
   if (convRes.status === 200) {
     try {
@@ -315,16 +315,16 @@ async function cmdMessages(convId, top) {
 }
 
 // NOTE: there is no REST `clear`/mark-read here. The aggregator's authoritative isRead is NOT driven
-// by any replayable HTTP call — the consumptionHorizon/consumptionhorizon PUTs return 200 but do not
+// by any replayable HTTP call - the consumptionHorizon/consumptionhorizon PUTs return 200 but do not
 // flip isRead (verified by round-trip), and opening the conversation in the UI flips it within ~5s
 // via a trouter/websocket signal we can't cleanly replay. So mark-read is browser-driven: the worker
 // opens the conversation in Teams web via browser-chauffeur (see teams-provider.md § CLEAR), which
-// marks it read exactly as a human would. Verify by re-running `enumerate` — the item leaves unread.
+// marks it read exactly as a human would. Verify by re-running `enumerate` - the item leaves unread.
 
 // Mark a specific message (and implicitly all subsequent messages) as unread by setting the IC3
 // lastMarkedUnreadMessageId property on the conversation. This is the same call Teams web makes when
 // the user right-clicks → Mark as unread. The aggregator's isRead flips to false within ~5s via the
-// same trouter/websocket signal that mark-read uses — so this is the REST-accessible inverse.
+// same trouter/websocket signal that mark-read uses - so this is the REST-accessible inverse.
 async function cmdMarkUnread(convId, messageId) {
   if (!convId || !messageId) throw new Error('mark-unread requires --conversation-id and --message-id');
   const res = await call(

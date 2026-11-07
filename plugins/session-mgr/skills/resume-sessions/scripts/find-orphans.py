@@ -184,7 +184,7 @@ def _executed_self_close(record):
     """True if one transcript record is an assistant message that actually RAN a self-close: a
     Bash tool_use whose command is a taskkill /T /F, a `claude stop`, or a close-session.py /
     end-session.py invocation, or a Skill tool_use invoking session-mgr:close. A plain-text mention of those
-    names — reading a doc that references them, discussing the drainer — is not a match, because
+    names - reading a doc that references them, discussing the drainer - is not a match, because
     only a command that actually executed closed the tab on purpose. Keying on the mention alone
     would wrongly prune a real tab that merely had that text in its recent context (e.g. a session
     editing the drainer), so it would never resume after an abrupt close."""
@@ -204,7 +204,7 @@ def _executed_self_close(record):
 def closed_itself_on_purpose(session_id):
     """True if the session's last ~30 transcript records show it deliberately closing its own tab
     (an executed taskkill /T /F, a close-session.py / end-session.py run, or a session-mgr:close
-    skill call) — such a session dies before SessionEnd can fire, so its registry entry survives
+    skill call) - such a session dies before SessionEnd can fire, so its registry entry survives
     even though the close was intentional, and it must not be resumed. Only an actually-executed
     self-close counts (see _executed_self_close). Missing/unreadable transcript -> False: fail
     toward including a session as an orphan, never toward silently dropping a real one."""
@@ -371,7 +371,7 @@ def find_confirmed_orphans():
     is reported: a background session has no process of its own to find, so missing data would
     otherwise resurrect every live one.
     Self-closed entries are pruned from the registry in place (not
-    just excluded from the return value) so a later run doesn't re-litigate them — same
+    just excluded from the return value) so a later run doesn't re-litigate them - same
     behavior the resume-sessions skill has always documented for this check. Pruning isn't
     wrapped in the retry-on-write-race loop session_registry.py's hook uses: a missed prune
     just means the same (harmless) exclusion happens again next run, never a lost orphan."""

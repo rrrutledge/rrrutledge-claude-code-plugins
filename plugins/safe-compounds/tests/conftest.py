@@ -16,8 +16,8 @@ for path in (TESTS_DIR, PLUGIN_DIR):
 def trusted_json(tmp_path_factory):
     """Write the base trusted-command set (from trust.py) to a temp file and
     return its path. Tests pin the trusted set to this via
-    SAFE_COMPOUNDS_TRUSTED_JSON so they are hermetic and always match the source
-    — no committed snapshot to drift out of sync."""
+    SAFE_COMPOUNDS_TRUSTED_JSON so they are hermetic and always match the source -
+    no committed snapshot to drift out of sync."""
     from safe_compounds.trust import SHELL_BUILTINS, TRUSTED_COMMANDS
     path = tmp_path_factory.mktemp("fixtures") / "trusted_commands.json"
     path.write_text(json.dumps(sorted(SHELL_BUILTINS | TRUSTED_COMMANDS)), encoding="utf-8")

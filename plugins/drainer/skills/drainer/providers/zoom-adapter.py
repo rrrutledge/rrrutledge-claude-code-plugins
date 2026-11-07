@@ -1,6 +1,6 @@
-"""zoom poller adapter — Zoom AI Companion meeting summaries (Zoom REST + OAuth), fully self-contained.
+"""zoom poller adapter - Zoom AI Companion meeting summaries (Zoom REST + OAuth), fully self-contained.
 
-Everything generic to Zoom lives HERE — the template/instance walk, the next_steps parsing, and the
+Everything generic to Zoom lives HERE - the template/instance walk, the next_steps parsing, and the
 fan-out. The OAuth token cache and REST plumbing live in the shared `zoom_client.py` (used by this
 adapter and any machine-local Zoom-based adapter that wants to share a login). Nothing about any
 particular user or project: credentials come from config + environment variables, exactly like the
@@ -12,10 +12,10 @@ OAuth secret in the environment.
 assigned to the user + 1 recap*. The poller loop is one candidate → one stable_id → one worker session, so the
 fan-out happens in `enumerate`: one candidate per owner-assigned next step (recap folded into each for
 context) plus one recap candidate for the meeting. Same shape as the trello adapter turning one board into
-many card-items — `capture()` still writes exactly one `<iid>.json`, so no ProviderBase extension is needed.
+many card-items - `capture()` still writes exactly one `<iid>.json`, so no ProviderBase extension is needed.
 
 Auth (Zoom Server-to-Server / OAuth app), via `zoom_client.ZoomClient`:
-- `providers.zoom.client_id` in drainer.local.md (the OAuth app's Client ID — not a secret).
+- `providers.zoom.client_id` in drainer.local.md (the OAuth app's Client ID - not a secret).
 - `ZOOM_CLIENT_SECRET` in the environment (the secret).
 - A refresh token: bootstrapped from `ZOOM_REFRESH_TOKEN` on first run, then cached (and rotated) in the
   token-cache file (`providers.zoom.token_cache`, default `<runtime_dir>/zoom-tokens.json`). The access
@@ -155,7 +155,7 @@ class Provider(ProviderBase):
         for m in templates:
             st = m.get("start_time")
             # A meeting's own listed uuid is its *scheduled* uuid, not necessarily the uuid of the
-            # occurrence that actually ran — Zoom mints a distinct occurrence uuid once a meeting is
+            # occurrence that actually ran - Zoom mints a distinct occurrence uuid once a meeting is
             # started, for one-time (type 2) meetings too, and the summary endpoint only recognizes that
             # occurrence uuid. So resolve via past_meetings/instances for every meeting, regardless of
             # type, and only fall back to the listed uuid if that call finds nothing in-window.
@@ -175,7 +175,7 @@ class Provider(ProviderBase):
     @staticmethod
     def _step_ids(summary_content):
         """{normalized bullet text -> (stepId, meetingIdEnc)} from summary_content. Steps are grouped by
-        person in the HTML, so the bullet order differs from next_steps[] — match by TEXT, not index."""
+        person in the HTML, so the bullet order differs from next_steps[] - match by TEXT, not index."""
         out = {}
         for m in _STEP_LINK.finditer(summary_content or ""):
             out[re.sub(r"\s+", " ", m.group(1)).strip()] = (m.group(3), m.group(2))
@@ -190,7 +190,7 @@ class Provider(ProviderBase):
     def _summary_generated(summary):
         """Whether AI Companion has finished generating the summary. Zoom omits the next_steps key entirely
         while a summary is still generating (the shell it returns carries neither a recap nor next_steps) and
-        includes it — a populated list — once done; a month of this account's meetings showed next_steps only
+        includes it - a populated list - once done; a month of this account's meetings showed next_steps only
         ever absent (still generating) or a non-empty list, never a stray empty one. So the presence of the
         key is the done signal. A meeting that genuinely produced no action items would carry next_steps: [],
         which is present and so counts as done (recap only)."""
@@ -224,10 +224,10 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- finalized-summary cache
     # A once-a-meeting summary is FINAL after the cooldown (Zoom stops refining it), so there's no reason to
     # re-fetch it every cycle for the whole lookback window. This client-side cache keeps each finalized
-    # summary keyed by occurrence uuid — the drainer's own "already processed this meeting" record, the
+    # summary keyed by occurrence uuid - the drainer's own "already processed this meeting" record, the
     # counterpart to the teams provider's per-conversation message horizons. Candidates are still rebuilt
     # from the cached summary every cycle, so the poller's seen-state stays the single authority on what
-    # gets dispatched (an item held at the concurrency cap still resurfaces) — the cache only skips the
+    # gets dispatched (an item held at the concurrency cap still resurfaces) - the cache only skips the
     # network fetch, never the dedup.
     def _summary_cache_path(self):
         return os.path.join(self.runtime_dir, "zoom-summary-cache.json") if self.runtime_dir else None
@@ -296,17 +296,17 @@ class Provider(ProviderBase):
             # empty recap. Treating it as a miss lets a summary that has since generated get picked up.
             if s is not None and not self._summary_generated(s):
                 s = None
-            if s is None:  # not cached (or cached-shell) — fetch it
+            if s is None:  # not cached (or cached-shell) - fetch it
                 enc = self._zoom.double_encode(uuid)
                 status, fetched = self._zoom.get(f"/v2/meetings/{enc}/meeting_summary")
                 if status != 200 or not isinstance(fetched, dict):
                     continue  # 404 = no AI summary; other non-200 = transient, retry next cycle
                 # Content gate: for the first tens of minutes after a meeting ends, this endpoint returns a
-                # 200 *shell* — meeting metadata + summary_title + a summary_last_modified_time frozen at the
-                # meeting's start — before AI Companion has generated the recap and next_steps. Zoom exposes
+                # 200 *shell* - meeting metadata + summary_title + a summary_last_modified_time frozen at the
+                # meeting's start - before AI Companion has generated the recap and next_steps. Zoom exposes
                 # no "still generating" flag; the absence of the next_steps key IS the signal (see
                 # _summary_generated). Caching a shell would freeze an empty summary as "final", and the real
-                # one, generated later, would never be fetched (the uuid is already cached) — so a summary
+                # one, generated later, would never be fetched (the uuid is already cached) - so a summary
                 # whose next_steps have not landed is skipped and re-fetched next cycle, exactly like a 404,
                 # until they arrive or the meeting ages out of the lookback window. This is what keeps a
                 # meeting's recap from being captured ahead of the action items that belong with it.
@@ -321,7 +321,7 @@ class Provider(ProviderBase):
                 cache[uuid] = {"cached_at": to_iso, "summary": s}  # finalized -> never re-fetched
             items.extend(self._meeting_items(inst, s, owner_tokens))
 
-        # Bound the cache to the current window — finalized summaries never change, and a meeting that has
+        # Bound the cache to the current window - finalized summaries never change, and a meeting that has
         # aged out of the lookback window is done, so drop it rather than let the cache grow forever.
         self._save_summary_cache({u: e for u, e in cache.items() if u in in_window})
         items.sort(key=lambda it: it.get("received") or "", reverse=True)
@@ -339,7 +339,7 @@ class Provider(ProviderBase):
             subject = step[:120]
         else:
             n = len(c.get("allNextSteps") or [])
-            preview = (f"Recap of the Zoom meeting \"{topic}\" (informational — nothing is asked of you by "
+            preview = (f"Recap of the Zoom meeting \"{topic}\" (informational - nothing is asked of you by "
                        f"the recap itself; your action items from this meeting are tracked as their own "
                        f"separate drainer items). Recap: {recap[:800]}\n\nMeeting had {n} next step(s) total.")
             subject = f"Meeting recap: {topic}"

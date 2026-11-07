@@ -1,28 +1,28 @@
 // Headless, deterministic self-heal for the personal `xoxc-` Slack user token slack.js authenticates
 // with (SLACK_BOT_TOKEN / SLACK_COOKIE_D). That token pair periodically rotates (most often just the `d`
-// session cookie, not the token itself — see docs/slack-token-refresh.md in personal-ai-pod for the
+// session cookie, not the token itself - see docs/slack-token-refresh.md in personal-ai-pod for the
 // manual procedure this automates) and slack.js then fails every call with `invalid_auth` until someone
 // re-derives it from a logged-in browser session. This script does that re-derivation on its own: it
 // connects to the persistent, already-logged-in browser (browser-chauffeur), opens Slack's own web
 // client, and reads the SAME two values a human would otherwise have to sniff out of DevTools by hand.
 //
-// No AI is involved and none is needed — the extraction is a fixed, mechanical read of two values Slack's
+// No AI is involved and none is needed - the extraction is a fixed, mechanical read of two values Slack's
 // own client keeps in localStorage/cookies once a human has signed in there at least once. That "at least
 // once" is the one thing this script cannot do for itself: if the persistent browser's OWN Slack session
 // has fully logged out (not just the derived xoxc/cookie pair rotating, but the actual browser session),
 // there is no session left to read a fresh token out of, and this reports `not_logged_in` rather than
 // guessing or hanging.
 //
-// Driven by slack.js's own `refreshCreds()` (a plain `child_process` spawn — see its `call()`), so any
+// Driven by slack.js's own `refreshCreds()` (a plain `child_process` spawn - see its `call()`), so any
 // command that hits invalid_auth self-heals uniformly, not just the drainer's own enumerate. Output is
 // one JSON object on stdout, mirroring the roost-discord-read.js convention:
-//   { "status": "ok", "token": "xoxc-...", "cookie": "..." }             — fresh creds extracted
-//   { "status": "not_logged_in" }                                       — needs a human to sign in
+//   { "status": "ok", "token": "xoxc-...", "cookie": "..." } - fresh creds extracted
+//   { "status": "not_logged_in" } - needs a human to sign in
 // A genuinely unexpected failure (bad CDP connection, Slack's client markup changing shape) throws and
 // exits 1, same as roost-discord-read.js, so the caller can tell "no session" from "something broke."
 //
 // Args:
-//   --team=<id>   the Slack team id (e.g. T04PXKRM0) — same value as SLACK_TEAM_ID
+//   --team=<id>   the Slack team id (e.g. T04PXKRM0) - same value as SLACK_TEAM_ID
 
 const fs = require('fs');
 const path = require('path');

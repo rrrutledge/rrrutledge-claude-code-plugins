@@ -1,9 +1,9 @@
 ---
 name: google-docs
-description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API — no browser. Append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
+description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API - no browser. Append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
 ---
 
-# Google Docs — Programmatic Content Edits via the Docs API
+# Google Docs - Programmatic Content Edits via the Docs API
 
 Edit a Google Doc's content through the Docs API's `batchUpdate` endpoint, using Google's own official Node client library (`googleapis`) rather than hand-built REST calls: `scripts/google-docs.js`.
 Built for appending rows to a tracking table, but generic to any Google Doc.

@@ -123,7 +123,7 @@ def make_provider(fake_utils, boards=(BOARD,)):
 
 
 def sid(cid, name, start):
-    """The stable_id the adapter would mint for a card — the test's own copy of the identity, so the
+    """The stable_id the adapter would mint for a card - the test's own copy of the identity, so the
     assertions read a card by the same handle the adapter files it under."""
     stub = types.SimpleNamespace(name=Provider.name)  # stable_id only needs self.name
     return Provider.stable_id(stub, {"name": name, "cardId": cid, "start": start})
@@ -265,7 +265,7 @@ n, requeued = run(rt, [make_provider(FakeUtils(LISTS, CARDS_NOW))],
                   live=["11111111-2222-3333-4444-555555555555"])
 check("a live worker holds the card", requeued, [])
 
-print("\nreconcile: a board-fetch failure skips trello — nothing is re-queued")
+print("\nreconcile: a board-fetch failure skips trello - nothing is re-queued")
 rt = trello_workspace()
 n, requeued = run(rt, [make_provider(FakeUtils(LISTS, CARDS_NOW, fail=True))])
 check("trello skipped on fetch failure", (n, requeued), (0, []))

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// outlook-calendar.js — Outlook calendar operations: read, create, move, retime, delete.
+// outlook-calendar.js - Outlook calendar operations: read, create, move, retime, delete.
 //
 // Owned by the `ms-rest` skill. Calls the Outlook REST API v2.0 (https://outlook.office.com/api/v2.0)
 // directly, reusing the shared token + apiCall plumbing in outlook-core.js (the sniffed bearer token's
@@ -7,8 +7,8 @@
 // `Prefer: outlook.timezone="America/Chicago"` so Start/End come back in wall-clock, not UTC.
 //
 // Two ways to use it:
-//   1. As a library — `require` it and call the exported functions.
-//   2. As a CLI — the verbs below.
+//   1. As a library - `require` it and call the exported functions.
+//   2. As a CLI - the verbs below.
 //
 // Usage:
 //   node outlook-calendar.js calendar-view --start <iso> --end <iso>   -> JSON array of events
@@ -51,7 +51,7 @@ function toAttendee(a) {
 }
 
 // ---- library functions ------------------------------------------------------
-// Paged calendarView over [startIso, endIso). Re-sends the timezone Prefer header on EVERY page —
+// Paged calendarView over [startIso, endIso). Re-sends the timezone Prefer header on EVERY page -
 // otherwise pages 2+ come back in UTC, silently shifting times. calendarView expands recurring
 // series into dated instances. `select` overrides the default field set.
 async function calendarView(startIso, endIso, select) {
@@ -73,12 +73,12 @@ async function calendarView(startIso, endIso, select) {
 // tenant attendees. `schedules` is an array of SMTP addresses; start/end are naive wall-clock strings
 // interpreted in TZ; interval is the AvailabilityView granularity in minutes (default 30).
 // Returns the raw per-schedule array; each entry has:
-//   ScheduleId            — the mailbox address
-//   AvailabilityView      — per-interval string ('0'=Free, '1'=Tentative, '2'=Busy, '3'=OOF, '4'=WorkingElsewhere)
-//   ScheduleItems[]       — {Status, Start, End, Subject?} (subjects hidden for other mailboxes — fine)
-//   WorkingHours          — {StartTime, EndTime, TimeZone:{Name}, DaysOfWeek[]}
-//   Error                 — present (with ResponseCode/Message) when the mailbox can't be resolved
-// An unresolved address comes back with an Error entry — callers use that to validate addresses.
+//   ScheduleId - the mailbox address
+//   AvailabilityView - per-interval string ('0'=Free, '1'=Tentative, '2'=Busy, '3'=OOF, '4'=WorkingElsewhere)
+//   ScheduleItems[] - {Status, Start, End, Subject?} (subjects hidden for other mailboxes - fine)
+//   WorkingHours - {StartTime, EndTime, TimeZone:{Name}, DaysOfWeek[]}
+//   Error - present (with ResponseCode/Message) when the mailbox can't be resolved
+// An unresolved address comes back with an Error entry - callers use that to validate addresses.
 async function getSchedule(schedules, startNaive, endNaive, interval) {
   const body = {
     Schedules: schedules,
@@ -123,7 +123,7 @@ async function eventCreate(spec) {
   // Draft-only staging: IsDraft:true lands the meeting on the calendar but dispatches NO invitation.
   // Opened in Outlook web it shows the full meeting editor with the primary button = "Send", so a human
   // reviews then sends. Teams nuance: with isOnlineMeeting set on a DRAFT, the API read-back reports
-  // IsOnlineMeeting:false / no join URL — expected, not a bug; the OWA editor still shows the Teams toggle
+  // IsOnlineMeeting:false / no join URL - expected, not a bug; the OWA editor still shows the Teams toggle
   // ON and provisions the join link at Send. Don't "fix" the false read-back.
   if (spec.isDraft) ev.IsDraft = true;
   const res = await apiCall('POST', '/me/events', ev, PREFER);
@@ -133,7 +133,7 @@ async function eventCreate(spec) {
 }
 
 // Move an event to a target date, keeping its time-of-day and duration. For a recurring occurrence
-// Outlook returns 400 ErrorOccurrenceCrossingBoundary if the move would cross a neighbor instance —
+// Outlook returns 400 ErrorOccurrenceCrossingBoundary if the move would cross a neighbor instance -
 // reported as status "boundary-blocked" so the caller can leave it in place.
 async function eventMove(id, dateYYYYMMDD) {
   const ev = await eventGet(id, 'Id,Start,End');
