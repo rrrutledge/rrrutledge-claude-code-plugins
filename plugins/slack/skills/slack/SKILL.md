@@ -152,13 +152,13 @@ Act on its `on-demand:` lines:
   Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
 - **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
   Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names (the first, when it names several), then close paused.
-- **A paused worker holds it:** the line reads "held behind paused worker", and that worker is parked with this person's earlier messages unfinished.
-  Tell Russell which worker it is and ask whether to resume it or send the new message anyway.
+- **A paused worker holds it:** the line reads "held behind paused worker", and that worker is paused or stopped with this person's earlier messages unfinished.
+  Tell Russell the worker or workers the line names and ask whether to resume them or send the new message anyway.
 - **Held or failed for another reason:** the line names the reason.
   Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
 
 When this session resumes, run the command again before staging, since the person may have written since.
-A hold naming the worker that just resumed this session means that worker is finishing its close, so author and stage the new message.
+A hold naming the worker that just resumed this session means that worker is finishing its close, so rerun a minute later; when the hold still names it, tell Russell.
 
 ## Sending
 

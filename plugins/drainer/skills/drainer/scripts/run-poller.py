@@ -1398,10 +1398,10 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     bg_id = spawn_bg(prompt_seed(prompt_file, summary_text), worker_model, repo, _worker_title(iid, json_file),
                      scratch_only=True)
     if bg_id:
-        write_receipt(prompt_file, bg_id)
+        receipt = write_receipt(prompt_file, bg_id)
         if resume_launcher:
             _mark_launcher_resume(resume_launcher, _worker_title(iid, json_file), bg_id)
-        return bg_id  # the worker's session id; truthy, so callers test it as launched
+        return receipt  # the worker's id in the receipt's form, the same the on-demand hold lines print
     print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
           "left unrecorded to retry next cycle.")
     return False
@@ -1971,7 +1971,12 @@ def main():
         if open_here:
             print(f"on-demand: held behind open worker {', '.join(open_here)} on {args.channel}.")
             return
-        parked_here = [guid for item, guid in live_worker_items(cfg["runtime_dir"], parked_session_ids())
+        parked = parked_session_ids()
+        if parked is None:
+            print(f"on-demand: held - the session scan failed, so a paused worker on {args.channel} "
+                  "can't be ruled out; retry shortly.")
+            return
+        parked_here = [guid for item, guid in live_worker_items(cfg["runtime_dir"], parked)
                        if item.get("channel") == args.channel]
         if parked_here:
             print(f"on-demand: held behind paused worker {', '.join(parked_here)} on {args.channel} - "
