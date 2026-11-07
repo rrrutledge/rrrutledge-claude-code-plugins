@@ -169,10 +169,8 @@ def outcome_class(outcome):
     if disposition == "discarded":
         return "discard-route" if is_routing_discard(outcome) else "discard-wording"
     y = target(outcome)
-    if disposition == "superseded":
-        return "superseded" if y is None else "edited"
     if y is None:
-        return "unmeasured"
+        return "superseded" if disposition == "superseded" else "unmeasured"
     if y == 0:
         return "edited"
     return "as-is" if disposition == "sent-as-is" else "near"
