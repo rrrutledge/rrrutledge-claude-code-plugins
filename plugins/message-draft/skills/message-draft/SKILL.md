@@ -1,24 +1,24 @@
 ---
 name: message-draft
-description: Draft a message and NEVER send it. Three modes - `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, saved as a server-side draft through the `slack` skill's `slack.js --create-draft`), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated - hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
+description: Draft a message and NEVER send it. Three modes — `teams` (a Teams chat, staged in the web composer via browser-chauffeur), `slack` (a Slack message/reply, saved as a server-side draft through the `slack` skill's `slack.js --create-draft`), and `outlook` (a work-email reply or new email, created as an Outlook draft via the `ms-rest` skill's REST API). Use whenever staging a Teams chat, a Slack message, or a work Outlook email for human review. LinkedIn is never automated — hand the drafted text to the user to paste in himself. (Supersedes teams-message and slack-message.)
 ---
 
 # message-draft
 
-Stage a **draft** and stop - a human reviews and sends. Pick a mode:
+Stage a **draft** and stop — a human reviews and sends. Pick a mode:
 
-- **`teams`** - a 1:1 or group Teams chat, staged in the web composer (you drive **browser-chauffeur**,
+- **`teams`** — a 1:1 or group Teams chat, staged in the web composer (you drive **browser-chauffeur**,
   never Playwright directly).
-- **`outlook`** - a work-email reply or new email, created as an Outlook **draft** via the **`ms-rest`**
-  skill's REST API. `ms-rest` is the WORK-account Outlook plugin; don't
+- **`outlook`** — a work-email reply or new email, created as an Outlook **draft** via the **`ms-rest`**
+  skill's REST API (no browser composer). `ms-rest` is the WORK-account Outlook plugin; don't
   confuse it with the personal `ms-graph` skill.
-- **`slack`** - a Slack DM, group DM, channel message, or threaded reply, saved as a server-side draft through the **`slack`** skill's `slack.js --create-draft`.
+- **`slack`** — a Slack DM, group DM, channel message, or threaded reply, saved as a server-side draft through the **`slack`** skill's `slack.js --create-draft`.
 
 **Staging is automatic.**
 In every mode, a message drafted for Russell is staged the moment it passes `writing-review`, before it is shown.
 The reply shows the staged text and where it lives, and the only question left is about sending.
 
-**LinkedIn is never automated.** LinkedIn suspended Russell's account for automation in July 2026 -
+**LinkedIn is never automated.** LinkedIn suspended Russell's account for automation in July 2026 —
 never drive browser-chauffeur/Playwright against linkedin.com for any reason. For a LinkedIn reply,
 write the message text (through the `document-authoring` voice pass below) and hand it to the user
 to paste into the LinkedIn composer and send himself.
@@ -26,9 +26,11 @@ to paste into the LinkedIn composer and send himself.
 **Voice:** Before composing any message, invoke the **`document-authoring`** skill to write the
 content in Russell's voice. Pass the drafted text to the mode steps below for staging.
 
-**Voice gate (stage-time - load-bearing):** After the draft is staged, read it back from where it lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`** Conversational writing rules as a review pass.
-If anything was trimmed, re-stage the gated version (Teams: re-type it; Slack: re-run the same `--create-draft` command, every flag included, with `--replace` added; Outlook: re-create the draft from the gated body).
-Report `voice-gate=passed` in the done-criteria once it has run.
+**Voice gate (stage-time — load-bearing):** After the draft is staged, read it back from where it
+lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
+Conversational writing rules as a review pass. If anything was trimmed, re-stage the gated version
+(Teams: re-type it; Slack: re-run the same `--create-draft` command, every flag included, with `--replace` added; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
+the done-criteria once it has run.
 For Teams this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
 
 **Review gate (mint a receipt for the reviewed body):** every mode is harness-enforced through
@@ -98,9 +100,9 @@ Never send, and never prompt Russell directly - hand a gate back to me.
 
 ## Load-bearing invariants for the Teams composer (violating these has typed into the WRONG place)
 
-1. **The composer is not unique - target the `:visible` one and bind every keystroke to it.**
+1. **The composer is not unique — target the `:visible` one and bind every keystroke to it.**
    Web apps keep many editors mounted (Teams keeps every recent chat's `div[data-tid="ckeditor"]`
-   in the DOM). Use browser-chauffeur's element-bound composer typing (it owns the mechanics - see
+   in the DOM). Use browser-chauffeur's element-bound composer typing (it owns the mechanics — see
    browser-chauffeur → **Composing in rich editors**); never hand-roll raw key/text events, or text
    leaks into another conversation.
 2. **Identity-gate before AND during typing.** Confirm the active conversation header matches the
@@ -108,18 +110,18 @@ Never send, and never prompt Russell directly - hand a gate back to me.
    first keystroke, and re-assert before each segment. Abort on mismatch.
 3. **Content is ground truth.** After typing, read the composer back and verify the expected
    greeting + body (+ links) are present. Let selector drift fail loudly, not silently.
-4. **Never press a bare Enter in the composer - it sends.** Line breaks are Shift+Enter; use
+4. **Never press a bare Enter in the composer — it sends.** Line breaks are Shift+Enter; use
    browser-chauffeur's bare-Enter-refusing composer primitives. (Enter is fine inside a link-insert
    dialog.)
-5. **A composer with text already in it holds a draft - read it first, never type on top of it.**
+5. **A composer with text already in it holds a draft — read it first, never type on top of it.**
    Before the first keystroke, read the target composer back (`el.innerText`). If it already contains
    text, that's a draft the user left in this conversation. Preserve it: surface it verbatim for
-   review and clear it only with an explicit OK - typing on top would append into one garbled message,
+   review and clear it only with an explicit OK — typing on top would append into one garbled message,
    and clearing without asking would silently discard words the user wrote. In an autonomous run with
-   no one to review, do NOT overwrite - leave the draft and flag the conversation instead. (Clearing a
+   no one to review, do NOT overwrite — leave the draft and flag the conversation instead. (Clearing a
    truly abandoned draft also collapses the duplicate "new chat" rail entry it spawned and unblocks
    clean future sends.)
-   **Narrow exception - a composer holding text that exactly matches an already-sent message needs no OK.**
+   **Narrow exception — a composer holding text that exactly matches an already-sent message needs no OK.**
    Before treating the composer content as an ambiguous draft, check it against this conversation's own
    recent sent history (`node teams-chat.js messages <convId> --top 20`).
    If the composer text is an exact or near-exact match (allowing for markdown-link-vs-plain-text
@@ -127,7 +129,7 @@ Never send, and never prompt Russell directly - hand a gate back to me.
    it already went out. Clear it and proceed with the new draft; note in the done-criteria which stale
    text was cleared, for visibility.
    Anything short of that exact match keeps the default above.
-6. **Selectors below are last-known-good (web UIs, 2026-06) - expect drift.** The invariants
+6. **Selectors below are last-known-good (web UIs, 2026-06) — expect drift.** The invariants
    don't drift; rediscover selectors live via browser-chauffeur (screenshot → inspect) when they do.
 
 ## Mode: `teams`
@@ -138,25 +140,25 @@ The orchestrator has already minted the reviewed body's receipt into the `--body
 Addresses either a **1:1 chat** (recipient name + email) or a **group/meeting chat** (chat name).
 Inputs: the address, message body, optional hyperlinks (display text + URL), optional @mentions.
 
-0. **Open your OWN Teams tab - never adopt an existing one.** Open a fresh `teams.microsoft.com` tab
-   of your own (browser-chauffeur owns the how - see "you MUST open your own tab"); the persistent
+0. **Open your OWN Teams tab — never adopt an existing one.** Open a fresh `teams.microsoft.com` tab
+   of your own (browser-chauffeur owns the how — see "you MUST open your own tab"); the persistent
    profile means it loads already signed in. **Do not enumerate tabs and pick "the loaded Teams tab
-   with the most text"** - that tab may belong to another Claude Code instance or the user, and
+   with the most text"** — that tab may belong to another Claude Code instance or the user, and
    driving it types into the wrong place (Enter sends in Teams). Reuse that one tab for every later
    step of this draft. Wait for the app shell to hydrate (the chat rail) and ensure keyboard events
    land on this tab before interacting.
 1. **Find the target.**
    - **1:1:** Press `Alt+Shift+N` (new message), wait ~1.5s, then click the **people-picker input**
      (`input#people-picker-input` or `input[aria-label="Enter name, chat, channel, email or tag"]`).
-     ⚠️ Do NOT use `input[data-tid="AUTOSUGGEST_INPUT"]` - that is the global search bar at the
+     ⚠️ Do NOT use `input[data-tid="AUTOSUGGEST_INPUT"]` — that is the global search bar at the
      top of the app and routes to search results, not a 1:1 chat composer. Type the recipient's
      **email** (most precise), then **poll** `[role="option"]` until an option's `innerText`
-     includes the recipient's **last name** before clicking - default suggestions render first and
-     open the wrong person. Name tolerance: display name may differ (`Matt` vs `Matthew`) - match
+     includes the recipient's **last name** before clicking — default suggestions render first and
+     open the wrong person. Name tolerance: display name may differ (`Matt` vs `Matthew`) — match
      last name + first-name prefix.
    - **Group/meeting:** Use the global search bar (`input[data-tid="AUTOSUGGEST_INPUT"]`), type the
      chat name or a distinctive substring, and poll for a chat/group option whose text contains it.
-2. **Identity-gate.** Confirm the chat heading (an `h1`/`h2`/`h3` containing the name -
+2. **Identity-gate.** Confirm the chat heading (an `h1`/`h2`/`h3` containing the name —
    `[data-tid="chat-header-title"]` does NOT exist in this build) matches before typing. 1:1: last
    name + first-name prefix; group/meeting: a case-insensitive substring of the chat name.
 3. **Compose.** The composer is `div[data-tid="ckeditor"]` (target the `:visible` one). Check it for
@@ -165,11 +167,11 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
    and pass that flag on the browser-chauffeur run, per **Review gate** above, so the run is gated.
 4. **Hyperlinks.** Ctrl+K opens an Insert-link dialog; fill `[data-tid="insertHyperlink-displayText"]`
    and `[data-tid="insertHyperlink-linkAddress"]` (⚠️ `data-tid`, not `id`), then click
-   `[data-tid="insertHyperlink-insertButton"]` (⚠️ NOT `role=button` with text "Insert" - that
+   `[data-tid="insertHyperlink-insertButton"]` (⚠️ NOT `role=button` with text "Insert" — that
    selector fails). A typed GitHub repo URL also auto-unfurls a card.
 5. **@mentions (when asked).** Type `@` then the first few chars of the name, wait for the mention
    autocomplete dropdown, and click the matching suggestion so a real mention chip mounts. Typing
-   `@Name` as plain text does NOT notify the person - the chip must come from the dropdown.
+   `@Name` as plain text does NOT notify the person — the chip must come from the dropdown.
 6. **Leave as draft.** Do NOT press Enter / click Send. Teams shows a **Draft** badge per
    conversation (persists within the live browser session). Verify content, then stop.
 
@@ -178,7 +180,8 @@ Inputs: the address, message body, optional hyperlinks (display text + URL), opt
 The orchestrator runs these steps inline with the **`slack`** skill's `slack.js` (its SKILL.md has every flag and the mrkdwn the body uses).
 Its `--create-draft` saves the draft where Russell reviews and sends it.
 
-Inputs: the target (a person's name for a DM, or a channel/conversation, or - when replying to a captured drainer item - its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
+Inputs: the target (a person's name for a DM, or a channel/conversation, or — when replying to a captured
+drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the message body, optional links, mentions, and files.
 
 1. **Resolve the conversation and identity-gate it.**
    A captured item already carries its `channel` (and `threadTs` for a thread reply).
@@ -196,14 +199,14 @@ Inputs: the target (a person's name for a DM, or a channel/conversation, or - wh
 
 ## Mode: `outlook`
 
-Creates an Outlook **draft** for the WORK account via the **`ms-rest`** skill's REST API - no browser
+Creates an Outlook **draft** for the WORK account via the **`ms-rest`** skill's REST API — no browser
 composer. The draft lands un-sent in **Drafts** (reviewable on web and mobile) with clickable links;
-for a reply, the quoted original sits below the new text. This skill never sends - `ms-rest send-draft`
+for a reply, the quoted original sits below the new text. This skill never sends — `ms-rest send-draft`
 is gated separately and reserved for Russell's explicit OK.
 
 Two shapes:
-- **Reply** to an existing message - needs that message's Outlook REST `id`.
-- **New email** - needs subject + recipients.
+- **Reply** to an existing message — needs that message's Outlook REST `id`.
+- **New email** — needs subject + recipients.
 
 `ms-rest` ships inside its plugin's versioned cache, not in any repo's `.claude/`. Address its script
 through the cache glob (run the newest if several are cached) from the repo root:
@@ -211,7 +214,7 @@ through the cache glob (run the newest if several are cached) from the repo root
 
 1. **Auth-glance.** `node ~/.claude/plugins/cache/*/ms-rest/*/skills/ms-rest/outlook-mail.js token`. `Token OK ✅` → ready. If it
    reports no token, follow `ms-rest` AUTH-GLANCE (sign in to Outlook web in the CDP browser once),
-   then retry. Never surface a token error - fix it and continue.
+   then retry. Never surface a token error — fix it and continue.
 2. **Resolve the target (reply only).** If you were handed the source `messageId` (e.g. from the
    channel-watch CAPTURE record), use it. Otherwise locate the message with
    `outlook-mail.js enumerate` (and `get <id>` to confirm), and **identity-gate**: the message's
@@ -228,7 +231,7 @@ through the cache glob (run the newest if several are cached) from the repo root
 5. **Voice gate + read-back.** `node ~/.claude/plugins/cache/*/ms-rest/*/skills/ms-rest/outlook-mail.js get <draftId>` and confirm
    the body reads back correctly (greeting + body + clickable links; for a reply, the quoted original
    below the new text). Re-apply the `message-rules` Conversational rules; if anything was
-   trimmed, rewrite the body file and re-run step 4 (the new draft supersedes the old - delete the
+   trimmed, rewrite the body file and re-run step 4 (the new draft supersedes the old — delete the
    stale one with `delete <draftId>` if needed).
    When asked to review a draft reply (including one Russell hand-edited), first read the thread it answers - the other party's last two or three messages - and check every tone claim against what they said (stated timelines, promises, who covers for whom) before calling a line presumptive.
    Judge paragraph structure with the `--html` view of `mail.js --show` (see the `ms-graph` skill).
