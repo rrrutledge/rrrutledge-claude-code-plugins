@@ -110,8 +110,8 @@ For physical tasks it is the set of tasks still queued on the Physical Tasks cal
 A source with an inbox deeper than the 500-message listing hides its oldest messages from the check, which costs a missed catch and never causes a wrong re-queue.
 
 **Per-provider isolation + health.**
-Each provider's enumerate is wrapped: a failure (expired creds, network/API blip, or a missing helper at adapter-load) raises a typed `ProviderError` that the poller catches, so one dead source never aborts the cycle - the others still drain.
-Every cycle records each provider's outcome to `<runtime_dir>/provider-health.json` (`consecutive_failures`, `last_error`, `last_error_kind` [`auth` = transient/self-heals, `config` = deploy error], `last_error_ts`, `last_ok_ts`).
+Each provider's enumerate is wrapped: a failure (expired creds, network/API blip, a helper killed at its time limit, or a missing helper at adapter-load) raises a typed `ProviderError` that the poller catches, so one dead source never aborts the cycle - the others still drain.
+Every cycle records each provider's outcome to `<runtime_dir>/provider-health.json` (`consecutive_failures`, `last_error`, `last_error_kind` [`auth` = transient/self-heals, `config` = deploy error, `timeout` = helper killed at its time limit, transient], `last_error_ts`, `last_ok_ts`).
 Because the poller is headless, this file is how a silently-dead provider becomes visible: the daily digest reads it and surfaces any provider with a sustained failure streak so Russell knows to refresh the credential.
 (Dry-run doesn't write it - it's often run without the live creds.)
 

@@ -27,6 +27,7 @@ Before anything else:
     - **`auth`** (transient - self-heals once creds are refreshed): name the likely credential and how to refresh it. gmail → re-run the gmail skill's one-time OAuth sign-in (`node gmail-auth.js` via browser-chauffeur) to refresh its cached token; slack → `SLACK_BOT_TOKEN` / `SLACK_COOKIE_D`; outlook-graph → re-auth the ms-graph token cache; trello → `TRELLO_API_KEY` / `TRELLO_TOKEN`.
       Where it's a User-scope env var, refresh it; where it's a cached OAuth token, re-run the sign-in - either way the next poller cycle recovers on its own.
     - **`config`** (a helper script/util couldn't be located - won't self-heal): flag it distinctly as a deploy problem, not an expired credential - the adapter can't find its `*.js`/util, likely a missing or mis-pointed plugin install.
+    - **`timeout`** (a helper ran past its time limit and was killed - transient, retried next cycle): not a credential; note it and watch the next cycle, and look closer only if it repeats while the machine was busy launching sessions or otherwise healthy.
     - **`unknown`** (an SSL/TLS/connection error - e.g. `SSL EOF`, `fetch failed`) - a transient network blip, not a credential.
       Adapters already refresh their own tokens each cycle, so an error that survives repeated cycles is the transport, not the token.
       Note it and watch the next cycle; do not present it as a token to refresh.

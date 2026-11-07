@@ -19,14 +19,18 @@ id scheme: `orphan-<session_id>-<slug(started_at)>` — see stable_id() for why 
 """
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, slug  # noqa: E402
+from provider_base import (  # noqa: E402
+    NODE_TIMEOUT_SECONDS, NO_WINDOW, ProviderBase, ProviderError, run_subprocess_bounded, slug)
+
+# The scan waits on `claude agents` once per account and on respawn/stop calls of up to 60s each,
+# so its own bounds exceed any short limit; this covers them.
+SCAN_TIMEOUT_SECONDS = NODE_TIMEOUT_SECONDS
 
 _REL_FIND_ORPHANS = os.path.join("skills", "resume-sessions", "scripts", "find-orphans.py")
 
@@ -67,12 +71,15 @@ class Provider(ProviderBase):
     def enumerate(self, limit):
         script = _find_orphans_script()
         try:
-            result = subprocess.run(
-                [sys.executable, script], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=30)
-        except (OSError, subprocess.TimeoutExpired) as e:
+            result = run_subprocess_bounded(
+                [sys.executable, script], timeout=SCAN_TIMEOUT_SECONDS, creationflags=NO_WINDOW)
+        except OSError as e:
             raise ProviderError(f"orphan-sessions: failed running find-orphans.py: {e}",
                                 kind="auth")
+        if getattr(result, "timed_out", False):
+            raise ProviderError(
+                f"orphan-sessions: find-orphans.py timed out after {SCAN_TIMEOUT_SECONDS}s",
+                kind="timeout")
         if result.returncode != 0:
             raise ProviderError(
                 f"orphan-sessions: find-orphans.py exited {result.returncode}: "
