@@ -73,6 +73,8 @@ class ProviderError(Exception):
     differently:
       - "auth"   — a transient credential / network failure (expired token, network blip). Expected
                    occasionally; self-heals once the credential is refreshed.
+      - "timeout" — a helper that ran past its time limit and was killed. Transient like "auth" (the
+                   next cycle retries), but not a credential problem, so the digest reports it as its own kind.
       - "config" — a deploy/config error: a helper .js couldn't be located, or a helper ran but
                    crashed on a missing npm dependency (its skill's shared node_modules store lacks a
                    required package). Rare and loud; it won't self-heal until a human reinstalls, so the

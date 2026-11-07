@@ -80,6 +80,9 @@ JOB_SETTLE_GRACE = timedelta(minutes=5)
 # nobody answers would be woken, retired after 8 idle hours, and woken again, forever.
 WAKE_BACKOFF_BASE = timedelta(hours=12)
 WAKE_BACKOFF_CAP = timedelta(days=4)
+# Per retired job, whether its transcript exists and is free of a self-close, keyed by the job's
+# updatedAt - so the transcript tails are read once per turn, not on every drainer cycle.
+RETIRED_VERDICTS_PATH = os.path.expanduser("~/.claude/session-mgr/retired-verdicts.json")
 
 
 def agent_session_ids(agents):
@@ -234,15 +237,16 @@ def _parse_time(value):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def wake_backoff(session_id, wakes):
+def wake_backoff(session_id, wakes, turns=None):
     """How long after its latest retirement `session_id` waits before it is woken again. Zero unless
     an earlier automated wake (bg_session.record_wake) found it and Russell has typed nothing into it
     since: then WAKE_BACKOFF_BASE, doubled for each earlier wake he also left untouched, up to
-    WAKE_BACKOFF_CAP. Any message from him resets it to zero."""
+    WAKE_BACKOFF_CAP. Any message from him resets it to zero. `turns` is the session's human_turns
+    when the caller already has it."""
     entry = wakes.get(session_id)
     if not isinstance(entry, dict):
         return timedelta(0)
-    if bg_session.human_turns(session_id) > entry.get("turns", 0):
+    if (bg_session.human_turns(session_id) if turns is None else turns) > entry.get("turns", 0):
         return timedelta(0)
     return min(WAKE_BACKOFF_BASE * (2 ** min(int(entry.get("untouched", 0)), 16)), WAKE_BACKOFF_CAP)
 
@@ -255,6 +259,9 @@ def retired_job_orphans(jobs, active, now=None):
     (nothing to resume from), and any still inside its wake backoff."""
     now = now or datetime.now(timezone.utc)
     wakes = bg_session.load_wakes()
+    cached = _load_json(RETIRED_VERDICTS_PATH)
+    job_ids = {job["sessionId"] for _, job in jobs}
+    verdicts = {sid: v for sid, v in cached.items() if sid in job_ids}
     orphans, seen = [], set()
     for _, job in jobs:
         sid = job["sessionId"]
@@ -263,9 +270,30 @@ def retired_job_orphans(jobs, active, now=None):
         ended = _parse_time(job.get("updatedAt") or job.get("lastTerminalAt") or job.get("createdAt"))
         if ended is None or ended < JOBS_SINCE or now - ended < JOB_SETTLE_GRACE:
             continue
-        if not transcript_path(sid) or closed_itself_on_purpose(sid):
+        # Whether a transcript exists and whether it closed itself can only change when the session runs
+        # again, and every run bumps the job's updatedAt - so decide once per updatedAt.
+        stamp = job.get("updatedAt")
+        verdict = verdicts.get(sid)
+        if stamp and isinstance(verdict, dict) and verdict.get("updatedAt") == stamp:
+            resumable = bool(verdict.get("resumable"))
+        else:
+            resumable = bool(transcript_path(sid)) and not closed_itself_on_purpose(sid)
+            if stamp:
+                verdicts[sid] = {"updatedAt": stamp, "resumable": resumable}
+        if not resumable:
             continue
-        if now - ended < wake_backoff(sid, wakes):
+        if sid in wakes:
+            # human_turns reads the whole transcript; like the verdict it only moves with updatedAt.
+            if stamp and "turns" in verdicts[sid]:
+                turns = verdicts[sid]["turns"]
+            else:
+                turns = bg_session.human_turns(sid)
+                if stamp:
+                    verdicts[sid]["turns"] = turns
+            backoff = wake_backoff(sid, wakes, turns)
+        else:
+            backoff = timedelta(0)
+        if now - ended < backoff:
             continue
         seen.add(sid)
         orphans.append({
@@ -274,6 +302,8 @@ def retired_job_orphans(jobs, active, now=None):
             "started_at": job.get("createdAt"),
             "ended_at": job.get("updatedAt") or ended.isoformat(),
         })
+    if verdicts != cached:
+        _save_json(RETIRED_VERDICTS_PATH, verdicts)
     return orphans
 
 
