@@ -26,11 +26,9 @@ to paste into the LinkedIn composer and send himself.
 **Voice:** Before composing any message, invoke the **`document-authoring`** skill to write the
 content in Russell's voice. Pass the drafted text to the mode steps below for staging.
 
-**Voice gate (stage-time - load-bearing):** After the draft is staged, read it back from where it
-lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`**
-Conversational writing rules as a review pass. If anything was trimmed, re-stage the gated version
-(Teams: re-type it; Slack: re-create it with `--replace`; Outlook: re-create the draft from the gated body). Report `voice-gate=passed` in
-the done-criteria once it has run.
+**Voice gate (stage-time - load-bearing):** After the draft is staged, read it back from where it lives (Teams: the composer; Slack: the draft id `--create-draft` printed, in `slack.js --list-drafts`; Outlook: `ms-rest get <draftId>`) and re-apply the **`document-authoring`** Conversational writing rules as a review pass.
+If anything was trimmed, re-stage the gated version (Teams: re-type it; Slack: re-run the same `--create-draft` command, every flag included, with `--replace` added; Outlook: re-create the draft from the gated body).
+Report `voice-gate=passed` in the done-criteria once it has run.
 For Teams this read-back runs inside the browser subagent (it holds the composer), and the subagent reports `voice-gate=passed` back in its `DONE` result.
 
 **Review gate (mint a receipt for the reviewed body):** every mode is harness-enforced through
@@ -185,6 +183,7 @@ Inputs: the target (a person's name for a DM, or a channel/conversation, or - wh
 1. **Resolve the conversation and identity-gate it.**
    A captured item already carries its `channel` (and `threadTs` for a thread reply).
    A person by name resolves through `slack.js --find-dm=<full name>`, a known user ID through `--open-dm=<user ID>`.
+   A person `--find-dm` can't find (a Slack Connect or external contact) is reached through a link Russell gives to the conversation, whose path carries the channel id.
    Confirm the conversation is the intended one with `slack.js --resolve-name=<channel>` before staging; a person's Slack handle can differ from their real name, so check it is them.
 2. **Check for an existing draft.** `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
    A listed draft whose destination is this exact target is one the user left: for a top-level message, that is a destination line with no `thread:`.
