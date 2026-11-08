@@ -111,7 +111,7 @@ Some commands are approved based on their *arguments*, not just their name:
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory
   anywhere on disk (not just the current repo's) - `.tmp/` is always scratch space,
   regardless of which repo it's under.
-- **`sed`** - approved unless the `-i` (in-place edit) flag is present.
+- **`sed`** - approved for read-only use. An in-place flag (`-i`, `--in-place`) never reaches this check: `enforce_bash()` BLOCKs it first.
 
 #### 4. AI inspection + learned store (`commands.py` - `_ai_learn`, `learned.py`)
 
