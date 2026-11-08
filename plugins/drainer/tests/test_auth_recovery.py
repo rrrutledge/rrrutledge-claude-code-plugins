@@ -114,7 +114,7 @@ check("the config-alert and auth-alert cooldowns are independent keys on the sam
 # --- the escalation gate the enumerate loop applies -----------------------------------------------
 # Mirrors the exact boolean in main()'s enumerate-failure branch: escalate only on kind="auth-unrecoverable"
 # (which only a provider whose own transport tried and failed a self-heal ever raises), at the threshold,
-# with the cooldown due. A plain "auth" failure — however many times it repeats, from ANY provider — must
+# with the cooldown due. A plain "auth" failure - however many times it repeats, from ANY provider - must
 # NEVER take this path; that is the "every other provider's behavior is completely unchanged" guarantee.
 print("\nauth-unrecoverable escalation gate")
 

@@ -1,4 +1,4 @@
-"""Unit tests for the pure parsing/classification helpers — the pieces most
+"""Unit tests for the pure parsing/classification helpers - the pieces most
 prone to subtle regression during refactoring."""
 import os
 import sys
@@ -596,7 +596,7 @@ class TestWorkflow:
     def test_inline_script_never_blanket_via_name_even_if_it_claims_the_name(self, monkeypatch):
         # An inline/dynamic script's own text is unverified at call time, so a
         # self-declared meta.name must never grant blanket trust through the
-        # name path — it always goes through the AI content check instead.
+        # name path - it always goes through the AI content check instead.
         set_config(workflow_blanket_names=["code-review"])
         monkeypatch.setattr(ai, "call_ai", lambda prompt: (None, None))
         script = "export const meta = {\n  name: 'code-review',\n  description: 'x',\n}\nlog('hi')"
@@ -758,7 +758,7 @@ class TestCheckNodeSegment:
     def test_unquoted_windows_path_gets_actionable_block(self):
         # A bare C:\...\script.js argument gets its backslashes stripped by
         # shell word-splitting before node ever sees it (real bash does this
-        # identically to shlex — it isn't shlex-specific). The missing-file
+        # identically to shlex - it isn't shlex-specific). The missing-file
         # case should be turned into a clear, actionable deny instead of a
         # silent fall-through to a manual prompt.
         set_config()
@@ -784,7 +784,7 @@ class TestCheckNodeSegment:
 
     def test_double_quoted_windows_path_not_flagged_as_mangled(self):
         # Double-quoting preserves backslashes, so this isn't the mangled-path
-        # hazard — it should fail for the ordinary "file not found" reason.
+        # hazard - it should fail for the ordinary "file not found" reason.
         set_config()
         reset_block_reason()
         seg = r'node "C:\definitely\not\a\real\path\script.js"'

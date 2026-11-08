@@ -18,7 +18,7 @@ failures = []
 
 def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
-    print(f"  {status}: {name}" + (f" — {detail}" if detail and not condition else ""))
+    print(f"  {status}: {name}" + (f" - {detail}" if detail and not condition else ""))
     if not condition:
         failures.append(name)
 

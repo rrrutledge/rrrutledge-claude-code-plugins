@@ -4,7 +4,7 @@ description: Create a marketing-style Confluence page with alternating two-colum
 instructions: |-
   ## Marketing-Style Confluence Page
 
-  This skill creates polished Confluence pages — alternating two-column sections with
+  This skill creates polished Confluence pages - alternating two-column sections with
   text on one side and an image on the other, separated by horizontal rules.
 
   ---
@@ -33,7 +33,7 @@ instructions: |-
 
   ---
 
-  ## Two Section Types — Rules
+  ## Two Section Types - Rules
 
   There are exactly two kinds of sections. Never mix them.
 
@@ -45,9 +45,9 @@ instructions: |-
 
   ### Type B: Screenshot section (full-width, no stock image)
   Use when the section shows what the user sees or does in the product.
-  - `fixed-width` layout — the entire section width
+  - `fixed-width` layout - the entire section width
   - Contains: h2 heading + explanatory paragraph(s) + centered screenshot
-  - No stock image — the screenshot IS the visual
+  - No stock image - the screenshot IS the visual
   - Screenshot width: 880px, centered
 
   | Content                        | Section type          | Image          |
@@ -160,17 +160,17 @@ instructions: |-
 
   ## Workflow: Creating a New Page
 
-  1. **Identify parent page** — find its Confluence page ID
+  1. **Identify parent page** - find its Confluence page ID
   2. **Write the script** to `.tmp/create-PAGENAME.py` using the helpers
-  3. **Run the script** — it POSTs to `/wiki/rest/api/content` and prints the page ID
+  3. **Run the script** - it POSTs to `/wiki/rest/api/content` and prints the page ID
   4. **Upload screenshots** as attachments using `upload_attachment()`
-  5. **Review in browser** — open the page URL in Confluence to verify layout
+  5. **Review in browser** - open the page URL in Confluence to verify layout
 
   ---
 
   ## Content Guidelines
 
-  - **Tone**: Clear, practical, grounded — not promotional
+  - **Tone**: Clear, practical, grounded - not promotional
   - **Headings**: No emojis; sentence case or title case
   - **Paragraphs**: 2–3 sentences max per paragraph
   - **No transition framing**: Write in present tense as if this is simply how things work.

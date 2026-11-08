@@ -63,7 +63,7 @@ def get_trusted():
     """Return the full trusted command set (plus the assignment sentinel).
 
     When SAFE_COMPOUNDS_TRUSTED_JSON points at a JSON list, that list is used
-    verbatim instead of the live sources — this is how tests pin behavior.
+    verbatim instead of the live sources - this is how tests pin behavior.
     """
     override = os.environ.get('SAFE_COMPOUNDS_TRUSTED_JSON')
     if override:

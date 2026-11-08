@@ -10,7 +10,7 @@ Each case is the hook's input plus the decision it is expected to produce:
   expect  - "ALLOW" (auto-approve), "BLOCK" (deny + rewrite message), or
             "PROMPT" (defer to a manual prompt)
 
-These expectations ARE the spec — hand-verified, asserted directly by
+These expectations ARE the spec - hand-verified, asserted directly by
 test_characterization.py. Tests run with AI disabled, the trusted set pinned to
 fixtures/trusted_commands.json, and config from fixtures/config.json
 (curl_domains=["example.org"], mcp_blanket_servers=["myserver"]).
@@ -112,6 +112,22 @@ CASES = [
     # --- sed ----------------------------------------------------------------
     {"id": "sed_inplace", "tool": "Bash", "command": "sed -i s/a/b/ file.txt", "expect": "BLOCK"},
     {"id": "sed_plain", "tool": "Bash", "command": "sed s/a/b/ file.txt", "expect": "ALLOW"},
+    {"id": "sed_inplace_suffix", "tool": "Bash", "command": "sed -i.bak s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_underscore", "tool": "Bash", "command": "sed -i_unused s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_combined_ni", "tool": "Bash", "command": "sed -ni s/a/b/p file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_combined_Ei", "tool": "Bash", "command": "sed -Ei s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_then_e", "tool": "Bash", "command": "sed -i -e s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_long", "tool": "Bash", "command": "sed --in-place s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_long_suffix", "tool": "Bash", "command": "sed --in-place=.bak s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_long_abbrev_i", "tool": "Bash", "command": "sed --i s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_long_abbrev_in", "tool": "Bash", "command": "sed --in=.bak s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_xargs", "tool": "Bash", "command": "xargs sed -i s/a/b/ file.txt", "expect": "BLOCK"},
+    {"id": "sed_inplace_find_exec", "tool": "Bash", "command": "find . -name x.txt -exec sed -i s/a/b/ {} +", "expect": "BLOCK"},
+    {"id": "sed_inplace_devnull", "tool": "Bash", "command": "sed -i s/a/b/ /dev/null", "expect": "BLOCK"},
+    {"id": "sed_quoted_dash_i_script", "tool": "Bash", "command": "sed -n 's/-i/x/' file.txt", "expect": "ALLOW"},
+    {"id": "sed_quoted_dash_i_replacement", "tool": "Bash", "command": "sed 's/a/-i/' file.txt", "expect": "ALLOW"},
+    {"id": "sed_n_e_E_s", "tool": "Bash", "command": "sed -nE -e s/a/b/p file.txt", "expect": "ALLOW"},
+    {"id": "sed_piped", "tool": "Bash", "command": "cat file.txt | sed -s s/a/b/", "expect": "ALLOW"},
 
     # --- headless browser render (quoted exe path with spaces) --------------
     {"id": "edge_headless_remote_url", "tool": "Bash",
@@ -124,7 +140,7 @@ CASES = [
     # --- taskkill (self-close-my-own-tab only; anything else prompts) -------
     # A real self-target ALLOW depends on the live process tree at test time
     # (not a static literal), so it's covered by test_units.py's
-    # TestTaskkill/TestSelfTabHostPid instead — these cases pin the negative
+    # TestTaskkill/TestSelfTabHostPid instead - these cases pin the negative
     # (never blanket-approved) forms.
     # PID 4 (System) is live on Windows and never an own descendant; off
     # Windows the empty process table fails closed - PROMPT either way. (An
@@ -133,10 +149,10 @@ CASES = [
     {"id": "taskkill_image_name", "tool": "Bash", "command": "taskkill /IM chrome.exe /F", "expect": "PROMPT"},
     {"id": "taskkill_remote_host", "tool": "Bash", "command": "taskkill /S otherhost /PID 1 /F", "expect": "PROMPT"},
     # MSYS/Git-Bash doubles the leading slash (//PID, //T, //F) to escape its
-    # path-mangling — same negative case, doubled-slash form.
+    # path-mangling - same negative case, doubled-slash form.
     {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 4 //T //F", "expect": "PROMPT"},
     # The drainer's self-close primitive (fires SessionEnd, then kills its own
-    # tab) must auto-approve via the trusted plugin-cache script dir — a worker
+    # tab) must auto-approve via the trusted plugin-cache script dir - a worker
     # that hits a prompt here sits open forever instead of closing silently.
     {"id": "close_session_plugin_script", "tool": "Bash",
      "command": "python \"C:/Users/x/.claude/plugins/cache/rrrutledge-claude-code-plugins/drainer/1.39.0/skills/drainer/scripts/close-session.py\"",

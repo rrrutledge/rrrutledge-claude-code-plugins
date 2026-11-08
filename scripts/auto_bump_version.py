@@ -6,19 +6,19 @@ plugins/<name>/.claude-plugin/plugin.json keeps the same version, so
 `claude plugin update` (which keys off the version number) never re-pulls the
 new source and the fix silently never ships. Previously a CI guardrail (see git
 history for check_version_bump.py) required every PR to bump the version by
-hand — in practice that step was easy to forget and needed follow-up "bump to
+hand - in practice that step was easy to forget and needed follow-up "bump to
 X" PRs more than once. This script removes the manual step: it runs after a
 push lands on main and bumps the patch version for any plugin that changed but
 didn't already get a version bump in the PR.
 
-For skill plugins the behavior IS markdown — skills/**/SKILL.md and
+For skill plugins the behavior IS markdown - skills/**/SKILL.md and
 commands/*.md are the payload, not documentation. So a blanket "*.md is docs"
 exemption would skip bumping exactly the changes that most need to ship.
 The exemption is therefore narrow: only genuine meta-docs (README, CHANGELOG,
 CONTRIBUTING, LICENSE) and anything under a docs/ directory are bump-exempt.
 
 A plugin that already got a manual version change in the push (e.g. a
-deliberate minor/major bump made in the PR) is left alone — only plugins whose
+deliberate minor/major bump made in the PR) is left alone - only plugins whose
 version is unchanged between before/after get an automatic patch bump.
 
 Run after merge, as a push-to-main workflow step. Compares the pushed commits
@@ -47,7 +47,7 @@ def file_at(ref, path):
         return None
 
 
-# Genuine meta-docs that don't change plugin behavior — safe to edit without a
+# Genuine meta-docs that don't change plugin behavior - safe to edit without a
 # version bump. Everything else under a plugin (SKILL.md, commands/*.md, scripts,
 # hooks, plugin.json) is treated as behavior and requires a bump.
 DOC_BASENAMES = {'readme.md', 'changelog.md', 'contributing.md', 'license', 'license.md'}
@@ -85,7 +85,7 @@ def resolve_before(before):
             return before
         except subprocess.CalledProcessError:
             pass
-    # New branch, force-push, or an unreachable `before` — fall back to the
+    # New branch, force-push, or an unreachable `before` - fall back to the
     # immediate parent of HEAD so a single bad event doesn't skip bumps entirely.
     return git('rev-parse', 'HEAD~1').strip()
 
@@ -108,7 +108,7 @@ def main():
             continue
         before_version = version_of(before, plugin)
         if before_version is None:
-            continue  # new plugin — nothing to bump against
+            continue  # new plugin - nothing to bump against
         head_version = version_of('HEAD', plugin)
         if head_version != before_version:
             print(f'{plugin}: already bumped {before_version} -> {head_version} in this push, leaving as-is')

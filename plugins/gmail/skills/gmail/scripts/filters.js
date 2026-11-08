@@ -1,4 +1,4 @@
-// Manage Gmail filters via the Gmail settings REST API (OAuth path — see gmail-oauth.js). This is the
+// Manage Gmail filters via the Gmail settings REST API (OAuth path - see gmail-oauth.js). This is the
 // programmatic parallel to browser-driving the Gmail filters UI, and mirrors ms-graph's mail.js rule
 // commands (--list-rules/--create-rule/--append-rule/--delete-rule) so the two mailboxes feel alike.
 //
@@ -6,19 +6,19 @@
 //                 (every filter, with its criteria.query and action; --json emits the raw array)
 // Create filter:  node filters.js --create-filter --query='subject:("A" OR "B") -from:(gmail.com OR outlook.com)' --archive [--mark-read]
 //                 [--name="Corporate Subjects"] [--trash]
-//                 (--query is the raw Gmail search — OR-lists and -from: fences work verbatim.
+//                 (--query is the raw Gmail search - OR-lists and -from: fences work verbatim.
 //                  --archive removes the INBOX label (Skip the Inbox); --mark-read also removes UNREAD;
-//                  --trash routes to Trash instead. --name is a human label for output only — Gmail
+//                  --trash routes to Trash instead. --name is a human label for output only - Gmail
 //                  filters are anonymous, identified server-side by id + criteria, not by a name.)
 // Append phrase:  node filters.js --append-filter=<id> --add-subject='"C" OR "D"'
 //                 node filters.js --append-filter=<id> --add-body='"E"'
 //                 node filters.js --append-filter=<id> --add='"F"'
 //                 (the "add to the bucket" op. Gmail filters can't be edited in place, so this reads the
 //                  filter's query, splices the addition in, DELETES the old filter, and CREATES a new one
-//                  with the same action — so the id CHANGES. --add-subject splices inside the subject:(…)
+//                  with the same action - so the id CHANGES. --add-subject splices inside the subject:(…)
 //                  group; --add-body inside the leading (…) group; --add appends ` OR <x>` at top level.)
 // Delete filter:  node filters.js --delete-filter=<id>
-//                 (removes the filter — reversible: re-create it. Does not touch already-archived mail.)
+//                 (removes the filter - reversible: re-create it. Does not touch already-archived mail.)
 
 const { getAuthedClient, assertAccountEmail } = require('./gmail-oauth');
 
@@ -45,7 +45,7 @@ function insertIntoGroup(query, openMarker, addition) {
   return query.slice(0, i) + ' OR ' + addition + query.slice(i);
 }
 
-// Splice into the leading top-level (…) group — the body-bucket shape `("x" OR "y") -from:(…)`.
+// Splice into the leading top-level (…) group - the body-bucket shape `("x" OR "y") -from:(…)`.
 function insertIntoLeadingGroup(query, addition) {
   const offset = query.length - query.trimStart().length;
   if (query[offset] !== '(') return null;
@@ -135,7 +135,7 @@ async function getFilter(client, id) {
   return res.data;
 }
 
-// Append a phrase to a bucket: read query, splice, delete old, create new (id changes — Gmail has no
+// Append a phrase to a bucket: read query, splice, delete old, create new (id changes - Gmail has no
 // in-place update). --add-subject/--add-body target a group; --add appends at top level.
 async function appendFilter(client) {
   const id = args['append-filter'];
@@ -167,7 +167,7 @@ async function deleteFilter(client) {
   const id = args['delete-filter'];
   if (id === true) throw new Error('--delete-filter requires an id (from --list-filters)');
   await client.request({ url: `${API}/${encodeURIComponent(id)}`, method: 'DELETE' });
-  console.log(`Deleted filter ${id}. Reversible — re-create it with --create-filter.`);
+  console.log(`Deleted filter ${id}. Reversible - re-create it with --create-filter.`);
 }
 
 module.exports = { createFilter, insertIntoGroup, insertIntoLeadingGroup };

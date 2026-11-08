@@ -1,4 +1,4 @@
-"""Shared reader for `.claude/drainer.local.md` — the per-machine drainer settings.
+"""Shared reader for `.claude/drainer.local.md` - the per-machine drainer settings.
 
 Both entry points use it: the fast-loop poller (`run-poller.py`) and the once-a-day digest
 launcher (`run-digest.py`). Keeping the parse in one place means the two never drift on knob
@@ -42,13 +42,13 @@ def ensure_main_worktree(source_repo, worktree=DEFAULT_MAIN_WORKTREE):
     dormant until someone restores main by hand. A worktree that ONLY the drainer owns, and that only
     ever holds origin/main, removes the coupling: config always reflects merged main.
 
-    Resetting it every cycle is safe because nothing writes to it in place — worker sessions run with
+    Resetting it every cycle is safe because nothing writes to it in place - worker sessions run with
     cwd = the real repo, and (per the git-workflow skill) any branch work creates its own worktree
     rather than checking out here, so this one stays a clean detached origin/main.
 
     Fail-safe: on any git error (offline, no origin, or a refresh race between the poller and the daily
-    digest) this returns `source_repo`, so the drainer still runs against the real repo — the prior
-    behavior — rather than not running at all.
+    digest) this returns `source_repo`, so the drainer still runs against the real repo - the prior
+    behavior - rather than not running at all.
     """
     try:
         _git(["-C", source_repo, "fetch", "--quiet", "origin", "main"], timeout=90)
@@ -95,14 +95,14 @@ def parse_provider_names(text):
 def read_config(repo, runtime_root=None):
     """Pull the scalar knobs + enabled provider names out of .claude/drainer.local.md frontmatter.
 
-    `repo` is the CONFIG root — under the main-worktree setup this is the drainer-owned worktree pinned
+    `repo` is the CONFIG root - under the main-worktree setup this is the drainer-owned worktree pinned
     to origin/main (see `ensure_main_worktree`), so a feature branch left checked out at the real repo
     root can't make the poller read stale config. Everything config-shaped resolves against it:
     drainer.local.md itself, a relative `local_dir` (context.md, provider overlays), and `cfg["repo"]`
     (which the trello adapter re-reads for trello-boards.yaml).
 
     `runtime_root` is where RUNTIME state lives (seen.json, provider-health.json, digest-queue.json,
-    seeds/, items/) — the REAL repo, passed separately so a relative `runtime_dir` stays anchored there
+    seeds/, items/) - the REAL repo, passed separately so a relative `runtime_dir` stays anchored there
     and never migrates into the throwaway worktree. Defaults to `repo` when omitted (single-root callers
     and tests), preserving the original behavior."""
     text = _read_local(repo)
@@ -141,22 +141,22 @@ def read_config(repo, runtime_root=None):
         # process), so a changed value takes effect on the very next cycle.
         "target_reviewable": int(os.environ.get("DRAINER_TARGET_REVIEWABLE", "5")),
         "max_concurrent": int(os.environ.get("DRAINER_MAX_CONCURRENT", "18")),
-        # Worker sessions need an explicit model — otherwise they inherit the session default, which may
+        # Worker sessions need an explicit model - otherwise they inherit the session default, which may
         # not be what a given worker should run. The poller picks per item by triage complexity:
         # simple -> worker_model, complex -> worker_model_complex. Both models report a 1M context
-        # window, so native auto-compact (~967K) is not a usable cost control on its own — the
+        # window, so native auto-compact (~967K) is not a usable cost control on its own - the
         # session-lifecycle hook (`~/OneDrive/Claude/scripts/session-lifecycle.py`) is what actually
         # judges a reset, dynamically, at each turn boundary.
         "worker_model": scalar("worker_model", "sonnet"),
         "worker_model_complex": scalar("worker_model_complex", "opus"),
-        # The triage call must also pin a model — under the scheduled task it has no parent session,
+        # The triage call must also pin a model - under the scheduled task it has no parent session,
         # so it would otherwise inherit whatever the session default happens to be. Sonnet.
         "triage_model": scalar("triage_model", "sonnet"),
         # The once-a-day digest session. It summarizes fyi and groups junk with source-stop
         # proposals - judgment-heavy, so a stronger model.
         "digest_model": scalar("digest_model", "opus"),
-        # A CLAUDE_CONFIG_DIR to run the unattended headless calls under — the triage and screen
-        # `claude -p` subprocesses — so they draw from a dedicated background Claude subscription
+        # A CLAUDE_CONFIG_DIR to run the unattended headless calls under - the triage and screen
+        # `claude -p` subprocesses - so they draw from a dedicated background Claude subscription
         # instead of the account Russell types into interactively. Empty (the default) leaves
         # CLAUDE_CONFIG_DIR unset, so those calls use the same account as everything else. Set it in the
         # machine-local drainer.local.md once that background account's CLI is authenticated under the

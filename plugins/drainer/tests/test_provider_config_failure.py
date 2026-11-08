@@ -1,7 +1,7 @@
 """Tests for the poller's config-failure classification and escalation: a Node helper that crashes on a
 missing npm dependency must be classified kind="config" (a broken deploy that won't self-heal), not the
-transient "auth" bucket, and a config-kind provider failure must earn an immediate diagnostic tab —
-gated by a consecutive-failure threshold and an hourly per-provider cooldown — instead of waiting for the
+transient "auth" bucket, and a config-kind provider failure must earn an immediate diagnostic tab -
+gated by a consecutive-failure threshold and an hourly per-provider cooldown - instead of waiting for the
 once-a-day digest. A missing `imapflow` left three mail providers dark for days; this is the guardrail.
 
 Run directly:
@@ -72,7 +72,7 @@ check("cooldown is keyed per provider (outlook's recent alert doesn't mute gmail
 
 
 # --- the gate the enumerate loop applies: config-kind + threshold reached + cooldown due ----------
-# Mirrors the exact boolean in main()'s enumerate-failure branch, so the wiring — not just the pieces —
+# Mirrors the exact boolean in main()'s enumerate-failure branch, so the wiring - not just the pieces -
 # is covered: a config failure escalates only once it has failed CONFIG_FAILURE_ALERT_THRESHOLD cycles
 # in a row (a single blip mid-`claude plugin update` self-clears) and its per-provider cooldown is due.
 print("\nescalation gate")

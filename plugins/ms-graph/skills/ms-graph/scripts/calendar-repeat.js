@@ -1,11 +1,11 @@
-// From-completion repeat markers for physical tasks — pure date/marker math, no Graph dependency, so
+// From-completion repeat markers for physical tasks - pure date/marker math, no Graph dependency, so
 // it's unit-testable offline (see calendar.repeat.test.js) and cheap to reuse. calendar.js's
 // finishTaskNow requires these to read a `Repeat:` marker off a just-finished event and place the
 // next one-off.
 //
 // A one-off physical task opts into "come back a fixed interval after I actually FINISH it" with a
 // single line in its event body:  `Repeat: 7 days after completion`  (also `1 week`, `1 month`).
-// That's the one recurrence Outlook's own engine can't express — its recurrence is calendar-fixed,
+// That's the one recurrence Outlook's own engine can't express - its recurrence is calendar-fixed,
 // running from a set start date, never from when a task was last done. Markers belong on ONE-OFFS
 // only: a recurring series already spawns its own occurrences, so a marker on one would double up.
 
@@ -21,7 +21,7 @@ function parseRepeatMarker(body) {
 
 // Adds a parsed interval to a YYYY-MM-DD date, returning YYYY-MM-DD. `day`/`week` are exact day
 // counts. `month` steps the month field and keeps the day-of-month, CLAMPED to the target month's
-// last day — so a task finished Jan 31 with a `1 month` marker lands on Feb 28/29, never spilling
+// last day - so a task finished Jan 31 with a `1 month` marker lands on Feb 28/29, never spilling
 // into March. All arithmetic is on the calendar date alone (no time-of-day, no timezone), so it's
 // DST-proof.
 function addRepeatInterval(dateStr, n, unit) {

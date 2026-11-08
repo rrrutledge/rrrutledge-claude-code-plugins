@@ -245,7 +245,7 @@ def add_comment(card_id, text, session):
 
 def get_board_cards(board_id, session, fields=None):
     """List a board's open cards. Pass fields='all' (or a comma-separated list) to control which
-    card fields come back — the default Trello card payload omits the newer `start` date, so callers
+    card fields come back - the default Trello card payload omits the newer `start` date, so callers
     that need the Start (the startable-task model's one date) should request fields='all'."""
     params = {'fields': fields} if fields else None
     return trello_request('GET', f'/boards/{board_id}/cards', session, params=params)
@@ -324,10 +324,10 @@ def extract_github_field_value(field_values, field_name):
 # Start = today on every card whose LAST remaining blocker just cleared. Nothing polls the blocked card.
 
 # Card descriptions in this project write every field in bold markdown (`**Blocked-by:**`), so the
-# label and colon tolerate up to two leading/trailing `*` — a bare `Blocked-by:` still matches too.
+# label and colon tolerate up to two leading/trailing `*` - a bare `Blocked-by:` still matches too.
 _BLOCKED_BY_RE = re.compile(r'^\s*\*{0,2}\s*blocked-by\s*:\s*\*{0,2}(.*)$', re.IGNORECASE | re.MULTILINE)
 # A shortlink is the 8-char code after /c/ in a card URL, or a bare 8-char token delimited by
-# whitespace/commas — the delimiter guard keeps 8-letter slug words (…/12-ping-kristine) from matching.
+# whitespace/commas - the delimiter guard keeps 8-letter slug words (…/12-ping-kristine) from matching.
 _URL_SHORTLINK_RE = re.compile(r'trello\.com/c/([A-Za-z0-9]{8})')
 _BARE_SHORTLINK_RE = re.compile(r'(?:^|[\s,])([A-Za-z0-9]{8})(?=[\s,]|$)')
 
@@ -355,7 +355,7 @@ def parse_blocked_by(desc):
 
 def _card_is_done(card, lists_by_id, done_substrs):
     """A blocker counts as resolved when its card is archived (closed) or sits in a terminal list
-    (Finished / Abandoned / Adopted / Done) — the same lists the drainer already treats as parked."""
+    (Finished / Abandoned / Adopted / Done) - the same lists the drainer already treats as parked."""
     if card.get('closed'):
         return True
     name = (lists_by_id.get(card.get('idList')) or '').lower()
@@ -367,8 +367,8 @@ def cascade_unblock(board_id, finished_card_id, session,
                     done_substrs=('finished', 'abandoned', 'adopted', 'done')):
     """Push-unblock downstream cards after `finished_card_id` is completed.
 
-    Scans the board once, finds cards whose `Blocked-by:` names the finished card, and for each — if
-    ALL of its blockers are now done — strips its blocked label and sets Start = today so it surfaces
+    Scans the board once, finds cards whose `Blocked-by:` names the finished card, and for each - if
+    ALL of its blockers are now done - strips its blocked label and sets Start = today so it surfaces
     on the next drain. Multi-blocker cards and chains fall out of the all-blockers-done check for free.
     Returns the list of unblocked card ids. Read-heavy but runs only at completion time.
     """
@@ -408,7 +408,7 @@ def sweep_unblock(board_ids, session,
                    done_substrs=('finished', 'abandoned', 'adopted', 'done')):
     """Pull-unblock backstop across MULTIPLE boards: a blocker and the card it blocks are often on
     different boards (e.g. a resume-prep task on Personal Follow-Up blocking an application card on Job
-    Search Outreach) — cascade_unblock and a single-board sweep are both blind to that, since they only
+    Search Outreach) - cascade_unblock and a single-board sweep are both blind to that, since they only
     look up shortlinks within one board's own card list. This does one combined pass over every board in
     `board_ids` (2 read calls per board, not per blocker) and frees any card whose named blockers are ALL
     already done, regardless of which board they live on or how/when they finished.
