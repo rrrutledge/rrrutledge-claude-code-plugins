@@ -3,9 +3,9 @@
 The entry point for the dedicated Edge/Chrome automation instance. Its default
 mode launches or reuses the browser (and sweeps stale tabs on reuse); other
 modes act on an already-running one (e.g. `--close-owned` closes this session's
-tabs). A noun-named multitool, so every mode reads sensibly — not just launch.
+tabs). A noun-named multitool, so every mode reads sensibly - not just launch.
 
-Default (persistent) mode — launch or reuse:
+Default (persistent) mode - launch or reuse:
     python chauffeur.py
     python chauffeur.py --url https://example.com
 
@@ -26,7 +26,7 @@ Fresh mode (one-off, temporary browser):
 
 Notes baked in (so callers don't have to remember them):
 - Windows --user-data-dir requires backslash paths. Forward-slash Unix paths
-  from Git Bash silently fail and the CDP port never binds — handled here by
+  from Git Bash silently fail and the CDP port never binds - handled here by
   building the path with pathlib + str().
 - Edge sidebar hijack: Edge with Microsoft 365 accounts has a built-in
   Teams/Chat sidebar that intercepts Teams URLs into a popup widget instead
@@ -68,13 +68,13 @@ PERSISTENT_PROFILE = str(CHAUFFEUR_DIR / "profile")
 # shared file.
 TABS_DIR = CHAUFFEUR_DIR / "tabs"
 
-# Backstop tab hygiene. The primary cleanup is the owner reap — a tab is closed
+# Backstop tab hygiene. The primary cleanup is the owner reap - a tab is closed
 # promptly when its owning session ends (see sweep_tabs). These two are the
 # safety nets under that: TAB_TTL_SECONDS ages out a tab that's been idle a long
-# time (default 12h — comfortably past a browser login and any lunch/afk gap, so
+# time (default 12h - comfortably past a browser login and any lunch/afk gap, so
 # it only catches genuinely abandoned tabs); MAX_TABS is a hard ceiling that
 # closes the least-recently-active until back under it, so the browser can never
-# accumulate enough tabs to crash (default 15 — well under the ~20 where the
+# accumulate enough tabs to crash (default 15 - well under the ~20 where the
 # browser starts to struggle). Both are env-overridable without a code change.
 TAB_TTL_SECONDS = int(os.environ.get("BROWSER_CHAUFFEUR_TAB_TTL", 12 * 60 * 60))
 MAX_TABS = int(os.environ.get("BROWSER_CHAUFFEUR_MAX_TABS", 15))
@@ -119,7 +119,7 @@ def probe_owner(pid: int) -> tuple[str, int | None]:
     the PID, or UNKNOWN when the question can't be answered. Start time is what
     separates the real owner from an impostor: Windows recycles PIDs, so a PID
     being live is not evidence that the session which recorded it is still
-    running — a later process can inherit the number. Creation time is unique
+    running - a later process can inherit the number. Creation time is unique
     per process, so comparing it catches the impostor.
 
     UNKNOWN is deliberately distinct from DEAD. A process we lack the rights to
@@ -152,16 +152,16 @@ def probe_owner(pid: int) -> tuple[str, int | None]:
         _K32.CloseHandle(handle)
 
 
-# A record that carries a start time (a tab stamped with one — the recycle guard
+# A record that carries a start time (a tab stamped with one - the recycle guard
 # for those) has it compared with slack rather than for equality, because the
 # recorded value and the sweep's live reading can come from different runtimes.
 # Both are FILETIMEs, but demanding they agree to the tick would make any rounding
 # difference look like a recycled PID and reap every live session's tabs at once
-# — a catastrophic answer to a cosmetic disagreement. Two seconds cannot hide a
+# - a catastrophic answer to a cosmetic disagreement. Two seconds cannot hide a
 # real recycle: the replacement process starts no earlier than the moment the
 # original exited, so mistaking one for the other needs the original to have
 # lived under two seconds, which a session process never does. Records that carry
-# no start (the norm — ownership tracks CLAUDE_PID, whose liveness the sweep reads
+# no start (the norm - ownership tracks CLAUDE_PID, whose liveness the sweep reads
 # directly) fall through to matching on the PID alone.
 START_TIME_SLACK_TICKS = 2 * 10**7  # FILETIME ticks are 100ns
 
@@ -182,7 +182,7 @@ def owner_has_ended(owner_pid: int, recorded_start: int | None) -> bool:
     return False
 
 
-# tabs/<ownerPid>-<targetId>.json — `unowned` for a tab nobody claimed.
+# tabs/<ownerPid>-<targetId>.json - `unowned` for a tab nobody claimed.
 TAB_NAME_RE = re.compile(r"^(unowned|\d+)-([0-9A-Fa-f]+)\.json$")
 
 # Sentinel for "this field hasn't been read off disk yet", distinct from a
@@ -194,8 +194,8 @@ def replace_atomically(tmp: Path, target: Path, attempts: int = 5) -> None:
     """Rename tmp over target, retrying briefly if Windows refuses.
 
     A rename onto a file another process currently has open fails on Windows.
-    Left at one attempt that surfaces as a silently dropped write — the update
-    never lands and the temp file is stranded — which is how a shared registry
+    Left at one attempt that surfaces as a silently dropped write - the update
+    never lands and the temp file is stranded - which is how a shared registry
     quietly loses records. Retrying covers the moment a concurrent reader holds
     the file; the caller removes the temp either way.
     """
@@ -234,7 +234,7 @@ class TabRecord:
         """The owning process's creation time, or None if it wasn't recorded.
 
         Lives in the file rather than the name so the layout is unchanged and a
-        record written before this existed still reads cleanly — it simply has
+        record written before this existed still reads cleanly - it simply has
         no start time, and ownership falls back to matching the PID alone.
         """
         if self._owner_start is _UNREAD:
@@ -344,18 +344,18 @@ def sweep_tabs(port: int) -> None:
 
     Reclaiming is driven by idleness; ownership only lets us clean up promptly
     instead of waiting. Three layers, applied in order:
-      1. Owner reap (the courtesy) — a tab whose owning session has ended is
+      1. Owner reap (the courtesy) - a tab whose owning session has ended is
          closed right away, rather than waiting for it to age out or become the
          idlest under the cap. The owner is the Claude session that opened the
          tab (its own claude process, CLAUDE_PID), so a tab lives as long as that
          session runs and is cleaned up when it ends. A tab opened without the
-         openTab helper has no owner — it's cleaned up by layers 2–3 instead.
-      2. Age-out (TTL) — any tab idle (no activity) longer than TAB_TTL_SECONDS
+         openTab helper has no owner - it's cleaned up by layers 2–3 instead.
+      2. Age-out (TTL) - any tab idle (no activity) longer than TAB_TTL_SECONDS
          is closed, regardless of owner, catching genuinely abandoned tabs.
          Activity = a tab created/reused via the openTab/findTab helpers, or a
          URL/title change the sweep notices between runs. Tabs opened without
          openTab are adopted on first sight so their idleness can be tracked.
-      3. Count cap — if more than MAX_TABS remain, close the least-recently-
+      3. Count cap - if more than MAX_TABS remain, close the least-recently-
          active until back under the ceiling. Pure idleness, ownership-agnostic:
          an actively-used tab has recent activity so it's never the one closed.
 
@@ -397,7 +397,7 @@ def sweep_tabs(port: int) -> None:
         elif rec.last_active_ms < snapshot_ms:
             # The tab is gone and its file predates the snapshot, so it is
             # genuinely stale. A file newer than the snapshot belongs to a tab
-            # opened after we looked — leave it be.
+            # opened after we looked - leave it be.
             rec.remove()
 
     # Passive activity signal: a tab whose URL or title changed since we last
@@ -427,7 +427,7 @@ def sweep_tabs(port: int) -> None:
     open_ids = set(live)
 
     def close(rec: TabRecord) -> bool:
-        # Never close the browser's last page — that would exit the browser.
+        # Never close the browser's last page - that would exit the browser.
         if len(open_ids) <= 1:
             return False
         try:
@@ -450,7 +450,7 @@ def sweep_tabs(port: int) -> None:
         return ended_cache[key]
 
     closed = 0
-    # Layers 1 & 2 — owner reap (session ended) + age-out (idle past TTL),
+    # Layers 1 & 2 - owner reap (session ended) + age-out (idle past TTL),
     # least-recently-active first. Both apply regardless of whether some other
     # session is alive: a tab is reclaimed on its owner ending OR on its own
     # idleness, never held open just because unrelated sessions are running.
@@ -462,13 +462,13 @@ def sweep_tabs(port: int) -> None:
             if close(rec):
                 closed += 1
 
-    # Layer 3 — hard ceiling. Evict by how much the tab is worth keeping, not by
+    # Layer 3 - hard ceiling. Evict by how much the tab is worth keeping, not by
     # idleness alone: a tab nobody claimed has no session depending on it, while
     # one owned by a running session may be mid-flow in work the sweep can't
     # see. So unclaimed tabs go first and a live session's tabs are touched only
     # if the browser is still over the ceiling afterwards. Within each tier the
     # least-recently-active goes first, which is what protects a tab you are
-    # using — including one you opened by hand, since interacting with it moves
+    # using - including one you opened by hand, since interacting with it moves
     # its URL or title and the sweep bumps its activity.
     def eviction_order(rec: TabRecord) -> tuple[int, int]:
         return (0 if rec.owner_pid is None else 1, rec.last_active_ms)
@@ -500,23 +500,23 @@ def save_state(pid: int, port: int, profile_dir: str) -> None:
 
 
 def close_owned_tabs() -> int:
-    """Close every tab owned by the current session — level-1 self-cleanup.
+    """Close every tab owned by the current session - level-1 self-cleanup.
 
     A session's final courtesy: close its own browser tabs when it's genuinely
     done with them, so they never reach the sweep. Matches tabs whose recorded
-    owner is this session's CLAUDE_PID — the session's own claude process, the same
+    owner is this session's CLAUDE_PID - the session's own claude process, the same
     owner the open path (tab-registry.js ownerInfo) records. Uses the raw CDP HTTP
     endpoint (never auto-attaches, can't hang), only ever touches this session's
     own tabs, and never closes the browser's last remaining page. Best-effort.
     """
     owner = _resolve_owner_pid()
     if owner is None:
-        print("No CLAUDE_PID set (not running under a Claude session) — nothing owned to close.")
+        print("No CLAUDE_PID set (not running under a Claude session) - nothing owned to close.")
         return 0
 
     state = load_state()
     if not state or not is_cdp_alive(state["port"]):
-        print("No live browser — nothing to close.")
+        print("No live browser - nothing to close.")
         return 0
     port = state["port"]
 
@@ -584,7 +584,7 @@ def run_persistent(url: str) -> int:
         # Edge process sharing can change PIDs - if CDP responds, browser is alive
         if is_cdp_alive(port):
             # Reap orphaned, aged-out, and over-the-cap tabs before handing the
-            # browser back — keeps the target count low so connectOverCDP stays
+            # browser back - keeps the target count low so connectOverCDP stays
             # healthy and the browser can't accumulate enough tabs to crash.
             sweep_tabs(port)
             print(f"Reusing existing browser on port {port} (original PID {pid})")

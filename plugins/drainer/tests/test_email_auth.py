@@ -1,4 +1,4 @@
-"""Tests for provider_base.parse_email_auth — the envelope-authentication parser the drainer's security
+"""Tests for provider_base.parse_email_auth - the envelope-authentication parser the drainer's security
 screen weighs on email items. Pure function of raw Authentication-Results / Received-SPF header values
 (what mail.js / gmail.js --auth expose), so no network or credentials are needed.
 
@@ -32,7 +32,7 @@ def check(name, got, want):
 
 
 # --- authenticated, aligned mail from a real party: corroboration ---------------------------------
-print("authenticated + aligned mail (DMARC pass) — corroboration")
+print("authenticated + aligned mail (DMARC pass) - corroboration")
 ar = ("spf=pass (sender IP is 40.107.0.1) smtp.mailfrom=chase.com; dkim=pass (signature was verified) "
       "header.d=chase.com;dmarc=pass action=none header.from=chase.com;compauth=pass reason=100")
 r = parse("alerts@chase.com", [ar], [])
@@ -47,7 +47,7 @@ check("summary names compAuth when present", "compAuth=pass" in r["summary"], Tr
 
 
 # --- compauth: Microsoft's composite verdict, present only when the header carries it -------------
-print("\ncompauth parsing — the shared-domain mailbox-level verdict")
+print("\ncompauth parsing - the shared-domain mailbox-level verdict")
 selfmail = ("spf=pass (sender IP is 52.103.14.27) smtp.mailfrom=outlook.com; dkim=pass (signature was "
             "verified) header.d=outlook.com;dmarc=pass action=none header.from=outlook.com;"
             "compauth=pass reason=100")
@@ -56,7 +56,7 @@ check("self-mail dmarc pass", r["dmarc"], "pass")
 check("self-mail compauth pass (genuine own mailbox)", r["compauth"], "pass")
 
 # A different outlook.com user spoofing the From aligns on the shared signing domain (DMARC pass) but
-# fails Microsoft's mailbox-level check — the case compauth exists to catch.
+# fails Microsoft's mailbox-level check - the case compauth exists to catch.
 intra = ("spf=pass smtp.mailfrom=outlook.com; dkim=pass header.d=outlook.com;"
          "dmarc=pass header.from=outlook.com;compauth=fail reason=601")
 r = parse("russell.rutledge@outlook.com", [intra], [])
@@ -70,7 +70,7 @@ check("compauth absent -> None (and no compAuth in summary)",
 
 
 # --- spoof of a p=none domain: SPF fail, DMARC fail, misaligned sending domain --------------------
-print("\nspoof of a From domain via an unrelated sender — the strong-flag fingerprint")
+print("\nspoof of a From domain via an unrelated sender - the strong-flag fingerprint")
 ar = ("mx.google.com; dkim=none; spf=fail (google.com: domain of bounce@evilmailer.net does not "
       "designate 1.2.3.4 as permitted sender) smtp.mailfrom=bounce@evilmailer.net; "
       "dmarc=fail (p=NONE sp=NONE dis=NONE) header.from=yourbank.com")
@@ -80,12 +80,12 @@ check("dkim none", r["dkim"], "none")
 check("spf fail", r["spf"], "fail")
 check("fromDomain is the impersonated brand", r["fromDomain"], "yourbank.com")
 check("sendingDomain is the real (unrelated) sender", r["sendingDomain"], "evilmailer.net")
-check("aligned false — From and sending domain differ", r["aligned"], False)
+check("aligned false - From and sending domain differ", r["aligned"], False)
 check("summary names the misalignment", "misaligned with From" in r["summary"], True)
 
 
 # --- lookalike / BEC: authenticates cleanly, but on a one-letter-off domain -----------------------
-print("\nauthenticated lookalike domain — passes auth; the tell is the fromDomain itself")
+print("\nauthenticated lookalike domain - passes auth; the tell is the fromDomain itself")
 ar = ("spf=pass smtp.mailfrom=yourcompany-corp.com; dkim=pass header.d=yourcompany-corp.com; "
       "dmarc=pass header.from=yourcompany-corp.com")
 r = parse("ceo@yourcompany-corp.com", [ar], [])
@@ -112,7 +112,7 @@ check("dmarc absent -> None", r["dmarc"], None)
 
 
 # --- multiple DKIM signatures: a single pass wins -------------------------------------------------
-print("\nmultiple DKIM results — a valid signature wins")
+print("\nmultiple DKIM results - a valid signature wins")
 ar = "dkim=fail header.d=a.com; dkim=pass header.d=b.com; spf=pass smtp.mailfrom=b.com; dmarc=pass header.from=b.com"
 r = parse("x@b.com", [ar], [])
 check("dkim pass when any signature passes", r["dkim"], "pass")

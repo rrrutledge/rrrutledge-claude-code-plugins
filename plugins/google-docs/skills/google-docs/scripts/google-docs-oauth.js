@@ -1,12 +1,12 @@
 // Shared OAuth2 client for the Google Docs API. Reuses the same Google Cloud OAuth "Desktop app"
-// client the `gmail` plugin's filter path already registered (GMAIL_OAUTH_CLIENT_ID/SECRET) — one
+// client the `gmail` plugin's filter path already registered (GMAIL_OAUTH_CLIENT_ID/SECRET) - one
 // OAuth client, many scopes; each token cache only holds the scopes it was consented for. This path
 // requests https://www.googleapis.com/auth/documents (read/write Docs content), which the gmail
 // client's cached token was never asked for, so it keeps its own one-time sign-in and its own cache
 // file (~/.claude/google-docs/oauth-token.json), separate from ~/.claude/gmail/oauth-token.json.
 //
 // Prerequisite: the Google Docs API must be enabled on the same Cloud project the client belongs to
-// (console.cloud.google.com/apis/library/docs.googleapis.com) — a one-time, per-project toggle,
+// (console.cloud.google.com/apis/library/docs.googleapis.com) - a one-time, per-project toggle,
 // unrelated to any single OAuth token.
 //
 // Secrets come from env vars (never a file): GMAIL_OAUTH_CLIENT_ID, GMAIL_OAUTH_CLIENT_SECRET (same
@@ -45,7 +45,7 @@ function buildOAuthClient() {
   if (!clientSecret) throw new Error('GMAIL_OAUTH_CLIENT_SECRET env var not set');
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri: REDIRECT_URI });
   // On a silent refresh the client emits 'tokens' with a fresh access_token (and usually no
-  // refresh_token — that only arrives on first consent). Merge so the refresh_token is never lost.
+  // refresh_token - that only arrives on first consent). Merge so the refresh_token is never lost.
   client.on('tokens', (tokens) => {
     writeTokens({ ...(readTokens() || {}), ...tokens });
   });

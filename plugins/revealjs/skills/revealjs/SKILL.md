@@ -5,7 +5,7 @@ description: Create polished, professional reveal.js presentations. Use when the
 
 # Reveal.js Presentations
 
-Create HTML presentations using reveal.js. No build step required — just open the HTML in a browser.
+Create HTML presentations using reveal.js. No build step required - just open the HTML in a browser.
 
 ## Design Principles
 
@@ -19,7 +19,7 @@ Create HTML presentations using reveal.js. No build step required — just open 
 **Requirements**:
 - State your content-informed design approach BEFORE writing code
 - Use web-safe fonts or Google Fonts via `@import` in CSS
-- **Always use `pt` (points) for font sizes** — slides are fixed-size, so `pt` is predictable (like PowerPoint). Never use `em`, `rem`, or `px` for font sizes.
+- **Always use `pt` (points) for font sizes** - slides are fixed-size, so `pt` is predictable (like PowerPoint). Never use `em`, `rem`, or `px` for font sizes.
 - When a slide has less content, scale text up with `.text-lg`, `.text-xl`, `.text-2xl`, `.text-3xl`, `.text-4xl` classes (defined in base-styles.css)
 
 ### Slide Content Principles
@@ -29,22 +29,22 @@ Create HTML presentations using reveal.js. No build step required — just open 
 - Don't repeat the same layout pattern on consecutive slides
 - Use inline CSS grid for multi-column layouts (each slide's needs vary)
 - When a visual pattern repeats 3+ times, create a CSS class instead of inline styles
-- **All visible text must be inside a text element** (`<p>`, `<li>`, or `<h1>`–`<h6>`) — never bare text in `<div>` or `<span>`
+- **All visible text must be inside a text element** (`<p>`, `<li>`, or `<h1>`–`<h6>`) - never bare text in `<div>` or `<span>`
 
-### Images — Required on Every Slide
+### Images - Required on Every Slide
 
-**Every slide must have a visual element** — an image, logo, or icon-based illustration. Slides without any imagery feel flat and lose the audience.
+**Every slide must have a visual element** - an image, logo, or icon-based illustration. Slides without any imagery feel flat and lose the audience.
 
 **How to find images:** Use free, no-attribution-required sources:
-- **Unsplash** (photos): `https://source.unsplash.com/800x600/?{keyword}` — replace `{keyword}` with a relevant noun or concept
-- **Font Awesome icons** (already loaded via CDN in the scaffold) — use for icon-based decorative elements when a photo would be too busy
+- **Unsplash** (photos): `https://source.unsplash.com/800x600/?{keyword}` - replace `{keyword}` with a relevant noun or concept
+- **Font Awesome icons** (already loaded via CDN in the scaffold) - use for icon-based decorative elements when a photo would be too busy
 
-**Image selection strategy — riff on a key noun or verb:**
+**Image selection strategy - riff on a key noun or verb:**
 - Pick one key word from the slide's title or main idea (e.g., "timeline" → clock/calendar, "community" → people/crowd, "speaker" → microphone/stage)
-- The connection can be loose — the audience will get it and it makes the slide more memorable
+- The connection can be loose - the audience will get it and it makes the slide more memorable
 - Avoid purely literal matches; a creative tangent is more interesting
 
-**Layout patterns — vary across slides:**
+**Layout patterns - vary across slides:**
 
 1. **Split layout** (most common): image fills one half, content the other.
    ```html
@@ -71,14 +71,14 @@ Create HTML presentations using reveal.js. No build step required — just open 
    <i class="fa-solid fa-microphone" style="font-size:120pt;color:var(--primary-color);opacity:0.15;position:absolute;right:60px;bottom:40px;"></i>
    ```
 
-**Company branding — if the organization has a logo:**
+**Company branding - if the organization has a logo:**
 - Place it on the title or closing slide (not every slide).
-- If the logo PNG has a white background (not transparent), wrap it in a pill with `background:rgba(255,255,255,0.30)` — never CSS `opacity` on the container, which dims the image inside.
+- If the logo PNG has a white background (not transparent), wrap it in a pill with `background:rgba(255,255,255,0.30)` - never CSS `opacity` on the container, which dims the image inside.
 - For full-bleed photo backgrounds, ~50% overlay opacity is a good starting point; above 70% kills the photo's energy.
 
 **Sourcing photos from internal document systems (e.g. Confluence):**
 - Navigate to the relevant page via browser-chauffeur, scroll through to trigger lazy-loading, then capture photos with `page.locator('img').screenshot()` on each large image element.
-- Do NOT use `page.evaluate(fetch(...))` — many internal CDN URLs carry short-lived auth tokens that block cross-origin fetch (CORS). Screenshot the elements directly instead.
+- Do NOT use `page.evaluate(fetch(...))` - many internal CDN URLs carry short-lived auth tokens that block cross-origin fetch (CORS). Screenshot the elements directly instead.
 
 ## Workflow
 
@@ -95,21 +95,21 @@ node <path-to-skill>/scripts/create-presentation.js --structure 1,1,d,3,1,d,1 --
 ```
 
 **Options:**
-- `--slides N` — N horizontal slides (simple mode)
-- `--structure <list>` — Mixed layout: `1` = single slide, `N` = vertical stack, `d` = section divider
+- `--slides N` - N horizontal slides (simple mode)
+- `--structure <list>` - Mixed layout: `1` = single slide, `N` = vertical stack, `d` = section divider
 - `--output <file>`, `--title <text>`, `--styles <file>`
 
 The scaffold auto-copies `base-styles.css` as `styles.css` into the output directory.
 
 ### Step 3: Customize the CSS
 
-Edit `styles.css` — customize the CSS variables (especially colors and fonts) for your theme. The base file uses `--background-color`, `--primary-color`, `--text-color`, etc.
+Edit `styles.css` - customize the CSS variables (especially colors and fonts) for your theme. The base file uses `--background-color`, `--primary-color`, `--text-color`, etc.
 
 For Google Fonts, add `@import` at the top of CSS and set `--heading-font` / `--body-font`.
 
 ### Step 4: Fill in the HTML Content
 
-**Use the Edit tool incrementally** — one or a few slides at a time. The scaffold generates unique placeholder text per slide (e.g., `Slide 2 Title Here`) for easy targeting.
+**Use the Edit tool incrementally** - one or a few slides at a time. The scaffold generates unique placeholder text per slide (e.g., `Slide 2 Title Here`) for easy targeting.
 
 Key patterns:
 - Every `<section>` should have a unique `id`
@@ -117,7 +117,7 @@ Key patterns:
 - Wrap main content in `<div class="content">` for consistent spacing
 - Use `<div class="footnote">` for attribution at bottom
 
-### Step 5: Check for Content Overflow — REQUIRED before commit
+### Step 5: Check for Content Overflow - REQUIRED before commit
 
 **Never skip this.** Run the overflow checker and fix every flagged slide before moving on.
 
@@ -125,7 +125,7 @@ Key patterns:
 node <path-to-skill>/scripts/check-overflow.js presentation.html
 ```
 
-### Step 6: Visual Review with Screenshots — REQUIRED before commit
+### Step 6: Visual Review with Screenshots - REQUIRED before commit
 
 **Never skip this.** Take a screenshot of every slide and read each one with the Read tool. Do not declare the presentation done until you have visually confirmed every slide looks correct.
 
@@ -144,7 +144,7 @@ On each screenshot, verify:
 - Multi-column layouts aren't collapsing
 - Photo-bg slides have legible text contrast
 
-Fix any issues — tighten `margin-bottom` on list items, reduce `font-size` on the list, or shorten bullet text — then re-screenshot the affected slides to confirm the fix before committing.
+Fix any issues - tighten `margin-bottom` on list items, reduce `font-size` on the list, or shorten bullet text - then re-screenshot the affected slides to confirm the fix before committing.
 
 ### Step 7: Suggest Browser Editing
 
@@ -170,7 +170,7 @@ For slides with content wider than the slide (timelines, Gantt charts, multi-mon
 ```
 
 **Critical: clip vertical lines to the chart rows only.**
-Absolutely positioned vertical lines (week markers, today indicators) will bleed through ALL content below them — including any phase/legend cards — unless contained. Use a wrapper with `overflow:hidden` around just the row area:
+Absolutely positioned vertical lines (week markers, today indicators) will bleed through ALL content below them - including any phase/legend cards - unless contained. Use a wrapper with `overflow:hidden` around just the row area:
 ```html
 <div style="position:relative;overflow:hidden;">
   <!-- week lines inside here, clipped by overflow:hidden -->
@@ -178,10 +178,10 @@ Absolutely positioned vertical lines (week markers, today indicators) will bleed
   <!-- gantt rows -->
   <div class="sg-row">...</div>
 </div>
-<!-- phase cards or legends OUTSIDE the overflow:hidden wrapper — lines cannot reach here -->
+<!-- phase cards or legends OUTSIDE the overflow:hidden wrapper - lines cannot reach here -->
 <div>phase cards...</div>
 ```
-Using `height:Npx` on the line div is NOT reliable — actual rendered heights vary. `overflow:hidden` on the row wrapper is the only foolproof approach.
+Using `height:Npx` on the line div is NOT reliable - actual rendered heights vary. `overflow:hidden` on the row wrapper is the only foolproof approach.
 
 **Phase cards aligned to timeline positions:**
 When showing phase descriptions below a Gantt, position them with `position:absolute;left:Xpx;width:Ypx` matching their date-range pixels so they align with the bars above. Use `position:relative` on a full-width container:
