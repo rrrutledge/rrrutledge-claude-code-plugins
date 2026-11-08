@@ -32,9 +32,9 @@ await page.evaluate(() => {
 });
 ```
 
-**Why it fails:** React, Angular, and Fluent UI use synthetic event systems that listen for events dispatched through the browser's event pipeline. A raw `element.click()` in evaluate fires a native DOM click that bypasses these frameworks. The UI may update visually (element disappears, dialog closes), but the framework never processes the action — so **no API call goes to the server**. The change vanishes on page refresh.
+**Why it fails:** React, Angular, and Fluent UI use synthetic event systems that listen for events dispatched through the browser's event pipeline. A raw `element.click()` in evaluate fires a native DOM click that bypasses these frameworks. The UI may update visually (element disappears, dialog closes), but the framework never processes the action - so **no API call goes to the server**. The change vanishes on page refresh.
 
-**Solution — Use Playwright's event dispatch:**
+**Solution - Use Playwright's event dispatch:**
 ```javascript
 // ✅ For unstable elements (menus that re-render and detach during click):
 await locator.dispatchEvent('click');
@@ -72,7 +72,7 @@ Then **use the Read tool to view the screenshot**. You'll SEE what's actually bl
 
 Diagnose visually, not from error text. Then fix based on what you SEE (dismiss overlay, scroll element into view, use better selector, add wait, etc.).
 
-This applies to *silent* failures too — a click that executed without throwing but produced no navigation, no dialog, and no DOM change. The cause is usually an invisible overlay your click landed on instead of the target. **Before generating new diagnostic code, Read any screenshot you already took during the failed step.** Saving the file is not enough; opening it with the Read tool is the only way you'll see what the user sees.
+This applies to *silent* failures too - a click that executed without throwing but produced no navigation, no dialog, and no DOM change. The cause is usually an invisible overlay your click landed on instead of the target. **Before generating new diagnostic code, Read any screenshot you already took during the failed step.** Saving the file is not enough; opening it with the Read tool is the only way you'll see what the user sees.
 
 ## Anti-Pattern 4: Phantom Dialogs Left in the DOM with display:none
 
@@ -86,7 +86,7 @@ const stillOpen = await page.evaluate(() =>
 
 **Why it fails:** Many frameworks (Google products, Microsoft Fluent UI, Material) keep all dialog DOM nodes mounted and toggle `display: none` to hide inactive steps in a wizard. After a multi-step flow completes, you can find half a dozen hidden `[role="dialog"]` elements still in the DOM with stale text like "Choose a column to title your markers". Naive presence checks treat them as "still open" and the recovery loop spins.
 
-**Solution — Filter by computed visibility:**
+**Solution - Filter by computed visibility:**
 ```javascript
 const visibleDialogs = await page.evaluate(() => {
   return Array.from(document.querySelectorAll('[role="dialog"]')).filter(d => {
@@ -96,7 +96,7 @@ const visibleDialogs = await page.evaluate(() => {
 });
 ```
 
-Apply the same `display`/`visibility` filter when looking for any element — backdrops, tooltips, menus often get the same treatment. Combine with `el.offsetParent !== null` for layout-aware visibility.
+Apply the same `display`/`visibility` filter when looking for any element - backdrops, tooltips, menus often get the same treatment. Combine with `el.offsetParent !== null` for layout-aware visibility.
 
 ## Anti-Pattern 5: Role-Based Selectors Miss Semantic HTML Buttons
 
@@ -104,12 +104,12 @@ Apply the same `display`/`visibility` filter when looking for any element — ba
 ```javascript
 // ❌ Element is visible on the page, but selector finds nothing
 const shareBtn = page.locator('[role="button"]').filter({ hasText: /^Share$/ });
-await shareBtn.click(); // Times out — no match
+await shareBtn.click(); // Times out - no match
 ```
 
-**Why it fails:** Not every clickable element is wrapped in `[role="button"]`. Older or more semantic UIs use real HTML elements as their action targets — a toolbar may be `<ul><li>Share</li></ul>`, a link may be a real `<a>` with no role, a footer action may be a plain `<span>` with a click handler. `getByRole('button')` and `[role="button"]` selectors skip them entirely.
+**Why it fails:** Not every clickable element is wrapped in `[role="button"]`. Older or more semantic UIs use real HTML elements as their action targets - a toolbar may be `<ul><li>Share</li></ul>`, a link may be a real `<a>` with no role, a footer action may be a plain `<span>` with a click handler. `getByRole('button')` and `[role="button"]` selectors skip them entirely.
 
-**Solution — When role queries fail on something you can see in the screenshot, broaden to the underlying HTML tag:**
+**Solution - When role queries fail on something you can see in the screenshot, broaden to the underlying HTML tag:**
 ```javascript
 // Try the actual HTML element with text
 await page.locator('li').filter({ hasText: /^Share$/ }).first().click();
@@ -134,7 +134,7 @@ const cands = await page.evaluate(() => {
   return out;
 });
 ```
-This tells you the true tag — often surprising (`LI/-`, `A/-`, `SPAN/-`).
+This tells you the true tag - often surprising (`LI/-`, `A/-`, `SPAN/-`).
 
 ## Anti-Pattern 6: OS Coordinates Don't Reach Cross-Origin Iframe Content
 
@@ -144,9 +144,9 @@ This tells you the true tag — often surprising (`LI/-`, `A/-`, `SPAN/-`).
 await page.mouse.click(480, 325);
 ```
 
-**Why it fails:** With Chrome's site isolation, a cross-origin iframe is out-of-process. An OS-level mouse event dispatched to the parent page's viewport coordinates hits the parent's `<iframe>` element — the synthetic click event does not propagate through to the framework's event handlers inside the iframe. The button appears to receive the click (the cursor lands on it) but the React/LMS event system never fires.
+**Why it fails:** With Chrome's site isolation, a cross-origin iframe is out-of-process. An OS-level mouse event dispatched to the parent page's viewport coordinates hits the parent's `<iframe>` element - the synthetic click event does not propagate through to the framework's event handlers inside the iframe. The button appears to receive the click (the cursor lands on it) but the React/LMS event system never fires.
 
-**Solution — evaluate a DOM `.click()` directly in the iframe's execution context via CDP:**
+**Solution - evaluate a DOM `.click()` directly in the iframe's execution context via CDP:**
 ```javascript
 // ✅ By known ID (if non-empty)
 await session.send('Runtime.evaluate', {
@@ -154,14 +154,14 @@ await session.send('Runtime.evaluate', {
   expression: `document.getElementById(${JSON.stringify(buttonId)}).click()`,
 });
 
-// ✅ By visible text (preferred for popups/dialogs — many SCORM tools leave id="" on these)
+// ✅ By visible text (preferred for popups/dialogs - many SCORM tools leave id="" on these)
 await session.send('Runtime.evaluate', {
   contextId: ctxId,
   expression: `([...document.querySelectorAll('button')].find(b => /^Continue$/i.test(b.textContent.trim()))).click()`,
 });
 ```
 
-**Caution:** Popup/dialog buttons in SCORM authoring tools (Articulate, iSpring, Lectora) often have `id=""` — `getElementById('')` returns `null` per spec and silently no-ops. Always prefer text or aria-label matching for dismiss/confirm buttons.
+**Caution:** Popup/dialog buttons in SCORM authoring tools (Articulate, iSpring, Lectora) often have `id=""` - `getElementById('')` returns `null` per spec and silently no-ops. Always prefer text or aria-label matching for dismiss/confirm buttons.
 
 See `templates/cdp-session.js` for the full session setup pattern. Once you have a `CDPSession` attached directly to the iframe target, `Runtime.evaluate` with an explicit `contextId` is 100% reliable across all SCORM players and LMS wrappers tested.
 
@@ -183,11 +183,11 @@ const btn = await page.evaluate(() =>
 ```html
 <button><span class="fui-Button__icon"><i class="fui-Icon-font" aria-hidden="true">…</i></span>Save</button>
 ```
-The `<i>` tag uses a private-use Unicode font glyph. That character IS part of `textContent` even though it's invisible — so `trim()` doesn't remove it and exact-match patterns never satisfy. JSON serialization may strip the glyph, which hides the real prefix and makes debugging misleading.
+The `<i>` tag uses a private-use Unicode font glyph. That character IS part of `textContent` even though it's invisible - so `trim()` doesn't remove it and exact-match patterns never satisfy. JSON serialization may strip the glyph, which hides the real prefix and makes debugging misleading.
 
 This applies to Outlook web, Teams web, SharePoint, OneDrive, and any other Microsoft 365 surface built on Fluent UI.
 
-**Solution — Filter on the icon-wrapped button shape, not exact text:**
+**Solution - Filter on the icon-wrapped button shape, not exact text:**
 ```javascript
 // ✅ Matches the Fluent UI button structure regardless of the glyph prefix
 const saveBtn = page.locator('button:has(span.fui-Button__icon)').filter({ hasText: 'Save' }).first();
@@ -202,20 +202,20 @@ await saveBtn.click();
 
 **Problem:**
 ```javascript
-// ❌ Returns empty — the "Are you sure?" confirmation is on screen, but has no role attribute
+// ❌ Returns empty - the "Are you sure?" confirmation is on screen, but has no role attribute
 const dialogs = await page.evaluate(() =>
   Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"]'))
     .filter(d => getComputedStyle(d).display !== 'none')
     .map(d => d.innerText.slice(0, 100))
 );
-// dialogs === [] — handler skips the confirmation step, action never fires server-side
+// dialogs === [] - handler skips the confirmation step, action never fires server-side
 ```
 
-**Why it fails:** Not every confirmation dialog follows ARIA conventions. Some apps (including parts of Outlook web) render a centered `<div>` with a message and buttons but no `role` attribute on the container. Standard role-based detection misses it completely. The primary action never fires, and subsequent verification keeps showing the item as still present — which looks like the delete/move itself failed, not the confirmation step.
+**Why it fails:** Not every confirmation dialog follows ARIA conventions. Some apps (including parts of Outlook web) render a centered `<div>` with a message and buttons but no `role` attribute on the container. Standard role-based detection misses it completely. The primary action never fires, and subsequent verification keeps showing the item as still present - which looks like the delete/move itself failed, not the confirmation step.
 
-**Signal you've hit this:** A click on a primary action produces no navigation, no network request, and no DOM change. The item appears unchanged after verification. Before assuming the click itself failed, **check for an undetected confirmation modal** — look at a screenshot first.
+**Signal you've hit this:** A click on a primary action produces no navigation, no network request, and no DOM change. The item appears unchanged after verification. Before assuming the click itself failed, **check for an undetected confirmation modal** - look at a screenshot first.
 
-**Solution — Broader modal detector by geometry when role attributes are absent:**
+**Solution - Broader modal detector by geometry when role attributes are absent:**
 ```javascript
 const modalCandidates = await page.evaluate(() => {
   return Array.from(document.querySelectorAll('div')).filter(el => {
@@ -233,7 +233,7 @@ const modalCandidates = await page.evaluate(() => {
 });
 ```
 
-Filter the results by expected button text (e.g., `'OK'`, `'Delete'`, `'Confirm'`) to avoid false positives from unrelated centered widgets. Once found, click the button via Playwright's locator API — not `element.click()` inside evaluate (see Anti-Pattern 2).
+Filter the results by expected button text (e.g., `'OK'`, `'Delete'`, `'Confirm'`) to avoid false positives from unrelated centered widgets. Once found, click the button via Playwright's locator API - not `element.click()` inside evaluate (see Anti-Pattern 2).
 
 ---
 
@@ -246,7 +246,7 @@ await page.keyboard.press('Tab');
 await page.keyboard.press('Enter');
 ```
 
-**Why it fails:** When focus is inside a cross-origin iframe, pressing `Tab` on the parent moves focus to the next focusable element in the **parent** frame's tab order — sidebar links, navigation items, or toolbar buttons — not to the next element inside the iframe. Pressing `Enter` then activates whatever the parent gave focus to, which can silently navigate away from the current page or toggle an unrelated UI control.
+**Why it fails:** When focus is inside a cross-origin iframe, pressing `Tab` on the parent moves focus to the next focusable element in the **parent** frame's tab order - sidebar links, navigation items, or toolbar buttons - not to the next element inside the iframe. Pressing `Enter` then activates whatever the parent gave focus to, which can silently navigate away from the current page or toggle an unrelated UI control.
 
 **Real incident:** Repeated Tab+Enter attempts to reach a "Continue" button in a SCORM player resulted in the page navigating back to the course launch screen, requiring the entire session to restart.
 

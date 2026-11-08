@@ -1,5 +1,5 @@
-"""Characterization test: run the hook exactly as the harness does — a fresh
-`python hook.py` subprocess fed the tool payload on stdin — and assert it
+"""Characterization test: run the hook exactly as the harness does - a fresh
+`python hook.py` subprocess fed the tool payload on stdin - and assert it
 produces the decision the corpus specifies.
 
 Hermetic: AI disabled, trusted set pinned to fixtures/trusted_commands.json,

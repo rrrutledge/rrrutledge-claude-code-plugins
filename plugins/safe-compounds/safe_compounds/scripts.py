@@ -3,7 +3,7 @@
 Deny-by-default: a script is auto-approved only when it lives in a trusted
 directory (its safety is implied by where it is) or when the AI fallback
 affirmatively judges it safe. A script we cannot affirmatively clear falls
-through to a prompt — we do not approve arbitrary code just because it lacks
+through to a prompt - we do not approve arbitrary code just because it lacks
 known-bad tokens.
 
 (Inline `python -c` / `node -e` never reach here; enforcement blocks them and
@@ -12,7 +12,7 @@ asks for a .tmp/ file instead, which can be read and checked.)
 `ask_ai_about_workflow_script` is the odd one out: it judges a Workflow tool's
 inline `script` payload (consumed by `workflow.py`, not `hook.py`'s Bash path)
 against a different question, since that script has no filesystem/network
-access of its own — see its docstring.
+access of its own - see its docstring.
 """
 import re
 
@@ -64,7 +64,7 @@ def _record_missing_script(filename, language):
     global _last_block_reason
     resolved = resolve_against_cwd(filename)
     _last_block_reason = (
-        f'BLOCKED: Could not find the {language} script "{filename}" — looked for it at "{resolved}", '
+        f'BLOCKED: Could not find the {language} script "{filename}" - looked for it at "{resolved}", '
         'which doesn\'t exist. A relative filename resolves against the current working directory, not '
         'wherever the script actually lives, so it could not be read and safety-checked. Rerun the command '
         'using the script\'s full absolute path instead of a bare or relative filename.'
@@ -75,7 +75,7 @@ def _record_mangled_path_block(filename, seg):
     global _last_block_reason
     _last_block_reason = (
         f'BLOCKED: could not find "{filename}" to safety-check it. The command has an unquoted '
-        'Windows drive-letter path (e.g. C:\\Users\\...) — the shell only preserves backslashes '
+        'Windows drive-letter path (e.g. C:\\Users\\...) - the shell only preserves backslashes '
         'literally inside double quotes, so an unquoted one is silently mangled before the '
         'program ever sees it (C:\\Users\\... becomes C:Users...). Quote the path '
         '("C:\\Users\\...\\script.js") or use forward slashes (C:/Users/.../script.js) and retry.'
@@ -157,8 +157,8 @@ Auto-approve (respond "SAFE") if the script only:
 - Performs harmless computations or data transformations
 - Reads environment variables
 - Creates parent directories (mkdir) for its output path
-- Calls subprocess/exec/spawn with commands from the trusted list above — these are pre-approved
-- Performs native file I/O (read, write, create, delete files/dirs) within the current project directory — this is equivalent intent to what trusted commands like git, npm, etc. do during normal development
+- Calls subprocess/exec/spawn with commands from the trusted list above - these are pre-approved
+- Performs native file I/O (read, write, create, delete files/dirs) within the current project directory - this is equivalent intent to what trusted commands like git, npm, etc. do during normal development
 - Makes network requests (including GET, POST, PUT, DELETE) to the configured trusted domains above
 
 Deny (respond "DANGEROUS") if the script:
@@ -181,20 +181,20 @@ def ask_ai_about_workflow_script(script):
     """Ask Haiku whether a Workflow tool script is safe; returns (verdict, reason)
     where verdict is True/False/None and reason is a one-line string when DANGEROUS.
 
-    A workflow script has no filesystem, network, or subprocess access of its own —
+    A workflow script has no filesystem, network, or subprocess access of its own -
     its only built-ins are agent()/parallel()/pipeline()/phase()/log()/workflow().
     The only way it has any real-world effect is by handing a subagent a prompt via
     agent(). Once the script itself is approved, the whole run is unattended: every
     spawned subagent gets full tool access and none of its individual tool calls get
     a further confirmation prompt. So the only thing to judge is what those prompts
-    instruct — the same "read-only or reversible" standard used everywhere else in
+    instruct - the same "read-only or reversible" standard used everywhere else in
     this hook, applied to prose instead of a command line.
     """
     log_debug(f"AI validation requested for workflow script ({len(script)} chars)")
     prompt = f"""Analyze this workflow orchestration script for safety. Respond with ONLY "SAFE" or "DANGEROUS".
 
 This script runs in a sandboxed JavaScript-like DSL with NO filesystem, network, or
-subprocess access of its own — the only built-ins are agent(), parallel(), pipeline(),
+subprocess access of its own - the only built-ins are agent(), parallel(), pipeline(),
 phase(), log(), workflow(), and plain data helpers. Its only way to have any real-world
 effect is by calling agent(prompt, opts) to spawn a subagent with a text prompt. Once
 this script is approved to run, the entire workflow proceeds unattended: every spawned
@@ -204,7 +204,7 @@ individual tool calls get a further confirmation prompt from the user.
 So the safety question is entirely about what the agent() prompts instruct.
 
 Respond "SAFE" if every agent() prompt in the script only asks for reading,
-investigating, analyzing, searching, or returning structured data — nothing that writes
+investigating, analyzing, searching, or returning structured data - nothing that writes
 files, edits code, runs commands, commits, pushes, force-pushes, deletes, posts
 publicly, sends a message/email, or spends money.
 

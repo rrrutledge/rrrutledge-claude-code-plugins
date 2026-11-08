@@ -17,7 +17,7 @@ Example ~/.claude/safe-compounds-config.json:
       "trusted_destination_dirs": ["~/OneDrive/Deliverables"]
     }
 
-Every value here is a command *name* or path/domain string — a name-level
+Every value here is a command *name* or path/domain string - a name-level
 allowlist, not a safety verdict. (The hook decides "safe" per command at
 runtime; this file just feeds the lists those decisions draw on.)
 
@@ -25,18 +25,18 @@ All keys are optional; defaults are empty, which means "trust nothing extra"
 (curl is then limited to localhost and read-only GETs, no MCP server is
 blanket-allowed, etc.).
 
-`trusted_commands` is your private/company trust — it is never promoted to the
+`trusted_commands` is your private/company trust - it is never promoted to the
 shared PR. `learned_sync_exclude` blocklists additional command names that the
 AI might learn but should never be shared publicly (e.g. an internal tool name).
 
 `workflow_blanket_names` auto-allows Workflow tool calls by their saved
-workflow name (`tool_input.name` — a built-in workflow or one saved under
+workflow name (`tool_input.name` - a built-in workflow or one saved under
 `.claude/workflows/`). An inline/dynamic `script` payload is never
 blanket-allowed via this list, however it names itself, since nothing in
 that text is proof of what it does. Instead, an inline script is sent to
 an AI safety check (`scripts.ask_ai_about_workflow_script`) that reads the
-prompts it hands to `agent()` calls — the only thing such a script can
-actually do — every time it runs, since the text differs run to run.
+prompts it hands to `agent()` calls - the only thing such a script can
+actually do - every time it runs, since the text differs run to run.
 
 `mcp_blanket_tools` auto-allows individual MCP tool calls by their full
 name (`mcp__<server>__<operation>`), regardless of what verb the operation
@@ -46,7 +46,7 @@ tool whose effect is private and reversible, without blanket-trusting
 every other Gmail tool too).
 
 `trusted_destination_dirs` adds *extra* dirs `cp`/`mv`/`ln` may write to
-outside the repo, on top of the built-in default (`~/Downloads` — see
+outside the repo, on top of the built-in default (`~/Downloads` - see
 `paths.TRUSTED_DESTINATION_DIRS`). Writing outside the repo is otherwise
 treated as elevated risk (an out-of-repo write can silently overwrite an
 existing file), so beyond the built-in default, only paths you list here are

@@ -1,13 +1,13 @@
-"""teams poller adapter — Microsoft Teams chats/channels via the teams skill's teams-chat.js.
+"""teams poller adapter - Microsoft Teams chats/channels via the teams skill's teams-chat.js.
 
 All teams mechanics live HERE, alongside the prose contract in `teams-provider.md`: locating the teams
 skill's teams-chat.js, the enumerate read, the conversation-id scheme, and the captured item shape. The poller (`scripts/run-poller.py`) loads this adapter dynamically and drives it through the
-`ProviderBase` interface — it contains no Teams specifics.
+`ProviderBase` interface - it contains no Teams specifics.
 
 This is the Teams sibling of `slack-adapter.py`: it wraps a sibling skill's read CLI. teams-chat.js talks
 the Teams internal REST services with tokens sniffed from the live Teams web session; the one-time sniff
 needs `playwright` (resolved from the home repo's node_modules via NODE_PATH). CLEAR (mark-read) and
-DRAFT-MODE stay browser-driven in the worker — see `teams-provider.md`.
+DRAFT-MODE stay browser-driven in the worker - see `teams-provider.md`.
 """
 import json
 import os
@@ -24,7 +24,7 @@ from provider_base import ProviderBase, ProviderError, run_node, slug, find_skil
 # Stable per-machine home (teams-chat.js caches its sniffed tokens here, absolutely). We also run node
 # from here for a consistent cwd.
 TOKEN_HOME = os.path.join(os.path.expanduser("~"), ".claude", "drainer")
-# Per-conversation message-ID horizons — the highest message ID captured per conversation,
+# Per-conversation message-ID horizons - the highest message ID captured per conversation,
 # written by capture() and read by triage_text() to know where to stop fetching.
 _HORIZONS = os.path.join(TOKEN_HOME, "teams-msg-horizons.json")
 
@@ -136,7 +136,7 @@ class Provider(ProviderBase):
 
     def triage_text(self, item):
         # For meeting chats, surface messages newer than the last captured message so triage
-        # sees all new content — not just the lastMessage preview.
+        # sees all new content - not just the lastMessage preview.
         if item.get("type") != "meeting":
             return item.get("preview") or ""
         conv_id = item.get("id")

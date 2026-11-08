@@ -1,9 +1,9 @@
-"""slack poller adapter — a Slack workspace via the slack skill's slack.js (Web API).
+"""slack poller adapter - a Slack workspace via the slack skill's slack.js (Web API).
 
 All slack mechanics live HERE, alongside the prose contract in `slack-provider.md`: locating slack.js,
 the `--list-unread --json` enumerate, the `<channel>:<ts>` id scheme, and the captured item shape. The
 poller (`scripts/run-poller.py`) loads this adapter dynamically and drives it through the `ProviderBase`
-interface — it contains no Slack specifics.
+interface - it contains no Slack specifics.
 
 This is the API sibling of `gmail-adapter.py` / `outlook-graph-adapter.py`: same operations, a
 different transport. slack.js talks the Slack Web API with a personal xoxc token + xoxd `d` cookie from
@@ -185,7 +185,7 @@ class Provider(ProviderBase):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
         # to a filesystem-safe id and keep it stable across cycles so seen-state dedups on it.
         #
-        # One item per conversation, keyed to its latest ts — deliberately NOT one item per distinct ask.
+        # One item per conversation, keyed to its latest ts - deliberately NOT one item per distinct ask.
         # A conversation that accreted several asks between reads (the graphics/logo/case-study/channel/line
         # burst) stays a single item whose body carries the whole unread span (see `capture`), and the
         # worker handles every ask before it closes (worker-core §2/§6). Splitting one conversation into
@@ -216,7 +216,7 @@ class Provider(ProviderBase):
                 pass
         # Write the FULL unread span into the body, not only the newest message. One DM/channel/thread can
         # accrete several distinct asks between reads, and the poller's clear at spawn (advancing the read
-        # cursor to `ts`) drops every still-unread message under it — so the worker must see them all here
+        # cursor to `ts`) drops every still-unread message under it - so the worker must see them all here
         # to handle each one. enumerate already computed this span (same last_read snapshot, no extra API
         # call); fall back to the single shown message when it's absent (older slack.js or a lone message).
         unread = item.get("unread") or []

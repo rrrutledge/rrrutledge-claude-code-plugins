@@ -1,5 +1,5 @@
 {
   "name": "ms-rest",
-  "description": "Read, delete, and compose Outlook mail and calendar events for Russell's WORK account via the Outlook REST API — no browser needed after a one-time sign-in (token sniffed from the live Outlook web session). Use to enumerate/search the work inbox, read/draft mail, or read/create/move/delete calendar events. For the PERSONAL Microsoft account use `ms-graph` instead.",
+  "description": "Read, delete, and compose Outlook mail and calendar events for Russell's WORK account via the Outlook REST API - no browser needed after a one-time sign-in (token sniffed from the live Outlook web session). Use to enumerate/search the work inbox, read/draft mail, or read/create/move/delete calendar events. For the PERSONAL Microsoft account use `ms-graph` instead.",
   "triggers": ["/ms-rest"]
 }

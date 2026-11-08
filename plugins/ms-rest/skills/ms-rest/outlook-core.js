@@ -1,4 +1,4 @@
-// outlook-core.js — shared token + REST plumbing for the `ms-rest` skill.
+// outlook-core.js - shared token + REST plumbing for the `ms-rest` skill.
 //
 // Owns the one thing every ms-rest command needs: a valid bearer token for the Outlook REST API
 // v2.0 (https://outlook.office.com/api/v2.0) and a helper that calls it with one automatic 401
@@ -142,9 +142,9 @@ async function apiCall(method, urlPath, body, extraHeaders) {
   }
   // The Outlook REST API v2.0 is officially deprecated (responses carry Deprecation/Sunset
   // headers) but stays live because Outlook on the web itself uses it with first-party tokens.
-  // If it ever truly goes away it returns 410 — surface that loudly so we know to revisit.
+  // If it ever truly goes away it returns 410 - surface that loudly so we know to revisit.
   if (res.status === 410) {
-    throw new Error('Outlook REST API returned 410 Gone — the deprecated endpoint may finally be '
+    throw new Error('Outlook REST API returned 410 Gone - the deprecated endpoint may finally be '
       + 'retired. See SKILL.md "Endpoint status"; migrating to Microsoft Graph requires a '
       + 'Graph-audience token with Mail scopes (not available via session sniff).');
   }

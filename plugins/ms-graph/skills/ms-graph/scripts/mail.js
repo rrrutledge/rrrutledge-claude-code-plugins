@@ -10,7 +10,7 @@
 // List drafts:   node mail.js --list-drafts [--top=30]
 //                (drafts folder, most-recently-edited first; same block format with id)
 // Search:        node mail.js --search="Okafor" [--top=10] [--folder=sent]
-//                (flags any result still sitting in Drafts with a "[DRAFT — NOT SENT]" tag,
+//                (flags any result still sitting in Drafts with a "[DRAFT - NOT SENT]" tag,
 //                 so a drafted-but-unsent reply is never mistaken for a sent message. Without
 //                 --folder, searches the whole mailbox; --folder=sent scopes to Sent Items -
 //                 the send-confidence familiarity count reads a recipient's prior-sent count
@@ -21,13 +21,13 @@
 //                 send-confidence outcome sweep matches staged drafts against it)
 // Show one:      node mail.js --show=<messageId> [--html]
 //                (default emits the body as plain text. --html emits the raw HTML body.content instead
-//                 — the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
-//                 content, that the plaintext view strips out. Prints a "*** DRAFT — NOT SENT ***"
+// - the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
+//                 content, that the plaintext view strips out. Prints a "*** DRAFT - NOT SENT ***"
 //                 banner up top when the message is still sitting in Drafts, and an "Attachments:"
 //                 header line naming each file attachment when it carries any.)
 // Auth headers:  node mail.js --auth=<messageId>
 //                (emits a JSON object with the message's envelope-authentication headers as the
-//                 receiving system stamped them — the raw Authentication-Results value(s) and any
+//                 receiving system stamped them - the raw Authentication-Results value(s) and any
 //                 Received-SPF value(s), plus the From. This is the SPF/DKIM/DMARC provenance the
 //                 spoofable From: line can't give; the drainer's security screen reads it per item.
 //                 Also carries any List-Unsubscribe value(s), the bulk-mail marker.)
@@ -37,7 +37,7 @@
 //                 whether Russell already wrote on the thread.)
 // Draft a reply: node mail.js --reply --message-id=<id> --body-file=reply.md [--attach=file1.pdf,file2.png]
 //                (creates a DRAFT reply-all in the thread; never sends; its last line is
-//                 `draft-id: <id>`, the full id --send-draft takes. --body-file is Markdown —
+//                 `draft-id: <id>`, the full id --send-draft takes. --body-file is Markdown -
 //                 blank-line paragraphs, lists, **bold**, and links all render as HTML; raw HTML
 //                 passes through. --attach adds file attachments, same syntax as --draft-new.)
 // Draft new:     node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md \
@@ -49,26 +49,26 @@
 // Send to self:  node mail.js --send-self --subject="..." --body-file=note.txt
 //                (sends a plain-text mail to your own inbox; handy for phone copy-paste)
 // Send a draft:  node mail.js --send-draft --message-id=<draftId>
-//                (promotes ONE staged draft — from --reply or --draft-new — to a real send via
+//                (promotes ONE staged draft - from --reply or --draft-new - to a real send via
 //                 Graph's own send action; transmits exactly what's saved in Drafts, then Graph
-//                 auto-files the sent copy in Sent Items. The only path that emits real mail —
+//                 auto-files the sent copy in Sent Items. The only path that emits real mail -
 //                 reserved for Russ's explicit per-message "send it" after he's reviewed this
 //                 exact draft.)
 // Delete one:    node mail.js --delete=<messageId>
-//                (moves the message to Archive — reversible, keeps it searchable, never a permanent purge)
+//                (moves the message to Archive - reversible, keeps it searchable, never a permanent purge)
 // Not junk:      node mail.js --not-junk=<messageId>
 //                (un-junks a message: moves it to Inbox and reports it "not junk" to Microsoft's
 //                 filter so future mail from that sender is less likely to be misfiled. Uses the
 //                 beta reportMessage action; falls back to a plain move-to-Inbox if that ever fails.)
 // Report phish:  node mail.js --report-phish=<messageId>
-//                (reports a message to Microsoft as phishing — retrains the filter — and moves it to
+//                (reports a message to Microsoft as phishing - retrains the filter - and moves it to
 //                 Junk Email. Reversible: recoverable from Junk. Beta reportMessage action; falls back
 //                 to a plain move-to-Junk if that ever fails.)
 // Unsubscribe:   node mail.js --unsubscribe=<messageId>
-//                (unsubscribes from a marketing sender via its List-Unsubscribe header — an https
+//                (unsubscribes from a marketing sender via its List-Unsubscribe header - an https
 //                 one-click POST when offered, else a GET that may need a confirmation click. A
 //                 mailto-only sender is surfaced to send by hand. For mail addressed to the user
-//                 alone, never a shared list/group he doesn't own — archive-rule those instead.)
+//                 alone, never a shared list/group he doesn't own - archive-rule those instead.)
 // Get attachments: node mail.js --get-attachments=<messageId> [--out-dir=.tmp]
 //                (downloads every file attachment on a message to --out-dir, default the
 //                 current directory; prints each saved path. Skips non-file attachments, e.g.
@@ -84,7 +84,7 @@
 //                 --except-from is the personal-domain fence. Multi-value flags split on `||`.
 //                 Rules stop-processing by default; --no-stop disables that.)
 // Append phrase: node mail.js --append-rule="Corporate Subjects" --subject-contains="D||E" [--body-contains=..] [--from-contains=..]
-//                (adds phrases to an existing rule by id or display name — the "add to bucket" op)
+//                (adds phrases to an existing rule by id or display name - the "add to bucket" op)
 // Delete rule:   node mail.js --delete-rule="<ruleId or name>"
 
 const fs = require('fs');
@@ -167,7 +167,7 @@ async function listUnread(client) {
 }
 
 async function listInbox(client) {
-  // Count-capped by --top (default 50); newest-first, no time window — the keeper drains the
+  // Count-capped by --top (default 50); newest-first, no time window - the keeper drains the
   // whole inbox a batch at a time across cycles.
   const data = await client.api('/me/mailFolders/inbox/messages')
     .orderby('receivedDateTime desc')
@@ -208,7 +208,7 @@ async function listInbox(client) {
 }
 
 async function listJunk(client) {
-  // Same shape as listInbox, reading the Junk Email folder instead — kept as a separate function
+  // Same shape as listInbox, reading the Junk Email folder instead - kept as a separate function
   // (not a shared helper) so each stays a simple, self-contained read of its own well-known folder.
   const data = await client.api('/me/mailFolders/junkemail/messages')
     .orderby('receivedDateTime desc')
@@ -254,7 +254,7 @@ async function notJunk(client) {
   const id = args['not-junk'];
   try {
     // Beta-only: the stable markAsNotJunk action was retired Dec 2025. reportMessage is Microsoft's
-    // documented replacement — it both moves the message to Inbox and retrains the junk filter.
+    // documented replacement - it both moves the message to Inbox and retrains the junk filter.
     await client.api(`/me/messages/${id}/reportMessage`).version('beta')
       .post({ IsMessageMoveRequested: true, ReportAction: 'notJunk' });
     console.log(`Reported "not junk" and moved to Inbox (id ${String(id).slice(0, 20)}...).`);
@@ -262,7 +262,7 @@ async function notJunk(client) {
     // Beta endpoints can change without notice; degrade to "still un-junks the message" rather
     // than a hard failure.
     await client.api(`/me/messages/${id}/move`).post({ destinationId: 'inbox' });
-    console.log(`reportMessage (beta) failed [${e.message}] — fell back to a plain move to Inbox `
+    console.log(`reportMessage (beta) failed [${e.message}] - fell back to a plain move to Inbox `
       + `(id ${String(id).slice(0, 20)}...). Filter was not retrained.`);
   }
 }
@@ -271,7 +271,7 @@ async function reportPhish(client) {
   const id = args['report-phish'];
   // The beta reportMessage action notJunk uses, in the other direction: report the message to Microsoft
   // (retraining the filter) and, with IsMessageMoveRequested, move it out of the inbox to Junk Email.
-  // Reversible — the message stays recoverable from Junk. Personal Outlook.com accepts ReportAction
+  // Reversible - the message stays recoverable from Junk. Personal Outlook.com accepts ReportAction
   // 'junk' but not 'phishing', so try 'phishing' first (work/enterprise), fall back to 'junk', and only
   // then to a plain move that at least gets it out of the inbox.
   for (const action of ['phishing', 'junk']) {
@@ -283,7 +283,7 @@ async function reportPhish(client) {
     } catch (e) {
       if (action === 'junk') {
         await client.api(`/me/messages/${id}/move`).post({ destinationId: 'junkemail' });
-        console.log(`reportMessage (beta) failed [${e.message}] — fell back to a plain move to Junk `
+        console.log(`reportMessage (beta) failed [${e.message}] - fell back to a plain move to Junk `
           + `Email (id ${String(id).slice(0, 20)}...). Filter was not retrained.`);
       }
     }
@@ -292,7 +292,7 @@ async function reportPhish(client) {
 
 async function unsubscribe(client) {
   // Unsubscribe from a marketing sender using its RFC 2369 List-Unsubscribe header (and RFC 8058
-  // one-click where offered). Reserve this for mail addressed to the user alone — a shared list or
+  // one-click where offered). Reserve this for mail addressed to the user alone - a shared list or
   // group he doesn't own should get a his-side archive rule instead, never an unsubscribe that drops
   // other people. Prefer an https one-click POST; fall back to a GET (which may need a confirmation
   // click on the landing page); a mailto-only sender is surfaced for the user to send himself, since
@@ -305,7 +305,7 @@ async function unsubscribe(client) {
   const lu = get('list-unsubscribe');
   const lup = get('list-unsubscribe-post');
   console.log(`Subject: ${msg.subject}`);
-  if (!lu) { console.log('No List-Unsubscribe header — use the sender footer link by hand.'); return; }
+  if (!lu) { console.log('No List-Unsubscribe header - use the sender footer link by hand.'); return; }
   const urls = [...lu.matchAll(/<([^>]+)>/g)].map(m => m[1]);
   const https = urls.find(u => /^https?:/i.test(u));
   const mailto = urls.find(u => /^mailto:/i.test(u));
@@ -317,7 +317,7 @@ async function unsubscribe(client) {
     const r = await fetch(https, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' } });
     console.log(`GET -> ${https}\n  HTTP ${r.status} ${r.statusText} (may need a confirmation click)`);
   } else if (mailto) {
-    console.log(`Only a mailto unsubscribe is offered — send it yourself: ${mailto}`);
+    console.log(`Only a mailto unsubscribe is offered - send it yourself: ${mailto}`);
   }
 }
 
@@ -360,7 +360,7 @@ async function search(client) {
   const msgs = data.value || [];
   if (!msgs.length) { console.log('No messages found.'); return; }
   for (const m of msgs) {
-    const draftTag = m.isDraft ? '[DRAFT — NOT SENT] ' : '';
+    const draftTag = m.isDraft ? '[DRAFT - NOT SENT] ' : '';
     console.log(`\n--- ${draftTag}${m.receivedDateTime?.slice(0, 16)}  |  ${m.subject}`);
     console.log(`    from: ${addr(m.from)}`);
     console.log(`    to:   ${(m.toRecipients || []).map(addr).join(', ')}`);
@@ -383,7 +383,7 @@ async function attachmentsLine(client, id) {
 async function show(client) {
   const m = await client.api(`/me/messages/${args.show}`)
     .select('subject,from,toRecipients,ccRecipients,receivedDateTime,body,isDraft,hasAttachments').get();
-  if (m.isDraft) console.log('*** DRAFT — NOT SENT ***');
+  if (m.isDraft) console.log('*** DRAFT - NOT SENT ***');
   console.log(`Subject: ${m.subject}`);
   console.log(`From: ${addr(m.from)}`);
   console.log(`To: ${(m.toRecipients || []).map(addr).join(', ')}`);
@@ -557,9 +557,9 @@ async function draftNew(client) {
 }
 
 async function sendDraft(client) {
-  // Promotes ONE staged draft to a real send via Graph's own /send action on the message — it
+  // Promotes ONE staged draft to a real send via Graph's own /send action on the message - it
   // transmits the draft's saved recipients/body exactly as staged, then Graph auto-files the sent
-  // copy in Sent Items and removes it from Drafts. This is the only path that emits real mail —
+  // copy in Sent Items and removes it from Drafts. This is the only path that emits real mail -
   // gated upstream on Russ's explicit per-message instruction after he reviewed this exact draft.
   const id = args['message-id'];
   if (!id || id === true) throw new Error('--send-draft requires --message-id (the draft id printed when it was staged)');
