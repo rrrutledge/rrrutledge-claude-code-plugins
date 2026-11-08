@@ -149,9 +149,8 @@ This isn't source-specific, so it applies the same way no matter which provider 
 **Also check whether another live session is already working on this same thing.**
 Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one live worker"), so the poller can't route it and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
-Your seed's duplicate-check section lists the sessions live when you launched; compare this item against them before starting the work, and settle any overlap by session-mgr's `duplicate-sessions.md`, whose path the section names.
-That doc is the one home of the settle rule, shared with every handoff session.
-A match can come from a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work); when a title is ambiguous, look for this item's own link (a Trello card URL, a thread link) in the peer's brief.
+Your seed's duplicate-check section runs this check; when your seed has none (the session scan failed), run `ListAgents` instead and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
+Your item's own link (a Trello card URL, a thread link) is the one to look for in a peer's brief.
 When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.
 Like the silent closes listed in §6a, standing down queues no digest entry: the keeper is the one carrying the item.
 
