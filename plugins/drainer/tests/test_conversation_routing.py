@@ -211,16 +211,10 @@ try:
 finally:
     poller.session_address, poller.forward_to_worker, poller.seen_state = real
 
-print("\nlive_peer_lines: every live, named session, for the new worker's seed")
-lines = poller.live_peer_lines([
-    {"name": "Newsletter", "pid": 1, "kind": "interactive", "status": "idle"},
-    {"name": "Slack: thread", "pid": 2, "kind": "background", "state": "blocked"},
-    {"name": "Stopped one", "kind": "background"},
-    {"pid": 3, "kind": "background"},
-])
-check("live named sessions only, with their state", lines, ["- Newsletter (idle)", "- Slack: thread (blocked)"])
-check("a failed scan lists nothing", poller.live_peer_lines(None), [])
-check("a multi-line title stays one line", poller.live_peer_lines([{"name": "a\nb  c", "pid": 1}]), ["- a b c"])
+print("\nlaunched_peer: a worker launched earlier this cycle shows in the shared duplicate check")
+check("listed as launched this cycle",
+      "- Slack: x (background, launched this cycle)" in poller.duplicate_check_section([poller.launched_peer("Slack: x")]),
+      True)
 
 print("\n_failed_forward: reads back the holder a failed hand-over noted")
 rt = workspace([("held-item", "x", {"forwardFailedTo": "guid-live"})])
@@ -242,7 +236,7 @@ def seed_for(item):
             local = os.path.join(tmp, "config")
             os.makedirs(local)
             poller.spawn_worker("item-x1", json_file, tmp, os.path.join(tmp, "rt"), "sonnet", local, tmp, item,
-                                peers=["- Newsletter (idle)"])
+                                peers=[{"name": "Newsletter", "pid": 1, "kind": "interactive", "status": "idle"}])
             with open(os.path.join(tmp, "rt", "seeds", "item-x1.prompt.txt"), encoding="utf-8") as f:
                 return f.read()
     finally:
@@ -251,7 +245,8 @@ def seed_for(item):
 
 print("\nspawn_worker seed: the live sessions to compare against, and a conversation holder it couldn't reach")
 seed = seed_for({"_source": "slack", "subject": "Thread reply"})
-check("lists the live sessions", "- Newsletter (idle)" in seed, True)
+check("carries the shared duplicate check with the live sessions",
+      ("- Newsletter (interactive, idle)" in seed, "duplicate-sessions.md" in seed), (True, True))
 check("no holder line without a failed hand-over", "already on this item's conversation" in seed, False)
 seed = seed_for({"_source": "slack", "subject": "Thread reply", "_conversationHolder": "Slack: @mention in #t"})
 check("names the holder after a failed hand-over", "`Slack: @mention in #t`" in seed, True)

@@ -149,36 +149,15 @@ This isn't source-specific, so it applies the same way no matter which provider 
 **Also check whether another live session is already working on this same thing.**
 Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one live worker"), so the poller can't route it and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
-Your seed lists the sessions live when you launched; compare this item against that list before starting the work, and run `ListAgents` to address a send or to see sessions newer than the list.
-Look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
-Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
-Russell's own interactive session counts the same as a background worker.
-When a peer looks like it covers the same work, settle which one of you keeps it, so exactly one session does the work:
-1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
-   Address it by the name its `ListAgents` row prints, adding the row's ` [ref]` only when two rows share the name.
-2. If it is the same work, **the session that started earlier keeps it** (`ListAgents` shows each row's start).
-   The rule settles it the same way from both sides, so neither session has to wait on Russell to pick.
-   Russell's own interactive session always keeps it, whenever it started.
-3. Stand down only for what the keeper confirms it will carry through to completion.
-   Ask it to name what it will deliver, including any reply the item owes, and compare that against everything this item needs.
-   - **The keeper covers it all:** `SendMessage` the keeper everything useful you have gathered (card state, thread context, links, findings, any draft you staged), then close via `python <skill>/scripts/close-session.py`.
-     Leave a card un-cleared and its Start untouched, so the keeper owns the item.
-     Hand the item over without asking Russell whether the keeper is fine taking it.
-     Like the silent closes listed in §6a, this queues no digest entry: the keeper is the one carrying the item.
-   - **The item has parts the keeper isn't doing:** hand over the overlapping part and stay open for the rest.
-   - **One of your steps comes after the keeper's work** (a reply to send once the work is done): when that step belongs to the keeper's own conversation, the keeper takes it on, and you confirm that before standing down.
-     Otherwise hand the keeper your resume command (`schedule-resume.py`, per session-mgr's `resume-on-completion.md`) and close paused, so the keeper resumes you when its work is done.
-   - **Unsure whether the keeper covers it all:** stay open.
-4. If you are the keeper, tell the peer what you will deliver, and fold what it hands over into your own work.
-5. If the peer says it is different work, or no peer looks related, carry on as normal.
-
-**When a peer asks you whether it is on your work, answer it before going on.**
-A drainer worker or another session may ask this mid-task; reply with what you are working on (item, conversation, card) and whether it matches, and apply the same earlier-start rule to decide which of you keeps it.
-An unanswered ask leaves both sessions working, which is the duplicate this exchange exists to stop.
+Your seed's duplicate-check section lists the sessions live when you launched; compare this item against them before starting the work, and settle any overlap by session-mgr's `duplicate-sessions.md`, whose path the section names.
+That doc is the one home of the settle rule, shared with every handoff session.
+A match can come from a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work); when a title is ambiguous, look for this item's own link (a Trello card URL, a thread link) in the peer's brief.
+When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.
+Like the silent closes listed in §6a, standing down queues no digest entry: the keeper is the one carrying the item.
 
 **When your seed names a live session already on this item's conversation, ask it first.**
 The poller says so when it found that session but couldn't hand the item to it.
-Run step 1 with that session before any other work; it started earlier, so it keeps the work by the rule above unless it says it has finished with the conversation.
+Settle with that session before any other work; it started earlier, so it keeps the work by the rule unless it says it has finished with the conversation.
 
 **A new item in your own conversation arrives as a message from the drainer.**
 Handle it as part of this conversation before you close, the same as an item you were launched on: read it, then fold it into the reply you are drafting or work it as its own ask.

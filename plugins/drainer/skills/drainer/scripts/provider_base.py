@@ -365,6 +365,9 @@ write_receipt = bg_session.write_receipt
 prompt_seed = bg_session.prompt_seed
 session_name = bg_session.session_name
 claude_agents = bg_session.claude_agents
+# The launch-time duplicate check every launched session gets. The two plugins update separately, so an
+# installed session-mgr older than this builder adds no section rather than breaking every launch.
+duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda agents, parent_id=None: "")
 
 
 # ---------------------------------------------------------------------------- correspondent identity
