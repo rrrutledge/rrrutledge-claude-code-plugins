@@ -374,6 +374,15 @@ def _subprocess_in_tmp_python(seg, word):
 _PLUGIN_CACHE_INTERPRETER_EXEMPT = {'python', 'python3', 'node'}
 
 
+def _names_path_outside_interpreter(command, pattern):
+    """True if a segment matching `pattern` is not a python/node run."""
+    for seg in split_segments(command):
+        word = first_word(seg.strip())
+        if word and word not in _PLUGIN_CACHE_INTERPRETER_EXEMPT and pattern.search(seg):
+            return True
+    return False
+
+
 def detect_plugin_cache_reference(command):
     """True if a command segment references a path under the installed
     plugin cache (~/.claude/plugins/cache/...) other than running a plugin's
@@ -386,31 +395,22 @@ def detect_plugin_cache_reference(command):
     source. So route around the cache entirely instead of hitting that
     prompt -- or reading the wrong copy -- on every such command against an
     installed plugin."""
-    for seg in split_segments(command):
-        word = first_word(seg.strip())
-        if word and word not in _PLUGIN_CACHE_INTERPRETER_EXEMPT and PLUGIN_CACHE_PATTERN.search(seg):
-            return True
-    return False
+    return _names_path_outside_interpreter(command, PLUGIN_CACHE_PATTERN)
 
 
-# The harness saves an oversized tool result to
-# ~/.claude/projects/<project>/<session>/tool-results/<file> and hands the
-# model that path.
 _TOOL_RESULTS_PATTERN = re.compile(
     r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results[/\\]', re.IGNORECASE)
 
 
 def detect_tool_results_reference(command):
-    """True if a command segment names a saved tool-result file other than
-    running a python/node interpreter. Claude Code shows its own confirmation
-    for `~/.claude` paths, so a cp/jq/cat against one prompts however the hook
+    """True if a command segment names a saved tool-result file (the harness
+    saves an oversized tool result under
+    ~/.claude/projects/<project>/<session>/tool-results/) other than running a
+    python/node interpreter. Claude Code shows its own confirmation for
+    `~/.claude` paths, so a cp/jq/cat against one prompts however the hook
     decides. A python script in `.tmp/` that opens the path itself never names
     it on the command line, so it runs without a prompt."""
-    for seg in split_segments(command):
-        word = first_word(seg.strip())
-        if word and word not in _PLUGIN_CACHE_INTERPRETER_EXEMPT and _TOOL_RESULTS_PATTERN.search(seg):
-            return True
-    return False
+    return _names_path_outside_interpreter(command, _TOOL_RESULTS_PATTERN)
 
 
 def _expand_home_spelling(token):
@@ -664,7 +664,8 @@ def enforce_bash(command):
                 'can\'t be suppressed here. Write a Python script in .tmp/ that opens that '
                 'path itself and does the copying or filtering (json.load it, write the part '
                 'you need to .tmp/), then run it with `python .tmp/script.py`. The path stays '
-                'inside the script, so the run needs no approval.')
+                'inside the script, so the run needs no approval. To glance at a few lines first, use '
+                'the Read tool with a small limit.')
 
     if detect_claude_jobs_write(command):
         return ('BLOCKED: Command creates or writes a path under ~/.claude/jobs. Claude Code '
