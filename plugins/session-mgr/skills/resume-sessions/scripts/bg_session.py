@@ -434,6 +434,8 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
             # so a respawn of it would drop Remote Control. Keep it only when its saved flags are
             # whole; otherwise stop it and continue the session below with every flag.
             if woken is None or _saved_flags_ok(woken):
+                if woken and woken != _short_id(resume):
+                    record_resume(resume, woken)  # the wake came back as a copy under a new id
                 return woken
             stop_session(woken, find_job(woken)[0] or None)
     args = ["claude", "--bg", "--remote-control", "--permission-mode", "manual"]
@@ -604,17 +606,20 @@ def _read_resumed():
 def record_resume(old_id, new_short_id):
     """Record that the session `old_id` continues as `new_short_id`, keyed by short id, so a receipt
     still naming the old id can be followed to the session doing the work now (current_session_id).
-    Best effort: an unwritable file leaves the record out."""
-    resumed = _read_resumed()
-    resumed[_short_id(old_id)] = new_short_id
+    Best effort, retried like forget_session: a file another reader holds open makes os.replace fail on
+    Windows, so each try re-reads the latest record before writing."""
     tmp_path = RESUMED_PATH + f".tmp.{os.getpid()}"
-    try:
-        os.makedirs(os.path.dirname(RESUMED_PATH), exist_ok=True)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(resumed, f, indent=2)
-        os.replace(tmp_path, RESUMED_PATH)
-    except OSError:
-        pass
+    for _ in range(5):
+        resumed = _read_resumed()
+        resumed[_short_id(old_id)] = new_short_id
+        try:
+            os.makedirs(os.path.dirname(RESUMED_PATH), exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(resumed, f, indent=2)
+            os.replace(tmp_path, RESUMED_PATH)
+            return
+        except OSError:
+            continue
 
 
 def current_session_id(ident):

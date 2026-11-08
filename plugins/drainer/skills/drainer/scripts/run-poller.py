@@ -1544,11 +1544,13 @@ def read_receipt(path):
             ident = f.read().strip()
     except OSError:
         return None
-    current = current_session_id(ident) if ident else ident
+    current = current_session_id(ident)
     if current != ident:
         try:
+            st = os.stat(path)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(current)
+            os.utime(path, (st.st_atime, st.st_mtime))  # reconcile's grace period runs from launch time
         except OSError:
             pass
     return current
@@ -1667,12 +1669,8 @@ def _session_guid(runtime_dir, iid):
     the full guid, or the short id when the launch couldn't resolve it (and in older receipts);
     live_session_ids holds both forms. mtime ~ launch time, used to give a freshly-launched worker a grace period before liveness can reap it."""
     p = os.path.join(runtime_dir, "seeds", f"{iid}.prompt.txt.session")
-    try:
-        mtime = os.path.getmtime(p)  # read before read_receipt can rewrite the file on a resume
-    except OSError:
-        return None, None
     ident = read_receipt(p)
-    return (ident, mtime) if ident else (None, None)
+    return (ident, os.path.getmtime(p)) if ident else (None, None)
 
 
 def _item_source_ref(runtime_dir, iid):
