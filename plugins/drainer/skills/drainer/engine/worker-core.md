@@ -149,14 +149,13 @@ This isn't source-specific, so it applies the same way no matter which provider 
 **Also check whether another live session is already working on this same thing.**
 Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one live worker"), so the poller can't route it and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
-Your seed's duplicate-check section runs this check; when your seed has none (the session scan failed), run `ListAgents` instead and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
-Your item's own link (a Trello card URL, a thread link) is the one to look for in a peer's brief.
+Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
 When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.
 Like the silent closes listed in §6a, standing down queues no digest entry: the keeper is the one carrying the item.
 
 **When your seed names a live session already on this item's conversation, ask it first.**
 The poller says so when it found that session but couldn't hand the item to it.
-Settle with that session before any other work; it started earlier, so it keeps the work by the rule unless it says it has finished with the conversation.
+Settle with that session before any other work, by the rule in `duplicate-sessions.md`; it keeps the work unless it says it has finished with the conversation.
 
 **A new item in your own conversation arrives as a message from the drainer.**
 Handle it as part of this conversation before you close, the same as an item you were launched on: read it, then fold it into the reply you are drafting or work it as its own ask.
