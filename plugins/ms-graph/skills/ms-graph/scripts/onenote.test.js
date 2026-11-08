@@ -15,6 +15,10 @@ test('prints a link as "text (url)" and a bare link as the url', () => {
   assert.strictEqual(htmlToText(html), 'Telescope (https://x.test/a) and https://x.test/b');
 });
 
+test('keeps a single-quoted link target and leaves an out-of-range entity as written', () => {
+  assert.strictEqual(htmlToText("<p><a href='https://x.test/c'>Book</a> &#99999999;</p>"), 'Book (https://x.test/c) &#99999999;');
+});
+
 test('decodes entities and drops style blocks', () => {
   assert.strictEqual(htmlToText('<style>p{}</style><p>Tom &amp; Jerry&#39;s &lt;3</p>'), "Tom & Jerry's <3");
 });

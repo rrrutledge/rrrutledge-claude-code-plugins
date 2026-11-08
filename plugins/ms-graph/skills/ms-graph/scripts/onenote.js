@@ -10,13 +10,19 @@
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
+// An entity naming a code point outside Unicode stays as written.
+function codePointOr(original, cp) {
+  return cp <= 0x10ffff ? String.fromCodePoint(cp) : original;
+}
+
 // OneNote page content is HTML; keep paragraph, line, list, and table-row boundaries as
 // line breaks and keep each link's target next to its text.
 function htmlToText(html) {
   return String(html || '')
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')
-    .replace(/<a\b[^>]*?href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => {
+    .replace(/<a\b[^>]*?href=(?:"([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/a>/gi, (_, dq, sq, text) => {
+      const href = dq ?? sq;
       const label = text.replace(/<[^>]+>/g, '').trim();
       return !label || label === href ? href : `${label} (${href})`;
     })
@@ -24,8 +30,8 @@ function htmlToText(html) {
     .replace(/<br\s*\/?>|<\/(p|div|h[1-6]|tr|ul|ol|table)>/gi, '\n')
     .replace(/<\/t[dh]>/gi, '\t')
     .replace(/<[^>]+>/g, '')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (m, n) => codePointOr(m, Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => codePointOr(m, parseInt(n, 16)))
     .replace(/&([a-z]+);/gi, (m, name) => ENTITIES[name.toLowerCase()] ?? m)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -42,11 +48,12 @@ async function getAll(client, api, select) {
   return items;
 }
 
-// The one item whose id equals the query, else the one whose name contains it.
+// The one item whose id equals the query, else whose name equals it, else whose name contains it.
 function resolve(items, kind, query) {
-  const byId = items.filter(i => i.id === query);
   const q = query.toLowerCase();
-  const matches = byId.length ? byId : items.filter(i => String(i.displayName || '').toLowerCase().includes(q));
+  const name = i => String(i.displayName || '').toLowerCase();
+  const matches = [i => i.id === query, i => name(i) === q, i => name(i).includes(q)]
+    .map(test => items.filter(test)).find(m => m.length) || [];
   if (!matches.length) throw new Error(`No ${kind} matches "${query}"`);
   if (matches.length > 1) {
     throw new Error(`"${query}" matches ${matches.length} ${kind}s; be more specific:\n` +
