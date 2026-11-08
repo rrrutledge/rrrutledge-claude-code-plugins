@@ -21,7 +21,7 @@ AI is invoked for exactly three things, plus one judgment-free delivery call (st
    See the screen's dispatch handling in the cycle below.
 3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
-4. **The delivery call for a routed item** - when a new item belongs to a conversation a live worker already holds, one `claude -p` call on the smallest model, holding only SendMessage, carries a code-built note to that worker.
+4. **The delivery call for a routed item** - when a new item belongs to a conversation a live worker already holds, one `claude -p` call carries a code-built note to that worker.
    It makes no judgment: the routing decision is code, and code verifies the send (see "One conversation, one live worker" below).
 
 Triage's `sender` field (person / automated) is cached with the rest of the verdict, where the once-a-day acknowledgement sweep in the digest's daily task reads it (`engine/ack-review.md`).
@@ -145,9 +145,9 @@ New relays plug in by adding a registry entry.
 
 ## One conversation, one live worker
 
-A new needs-you item in a conversation a live worker already holds (the same email thread, Teams chat, Slack DM, or Slack thread) goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
+A new needs-you item in a conversation a live worker already holds goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
 Each provider names the conversation (`conversation_key()`), and `run-poller.py` does the routing and the hand-over (`route_to_live_worker` and the functions it calls); the mechanics are documented there.
-A hand-over that fails launches a worker as before, so the worst case is a duplicate.
+A hand-over that fails launches a worker, so the worst case is a duplicate.
 Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).
 
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
