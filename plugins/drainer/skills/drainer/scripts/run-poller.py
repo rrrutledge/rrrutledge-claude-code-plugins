@@ -69,7 +69,7 @@ from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, Provider
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
-                           resolve_skill_dirs, session_mgr_script)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
+                           resolve_skill_dirs, session_mgr_script, current_session_id)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -1535,6 +1535,25 @@ def open_correspondents(runtime_dir, live):
     return {item["correspondent"] for item, _ in live_worker_items(runtime_dir, live) if item.get("correspondent")}
 
 
+def read_receipt(path):
+    """The worker session id in a seeds/<id>.prompt.txt.session receipt, followed to the session doing
+    the item's work now: a worker resumed under a new id (session-mgr's current_session_id) has its
+    receipt rewritten to that id, so every later read names the live session. None when unreadable."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            ident = f.read().strip()
+    except OSError:
+        return None
+    current = current_session_id(ident) if ident else ident
+    if current != ident:
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(current)
+        except OSError:
+            pass
+    return current
+
+
 def live_worker_items(runtime_dir, live):
     """(captured item json, worker session id) for each worker session file whose id is in `live`."""
     if not live:
@@ -1550,12 +1569,8 @@ def live_worker_items(runtime_dir, live):
     for fn in names:
         if not fn.endswith(suffix):
             continue
-        try:
-            with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
-                guid = f.read().strip()
-        except OSError:
-            continue
-        if guid not in live:
+        guid = read_receipt(os.path.join(seeds_dir, fn))
+        if not guid or guid not in live:
             continue
         try:
             with open(os.path.join(items_dir, f"{fn[:-len(suffix)]}.json"), encoding="utf-8") as f:
@@ -1653,10 +1668,11 @@ def _session_guid(runtime_dir, iid):
     live_session_ids holds both forms. mtime ~ launch time, used to give a freshly-launched worker a grace period before liveness can reap it."""
     p = os.path.join(runtime_dir, "seeds", f"{iid}.prompt.txt.session")
     try:
-        with open(p, encoding="utf-8") as f:
-            return f.read().strip(), os.path.getmtime(p)
+        mtime = os.path.getmtime(p)  # read before read_receipt can rewrite the file on a resume
     except OSError:
         return None, None
+    ident = read_receipt(p)
+    return (ident, mtime) if ident else (None, None)
 
 
 def _item_source_ref(runtime_dir, iid):

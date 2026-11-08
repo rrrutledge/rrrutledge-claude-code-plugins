@@ -74,6 +74,19 @@ check("a Slack item with no correspondent holds no correspondent open",
       poller.open_correspondents(rt, {"guid-a"}), set())
 check("no live scan -> no live workers", poller.live_worker_items(rt, None), [])
 
+print("\nread_receipt: a worker resumed under a new id has its receipt follow it")
+receipt = os.path.join(rt, "seeds", "item-r.prompt.txt.session")
+with open(receipt, "w", encoding="utf-8") as f:
+    f.write("old-guid")
+saved_current = poller.current_session_id
+poller.current_session_id = lambda ident: {"old-guid": "new123"}.get(ident, ident)
+check("the receipt reads as the continuing session", poller.read_receipt(receipt), "new123")
+with open(receipt, encoding="utf-8") as f:
+    check("and the receipt file now names it", f.read(), "new123")
+check("a receipt never resumed reads as written", poller.read_receipt(os.path.join(rt, "seeds", "item-a.prompt.txt.session")), "guid-a")
+check("a missing receipt reads as None", poller.read_receipt(os.path.join(rt, "seeds", "nope.session")), None)
+poller.current_session_id = saved_current
+
 print("\n_append_resume_launcher: the worker seed gets session-mgr's resume instruction")
 seed = os.path.join(rt, "seeds", "item-a.prompt.txt")
 with open(seed, "w", encoding="utf-8") as f:

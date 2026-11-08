@@ -423,7 +423,7 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         --remote-control - starts a continuation under a new session id, because any flag on the
         command makes the service copy the job rather than continue it. The resumed guid then leaves
         the live-session registry (forget_session); its history lives on in the new session, which
-        registers itself.
+        registers itself, and record_resume notes old id -> new id so a receipt can follow it.
     """
     if resume and not seed:
         owner = _wake_account(resume)
@@ -461,6 +461,7 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         remember_account(env.get("CLAUDE_CONFIG_DIR"))
     if m and resume:
         forget_session(resume)
+        record_resume(resume, m.group(1))
     return m.group(1) if m else None
 
 
@@ -582,6 +583,48 @@ def forget_session(session_guid):
             return
         except OSError:
             continue
+
+
+RESUMED_PATH = os.path.expanduser("~/.claude/session-mgr/resumed-sessions.json")
+
+
+def _short_id(ident):
+    return (ident or "").split("-", 1)[0]
+
+
+def _read_resumed():
+    try:
+        with open(RESUMED_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def record_resume(old_id, new_short_id):
+    """Record that the session `old_id` continues as `new_short_id`, keyed by short id, so a receipt
+    still naming the old id can be followed to the session doing the work now (current_session_id).
+    Best effort: an unwritable file leaves the record out."""
+    resumed = _read_resumed()
+    resumed[_short_id(old_id)] = new_short_id
+    tmp_path = RESUMED_PATH + f".tmp.{os.getpid()}"
+    try:
+        os.makedirs(os.path.dirname(RESUMED_PATH), exist_ok=True)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(resumed, f, indent=2)
+        os.replace(tmp_path, RESUMED_PATH)
+    except OSError:
+        pass
+
+
+def current_session_id(ident):
+    """The id of the session carrying `ident`'s work now: `ident` itself, or the short id of the
+    newest continuation record_resume recorded for it, following resume after resume."""
+    resumed, seen = _read_resumed(), set()
+    while _short_id(ident) in resumed and _short_id(ident) not in seen:
+        seen.add(_short_id(ident))
+        ident = resumed[_short_id(ident)]
+    return ident
 
 
 def prompt_seed(prompt_file, lead=""):

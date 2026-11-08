@@ -53,8 +53,9 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
         "run_bounded", "_user_env", "_user_env_all", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
-        "REGISTRY_PATH", "WAKES_PATH", "stop_session")}
+        "REGISTRY_PATH", "WAKES_PATH", "RESUMED_PATH", "stop_session")}
     bg_session.REGISTRY_PATH = os.path.join(tmp, "live-sessions.json")
+    bg_session.RESUMED_PATH = os.path.join(tmp, "resumed-sessions.json")
     bg_session.WAKES_PATH = os.path.join(tmp, "wakes.json")
     bg_session.ACCOUNTS_PATH = os.path.join(tmp, "accounts.json")
     with open(bg_session.ACCOUNTS_PATH, "w", encoding="utf-8") as f:
@@ -330,6 +331,21 @@ def test_resume_forgets_old_registry_entry():
             check("other entries untouched", other in registry, registry)
 
 
+def test_resume_records_the_continuation():
+    print("test: a resume that continues under a new id records old -> new, and current_session_id follows it")
+    with sandbox(stdout="backgrounded · 9f9f9f9f · name\n") as s:
+        bg_session.spawn_bg("follow-up", None, s.tmp, None, resume=GUID)
+        check("the old guid now resolves to the new short id", bg_session.current_session_id(GUID) == "9f9f9f9f",
+              bg_session.current_session_id(GUID))
+        check("the old short id resolves the same way", bg_session.current_session_id(SHORT) == "9f9f9f9f")
+        bg_session.record_resume("9f9f9f9f", "abcdef12")
+        check("a resume of the resumed session is followed too", bg_session.current_session_id(GUID) == "abcdef12")
+        check("an id never resumed stands as written", bg_session.current_session_id("deadbeef") == "deadbeef")
+    with sandbox(returncode=1) as s:
+        bg_session.spawn_bg("follow-up", None, s.tmp, None, resume=GUID)
+        check("a failed resume records nothing", bg_session.current_session_id(GUID) == GUID)
+
+
 def test_short_id_parsing():
     print("test: the short id parses with and without ANSI color codes; failures give None")
     cases = {
@@ -458,6 +474,7 @@ if __name__ == "__main__":
     test_config_dir_follows_registry()
     test_resume_uses_transcript_account()
     test_resume_forgets_old_registry_entry()
+    test_resume_records_the_continuation()
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
     test_wake_that_copies_the_job_is_replaced()

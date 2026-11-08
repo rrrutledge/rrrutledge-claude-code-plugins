@@ -362,6 +362,8 @@ launch = bg_session.launch
 write_receipt = bg_session.write_receipt
 prompt_seed = bg_session.prompt_seed
 session_name = bg_session.session_name
+# A session-mgr installed before current_session_id existed has no resume record, so an id stands as written.
+current_session_id = getattr(bg_session, "current_session_id", lambda ident: ident)
 claude_agents = bg_session.claude_agents
 
 
