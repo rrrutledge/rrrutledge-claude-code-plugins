@@ -1105,6 +1105,10 @@ class TestToolResultsBlocking:
     def test_does_not_flag_python_script_run(self):
         assert detect_tool_results_reference('python .tmp/copy.py') is False
 
+    def test_detects_python_given_the_path_as_an_argument(self):
+        assert detect_tool_results_reference(
+            'python .tmp/copy.py ~/.claude/projects/p/s/tool-results/b1.txt') is True
+
     def test_does_not_flag_other_claude_project_paths(self):
         assert detect_tool_results_reference('ls ~/.claude/projects/p/s/') is False
 

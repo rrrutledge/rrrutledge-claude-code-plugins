@@ -374,15 +374,6 @@ def _subprocess_in_tmp_python(seg, word):
 _PLUGIN_CACHE_INTERPRETER_EXEMPT = {'python', 'python3', 'node'}
 
 
-def _names_path_outside_interpreter(command, pattern):
-    """True if a segment matching `pattern` is not a python/node run."""
-    for seg in split_segments(command):
-        word = first_word(seg.strip())
-        if word and word not in _PLUGIN_CACHE_INTERPRETER_EXEMPT and pattern.search(seg):
-            return True
-    return False
-
-
 def detect_plugin_cache_reference(command):
     """True if a command segment references a path under the installed
     plugin cache (~/.claude/plugins/cache/...) other than running a plugin's
@@ -395,7 +386,11 @@ def detect_plugin_cache_reference(command):
     source. So route around the cache entirely instead of hitting that
     prompt -- or reading the wrong copy -- on every such command against an
     installed plugin."""
-    return _names_path_outside_interpreter(command, PLUGIN_CACHE_PATTERN)
+    for seg in split_segments(command):
+        word = first_word(seg.strip())
+        if word and word not in _PLUGIN_CACHE_INTERPRETER_EXEMPT and PLUGIN_CACHE_PATTERN.search(seg):
+            return True
+    return False
 
 
 _TOOL_RESULTS_PATTERN = re.compile(
@@ -405,12 +400,12 @@ _TOOL_RESULTS_PATTERN = re.compile(
 def detect_tool_results_reference(command):
     """True if a command segment names a saved tool-result file (the harness
     saves an oversized tool result under
-    ~/.claude/projects/<project>/<session>/tool-results/) other than running a
-    python/node interpreter. Claude Code shows its own confirmation for
-    `~/.claude` paths, so a cp/jq/cat against one prompts however the hook
-    decides. A python script in `.tmp/` that opens the path itself never names
-    it on the command line, so it runs without a prompt."""
-    return _names_path_outside_interpreter(command, _TOOL_RESULTS_PATTERN)
+    ~/.claude/projects/<project>/<session>/tool-results/). Claude Code shows
+    its own confirmation for `~/.claude` paths, so any command line naming one
+    (cp, jq, cat, or a python run given it as an argument) prompts however the
+    hook decides. A python script in `.tmp/` that opens the path itself never
+    names it on the command line, so it runs without a prompt."""
+    return any(_TOOL_RESULTS_PATTERN.search(seg) for seg in split_segments(command))
 
 
 def _expand_home_spelling(token):
