@@ -394,7 +394,7 @@ def detect_plugin_cache_reference(command):
 
 
 _TOOL_RESULTS_PATTERN = re.compile(
-    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results[/\\]', re.IGNORECASE)
+    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])', re.IGNORECASE)
 
 
 def detect_tool_results_reference(command):

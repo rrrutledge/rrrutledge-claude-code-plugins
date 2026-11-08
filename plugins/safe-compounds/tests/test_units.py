@@ -1109,6 +1109,12 @@ class TestToolResultsBlocking:
         assert detect_tool_results_reference(
             'python .tmp/copy.py ~/.claude/projects/p/s/tool-results/b1.txt') is True
 
+    def test_detects_directory_without_trailing_slash(self):
+        assert detect_tool_results_reference('ls ~/.claude/projects/p/s/tool-results') is True
+
+    def test_does_not_flag_similarly_named_directory(self):
+        assert detect_tool_results_reference('ls ~/.claude/projects/p/s/tool-results-old/') is False
+
     def test_does_not_flag_other_claude_project_paths(self):
         assert detect_tool_results_reference('ls ~/.claude/projects/p/s/') is False
 
