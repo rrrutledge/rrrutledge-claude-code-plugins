@@ -50,14 +50,30 @@ def is_curl_safe(segment):
 SED_INPLACE_PATTERN = re.compile(r'^-[a-zA-Z]*i')
 
 
-def is_sed_command_safe(seg):
-    """Allow sed unless an -i (in-place edit) flag is present."""
-    for token in shell_tokenize(seg)[1:]:
+def _is_inplace_long_flag(token):
+    # GNU sed accepts any unambiguous prefix of --in-place (--i, --in, ...), with an optional =SUFFIX.
+    name = token.split('=', 1)[0]
+    return len(name) >= 3 and '--in-place'.startswith(name)
+
+
+def sed_has_inplace_flag(seg):
+    """True when sed appears in the segment (directly or behind xargs/env/find -exec) with an
+    in-place flag: -i, -i<suffix>, -ni, --in-place[=suffix] and its prefixes."""
+    tokens = shell_tokenize(seg)
+    if 'sed' not in tokens:
+        return False
+    for token in tokens[tokens.index('sed') + 1:]:
         if token.startswith('--'):
-            continue
-        if SED_INPLACE_PATTERN.match(token):
-            return False
-    return True
+            if _is_inplace_long_flag(token):
+                return True
+        elif SED_INPLACE_PATTERN.match(token):
+            return True
+    return False
+
+
+def is_sed_command_safe(seg):
+    """Allow sed unless an in-place edit flag is present."""
+    return not sed_has_inplace_flag(seg)
 
 
 # ============================================================ subcommand tools

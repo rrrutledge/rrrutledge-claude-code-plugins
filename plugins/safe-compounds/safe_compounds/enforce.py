@@ -18,7 +18,7 @@ proceed to approval. Individual detectors are exposed for unit testing.
 import os
 import re
 
-from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args
+from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args, sed_has_inplace_flag
 from .log import log_debug
 from .paths import (
     PLUGIN_CACHE_PATTERN, is_within_claude_jobs_dir, normalize_path_cross_platform,
@@ -697,9 +697,10 @@ def enforce_bash(command):
                 return ('BLOCKED: cmd /c or cmd //c detected. Windows utilities run directly in Git Bash - '
                         'no cmd wrapper needed.' + hint +
                         ' For bash equivalents of Windows commands see the PowerShell cmdlet map in the hook.')
-        if word == 'sed' and re.search(r'\bsed\b.*\s-i\b', seg):
-            return ('BLOCKED: "sed -i" destroys files on Windows/MSYS (especially symlinks). '
-                    'Use the Edit tool instead.')
+        if sed_has_inplace_flag(seg):
+            return ('BLOCKED: sed in-place edit (-i, -i<suffix>, --in-place) rewrites the file with no '
+                    'undo, and on Windows/MSYS it mangles files and symlinks. Use the Edit tool for a '
+                    'single-file change, or write a Python script in .tmp/ for a bulk edit.')
         if word in ('python', 'python3'):
             filename = _subprocess_in_tmp_python(seg, word)
             if filename:
