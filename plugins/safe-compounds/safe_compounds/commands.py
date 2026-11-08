@@ -48,15 +48,23 @@ def is_curl_safe(segment):
 
 # ----------------------------------------------------------------- sed --------
 SED_INPLACE_PATTERN = re.compile(r'^-[a-zA-Z]*i')
-# GNU sed accepts any unambiguous prefix of --in-place (--in, --in-p, ...), with an optional =SUFFIX.
-SED_INPLACE_LONG_PATTERN = re.compile(r'^--in(-(p(l(a(c(e)?)?)?)?)?)?(=|$)')
+
+
+def _is_inplace_long_flag(token):
+    # GNU sed accepts any unambiguous prefix of --in-place (--i, --in, ...), with an optional =SUFFIX.
+    name = token.split('=', 1)[0]
+    return len(name) >= 3 and '--in-place'.startswith(name)
 
 
 def sed_has_inplace_flag(seg):
-    """True when a sed segment carries an in-place flag (-i, -i<suffix>, -ni, --in-place[=suffix])."""
-    for token in shell_tokenize(seg)[1:]:
+    """True when sed appears in the segment (directly or behind xargs/env/find -exec) with an
+    in-place flag: -i, -i<suffix>, -ni, --in-place[=suffix] and its prefixes."""
+    tokens = shell_tokenize(seg)
+    if 'sed' not in tokens:
+        return False
+    for token in tokens[tokens.index('sed') + 1:]:
         if token.startswith('--'):
-            if SED_INPLACE_LONG_PATTERN.match(token):
+            if _is_inplace_long_flag(token):
                 return True
         elif SED_INPLACE_PATTERN.match(token):
             return True

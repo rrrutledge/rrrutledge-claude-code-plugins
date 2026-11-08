@@ -697,7 +697,7 @@ def enforce_bash(command):
                 return ('BLOCKED: cmd /c or cmd //c detected. Windows utilities run directly in Git Bash — '
                         'no cmd wrapper needed.' + hint +
                         ' For bash equivalents of Windows commands see the PowerShell cmdlet map in the hook.')
-        if word == 'sed' and sed_has_inplace_flag(seg.strip()):
+        if sed_has_inplace_flag(seg):
             return ('BLOCKED: sed in-place edit (-i, -i<suffix>, --in-place) rewrites the file with no '
                     'undo, and on Windows/MSYS it mangles files and symlinks. Use the Edit tool for a '
                     'single-file change, or write a Python script in .tmp/ for a bulk edit.')
