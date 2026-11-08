@@ -1,4 +1,4 @@
-// Diagnostic patterns — used during Phase 4 autonomous recovery. When a
+// Diagnostic patterns - used during Phase 4 autonomous recovery. When a
 // step fails, these snippets gather visual evidence (screenshots, button
 // inventories, timing comparisons) so you can diagnose the root cause from
 // what the page actually shows, not from the error text.

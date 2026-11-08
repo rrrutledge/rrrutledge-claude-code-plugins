@@ -10,7 +10,7 @@ Each case is the hook's input plus the decision it is expected to produce:
   expect  - "ALLOW" (auto-approve), "BLOCK" (deny + rewrite message), or
             "PROMPT" (defer to a manual prompt)
 
-These expectations ARE the spec — hand-verified, asserted directly by
+These expectations ARE the spec - hand-verified, asserted directly by
 test_characterization.py. Tests run with AI disabled, the trusted set pinned to
 fixtures/trusted_commands.json, and config from fixtures/config.json
 (curl_domains=["example.org"], mcp_blanket_servers=["myserver"]).
@@ -140,7 +140,7 @@ CASES = [
     # --- taskkill (self-close-my-own-tab only; anything else prompts) -------
     # A real self-target ALLOW depends on the live process tree at test time
     # (not a static literal), so it's covered by test_units.py's
-    # TestTaskkill/TestSelfTabHostPid instead — these cases pin the negative
+    # TestTaskkill/TestSelfTabHostPid instead - these cases pin the negative
     # (never blanket-approved) forms.
     # PID 4 (System) is live on Windows and never an own descendant; off
     # Windows the empty process table fails closed - PROMPT either way. (An
@@ -149,10 +149,10 @@ CASES = [
     {"id": "taskkill_image_name", "tool": "Bash", "command": "taskkill /IM chrome.exe /F", "expect": "PROMPT"},
     {"id": "taskkill_remote_host", "tool": "Bash", "command": "taskkill /S otherhost /PID 1 /F", "expect": "PROMPT"},
     # MSYS/Git-Bash doubles the leading slash (//PID, //T, //F) to escape its
-    # path-mangling — same negative case, doubled-slash form.
+    # path-mangling - same negative case, doubled-slash form.
     {"id": "taskkill_bogus_pid_msys", "tool": "Bash", "command": "taskkill //PID 4 //T //F", "expect": "PROMPT"},
     # The drainer's self-close primitive (fires SessionEnd, then kills its own
-    # tab) must auto-approve via the trusted plugin-cache script dir — a worker
+    # tab) must auto-approve via the trusted plugin-cache script dir - a worker
     # that hits a prompt here sits open forever instead of closing silently.
     {"id": "close_session_plugin_script", "tool": "Bash",
      "command": "python \"C:/Users/x/.claude/plugins/cache/rrrutledge-claude-code-plugins/drainer/1.39.0/skills/drainer/scripts/close-session.py\"",

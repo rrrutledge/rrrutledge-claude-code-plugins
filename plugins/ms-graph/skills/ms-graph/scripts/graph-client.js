@@ -1,5 +1,5 @@
 // Shared Microsoft Graph client for a PERSONAL Microsoft account, built on the official
-// libraries — @azure/msal-node (auth + token cache) and @microsoft/microsoft-graph-client
+// libraries - @azure/msal-node (auth + token cache) and @microsoft/microsoft-graph-client
 // (request builder). MSAL owns the refresh token internally and silently renews access
 // tokens; there is no manual refresh-token handling here.
 //
@@ -20,7 +20,7 @@ const { Client } = require('@microsoft/microsoft-graph-client');
 const CACHE_PATH = path.join(DEP_HOME, 'token-cache.json');
 const AUTHORITY = 'https://login.microsoftonline.com/consumers'; // personal accounts only
 const REDIRECT_URI = 'http://localhost:8080/callback';
-// Resource scopes only — MSAL adds openid/profile/offline_access automatically.
+// Resource scopes only - MSAL adds openid/profile/offline_access automatically.
 const SCOPES = ['User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.ReadWrite', 'MailboxSettings.ReadWrite', 'Contacts.ReadWrite', 'Files.Read'];
 
 const cachePlugin = {

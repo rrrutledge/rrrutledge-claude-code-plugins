@@ -1,4 +1,4 @@
-"""Claude Haiku safety analysis — a single request implementation shared by
+"""Claude Haiku safety analysis - a single request implementation shared by
 every AI fallback (command/script/subcommand classification and temp-file
 detection).
 
@@ -117,7 +117,7 @@ def call_ai(prompt):
     True (SAFE), False (DANGEROUS), or None (could not decide); reason is the
     one-line explanation when the prompt asks for `DANGEROUS: <reason>` and the
     model supplies one, else None. Callers that only need the verdict can ignore
-    the reason — generating it costs nothing on a one-word SAFE reply."""
+    the reason - generating it costs nothing on a one-word SAFE reply."""
     text = ask(prompt, max_tokens=80)
     if text is None:
         return None, None

@@ -1,4 +1,4 @@
-// Snapshot the target — navigate to a URL, wait for the page to settle, and
+// Snapshot the target - navigate to a URL, wait for the page to settle, and
 // save a screenshot of whatever's on screen. Generic utility: the caller
 // decides what to do with the screenshot (verify login state, confirm an
 // app is loaded, capture before/after a mutation, etc.).
@@ -8,7 +8,7 @@
 // Behavior: navigates to --url, waits for URL stability (no redirects for
 // 2.5s, max 15s), network idle, and DOM render stability, then saves a
 // screenshot. Prints the screenshot path + the URL the browser actually
-// landed on. Makes no claims about page contents — the caller inspects the
+// landed on. Makes no claims about page contents - the caller inspects the
 // screenshot with the Read tool.
 //
 // --target-anchor: optional CSS selector. When provided, the script returns
@@ -27,7 +27,7 @@ const { registerTab, touchTab } = (() => {
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
 
-// Splits only on the FIRST "=" — a bare .split('=')[1] truncates any value that
+// Splits only on the FIRST "=" - a bare .split('=')[1] truncates any value that
 // itself contains "=" (a URL query string like ?jl=123, a CSS attribute selector
 // like [role="dialog"]), silently handing the script a mangled argument.
 function argValue(flag) {
@@ -47,8 +47,8 @@ if (!targetUrl) {
 
 // Resolves once the URL stops changing for `settleMs` consecutive ms, or
 // after `maxMs` total. Captures the destination URL after any client-side
-// redirect chain — SSO handshakes, region/locale routing, AB-test
-// redirects — instead of screenshotting an in-flight redirect.
+// redirect chain - SSO handshakes, region/locale routing, AB-test
+// redirects - instead of screenshotting an in-flight redirect.
 async function waitForUrlStable(page, settleMs = 2500, maxMs = 15000) {
   const start = Date.now();
   let lastUrl = page.url();
@@ -67,7 +67,7 @@ async function waitForUrlStable(page, settleMs = 2500, maxMs = 15000) {
 
 async function snapshot() {
   const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
-  // Prefer contexts that already have a real http page — Edge sometimes launches
+  // Prefer contexts that already have a real http page - Edge sometimes launches
   // a welcome popup window as a separate context and it may sort before the main window.
   const contexts = browser.contexts();
   const context = contexts.length > 1

@@ -1,25 +1,25 @@
 // Append rows to an existing table in a Google Doc, via the official `googleapis` Docs v1 client
-// (OAuth path — see google-docs-oauth.js). Built for a board-secretary sensitive-docs tracking
+// (OAuth path - see google-docs-oauth.js). Built for a board-secretary sensitive-docs tracking
 // table, but generic: any doc with one table and a fixed column count works.
 //
 // Append rows:  node google-docs.js --append-rows --doc-id=<id> --rows-file=<path to JSON> [--table-index=0]
-//               (rows-file is a JSON array of rows, each row an array of per-column cell strings —
+//               (rows-file is a JSON array of rows, each row an array of per-column cell strings -
 //                the row length must match the target table's column count. --table-index picks which
 //                table on the page when a doc has more than one; default 0, the first table.)
 //
 // Delete rows:  node google-docs.js --delete-rows --doc-id=<id> --row-indices=1,2,3 [--table-index=0]
-//               (row-indices are 0-based table-row positions, e.g. row 0 is usually the header — each
+//               (row-indices are 0-based table-row positions, e.g. row 0 is usually the header - each
 //                deletion runs in its own call, highest index first, so earlier deletions never shift
 //                the position of a not-yet-deleted row.)
 //
 // Set cell bullets: node google-docs.js --set-cell-bullets --doc-id=<id> --row-index=<n> --col-index=<n>
 //               --items-file=<path to JSON> [--table-index=0]
-//               (items-file is a JSON array of strings — replaces the cell's entire content with one
+//               (items-file is a JSON array of strings - replaces the cell's entire content with one
 //                bulleted paragraph per item.)
 //
 // Set cell link: node google-docs.js --set-cell-link --doc-id=<id> --row-index=<n> --col-index=<n>
 //               --text="short label" --url="https://..." [--table-index=0]
-//               (replaces the cell's entire content with one line of clickable hyperlinked text —
+//               (replaces the cell's entire content with one line of clickable hyperlinked text -
 //                the short label is what's shown; clicking it opens the URL.)
 //
 // Set cell text: node google-docs.js --set-cell-text --doc-id=<id> --row-index=<n> --col-index=<n>
@@ -33,7 +33,7 @@
 // applies a batch's requests in order, each seeing the previous requests' edits).
 //
 // Every read/write below goes through the official `googleapis` Docs v1 resource's typed
-// documents.get/documents.batchUpdate methods — never a hand-built REST URL. The index-math (finding
+// documents.get/documents.batchUpdate methods - never a hand-built REST URL. The index-math (finding
 // a cell's start/end, clearing a cell down to one empty paragraph, rightmost-first ordering within a
 // batch) is inherent to the Docs API's structural editing model itself; no client library abstracts
 // that part away, since it's business logic, not transport.
@@ -102,7 +102,7 @@ async function appendRow(docsClient, docId, tableIndex, rowValues) {
   const table2 = tables2[tableIndex].table;
   const newRow = table2.tableRows[table2.tableRows.length - 1];
 
-  // 3. Fill cells rightmost-first so each insertText's target index is still valid when it runs —
+  // 3. Fill cells rightmost-first so each insertText's target index is still valid when it runs -
   // an insert only shifts indices strictly after it, and we've already handled everything after the
   // cell we're about to fill.
   const requests = [];
@@ -120,7 +120,7 @@ async function appendRow(docsClient, docId, tableIndex, rowValues) {
 async function deleteRows(docsClient, docId, tableIndex, rowIndices) {
   // One deletion per batchUpdate call, re-fetching in between. A single batch with many
   // deleteTableRow requests was observed to silently drop the last request (the highest original
-  // row index went undeleted with no error) — re-fetching each time costs more round-trips but is
+  // row index went undeleted with no error) - re-fetching each time costs more round-trips but is
   // the same safe pattern appendRow already uses, and it's been reliable where the batched form wasn't.
   const sorted = [...rowIndices].sort((a, b) => b - a);
   for (const rowIndex of sorted) {
@@ -141,7 +141,7 @@ async function deleteRows(docsClient, docId, tableIndex, rowIndices) {
 }
 
 async function setCellBullets(docsClient, docId, tableIndex, rowIndex, colIndex, items) {
-  // 1. Locate the cell and clear its existing content down to a single empty paragraph — a cell
+  // 1. Locate the cell and clear its existing content down to a single empty paragraph - a cell
   // must always end with a paragraph mark, so we delete everything except that trailing newline.
   const doc = await getDocument(docsClient, docId);
   const tables = findTables(doc.body.content);
@@ -184,7 +184,7 @@ async function setCellBullets(docsClient, docId, tableIndex, rowIndex, colIndex,
 
 async function setCellLink(docsClient, docId, tableIndex, rowIndex, colIndex, text, url) {
   // Same clear-to-one-empty-paragraph approach as setCellBullets, then insert the label text and
-  // style just that range as a hyperlink in one batch — insertText's shift is visible to the
+  // style just that range as a hyperlink in one batch - insertText's shift is visible to the
   // updateTextStyle request that follows it in the same call.
   const doc = await getDocument(docsClient, docId);
   const tables = findTables(doc.body.content);
@@ -204,7 +204,7 @@ async function setCellLink(docsClient, docId, tableIndex, rowIndex, colIndex, te
     }]);
   }
 
-  // Strip any bullet the paragraph carried from a prior --set-cell-bullets call — a single-line
+  // Strip any bullet the paragraph carried from a prior --set-cell-bullets call - a single-line
   // link cell should never render as a one-item bulleted list.
   await batchUpdate(docsClient, docId, [
     { insertText: { location: { index: startIndex }, text } },
@@ -291,6 +291,6 @@ async function setCellText(docsClient, docId, tableIndex, rowIndex, colIndex, te
     await setCellText(docsClient, args['doc-id'], tableIndex, parseInt(args['row-index'], 10), parseInt(args['col-index'], 10), args['text'], !!args['bold']);
     console.log(`Set text "${args['text']}" in row ${args['row-index']}, col ${args['col-index']}.`);
   } else {
-    throw new Error('Nothing to do — pass --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, or --set-cell-text');
+    throw new Error('Nothing to do - pass --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, or --set-cell-text');
   }
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

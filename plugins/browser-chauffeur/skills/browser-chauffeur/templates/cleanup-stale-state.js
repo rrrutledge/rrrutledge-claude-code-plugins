@@ -1,4 +1,4 @@
-// Cleanup stale dirty-editor state — call at the top of any multi-step batch script
+// Cleanup stale dirty-editor state - call at the top of any multi-step batch script
 // to clear leftover dialogs from a previous aborted run. When a script aborts mid-flow
 // (e.g., Save click times out), the editor may be left open with dirty changes. The next
 // run then hits a "Discard changes?" dialog that intercepts pointer events and blocks
@@ -13,14 +13,14 @@
 //   await cleanupStaleState(page);
 //
 // Options:
-//   maxIterations (default 6) — max dialog-dismissal rounds before giving up
+//   maxIterations (default 6) - max dialog-dismissal rounds before giving up
 
 async function cleanupStaleState(page, { maxIterations = 6 } = {}) {
   const PRIORITY = ['Cancel', 'Discard', 'OK', 'Close'];
   // :is() lets us match multiple roles in one compound selector
   const POPUP_SEL = ':is([role="dialog"], [role="alertdialog"], [role="menu"])';
 
-  // Returns the count of currently visible popups — used to verify dismissal actually worked
+  // Returns the count of currently visible popups - used to verify dismissal actually worked
   const visiblePopupCount = () => page.waitForFunction(
     (sel) => Array.from(document.querySelectorAll(sel)).filter(el => {
       const cs = getComputedStyle(el);
@@ -46,7 +46,7 @@ async function cleanupStaleState(page, { maxIterations = 6 } = {}) {
     let dismissed = false;
     for (const label of PRIORITY) {
       // Use Playwright locator (not page.evaluate + element.click) so the click goes
-      // through the framework event system — raw DOM clicks bypass React/Fluent UI handlers.
+      // through the framework event system - raw DOM clicks bypass React/Fluent UI handlers.
       // hasText does a substring match, which handles Fluent UI icon-glyph prefixes on text.
       const btn = page.locator(`${POPUP_SEL} button`).filter({ hasText: label }).first();
       if ((await btn.count()) > 0 && await btn.isVisible().catch(() => false)) {
@@ -60,7 +60,7 @@ async function cleanupStaleState(page, { maxIterations = 6 } = {}) {
     }
 
     if (!dismissed) {
-      // No matching priority button — press Escape as last resort
+      // No matching priority button - press Escape as last resort
       await page.keyboard.press('Escape');
       console.log('  [cleanup] Pressed Escape to close stale popup');
       // Verify via DOM state before looping again

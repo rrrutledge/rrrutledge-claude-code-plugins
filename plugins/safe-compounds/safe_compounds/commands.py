@@ -291,7 +291,7 @@ def _git_reset_ok(args):
         return False
     # Allow --hard only when syncing to a remote tracking ref (origin/...).
     # The target commits exist on the remote; committed local work is recoverable via reflog.
-    # Note: uncommitted working-tree changes are NOT recoverable — --hard always discards them.
+    # Note: uncommitted working-tree changes are NOT recoverable - --hard always discards them.
     non_flag_args = [a for a in args if not a.startswith('-')]
     return bool(non_flag_args) and non_flag_args[0].startswith('origin/')
 
@@ -324,7 +324,7 @@ BUN_TRUSTED_SUBCOMMANDS = {'install', 'add', 'update', 'remove', 'test'}
 SCHTASKS_TRUSTED_SUBCOMMANDS = {'/query', '//query', '/change', '//change', '/disable', '//disable', '/enable', '//enable'}
 # Read-only verbs only: qe/el/gl/gli/ep/gp just read the event log or its
 # metadata. sl/im/um mutate log config or publishers, and cl/epl/al clear,
-# export, or archive a log — all excluded so they keep prompting.
+# export, or archive a log - all excluded so they keep prompting.
 WEVTUTIL_TRUSTED_SUBCOMMANDS = {
     'qe', 'query-events', 'el', 'enum-logs', 'gl', 'get-log',
     'gli', 'get-log-info', 'ep', 'enum-publishers', 'gp', 'get-publisher',
@@ -342,7 +342,7 @@ GH_TRUSTED_SUBCOMMANDS = {
 }
 GH_WRITE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
 # The bare repo endpoint (repos/owner/repo). A PATCH here edits repo settings
-# (delete_branch_on_merge, default_branch, visibility, ...) which is reversible —
+# (delete_branch_on_merge, default_branch, visibility, ...) which is reversible -
 # just flip the value back. A DELETE here destroys the whole repo and is NOT
 # reversible, so it is deliberately excluded below (DELETE keeps prompting).
 GH_REPO_SETTINGS_PATTERN = re.compile(r'/?repos/[^/]+/[^/]+/?$')
@@ -405,8 +405,8 @@ GH_GLOBAL_FLAGS_WITH_ARG = {'--repo', '-R', '--hostname', '--cwd'}
 
 def _gh_find_group(tokens):
     """Return (index, group) skipping only argument-consuming global flags
-    (--repo/-R/--hostname/--cwd). Any other token — including --version or
-    a subcommand — stops the scan and is returned as the group."""
+    (--repo/-R/--hostname/--cwd). Any other token - including --version or
+    a subcommand - stops the scan and is returned as the group."""
     i = 1
     while i < len(tokens) and tokens[i] in GH_GLOBAL_FLAGS_WITH_ARG:
         i += 2
@@ -415,7 +415,7 @@ def _gh_find_group(tokens):
 
 def is_gh_command_safe(seg):
     """gh is two-level (group action) plus the special `api`/`auth` groups, so it
-    has its own handler — but it shares the AI-learn fallback of the engine."""
+    has its own handler - but it shares the AI-learn fallback of the engine."""
     tokens = shell_tokenize(seg)
     if len(tokens) < 2:
         return True
@@ -603,15 +603,15 @@ def is_powershell_safe(seg):
 # Two shapes get auto-approved, both proven via a live OS process-ancestry
 # walk rather than trusting the argument:
 #   1. A drainer worker closing its own tab by killing the terminal's hosting
-#      process (see plugins/drainer/skills/drainer/engine/worker-core.md) —
+#      process (see plugins/drainer/skills/drainer/engine/worker-core.md) -
 #      every PID equals this session's own tab host.
 #   2. A session cleaning up its own leftover child processes (idle shell
-#      wrappers, conhost.exe, stray subagent scripts) at Stop-hook time —
+#      wrappers, conhost.exe, stray subagent scripts) at Stop-hook time -
 #      every PID is a live descendant of this session's own claude.exe,
 #      confirmed by `procs.is_own_descendant` (ancestry walk + a creation-time
 #      check on each hop, to rule out a reused PID faking the chain).
-# Only `/PID <n>` (plus `/T` `/F`) is recognized — never `/IM`, `/S`, `/U`,
-# `/P`, `/FI`, ... — and a PID that's neither the tab host nor a proven own
+# Only `/PID <n>` (plus `/T` `/F`) is recognized - never `/IM`, `/S`, `/U`,
+# `/P`, `/FI`, ... - and a PID that's neither the tab host nor a proven own
 # descendant defers the whole command to a manual prompt.
 #
 # A PID absent from the live process table also passes: the target already
@@ -622,13 +622,13 @@ def is_powershell_safe(seg):
 # `procs.is_absent`).
 #
 # The Bash tool runs Git Bash, whose MSYS layer treats a single leading slash
-# as a POSIX path and mangles it — so commands built for that tool arrive as
+# as a POSIX path and mangles it - so commands built for that tool arrive as
 # `//PID`, `//T`, `//F` (doubled slash escapes the mangling) rather than the
 # Windows-native `/PID`. Normalize away the doubling before comparing so both
 # forms are recognized.
 #
 # A `$pid`-style variable in place of a literal PID can't be verified
-# statically — it never reaches here, since `enforce_bash` already blocks
+# statically - it never reaches here, since `enforce_bash` already blocks
 # simple variable expansion (and `for`/`while` loops) upstream and asks for a
 # `.tmp/` Python script instead.
 TASKKILL_NO_ARG_FLAGS = {'/t', '/f'}
@@ -834,7 +834,7 @@ def strip_safe_redirections(segment):
     Per-command checkers (is_start_safe, check_cwd_file_command, ...) tokenize
     a segment and look at positional arguments (last token, first non-flag
     arg). A trailing clause like "2>&1" left in the string reads as a real
-    argument — e.g. "start file.html 2>&1" picks "2>&1" as the launch target
+    argument - e.g. "start file.html 2>&1" picks "2>&1" as the launch target
     instead of "file.html", failing a check that would otherwise pass. These
     clauses never write to a new location, so they're always safe to drop
     before positional analysis runs.

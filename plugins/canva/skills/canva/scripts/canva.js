@@ -1,4 +1,4 @@
-// Canva Connect API client — asset upload and folder management, via Node's built-in fetch and
+// Canva Connect API client - asset upload and folder management, via Node's built-in fetch and
 // the OAuth helper in canva-oauth.js. Every call goes through canvaRequest(), which attaches a
 // fresh (auto-refreshed) bearer token and throws on any non-2xx response.
 //
@@ -9,7 +9,7 @@
 // Upload an asset:         node canva.js --upload-asset --file=<path> [--name="..."] [--folder-id=<id>]
 //                          (name defaults to the file's basename, truncated to Canva's 50-char cap;
 //                           when --folder-id is given, the asset is moved into that folder once the
-//                           upload job succeeds — a fresh upload always lands in the account's default
+//                           upload job succeeds - a fresh upload always lands in the account's default
 //                           Uploads location first, so grouping into a folder is a second call.)
 //
 // List a folder's items:   node canva.js --list-folder --folder-id=<id>
@@ -17,7 +17,7 @@
 // Move an item to folder:  node canva.js --move-to-folder --item-id=<id> --to-folder-id=<id>
 //
 // The Asset Upload API is asynchronous: POST /asset-uploads returns a job immediately, and the
-// caller polls GET /asset-uploads/{jobId} until status leaves "in_progress" — pollAssetUploadJob
+// caller polls GET /asset-uploads/{jobId} until status leaves "in_progress" - pollAssetUploadJob
 // does that here so every command above returns only once the job has actually settled.
 
 const fs = require('fs');
@@ -120,6 +120,6 @@ async function moveToFolder(itemId, toFolderId) {
     await moveToFolder(args['item-id'], args['to-folder-id']);
     console.log(`Moved ${args['item-id']} to folder ${args['to-folder-id']}.`);
   } else {
-    throw new Error('Nothing to do — pass --create-folder, --upload-asset, --list-folder, or --move-to-folder');
+    throw new Error('Nothing to do - pass --create-folder, --upload-asset, --list-folder, or --move-to-folder');
   }
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

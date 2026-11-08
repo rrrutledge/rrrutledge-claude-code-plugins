@@ -1,11 +1,11 @@
 // Browser automation script template. Scripts receive a validated CDP port
 // from browser-chauffeur Phase 0 via --cdp-port. They do NOT contain browser
-// detection, fallback, or target-load validation — that is handled by Claude
+// detection, fallback, or target-load validation - that is handled by Claude
 // interactively during Phase 0 before any script runs.
 //
-// Each script opens its own tab with openTab (never bare newPage — openTab
+// Each script opens its own tab with openTab (never bare newPage - openTab
 // registers the tab so the launcher's sweep can reclaim it), works in it, and
-// closes it with closeTab when done. The browser is persistent — it stays
+// closes it with closeTab when done. The browser is persistent - it stays
 // running across tasks so logins survive. closeTab guards against closing the
 // last tab (which would exit the browser and lose all sessions).
 
@@ -20,7 +20,7 @@ const { dismissOverlays, openTab, closeTab, screenshotOnFailure } = (() => {
 })();
 
 // --- browser connection ---
-// Splits only on the FIRST "=" — a bare .split('=')[1] truncates any value that
+// Splits only on the FIRST "=" - a bare .split('=')[1] truncates any value that
 // itself contains "=" (a URL query string, a CSS attribute selector). Any
 // ad-hoc script adding its own --flag=value argument (e.g. --url=) should copy
 // this helper rather than reintroducing the bare split pattern.
@@ -33,8 +33,8 @@ function argValue(flag) {
 const cdpPort = argValue('cdp-port') || '9222';
 
 // connectOverCDP auto-attaches to EVERY open target to build its page tree. On a
-// persistent profile that has accumulated many tabs — or has a single wedged
-// renderer — that enumeration can hang indefinitely (Playwright's own `timeout`
+// persistent profile that has accumulated many tabs - or has a single wedged
+// renderer - that enumeration can hang indefinitely (Playwright's own `timeout`
 // option only bounds the socket connect, not post-connect target enumeration).
 // Race it against a hard timeout so a wedged browser fails fast with an
 // actionable error instead of hanging forever.
@@ -82,7 +82,7 @@ async function run() {
     // --- steps go here ---
     // Use semantic selectors: getByRole, getByLabel, locator('[aria-label="..."]')
     // Use element-based waits: locator.waitFor(), page.waitForURL(), page.waitForLoadState()
-    // Check page.frames() if content appears empty — it may be in an iframe
+    // Check page.frames() if content appears empty - it may be in an iframe
     // Track results as you go (push to succeeded/failed arrays)
 
     // --- VERIFICATION (required) ---

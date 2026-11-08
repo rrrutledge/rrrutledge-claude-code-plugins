@@ -1,7 +1,7 @@
 // One-time interactive sign-in for all Gmail access (mail + filters). Runs the OAuth2 authorization-code
 // loopback flow: prints (and serves) a consent URL, captures the code on a local callback, exchanges it
 // for tokens, and caches them. Run via browser-chauffeur, which navigates to the printed URL and approves
-// consent (pick the intended Google account — for the default account that's the ISC Workspace account
+// consent (pick the intended Google account - for the default account that's the ISC Workspace account
 // russ@innersourcecommons.org).
 //
 //   node gmail-auth.js                    -> sign in the default account (~/.claude/gmail/oauth-token.json)
@@ -16,7 +16,7 @@
 //
 // Consents for the full scope set in gmail-oauth.js (gmail.modify + gmail.compose + gmail.settings.basic),
 // so gmail.js and filters.js both run silently afterward. Adding scopes later means re-running this to
-// re-consent — Google issues a token only for the scopes granted on the consent screen.
+// re-consent - Google issues a token only for the scopes granted on the consent screen.
 
 const http = require('http');
 const { buildOAuthClient, writeTokens, SCOPES, REDIRECT_URI, PROFILE_URL, ACCOUNT_NAME } = require('./gmail-oauth');
@@ -65,9 +65,9 @@ const expectEmail = (() => {
   const prof = await client.request({ url: PROFILE_URL, method: 'GET' });
   const signedInAs = (prof.data.emailAddress || '').toLowerCase();
   if (expectEmail && signedInAs !== expectEmail) {
-    throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token — sign in as the intended account and re-run.`);
+    throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
   }
 
   writeTokens({ ...tokens, account_email: signedInAs });
-  console.log(`Signed in as ${signedInAs} (account "${ACCOUNT_NAME || 'default'}") — OAuth token cached. gmail.js and filters.js will run silently now.`);
+  console.log(`Signed in as ${signedInAs} (account "${ACCOUNT_NAME || 'default'}") - OAuth token cached. gmail.js and filters.js will run silently now.`);
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });
