@@ -145,34 +145,10 @@ New relays plug in by adding a registry entry.
 
 ## One conversation, one live worker
 
-This extends the grouping the drainer already does before a worker launches.
-A Slack item folds a conversation's whole unread span into one item (`slack-adapter.py` `capture`), and the correspondent hold below keeps a second email from the same person waiting while the first one's worker is open.
-Neither covers a message that arrives after its conversation's worker is live, or the same thread surfacing as a different item type (`@mention in thread`, `Thread reply`, `Unread in`): each of those would get its own worker.
-Instead, each provider gives an item a **conversation key** where its source has one (`conversation_key()`): the Gmail thread id, the Outlook conversation id, the Teams chat id, and for Slack the DM or group DM, or in a channel the thread's root ts, where a top-level message is its own root.
-The poller stamps the key into the `items/<id>.json` of each needs-you worker it launches as the conversation's holder.
-
-At dispatch, before the correspondent hold and the worker buffer, a needs-you item whose key a **live** worker holds (`open_conversations`, read off the same live-session signal as the correspondent hold) is handed to that worker:
-
-1. The item is captured as usual.
-2. A note naming the captured json and its bucket goes to the worker's cross-session inbox.
-   A script can't post to an inbox itself, so the poller makes one `claude -p` call on the smallest model holding only the SendMessage tool, addressed to the worker's messaging pipe (read from its `sessions/<pid>.json`), the one address that names exactly one session.
-   The note is built from code values only.
-   Delivery counts only when the call's own output shows SendMessage carrying exactly that address and text, with a success result.
-3. On delivery, the item gets a receipt naming the holder (so reconcile treats it as live exactly while the holder is) and is recorded seen.
-   Its source stays uncleared for the holder to clear when it finishes the item, so a holder that closes without handling the note leaves an email in the inbox, which reconcile re-queues once the holder ends.
-
-A holder no longer live means the conversation is free, and the item launches its own worker.
-A failed delivery, or a live holder with no address, also launches a worker, past the correspondent hold, so the worst case is a duplicate.
-The item tries each holder once: a send that timed out may still have landed, so an item held for the buffer never re-sends the note on a later cycle.
-That worker's seed names the live session already on its conversation, and worker-core §2 has the two settle which one keeps the work, so even a duplicate ends with one session working.
-It leaves the conversation's key to the holder, which keeps receiving the conversation's later items.
-A screen-flagged item always gets its own worker, which leads with the warning.
-Auto-handle sits outside routing both ways: its worker runs a standing rule and closes without surfacing anything, so it holds no conversation, and a needs-you holder has no standing rule to run an auto-handle item.
-When a conversation gets a new needs-you worker this cycle, its later items in the same cycle are held unrecorded for one cycle, until that worker can receive them.
-
-Same work arriving by **another source** shares no key, and matching it takes judgment.
-So every new worker's seed lists the titles of the sessions live at launch, including those launched earlier in the same cycle, and worker-core §2 has the worker compare against them before starting the work.
-The list costs a few hundred tokens per worker and needs no extra call.
+A new needs-you item in a conversation a live worker already holds (the same email thread, Teams chat, Slack DM, or Slack thread) goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
+Each provider names the conversation (`conversation_key()`), and `run-poller.py` does the routing and the hand-over (`route_to_live_worker` and the functions it calls); the mechanics are documented there.
+A hand-over that fails launches a worker as before, so the worst case is a duplicate.
+Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).
 
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
 

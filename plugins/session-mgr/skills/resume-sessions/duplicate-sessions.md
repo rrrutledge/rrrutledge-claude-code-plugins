@@ -23,11 +23,11 @@ When a peer looks like it covers the same work, exactly one of you keeps it:
    The rule settles it the same way from both sides, so neither session waits on Russell to pick.
    Russell's own interactive session keeps it whenever it started.
 3. The session standing down stands down only for the part of its work the keeper confirms it will carry through to completion.
-   Ask the keeper to name what it will deliver, including any reply your work owes someone, and compare that against everything you were launched to get done.
+   Ask the keeper to name what it will deliver, and compare that against everything you were launched to get done.
 4. When your work has other parts the keeper is not doing, hand over the overlapping part and stay open for the rest.
-5. When one of your steps comes after the keeper's work, there are two cases:
-   - The step belongs to the keeper's own conversation: the keeper takes it on, and you confirm that before standing down.
-   - Otherwise, hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you when its work is done.
+5. When one of your steps comes after the keeper's work, such as a reply you owe the person who asked, it stays yours: you hold the context of who asked and why.
+   Hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you when its work is done and you send the reply.
+   The one exception is a reply into the keeper's own conversation, which the keeper sends; confirm that before standing down.
 6. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`.
    Hand the work over without asking Russell whether the keeper is fine taking it.
 7. When you are unsure whether the keeper covers it all, stay open.
