@@ -62,7 +62,7 @@ For every Bash call:
 1. `enforce_bash()` - if the *form* is unvalidatable (heredoc, output redirection, `$()`,
    3+ pipes, loops, `cd /other/dir && cmd`, etc.) → **BLOCK** with rewrite instruction.
    It also BLOCKs an unbounded `find` from `/`, a drive root, or home, which walks the whole
-   disk for hours.
+   disk for hours, and any `sed` in-place flag (`-i`, `--in-place`), which rewrites a file with no undo.
 2. Split compound command (`a && b | c`) into segments.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.
 4. All segments trusted → **ALLOW**.
@@ -111,7 +111,7 @@ Some commands are approved based on their *arguments*, not just their name:
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory
   anywhere on disk (not just the current repo's) - `.tmp/` is always scratch space,
   regardless of which repo it's under.
-- **`sed`** - approved for read-only use. An in-place flag (`-i`, `--in-place`) never reaches this check: `enforce_bash()` BLOCKs it first.
+- **`sed`** - approved for read-only use; `enforce_bash()` BLOCKs an in-place flag before this check runs (see the decision pipeline).
 
 #### 4. AI inspection + learned store (`commands.py` - `_ai_learn`, `learned.py`)
 
