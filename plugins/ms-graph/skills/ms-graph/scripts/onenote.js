@@ -32,13 +32,6 @@ function htmlToText(html) {
     .trim();
 }
 
-function matchByNameOrId(items, query, nameField) {
-  const q = String(query || '').toLowerCase();
-  const exact = items.filter(i => i.id === query);
-  if (exact.length) return exact;
-  return items.filter(i => String(i[nameField] || '').toLowerCase().includes(q));
-}
-
 async function getAll(client, api, select) {
   let data = await client.api(api).select(select).top(100).get();
   const items = [...(data.value || [])];
@@ -49,23 +42,27 @@ async function getAll(client, api, select) {
   return items;
 }
 
-function one(matches, kind, query, nameField) {
+// The one item whose id equals the query, else the one whose name contains it.
+function resolve(items, kind, query) {
+  const byId = items.filter(i => i.id === query);
+  const q = query.toLowerCase();
+  const matches = byId.length ? byId : items.filter(i => String(i.displayName || '').toLowerCase().includes(q));
   if (!matches.length) throw new Error(`No ${kind} matches "${query}"`);
   if (matches.length > 1) {
     throw new Error(`"${query}" matches ${matches.length} ${kind}s; be more specific:\n` +
-      matches.map(m => `  ${m[nameField]}  ${m.id}`).join('\n'));
+      matches.map(m => `  ${m.displayName}  ${m.id}`).join('\n'));
   }
   return matches[0];
 }
 
 async function notebooks(client) {
-  const items = await getAll(client, '/me/onenote/notebooks', 'id,displayName,links');
+  const items = await getAll(client, '/me/onenote/notebooks', 'id,displayName');
   items.forEach(n => console.log(`${n.displayName}\n      ${n.id}`));
 }
 
 async function sections(client, query) {
   if (!query) throw new Error('sections requires a notebook name or id');
-  const nb = one(matchByNameOrId(await getAll(client, '/me/onenote/notebooks', 'id,displayName'), query, 'displayName'), 'notebook', query, 'displayName');
+  const nb = resolve(await getAll(client, '/me/onenote/notebooks', 'id,displayName'), 'notebook', query);
   const items = await getAll(client, `/me/onenote/notebooks/${nb.id}/sections`, 'id,displayName');
   items.forEach(s => console.log(`${s.displayName}\n      ${s.id}`));
 }
@@ -77,7 +74,7 @@ function printPages(pages) {
 
 async function pages(client, query) {
   if (!query) throw new Error('pages requires a section name or id');
-  const sec = one(matchByNameOrId(await getAll(client, '/me/onenote/sections', 'id,displayName'), query, 'displayName'), 'section', query, 'displayName');
+  const sec = resolve(await getAll(client, '/me/onenote/sections', 'id,displayName'), 'section', query);
   printPages(await getAll(client, `/me/onenote/sections/${sec.id}/pages`, 'id,title'));
 }
 
