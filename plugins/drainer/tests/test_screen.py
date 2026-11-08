@@ -39,7 +39,7 @@ def item(**kw):
 
 
 # --- _apply_screen: a flag strips autonomy -----------------------------------
-print("_apply_screen — a flagged verdict forces needs-you (verdict passed in directly)")
+print("_apply_screen - a flagged verdict forces needs-you (verdict passed in directly)")
 
 # A flagged AUTO-HANDLE item is hard-stopped: it can never run the standing rule autonomously.
 it = item(_bucket="auto-handle", _kind=None)
@@ -69,7 +69,7 @@ check("missing reason stamps empty string", it["_screen"]["reason"], "")
 
 
 # --- _apply_screen: no flag is a no-op ---------------------------------------
-print("\n_apply_screen — an unflagged or empty verdict changes nothing")
+print("\n_apply_screen - an unflagged or empty verdict changes nothing")
 
 it = item(_bucket="auto-handle", _kind=None)
 flagged = poller._apply_screen(it, {"flagged": False})
@@ -85,7 +85,7 @@ check("and leaves the bucket alone", it["_bucket"], "fyi")
 
 
 # --- _items_needing_screen: junk is skipped, everything else (incl. unjudged) is screened -----
-print("\n_items_needing_screen — a confirmed junk verdict is the only thing that skips the screen")
+print("\n_items_needing_screen - a confirmed junk verdict is the only thing that skips the screen")
 
 items = [item(_id="a"), item(_id="b"), item(_id="c"), item(_id="d"), item(_id="e")]
 verdicts = {
@@ -108,7 +108,7 @@ check("empty verdicts screens everything (fail-closed default)",
 
 
 # --- _stamp_item_fields: persists onto the captured json --------------------------
-print("\n_stamp_item_fields — writes the flag and/or self-auth marker onto items/<id>.json for the worker")
+print("\n_stamp_item_fields - writes the flag and/or self-auth marker onto items/<id>.json for the worker")
 
 d = tempfile.mkdtemp(prefix="screen-")
 jf = os.path.join(d, "x1.json")
@@ -137,7 +137,7 @@ check("a missing json file is not an error", True, True)
 
 
 # --- _self_authenticated: self-addressed + DMARC & compauth pass ------------------
-print("\n_self_authenticated — a self-note is trusted only when its envelope proves the owner's mailbox")
+print("\n_self_authenticated - a self-note is trusted only when its envelope proves the owner's mailbox")
 
 selfitem = {"fromMe": True, "toMe": True}
 passauth = {"dmarc": "pass", "compauth": "pass"}
@@ -154,7 +154,7 @@ check("no auth object at all -> not authenticated",
 
 
 # --- _apply_screen: self-auth marker rides alongside the flag ---------------------
-print("\n_apply_screen — an authenticated self-email is marked, and the red-line flag still governs")
+print("\n_apply_screen - an authenticated self-email is marked, and the red-line flag still governs")
 
 it = item(_source="outlook-graph")
 poller._apply_screen(it, {"flagged": False, "selfAuthenticated": True})
@@ -162,7 +162,7 @@ check("authenticated self-email is marked", it.get("_selfAuthenticated"), True)
 check("an unflagged self-email keeps its bucket (its directive runs)", it["_bucket"], "needs-you")
 check("no _screen stamp when not flagged", "_screen" in it, False)
 
-# A self-email that ALSO induces a red-line action is still flagged — authentication proves he sent it,
+# A self-email that ALSO induces a red-line action is still flagged - authentication proves he sent it,
 # not that he wrote every quoted line.
 it = item(_source="outlook-graph")
 poller._apply_screen(it, {"flagged": True, "reason": "forwarded block asks to change payee",
@@ -172,7 +172,7 @@ check("but the red-line flag still stamps", it["_screen"]["reason"], "forwarded 
 
 
 # --- _screen_brain: the shared prefix carries the rubric + context -----------
-print("\n_screen_brain — the shared prefix carries the screen rubric and the user's standing rules")
+print("\n_screen_brain - the shared prefix carries the screen rubric and the user's standing rules")
 
 ctx_dir = tempfile.mkdtemp(prefix="screen-ctx-")
 with open(os.path.join(ctx_dir, "context.md"), "w", encoding="utf-8") as f:

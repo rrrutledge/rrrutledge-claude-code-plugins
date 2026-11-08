@@ -2,12 +2,12 @@
 
 A block here does not mean "this is forbidden". It means the command is in a
 form whose safety can't be statically determined by some part of the chain
-that has to approve it before it runs — either this hook itself (heredocs,
+that has to approve it before it runs - either this hook itself (heredocs,
 redirection, inline scripts, env-var expansion, loops/conditionals/
 substitutions, ...) or Claude Code's own native permission system, which
 re-prompts unconditionally for some paths (the installed plugin cache) no
 matter what this hook decides. Either way the fix is the same: ask for an
-equivalent form the whole chain can wave through without bugging the user —
+equivalent form the whole chain can wave through without bugging the user -
 typically a `.tmp/` Python script or the Write tool for the hook's own blind
 spots, or pointing at a checked-out repo source instead of the plugin cache
 for the one Claude Code itself can never let this hook pre-approve.
@@ -18,7 +18,7 @@ proceed to approval. Individual detectors are exposed for unit testing.
 import os
 import re
 
-from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args
+from .commands import GIT_GLOBAL_OPTS_WITH_ARG, _extract_subcommand, is_force_push_args, sed_has_inplace_flag
 from .log import log_debug
 from .paths import (
     PLUGIN_CACHE_PATTERN, is_within_claude_jobs_dir, normalize_path_cross_platform,
@@ -54,8 +54,8 @@ POWERSHELL_CMDLETS = {
     'Group-Object': 'sort | uniq -c',
     'Measure-Object': 'wc (lines/words/chars)',
     'Format-Table': 'column -t',
-    'Format-List': 'not needed — use raw output directly',
-    'Format-Wide': 'not needed — use raw output directly',
+    'Format-List': 'not needed - use raw output directly',
+    'Format-Wide': 'not needed - use raw output directly',
     'Select-String': 'grep',
     'Tee-Object': 'tee',
     'Compare-Object': 'diff',
@@ -225,7 +225,7 @@ def detect_input_redirection(command):
 def detect_function_definition(command):
     """Return the defined name if a segment defines a shell function
     (`name() { ... }` or `function name { ... }`), else None. Function
-    definitions can't be statically validated — a function can shadow any
+    definitions can't be statically validated - a function can shadow any
     real command, so the hook can't confirm what actually runs."""
     for seg in split_segments(command):
         stripped = seg.strip()
@@ -668,10 +668,10 @@ def enforce_bash(command):
         if func_name == 'cd':
             return ('BLOCKED: Shell function definition "cd() { ... }" detected. This is usually added to '
                      'stop an embedded cd from changing the working directory, but the Bash tool already runs '
-                     'every command in the correct working directory — there is no cd to guard against. Drop '
+                     'every command in the correct working directory - there is no cd to guard against. Drop '
                      'the "cd() { ... };" prefix entirely and run the rest of the command directly.')
         return (f'BLOCKED: Shell function definition ("{func_name}() {{ ... }}") detected. Function definitions '
-                'can\'t be statically validated — a function can silently shadow a real command, so the hook '
+                'can\'t be statically validated - a function can silently shadow a real command, so the hook '
                 'can\'t confirm what actually runs. Remove the function definition and call the command '
                 'directly, or move the logic into a .tmp/ script (Python/Node) if it\'s genuinely needed.')
 
@@ -694,12 +694,13 @@ def enforce_bash(command):
                 hint = (f' Use "{rewrite}" instead.' if rewrite
                         else (' Call the Windows utility (e.g. fsutil, icacls) directly in Git Bash without cmd //c.'
                               if inner else ''))
-                return ('BLOCKED: cmd /c or cmd //c detected. Windows utilities run directly in Git Bash — '
+                return ('BLOCKED: cmd /c or cmd //c detected. Windows utilities run directly in Git Bash - '
                         'no cmd wrapper needed.' + hint +
                         ' For bash equivalents of Windows commands see the PowerShell cmdlet map in the hook.')
-        if word == 'sed' and re.search(r'\bsed\b.*\s-i\b', seg):
-            return ('BLOCKED: "sed -i" destroys files on Windows/MSYS (especially symlinks). '
-                    'Use the Edit tool instead.')
+        if sed_has_inplace_flag(seg):
+            return ('BLOCKED: sed in-place edit (-i, -i<suffix>, --in-place) rewrites the file with no '
+                    'undo, and on Windows/MSYS it mangles files and symlinks. Use the Edit tool for a '
+                    'single-file change, or write a Python script in .tmp/ for a bulk edit.')
         if word in ('python', 'python3'):
             filename = _subprocess_in_tmp_python(seg, word)
             if filename:
@@ -727,7 +728,7 @@ def enforce_bash(command):
     cd_target = detect_cd_compound(command)
     if cd_target:
         return (f'BLOCKED: "cd {cd_target}" followed by more commands. The hook cannot validate scripts or '
-                'file operations in another directory — it needs to inspect files relative to the current '
+                'file operations in another directory - it needs to inspect files relative to the current '
                 'working directory.\n\n'
                 'NEVER prepend "cd <dir>" to Bash commands (with &&, ;, or newlines).\n\n'
                 'Instead:\n\n'

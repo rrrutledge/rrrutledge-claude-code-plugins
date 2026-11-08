@@ -45,7 +45,7 @@ def item(**kw):
 
 
 # --- _apply_slack_overrides: a known contact is never junk -------------------------------------------
-print("_apply_slack_overrides — a known-contact DM/thread bucketed junk becomes needs-you")
+print("_apply_slack_overrides - a known-contact DM/thread bucketed junk becomes needs-you")
 
 it = item(knownContact=True)
 poller._apply_slack_overrides(it)
@@ -53,23 +53,23 @@ check("junk + knownContact -> needs-you", it["_bucket"], "needs-you")
 check("kind becomes reply", it["_kind"], "reply")
 check("complexity becomes simple", it["_complexity"], "simple")
 
-# A phishing-kind junk item from a known contact is rescued the same way — the override doesn't care
+# A phishing-kind junk item from a known contact is rescued the same way - the override doesn't care
 # what triage's kind guess was, only that the sender is a known contact.
 it = item(knownContact=True, _kind="phishing")
 poller._apply_slack_overrides(it)
 check("junk + knownContact + phishing kind -> needs-you", it["_bucket"], "needs-you")
 check("kind is overwritten to reply, not left as phishing", it["_kind"], "reply")
 
-print("\n_apply_slack_overrides — a first-ever message from a stranger still can be junk")
+print("\n_apply_slack_overrides - a first-ever message from a stranger still can be junk")
 it = item(knownContact=False)
 poller._apply_slack_overrides(it)
 check("junk + stranger stays junk", it["_bucket"], "junk")
 
-it = item()  # knownContact absent entirely (older capture, or a channel item) — treated as a stranger
+it = item()  # knownContact absent entirely (older capture, or a channel item) - treated as a stranger
 poller._apply_slack_overrides(it)
 check("junk + no knownContact key stays junk", it["_bucket"], "junk")
 
-print("\n_apply_slack_overrides — only a junk verdict is overridden, not fyi")
+print("\n_apply_slack_overrides - only a junk verdict is overridden, not fyi")
 it = item(_bucket="fyi", knownContact=True)
 poller._apply_slack_overrides(it)
 check("fyi + knownContact is left alone (fyi also poll-time-clears, so junk is the one that must flip)",
@@ -77,7 +77,7 @@ check("fyi + knownContact is left alone (fyi also poll-time-clears, so junk is t
 
 
 # --- _apply_slack_overrides: phishing kind is always cleared on Slack --------------------------------
-print("\n_apply_slack_overrides — Slack has no REPORT-PHISHING action, so the kind is always cleared")
+print("\n_apply_slack_overrides - Slack has no REPORT-PHISHING action, so the kind is always cleared")
 
 it = item(knownContact=False, _kind="phishing")
 poller._apply_slack_overrides(it)
@@ -90,7 +90,7 @@ check("a needs-you item's phishing kind is also cleared", it["_kind"], None)
 
 
 # --- _apply_slack_overrides: non-Slack sources are untouched -----------------------------------------
-print("\n_apply_slack_overrides — a non-Slack source is never touched")
+print("\n_apply_slack_overrides - a non-Slack source is never touched")
 
 it = item(_source="outlook-graph", _kind="phishing", knownContact=True)
 poller._apply_slack_overrides(it)
@@ -100,7 +100,7 @@ check("its bucket is untouched too", it["_bucket"], "junk")
 
 
 # --- slack-adapter.py Provider.triage_signal: surfaces knownContact to the model ----------------------
-print("\nProvider.triage_signal — merges knownContact on top of the base self-email signal")
+print("\nProvider.triage_signal - merges knownContact on top of the base self-email signal")
 
 p = slack_adapter.Provider.__new__(slack_adapter.Provider)  # no slack.js lookup needed for this method
 check("a known contact is flagged for the model",
@@ -110,7 +110,7 @@ check("a stranger carries no signal (Slack items have no fromMe/toMe for the bas
 check("no knownContact key at all also carries no signal",
       p.triage_signal({}), None)
 
-# The base ProviderBase.triage_signal only fires on fromMe+toMe, fields Slack items never carry — but
+# The base ProviderBase.triage_signal only fires on fromMe+toMe, fields Slack items never carry - but
 # prove the merge logic itself works so a future base-signal change stays composed correctly.
 check("base and knownContact merge when both apply",
       p.triage_signal({"knownContact": True, "fromMe": True, "toMe": True}),

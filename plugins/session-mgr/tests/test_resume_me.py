@@ -36,6 +36,8 @@ def run(argv, session_id=GUID):
     (unset when None). Returns (rc, launched briefs)."""
     launched = []
     real_launch, real_env = spawn_session.launch, os.environ.get("CLAUDE_CODE_SESSION_ID")
+    real_agents = spawn_session.claude_agents
+    spawn_session.claude_agents = lambda: None
     spawn_session.launch = lambda **kw: launched.append(kw.get("brief")) or ("deadbeef", "receipt")
     if session_id:
         os.environ["CLAUDE_CODE_SESSION_ID"] = session_id
@@ -45,6 +47,7 @@ def run(argv, session_id=GUID):
         rc = spawn_session.main(argv)
     finally:
         spawn_session.launch = real_launch
+        spawn_session.claude_agents = real_agents
         if real_env is None:
             os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
         else:

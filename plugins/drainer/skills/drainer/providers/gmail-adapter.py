@@ -78,7 +78,7 @@ class Provider(ProviderBase):
     def _own_outbound_reply(m):
         """True for a message the account owner sent to other people that the Workspace account keeps in
         the inbox (russ@ISC files its own sent replies under INBOX, so they come back through the enumerate).
-        That is Russell's own outbound side of a conversation, not inbound mail to triage — dropping it here
+        That is Russell's own outbound side of a conversation, not inbound mail to triage - dropping it here
         keeps a long thread from re-queuing his every reply as its own item. A genuine self-note (he is the
         only recipient, so `toMe` is set) is preserved: it's a task he captured for himself, not a reply to
         someone else. `fromMe`/`toMe` come from gmail.js, which knows the account owner's own address."""
@@ -132,7 +132,7 @@ class Provider(ProviderBase):
     def _new_message_excerpt(raw, limit=1500):
         """From a `gmail.js --show` dump (Subject/From/To/Cc/Date header lines, then the body), keep the
         header lines and the new message text, dropping the quoted reply chain. The To/Cc lines are kept
-        on purpose — they're how triage tells a message aimed at Russell from one where he's only a CC.
+        on purpose - they're how triage tells a message aimed at Russell from one where he's only a CC.
         The quote chain begins at the first `On <date> … wrote:` attribution or the first `>`-quoted line."""
         kept = []
         for line in (raw or "").splitlines():

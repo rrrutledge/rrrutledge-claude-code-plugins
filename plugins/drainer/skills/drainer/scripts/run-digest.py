@@ -1,6 +1,6 @@
-"""Drainer EOD digest launcher — launches ONE interactive digest session, once a day.
+"""Drainer EOD digest launcher - launches ONE interactive digest session, once a day.
 
-The fast-loop poller (`run-poller.py`) is headless and silent; the digest is the OPPOSITE — it must
+The fast-loop poller (`run-poller.py`) is headless and silent; the digest is the OPPOSITE - it must
 be an interactive session Russell works in, because it empties the fyi/junk queue only AFTER he reviews
 and approves. So this launcher is deliberately thin: it launches a single background Claude session
 (reachable from claude.ai/code and the phone) seeded to follow `engine/digest-core.md`. All the judgment (summarize fyi, group junk
@@ -60,9 +60,9 @@ def write_seed(runtime_dir, repo, cfg, backlog_block):
             f"- repo: `{repo}`.\n"
             f"- seen-state helper: `{SEEN_STATE}` (run with node).\n"
             f"- providers dirs: `{PROVIDERS_DIR}` and `{os.path.join(cfg['local_dir'], 'providers')}` "
-            "(machine-local providers) — each item's `source` names its `<source>-provider.md` in one of "
+            "(machine-local providers) - each item's `source` names its `<source>-provider.md` in one of "
             "these (read it for CLEAR and JUNK-LEARNING).\n"
-            f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` — read it FIRST "
+            f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` - read it FIRST "
             "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
             + backlog_fact +
             "Present the digest to Russell and clear NOTHING until he approves. Draft-only: never send "

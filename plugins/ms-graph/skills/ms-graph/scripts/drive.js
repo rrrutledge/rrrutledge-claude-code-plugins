@@ -1,7 +1,7 @@
 // Read personal OneDrive items via Microsoft Graph (requires the Files.Read scope).
 //
 // Web link:  node drive.js weburl "<path-under-onedrive-root>"
-//            prints the item's webUrl — a one-click onedrive.live.com deep link that opens
+//            prints the item's webUrl - a one-click onedrive.live.com deep link that opens
 //            the file or folder in the browser.
 // List:      node drive.js list "<folder-path-under-onedrive-root>"
 //            prints each child's name and webUrl (path defaults to the drive root).
@@ -12,7 +12,7 @@ const { getGraphClient } = require('./graph-client');
 
 const [command, rawPath] = process.argv.slice(2);
 
-// Graph addresses a path-based item as /me/drive/root:/<path>: — encode each segment but
+// Graph addresses a path-based item as /me/drive/root:/<path>: - encode each segment but
 // keep the slashes that separate them.
 function itemApiPath(p) {
   const clean = String(p || '').replace(/^\/+|\/+$/g, '');

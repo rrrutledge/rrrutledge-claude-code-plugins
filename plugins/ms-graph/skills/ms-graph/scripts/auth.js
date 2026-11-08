@@ -35,5 +35,5 @@ const { buildApp, SCOPES, REDIRECT_URI } = require('./graph-client');
   });
 
   await app.acquireTokenByCode({ code, scopes: SCOPES, redirectUri: REDIRECT_URI });
-  console.log('Signed in — MSAL token cache populated. Mail/calendar scripts will run silently now.');
+  console.log('Signed in - MSAL token cache populated. Mail/calendar scripts will run silently now.');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

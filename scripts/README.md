@@ -1,8 +1,8 @@
 # Repo-level scripts
 
 Utilities shared across this repo's plugins and the session tooling, referenced by stable clone
-path (e.g. `~/Dev/rrrutledge/rrrutledge-claude-code-plugins/scripts/<name>`). They live here — not
-inside any one plugin — so several callers can reuse them without depending on a plugin version.
+path (e.g. `~/Dev/rrrutledge/rrrutledge-claude-code-plugins/scripts/<name>`). They live here - not
+inside any one plugin - so several callers can reuse them without depending on a plugin version.
 
 | Script | What it does |
 | ------ | ------------ |
@@ -39,7 +39,7 @@ It also writes the session's id to `<file>.session` beside the brief or prompt f
 All prose travels in a file, never on the command line.
 Only paths, titles, model ids, and guids cross the command line, so an embedded quote or `;` never reaches a shell.
 
-### 2. Wait — `wait-done.py`
+### 2. Wait - `wait-done.py`
 
 ```
 python wait-done.py <path>.done
@@ -49,7 +49,7 @@ Blocks (polling every 20s) until either `<path>.done` or `<path>.skip` exists, t
 the **foreground** in short cycles so the orchestrator's session stays in the "working" state; between
 cycles, `peek` the spawned session to show live progress.
 
-### 3. Peek — `peek.py`
+### 3. Peek - `peek.py`
 
 ```
 python peek.py <prompt>.session --tail 8
@@ -66,14 +66,14 @@ It prints a compact timeline of assistant text, tool calls, and short tool resul
 Spawned sessions and their orchestrator coordinate through two zero-content marker files, not a live
 channel:
 
-- **`.done`** — the spawned session writes this (with a one-line summary as its content) when it has
+- **`.done`** - the spawned session writes this (with a one-line summary as its content) when it has
   finished its work. `wait-done.py` returns as soon as it appears. Re-writing it later is harmless.
-- **`.skip`** — the orchestrator (or a human) writes this to unblock a `wait-done.py` that is stuck on
+- **`.skip`** - the orchestrator (or a human) writes this to unblock a `wait-done.py` that is stuck on
   a session that will never finish. Same base path as the `.done`, with a `.skip` extension.
 
 The marker base path is chosen by the orchestrator and handed to the spawned session in its prompt
 (e.g. a drainer worker points the session at `<item>.work.done` / `<item>.work-result.md`). This keeps
-the handoff to a single file the orchestrator polls — no extra monitoring machinery.
+the handoff to a single file the orchestrator polls - no extra monitoring machinery.
 
 ## Primary consumers
 

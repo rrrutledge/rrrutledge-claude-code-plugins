@@ -33,20 +33,20 @@
 // Update reminder: node calendar.js --update --subject="Dentist" --reminder=off
 //                    [--date=YYYY-MM-DD]  (narrows to one day when the subject isn't unique)
 // Create calendar: node calendar.js --create-calendar="Physical Tasks"
-//                    (idempotent — reports the existing id if a calendar with that name is already there)
+//                    (idempotent - reports the existing id if a calendar with that name is already there)
 // List due tasks:  node calendar.js --list-due-tasks --calendar="Physical Tasks" [--json] [--tz=]
 //                    [--lookback-days=30] [--default-window=HH:MM-HH:MM]
-//                    (every non-all-day event on that calendar that's still QUEUED — start date
+//                    (every non-all-day event on that calendar that's still QUEUED - start date
 //                     within the last `lookback-days` (default 30) through today, AND start time
 //                     EXACTLY on the overnight parking grid: :00 at
 //                     midnight, :00/:15/:30/:45 at 1 AM, :00/:30 at 2 AM (not just somewhere in that
-//                     hour — a started task's real timestamp carries seconds and essentially never
+//                     hour - a started task's real timestamp carries seconds and essentially never
 //                     lands exactly on a slot, so exact alignment tells "still sitting untouched"
-//                     from "moved") — with
+//                     from "moved") - with
 //                     its duration in minutes; nothing here ever moves a task, so an undone one just
 //                     keeps showing up until it's moved off-grid (see --start-now). A recurring
-//                     series collapses to ONE row — id = its most recent queued occurrence,
-//                     seriesMasterId alongside it — even when several occurrences are overdue; see
+//                     series collapses to ONE row - id = its most recent queued occurrence,
+//                     seriesMasterId alongside it - even when several occurrences are overdue; see
 //                     --catch-up-series to clean up the rest once one's been started. Each row
 //                     also carries `window` (the event body's `Window: HH:MM-HH:MM` marker, else
 //                     --default-window, else null) and `inWindow`, whether local now falls inside
@@ -55,9 +55,9 @@
 //                     null days list is always in)
 // Start a task now:  node calendar.js --start-now=<eventId> [--at=<ISO>] [--tz=]
 //                    (moves start to `--at` when given, else right now, keeping the task's own
-//                     duration — pulls it off the parking grid, which is what "no longer due" means
+//                     duration - pulls it off the parking grid, which is what "no longer due" means
 //                     here; no delete, no second calendar. Pass --at with the moment the work
-//                     surfaced — the physical-task worker passes its terminal tab's launch time — so a
+//                     surfaced - the physical-task worker passes its terminal tab's launch time - so a
 //                     quick task's start reflects when it appeared, not when the "starting" reply was
 //                     typed. A recurring occurrence detaches from its series, same as dragging it in
 //                     the Outlook UI)
@@ -65,7 +65,7 @@
 //                    (stamps just the end time to now, leaving start where --start-now put it, so the
 //                     event's real elapsed span sits on the calendar afterward. If the finished
 //                     event's body carries a `Repeat: <N> day|week|month(s) after completion` marker,
-//                     also queues a fresh one-off that interval after today — same subject and
+//                     also queues a fresh one-off that interval after today - same subject and
 //                     estimated duration, parked at the midnight grid slot so it's immediately due;
 //                     --calendar names where to place it and is REQUIRED when a marker is present.
 //                     From-completion recurrence is the one thing Outlook's calendar-fixed recurrence
@@ -73,24 +73,24 @@
 //                     marker on the finished event carries forward onto the successor, and so does a
 //                     `Days:` marker)
 // Catch up a series: node calendar.js --catch-up-series=<seriesMasterId> [--except-id=<eventId>] [--tz=]
-//                    (deletes every OTHER overdue occurrence of that series through today — the
+//                    (deletes every OTHER overdue occurrence of that series through today - the
 //                     backlog is just recurrence-expansion noise once one occurrence has actually
-//                     been started via --start-now, which is what --except-id preserves — WITHOUT
+//                     been started via --start-now, which is what --except-id preserves - WITHOUT
 //                     touching the series master or any future occurrence)
 // Gap to next commitment: node calendar.js --gap-minutes [--json] [--tz=] [--lookahead-hours=2]
 //                    [--exclude="Name,Name"]
-//                    (minutes from now until the next REAL commitment — a non-all-day event with
-//                     someone other than Russell on it, or one he didn't organize — across every
+//                    (minutes from now until the next REAL commitment - a non-all-day event with
+//                     someone other than Russell on it, or one he didn't organize - across every
 //                     writable calendar; 0 if one is in progress right now; caps at the lookahead
-//                     window when nothing is found that soon — the default is short because no
+//                     window when nothing is found that soon - the default is short because no
 //                     physical task needs to see further than its own longest possible size + buffer)
 // Delete event by id (works for a one-off OR a single recurring occurrence's instance id):
 //                   node calendar.js --delete-event-id=<id>
 // Move event by id to a different day, same time-of-day and duration (works for a one-off OR a single
-// recurring occurrence's instance id — the occurrence detaches from its series, same as the Outlook UI):
+// recurring occurrence's instance id - the occurrence detaches from its series, same as the Outlook UI):
 //                   node calendar.js --move-event-id=<id> --date=YYYY-MM-DD
 // Set an event's body by id (works for a one-off OR a single recurring occurrence's instance id;
-// replaces the body wholesale, so include every line — e.g. an existing `Repeat:` marker — you want kept):
+// replaces the body wholesale, so include every line - e.g. an existing `Repeat:` marker - you want kept):
 //                   node calendar.js --set-body-id=<id> --body="..."
 //
 // Times are interpreted in --tz (default America/Chicago). Events have NO reminder by
@@ -350,7 +350,7 @@ async function updateReminder(client) {
   }
 }
 
-// Creates a calendar if none by that name exists yet (idempotent — safe to call every time a
+// Creates a calendar if none by that name exists yet (idempotent - safe to call every time a
 // script wants to make sure e.g. "Physical Tasks" is there).
 async function createCalendar(client) {
   if (!args['create-calendar']) throw new Error('--create-calendar requires a name');
@@ -361,7 +361,7 @@ async function createCalendar(client) {
   console.log(`Created calendar "${created.name}" (${created.id.slice(0, 16)}...)`);
 }
 
-// Deletes one event by its raw Graph id — a one-off event's own id, or a single recurring
+// Deletes one event by its raw Graph id - a one-off event's own id, or a single recurring
 // occurrence's instance id (from calendarView/--list-due-tasks). Either way this removes just
 // that one event/occurrence; a recurring series' other occurrences are untouched.
 async function deleteEventById(client) {
@@ -370,7 +370,7 @@ async function deleteEventById(client) {
   console.log(`Deleted event ${args['delete-event-id']}`);
 }
 
-// Moves one event to a different day, keeping the same time-of-day and duration — the "not today,
+// Moves one event to a different day, keeping the same time-of-day and duration - the "not today,
 // try again later" move for a due task that didn't get done. Works on a one-off id or a single
 // occurrence's instance id (Graph detaches the occurrence from its series, same as dragging it in
 // the Outlook UI).
@@ -395,9 +395,9 @@ async function moveEventById(client) {
   console.log(`Moved event ${id} -> ${args.date} ${timePart.slice(0, 5)}`);
 }
 
-// Sets one event's body wholesale by its raw Graph id — a one-off event's own id, or a single
+// Sets one event's body wholesale by its raw Graph id - a one-off event's own id, or a single
 // recurring occurrence's instance id. Replaces the body outright (no merge), so include every
-// line — e.g. an existing `Repeat:` marker — the caller wants kept. Generic, reusable primitive:
+// line - e.g. an existing `Repeat:` marker - the caller wants kept. Generic, reusable primitive:
 // nothing else in this file can set a body on an arbitrary one-off by id (--update-occurrence only
 // resolves a *recurring series* by subject+date).
 async function setBodyById(client) {
@@ -465,24 +465,24 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 }
 
 // Every non-all-day event on a dedicated task calendar (e.g. "Physical Tasks") that is still
-// QUEUED — start date today-or-earlier AND its start time sits EXACTLY on one of the overnight
+// QUEUED - start date today-or-earlier AND its start time sits EXACTLY on one of the overnight
 // parking grid's slots (`isQueuedSlot` below), not just somewhere in the 00:00-02:59 hour range. A
 // task's own placement on the calendar IS its due date; nothing here ever moves it while it's still
 // queued, so an undone one just keeps coming back until something explicitly takes it out of the
-// window (see startTaskNow/finishTaskNow below — moving an event's start out of grid alignment IS
+// window (see startTaskNow/finishTaskNow below - moving an event's start out of grid alignment IS
 // what "cleared"/"started" means here, mirroring the pre-drainer habit of dragging a to-do out of its
 // staging hour once you actually picked it up).
 //
 // The exact-slot requirement (not just "any time in that hour") matters because startTaskNow sets
-// start to the real wall-clock now — if Russell is up working past midnight, "now" can itself land
+// start to the real wall-clock now - if Russell is up working past midnight, "now" can itself land
 // inside 00:00-02:59, and a same-hour-only check would wrongly still read a just-started task as
 // queued. A real "now" essentially never lands exactly on a grid slot (down to zero seconds), so
 // exact alignment is what actually distinguishes "still sitting where it was placed" from "moved."
-// Every event on this calendar counts as a task (it's a dedicated calendar — no organizer/attendee
+// Every event on this calendar counts as a task (it's a dedicated calendar - no organizer/attendee
 // heuristic needed, unlike a real commitment calendar).
 //
 // A recurring series can rack up MANY queued-but-undone occurrences (Graph expands every date the
-// pattern ever produced between its start and today, not just "the next one") — one per missed
+// pattern ever produced between its start and today, not just "the next one") - one per missed
 // day/week/month, not one per series. Those collapse to a SINGLE row per series here: `id` is the
 // MOST RECENT queued occurrence's own instance id (what startTaskNow/finishTaskNow act on directly),
 // with `seriesMasterId` alongside it so the older, uninteresting backlog occurrences can be swept
@@ -490,7 +490,7 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 //
 // Returns [{ id, seriesMasterId (recurring only), subject, date, minutes, isRecurring, webLink,
 // repeatAfter }], oldest-due first. `repeatAfter` is the human interval ("7 days", "1 month") parsed
-// from a one-off's `Repeat: ... after completion` body marker, else null — surfaced so the worker can
+// from a one-off's `Repeat: ... after completion` body marker, else null - surfaced so the worker can
 // tell Russell when a finished task will come back (see finishTaskNow, which acts on the marker).
 // `window` is the task's `Window: HH:MM-HH:MM` body marker (see calendar-window.js), falling back to
 // `defaultWindow` for a task without one, else null; `inWindow` says whether local now (in `tz`)
@@ -501,7 +501,7 @@ async function getEvents({ calendar, start, end, tz = 'America/Chicago', client 
 // always true when `days` is null.
 // The old staging grid, kept verbatim: :00 only at midnight, quarter-hours at 1 AM, half-hours at
 // 2 AM. Nothing here still ties a slot to a task's SIZE (duration is just the event's own length
-// now) — the grid is purely a "still sitting untouched" position check.
+// now) - the grid is purely a "still sitting untouched" position check.
 const QUEUED_SLOTS = { 0: [0], 1: [0, 15, 30, 45], 2: [0, 30] };
 function isQueuedSlot(dateTimeStr) {
   const s = dateTimeStr || '';
@@ -576,14 +576,14 @@ async function listDueTasks({ calendar, tz = 'America/Chicago', lookbackDays = 3
 }
 
 // The "started" move: pulls one event out of the queued window by setting its start to the moment the
-// work actually surfaced — by default right now, or an explicit `at` time when the caller has a truer
+// work actually surfaced - by default right now, or an explicit `at` time when the caller has a truer
 // one (the physical-task worker passes the instant its terminal tab launched, so a task glanced at and
 // done in one sitting still records the real span from when it appeared, not the zero-length span
 // between the "starting" and "done" replies typed a moment apart). Keeps the event's original duration
 // (so end = start + that duration). A started task's real timestamp carries seconds and essentially
 // never lands exactly on a grid slot (see isQueuedSlot), so it stops matching immediately and stops
 // being due, permanently, with no delete and no second calendar. A recurring occurrence detaches from
-// its series here (same as the Outlook UI), which is correct — only this one instance was started, the
+// its series here (same as the Outlook UI), which is correct - only this one instance was started, the
 // series' future occurrences are untouched. Returns the duration (minutes) preserved, for the caller
 // to sanity-check.
 async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}) {
@@ -605,7 +605,7 @@ async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}
 }
 
 // The "finished" stamp: patches ONLY the end time to right now, leaving start exactly where
-// startTaskNow put it — so the event's real elapsed span (start = when picked up, end = when
+// startTaskNow put it - so the event's real elapsed span (start = when picked up, end = when
 // actually finished) sits on the calendar afterward, the same record Russell used to leave by hand.
 //
 // When the finished event carries a Repeat marker (see above), this also queues the next one-off:
@@ -613,7 +613,7 @@ async function startTaskNow({ eventId, at, tz = 'America/Chicago', client } = {}
 // the midnight grid slot so it's immediately QUEUED (see isQueuedSlot). The estimated duration is
 // recovered from the event's own (end − start) span read BEFORE the end is stamped: while a task is
 // queued that span is Russell's estimate, and startTaskNow preserves it (end = start + estimate), so
-// it's still the estimate at finish time — not the real elapsed span the stamp is about to write.
+// it's still the estimate at finish time - not the real elapsed span the stamp is about to write.
 // A `Window:` marker on the finished event (see calendar-window.js) carries forward onto the
 // successor too, so a time-of-day restriction survives every repeat - and so does a `Days:` marker
 // (see calendar-days.js), so a day-of-week restriction does too.
@@ -659,12 +659,12 @@ async function finishTaskNow({ eventId, repeatCalendar, tz = 'America/Chicago', 
 }
 
 // Deletes every QUEUED occurrence of a recurring series that is due-or-earlier (date <= today)
-// EXCEPT `exceptId` — the backlog cleanup for a series that racked up several missed occurrences
+// EXCEPT `exceptId` - the backlog cleanup for a series that racked up several missed occurrences
 // while nobody cleared it. Those older occurrences are just Graph's recurrence-expansion noise, not
 // independently meaningful (nobody actually worked "Call Mom" on every missed day), so they're
 // removed outright; `exceptId` is the one occurrence startTaskNow/finishTaskNow already turned into
 // a real record and must be left alone. NEVER deletes the series master itself (that would kill
-// every future occurrence too) — only the individual overdue instances.
+// every future occurrence too) - only the individual overdue instances.
 async function catchUpSeries({ seriesMasterId, exceptId, tz = 'America/Chicago', today, client } = {}) {
   if (!seriesMasterId) throw new Error('catchUpSeries requires { seriesMasterId }');
   client = client || await getGraphClient();
@@ -686,13 +686,13 @@ async function catchUpSeries({ seriesMasterId, exceptId, tz = 'America/Chicago',
   return deleted;
 }
 
-// Minutes from now until the next REAL commitment across every writable calendar — any
+// Minutes from now until the next REAL commitment across every writable calendar - any
 // non-all-day event, solo or not, organized by Russell or not. Excludes all-day events, since
 // those don't block him from starting something, and excludes whatever calendars the caller
-// passes in `exclude` — the physical-task adapter always excludes its own Physical Tasks
+// passes in `exclude` - the physical-task adapter always excludes its own Physical Tasks
 // calendar there, since that calendar is the to-do queue itself, not a commitment (see
 // physical-task-adapter.py's `_gap_minutes`). Returns 0 when a real commitment is in progress
-// right now; caps at `lookaheadHours` (default 48) when nothing real is found that soon — there's
+// right now; caps at `lookaheadHours` (default 48) when nothing real is found that soon - there's
 // no practical ceiling on "how much free time," so the cap just bounds the query.
 async function getGapUntilNextCommitment({ tz = 'America/Chicago', lookaheadHours = 2, exclude = [], client } = {}) {
   client = client || await getGraphClient();
@@ -790,7 +790,7 @@ if (require.main === module) {
     }
     if (args['finish-now']) {
       const repeat = await finishTaskNow({ eventId: args['finish-now'], repeatCalendar: args.calendar, tz: TZ });
-      console.log(`Finished "${args['finish-now']}" — end stamped to now.`);
+      console.log(`Finished "${args['finish-now']}" - end stamped to now.`);
       if (repeat) console.log(`Repeat: queued "${repeat.subject}" again on ${repeat.date} (${repeat.minutes}m, from completion today).`);
       return;
     }

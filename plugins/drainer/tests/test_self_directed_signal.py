@@ -1,6 +1,6 @@
 """Tests for the self-directed (Russell-to-Russell) triage signal: provider_base.self_directed, the
 ProviderBase.triage_signal default that surfaces it, and run-poller's payload merge that carries it to
-the triage model. Pure functions of the enumerate fields — no network or credentials needed.
+the triage model. Pure functions of the enumerate fields - no network or credentials needed.
 
 Run directly:
     python plugins/drainer/tests/test_self_directed_signal.py
@@ -16,7 +16,7 @@ if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)  # run-poller imports its siblings by bare name
 
 # Import provider_base normally (no hyphen in its name) so it registers in sys.modules and the adapters,
-# which do `from provider_base import ...`, share this exact module — the identity check below relies on it.
+# which do `from provider_base import ...`, share this exact module - the identity check below relies on it.
 import provider_base  # noqa: E402
 
 poller_spec = importlib.util.spec_from_file_location("run_poller", os.path.join(SCRIPTS, "run-poller.py"))
@@ -51,7 +51,7 @@ check("an own outbound reply carries no signal", base.triage_signal({"fromMe": T
 check("ordinary inbound mail carries no signal", base.triage_signal({"fromMe": False, "toMe": True}), None)
 check("a source without the fields carries no signal", base.triage_signal({"subject": "hi"}), None)
 
-# The email adapters don't override triage_signal, so they inherit the flag straight from the base — the
+# The email adapters don't override triage_signal, so they inherit the flag straight from the base - the
 # same fromMe/toMe fields their enumerate already carries. Assert the inheritance (class attribute, no
 # instantiation) so an accidental override that drops it would fail here.
 PROVIDERS = os.path.join(PLUGIN_ROOT, "skills", "drainer", "providers")

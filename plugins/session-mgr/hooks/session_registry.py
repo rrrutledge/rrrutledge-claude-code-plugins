@@ -46,7 +46,7 @@ def update_registry(mutate):
 def find_claude_ancestor_pid():
     """Walk this hook process's own ancestry to find the claude.exe PID that launched it.
     A bare `claude` launch (no --resume/--session-id) exposes its session id neither on its
-    command line nor — confirmed empirically — in its own process environment (Claude Code
+    command line nor - confirmed empirically - in its own process environment (Claude Code
     only passes CLAUDE_CODE_SESSION_ID to the child processes it spawns, e.g. this hook and
     the Bash tool, never setting it on itself). Recording the launching PID directly lets
     find-orphans.py confirm such a session is still alive by PID liveness instead, sidestepping
@@ -97,11 +97,11 @@ def main():
         # the launcher and crash detection learn which accounts to read sessions from.
         remember_account(os.environ.get("CLAUDE_CONFIG_DIR"))
     elif event == "SessionEnd":
-        # How a session ends decides whether it stays resumable. A deliberate end — /exit, /clear,
-        # logout, or the plugin's own self_close primitive (end-session.py) — deregisters the
+        # How a session ends decides whether it stays resumable. A deliberate end - /exit, /clear,
+        # logout, or the plugin's own self_close primitive (end-session.py) - deregisters the
         # session, so it is done. A tab closed abruptly with the window/tab X instead reports
         # reason "other"; for a real user tab (one carrying a host_pid) the entry is LEFT in place
-        # so find-orphans resumes it — the user parked the tab and wants it back. A reason-"other"
+        # so find-orphans resumes it - the user parked the tab and wants it back. A reason-"other"
         # end with no host_pid is a background/ephemeral session and deregisters like any deliberate
         # close, so those are never resurrected.
         reason = payload.get("reason")
@@ -109,7 +109,7 @@ def main():
         def resolve(registry):
             entry = registry.get(session_id)
             if reason == "other" and entry and entry.get("host_pid"):
-                return  # abrupt close of a real tab — keep it as a resumable orphan
+                return  # abrupt close of a real tab - keep it as a resumable orphan
             registry.pop(session_id, None)
         update_registry(resolve)
 
