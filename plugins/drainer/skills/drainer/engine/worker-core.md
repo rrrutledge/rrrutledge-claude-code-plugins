@@ -159,11 +159,17 @@ When a peer looks like it covers the same work, settle which one of you keeps it
 2. If it is the same work, **the session that started earlier keeps it** (`ListAgents` shows each row's start).
    The rule settles it the same way from both sides, so neither session has to wait on Russell to pick.
    Russell's own interactive session always keeps it, whenever it started.
-3. The session that stands down `SendMessage`s the keeper everything useful it has gathered (card state, thread context, links, findings, any draft it staged), then closes via `python <skill>/scripts/close-session.py`.
-   Leave a card un-cleared and its Start untouched, so the keeper owns the item.
-   Hand the item over without asking Russell whether the keeper is fine taking it.
-   Like the silent closes listed in §6a, this queues no digest entry: the keeper is the one carrying the item.
-4. If you are the keeper, tell the peer so in your reply, and fold what it hands over into your own work.
+3. Stand down only for what the keeper confirms it will carry through to completion.
+   Ask it to name what it will deliver, including any reply the item owes, and compare that against everything this item needs.
+   - **The keeper covers it all:** `SendMessage` the keeper everything useful you have gathered (card state, thread context, links, findings, any draft you staged), then close via `python <skill>/scripts/close-session.py`.
+     Leave a card un-cleared and its Start untouched, so the keeper owns the item.
+     Hand the item over without asking Russell whether the keeper is fine taking it.
+     Like the silent closes listed in §6a, this queues no digest entry: the keeper is the one carrying the item.
+   - **The item has parts the keeper isn't doing:** hand over the overlapping part and stay open for the rest.
+   - **One of your steps comes after the keeper's work** (a reply to send once the work is done): when that step belongs to the keeper's own conversation, the keeper takes it on, and you confirm that before standing down.
+     Otherwise hand the keeper your resume command (`schedule-resume.py`, per session-mgr's `resume-on-completion.md`) and close paused, so the keeper resumes you when its work is done.
+   - **Unsure whether the keeper covers it all:** stay open.
+4. If you are the keeper, tell the peer what you will deliver, and fold what it hands over into your own work.
 5. If the peer says it is different work, or no peer looks related, carry on as normal.
 
 **When a peer asks you whether it is on your work, answer it before going on.**
