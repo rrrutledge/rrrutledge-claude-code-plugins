@@ -73,7 +73,7 @@ def has_unquoted_windows_drive_path(segment):
     quotes. POSIX word-splitting (both real shells and shlex) only preserves a
     backslash literally inside double quotes; unquoted, `\\U` collapses to `U`.
     A command built with an unquoted `C:\\Users\\...` path therefore has its
-    path silently mangled by the shell before the program ever sees it — this
+    path silently mangled by the shell before the program ever sees it - this
     flags that hazard so callers can surface it instead of failing silently.
     """
     tok = ShellTokenizer(segment)

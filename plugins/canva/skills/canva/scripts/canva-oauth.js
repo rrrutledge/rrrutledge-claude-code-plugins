@@ -1,10 +1,10 @@
-// OAuth 2.0 Authorization Code + PKCE client for the Canva Connect API — Canva requires PKCE on
+// OAuth 2.0 Authorization Code + PKCE client for the Canva Connect API - Canva requires PKCE on
 // every integration, confidential or not (https://www.canva.dev/docs/connect/authentication/).
-// This is its own Canva developer-portal app, not a shared client like the Google plugins' —
+// This is its own Canva developer-portal app, not a shared client like the Google plugins' -
 // register one at https://www.canva.com/developers/apps under the target Canva account.
 //
 // Secrets come from env vars (never a file): CANVA_CLIENT_ID, CANVA_CLIENT_SECRET. The token cache
-// persists to ~/.claude/canva/oauth-token.json (machine-local) and is refreshed transparently —
+// persists to ~/.claude/canva/oauth-token.json (machine-local) and is refreshed transparently -
 // Canva refresh tokens are single-use, so every refresh response's new refresh_token overwrites the
 // cache immediately, before the new access token is handed back to the caller.
 //
@@ -48,7 +48,7 @@ function basicAuthHeader() {
 }
 
 // PKCE per RFC 7636: a random verifier, and its SHA-256 digest (base64url, no padding) as the
-// challenge sent up front — Canva only ever sees the verifier at token-exchange time.
+// challenge sent up front - Canva only ever sees the verifier at token-exchange time.
 function generatePkce() {
   const verifier = crypto.randomBytes(64).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');

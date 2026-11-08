@@ -68,11 +68,31 @@ EDITED = {"disposition": "edited", "edit_distance": 0.3}
     ({"disposition": "discarded", "reason": "rewrote it himself, too formal", "moot": False}, 0),
     ({"disposition": "discarded", "reason": None, "source": "sweep"}, None),
     ({"disposition": "superseded"}, None),
+    ({"disposition": "superseded", "feedback": None}, None),
+    ({"disposition": "superseded", "feedback": False}, None),
+    ({"disposition": "superseded", "feedback": True}, 0),
     ({"disposition": "auto-sent"}, None),
     (None, None),
 ])
 def test_target(outcome, expected):
     assert scm.target(outcome) == expected
+
+
+@pytest.mark.parametrize("outcome,expected", [
+    (None, "pending"),
+    ({"disposition": "auto-sent"}, "auto-sent"),
+    ({"disposition": "sent-as-is", "edit_distance": 0.0}, "as-is"),
+    ({"disposition": "edited", "edit_distance": 0.04}, "near"),
+    ({"disposition": "edited", "edit_distance": 0.3}, "edited"),
+    ({"disposition": "edited", "edit_distance": None}, "unmeasured"),
+    ({"disposition": "discarded", "reason": "the tone was off"}, "discard-wording"),
+    ({"disposition": "discarded", "reason": None, "source": "sweep"}, "discard-route"),
+    ({"disposition": "superseded"}, "superseded"),
+    ({"disposition": "superseded", "feedback": False}, "superseded"),
+    ({"disposition": "superseded", "feedback": True}, "edited"),
+])
+def test_outcome_class(outcome, expected):
+    assert scm.outcome_class(outcome) == expected
 
 
 # --- terms ---
@@ -157,14 +177,16 @@ def test_legacy_attributes_take_single_readings_and_word_count_from_the_snapshot
     assert attrs["word_count"] == 3 and attrs["channel"] == "email" and attrs["kind"] is None
 
 
-def test_gather_skips_v1_routing_discards_and_superseded():
+def test_gather_skips_v1_routing_discards_and_unattributed_supersessions():
     ts = NOW - datetime.timedelta(days=40)
     _seed("d-ok", ts, _attrs(), SENT)
     _seed("d-route", ts, _attrs(), {"disposition": "discarded", "reason": "answered directly in person"})
     _seed("d-super", ts, _attrs(), {"disposition": "superseded"})
+    _seed("d-super-own", ts, _attrs(), {"disposition": "superseded", "feedback": False})
+    _seed("d-super-fb", ts, _attrs(), {"disposition": "superseded", "feedback": True})
     sc._append_event({"event": "scored", "v": 1, "draft_id": "d-v1", "ts": ts.isoformat(), "features": {}})
     sc._append_event({"event": "outcome", "draft_id": "d-v1", "ts": ts.isoformat(), **SENT})
-    assert [r["draft_id"] for r in refit.gather()] == ["d-ok"]
+    assert [r["draft_id"] for r in refit.gather()] == ["d-ok", "d-super-fb"]
 
 
 def test_gather_keeps_only_the_current_judges_drafts():

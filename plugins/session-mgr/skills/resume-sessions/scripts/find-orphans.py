@@ -80,6 +80,9 @@ JOB_SETTLE_GRACE = timedelta(minutes=5)
 # nobody answers would be woken, retired after 8 idle hours, and woken again, forever.
 WAKE_BACKOFF_BASE = timedelta(hours=12)
 WAKE_BACKOFF_CAP = timedelta(days=4)
+# Per retired job, whether its transcript exists and is free of a self-close, keyed by the job's
+# updatedAt - so the transcript tails are read once per turn, not on every drainer cycle.
+RETIRED_VERDICTS_PATH = os.path.expanduser("~/.claude/session-mgr/retired-verdicts.json")
 
 
 def agent_session_ids(agents):
@@ -184,7 +187,7 @@ def _executed_self_close(record):
     """True if one transcript record is an assistant message that actually RAN a self-close: a
     Bash tool_use whose command is a taskkill /T /F, a `claude stop`, or a close-session.py /
     end-session.py invocation, or a Skill tool_use invoking session-mgr:close. A plain-text mention of those
-    names — reading a doc that references them, discussing the drainer — is not a match, because
+    names - reading a doc that references them, discussing the drainer - is not a match, because
     only a command that actually executed closed the tab on purpose. Keying on the mention alone
     would wrongly prune a real tab that merely had that text in its recent context (e.g. a session
     editing the drainer), so it would never resume after an abrupt close."""
@@ -204,7 +207,7 @@ def _executed_self_close(record):
 def closed_itself_on_purpose(session_id):
     """True if the session's last ~30 transcript records show it deliberately closing its own tab
     (an executed taskkill /T /F, a close-session.py / end-session.py run, or a session-mgr:close
-    skill call) — such a session dies before SessionEnd can fire, so its registry entry survives
+    skill call) - such a session dies before SessionEnd can fire, so its registry entry survives
     even though the close was intentional, and it must not be resumed. Only an actually-executed
     self-close counts (see _executed_self_close). Missing/unreadable transcript -> False: fail
     toward including a session as an orphan, never toward silently dropping a real one."""
@@ -234,15 +237,16 @@ def _parse_time(value):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def wake_backoff(session_id, wakes):
+def wake_backoff(session_id, wakes, turns=None):
     """How long after its latest retirement `session_id` waits before it is woken again. Zero unless
     an earlier automated wake (bg_session.record_wake) found it and Russell has typed nothing into it
     since: then WAKE_BACKOFF_BASE, doubled for each earlier wake he also left untouched, up to
-    WAKE_BACKOFF_CAP. Any message from him resets it to zero."""
+    WAKE_BACKOFF_CAP. Any message from him resets it to zero. `turns` is the session's human_turns
+    when the caller already has it."""
     entry = wakes.get(session_id)
     if not isinstance(entry, dict):
         return timedelta(0)
-    if bg_session.human_turns(session_id) > entry.get("turns", 0):
+    if (bg_session.human_turns(session_id) if turns is None else turns) > entry.get("turns", 0):
         return timedelta(0)
     return min(WAKE_BACKOFF_BASE * (2 ** min(int(entry.get("untouched", 0)), 16)), WAKE_BACKOFF_CAP)
 
@@ -255,6 +259,9 @@ def retired_job_orphans(jobs, active, now=None):
     (nothing to resume from), and any still inside its wake backoff."""
     now = now or datetime.now(timezone.utc)
     wakes = bg_session.load_wakes()
+    cached = _load_json(RETIRED_VERDICTS_PATH)
+    job_ids = {job["sessionId"] for _, job in jobs}
+    verdicts = {sid: v for sid, v in cached.items() if sid in job_ids}
     orphans, seen = [], set()
     for _, job in jobs:
         sid = job["sessionId"]
@@ -263,9 +270,30 @@ def retired_job_orphans(jobs, active, now=None):
         ended = _parse_time(job.get("updatedAt") or job.get("lastTerminalAt") or job.get("createdAt"))
         if ended is None or ended < JOBS_SINCE or now - ended < JOB_SETTLE_GRACE:
             continue
-        if not transcript_path(sid) or closed_itself_on_purpose(sid):
+        # Whether a transcript exists and whether it closed itself can only change when the session runs
+        # again, and every run bumps the job's updatedAt - so decide once per updatedAt.
+        stamp = job.get("updatedAt")
+        verdict = verdicts.get(sid)
+        if stamp and isinstance(verdict, dict) and verdict.get("updatedAt") == stamp:
+            resumable = bool(verdict.get("resumable"))
+        else:
+            resumable = bool(transcript_path(sid)) and not closed_itself_on_purpose(sid)
+            if stamp:
+                verdicts[sid] = {"updatedAt": stamp, "resumable": resumable}
+        if not resumable:
             continue
-        if now - ended < wake_backoff(sid, wakes):
+        if sid in wakes:
+            # human_turns reads the whole transcript; like the verdict it only moves with updatedAt.
+            if stamp and "turns" in verdicts[sid]:
+                turns = verdicts[sid]["turns"]
+            else:
+                turns = bg_session.human_turns(sid)
+                if stamp:
+                    verdicts[sid]["turns"] = turns
+            backoff = wake_backoff(sid, wakes, turns)
+        else:
+            backoff = timedelta(0)
+        if now - ended < backoff:
             continue
         seen.add(sid)
         orphans.append({
@@ -274,6 +302,8 @@ def retired_job_orphans(jobs, active, now=None):
             "started_at": job.get("createdAt"),
             "ended_at": job.get("updatedAt") or ended.isoformat(),
         })
+    if verdicts != cached:
+        _save_json(RETIRED_VERDICTS_PATH, verdicts)
     return orphans
 
 
@@ -371,7 +401,7 @@ def find_confirmed_orphans():
     is reported: a background session has no process of its own to find, so missing data would
     otherwise resurrect every live one.
     Self-closed entries are pruned from the registry in place (not
-    just excluded from the return value) so a later run doesn't re-litigate them — same
+    just excluded from the return value) so a later run doesn't re-litigate them - same
     behavior the resume-sessions skill has always documented for this check. Pruning isn't
     wrapped in the retry-on-write-race loop session_registry.py's hook uses: a missed prune
     just means the same (harmless) exclusion happens again next run, never a lost orphan."""

@@ -13,7 +13,7 @@
 // thread's ack to the same person (covered). Every key starting with `_` is reserved, and is never a
 // source, so every per-source reader and writer here refuses one.
 //
-// Fail-safe: a missing or corrupt file reads as "nothing seen / empty queue" — never throws,
+// Fail-safe: a missing or corrupt file reads as "nothing seen / empty queue" - never throws,
 // so the worst case is reprocessing an item, never silently dropping one. Writes are atomic
 // (write a temp file, then rename over the target).
 //

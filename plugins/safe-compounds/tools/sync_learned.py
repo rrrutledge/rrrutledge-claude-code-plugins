@@ -8,7 +8,7 @@ pull request so the learnings are shared instead of staying on one machine.
 Design notes:
 - It opens/updates the PR through the GitHub API (`gh api`), not local git, so it
   works from the installed plugin cache and never touches your working tree.
-- It accumulates into one rolling branch/PR (BRANCH) — not one PR per session.
+- It accumulates into one rolling branch/PR (BRANCH) - not one PR per session.
 - It is best-effort: any failure (no `gh`, offline, not authed) is swallowed so
   it can never disrupt session end; the learnings stay local for next time.
 - It is idempotent: each run rebuilds the branch as main + still-pending entries,

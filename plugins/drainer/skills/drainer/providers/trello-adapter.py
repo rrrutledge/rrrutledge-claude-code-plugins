@@ -1,12 +1,12 @@
-"""trello poller adapter — outreach boards via the `trello` skill's trello_utils.py (Trello REST).
+"""trello poller adapter - outreach boards via the `trello` skill's trello_utils.py (Trello REST).
 
-All Trello mechanics live HERE. The prose describing this adapter's behavior — config parsing, the
-Start-date-as-queue enumerate, the ranking bands, and the `trello-<slug>-<last6>` id scheme — is the
+All Trello mechanics live HERE. The prose describing this adapter's behavior - config parsing, the
+Start-date-as-queue enumerate, the ranking bands, and the `trello-<slug>-<last6>` id scheme - is the
 companion `trello-provider.md` sibling `trello-queue-model.md`; the worker-facing half (how to act on
 one card and CLEAR it) is `trello-provider.md`. This covers locating trello_utils.py, reading the
 `providers.trello` board config out of `.claude/drainer.local.md`, the Start-date-as-queue enumerate,
 the id scheme, and the captured item shape. The poller (`scripts/run-poller.py`) loads this adapter
-dynamically and drives it through the `ProviderBase` interface — it contains no Trello specifics.
+dynamically and drives it through the `ProviderBase` interface - it contains no Trello specifics.
 
 Unlike the gmail/slack/outlook adapters (which enumerate a single inbox), Trello drains several boards,
 so this adapter takes a `configure(cfg)` pass from the poller to learn the repo. The board list is the
@@ -40,11 +40,11 @@ from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_B
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
-# whose whole label IS the priority marker — never a contact name that happens to contain "P1".
+# whose whole label IS the priority marker - never a contact name that happens to contain "P1".
 _PRIORITY_RE = re.compile(r"^\s*(?:🎯\s*)?P([1-3])\s*$")
 
 # A referral label marks a Job Search Outreach card at a company where someone in Russell's network has
-# agreed to refer him — the highest predictor of landing an interview, so within a fit tier a
+# agreed to refer him - the highest predictor of landing an interview, so within a fit tier a
 # referral-backed role is worked before an equally-ranked cold one. The label is always written as the
 # exact string "🤝 Referral" by personal-ai-pod's apply-referral-labels.js (the sole writer), so this
 # matches that one canonical form; anchored so a contact name containing "referral" never trips it.
@@ -56,7 +56,7 @@ _REFERRAL_RE = re.compile(r"^\s*🤝 Referral\s*$")
 # exact string "👤 Contact"; anchored so a role/company name containing "contact" never trips it.
 _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 
-# THE priority policy — the one place it is defined; every other site that mentions a band points here.
+# THE priority policy - the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)  → above neutral   worked ahead of email/Slack and every application
@@ -122,8 +122,8 @@ class Provider(ProviderBase):
     # --------------------------------------------------------------- locate the trello-outreach helper
     @staticmethod
     def _import_trello_utils():
-        """Locate the `trello` plugin's trello_utils.py — same search shape as gmail-adapter's
-        `_find_gmail_js`, via the shared `find_skill_script` helper — and import it."""
+        """Locate the `trello` plugin's trello_utils.py - same search shape as gmail-adapter's
+        `_find_gmail_js`, via the shared `find_skill_script` helper - and import it."""
         path = find_skill_script(__file__, "trello", os.path.join("scripts", "trello_utils.py"))
         if not path:
             raise ProviderError(
@@ -146,7 +146,7 @@ class Provider(ProviderBase):
         """Learn the boards to drain + the drainer knobs from the repo.
 
         Boards come from the shared registry `<repo>/trello-boards.yaml` (the same file the
-        trello-outreach skill reads) — the drainer drains every board in it. `skip_lists` / `label_vocab`
+        trello-outreach skill reads) - the drainer drains every board in it. `skip_lists` / `label_vocab`
         are drainer-specific and stay in `.claude/drainer.local.md`'s `providers.trello` block. If the
         registry file is absent, boards fall back to a legacy `boards:` list in that same block.
 
@@ -156,7 +156,7 @@ class Provider(ProviderBase):
         repo = cfg.get("repo")
         if not repo:
             return
-        # Drainer knobs (skip_lists / label_vocab) — and legacy boards fallback — from drainer.local.md.
+        # Drainer knobs (skip_lists / label_vocab) - and legacy boards fallback - from drainer.local.md.
         block = ""
         try:
             with open(os.path.join(repo, ".claude", "drainer.local.md"), encoding="utf-8") as f:
@@ -194,7 +194,7 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _parse_registry(text):
-        """Parse `<repo>/trello-boards.yaml` — a `boards:` list of board items, each a `- name:` at
+        """Parse `<repo>/trello-boards.yaml` - a `boards:` list of board items, each a `- name:` at
         two-space indent with an `id:` field at four-space indent. Anchoring on those exact indents
         keeps the parse robust against deeper nested fields (per-board `purpose`, `template_cards`, …)
         without needing a full YAML library (none ships with the poller's stdlib runtime). The
@@ -288,7 +288,7 @@ class Provider(ProviderBase):
                           None)
         # Hold status labels (⛔ Blocked / ⏳ Waiting), priority labels (🎯 P1/P2/P3), the 🤝 Referral
         # label, and the 👤 Contact card-type label out of the name pool so none is ever read as a
-        # contact — a status label carries dependency state, a priority label carries fit rank, the
+        # contact - a status label carries dependency state, a priority label carries fit rank, the
         # referral label carries a queue promotion, and 👤 Contact marks the card as a person-follow-up
         # card, none of them a contact's name.
         names = [l.get("name") for l in labels
@@ -363,7 +363,7 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _referral_band(card):
-        """Return a card's referral rank from its 🤝 Referral label — 1 when a referral is in hand, 0
+        """Return a card's referral rank from its 🤝 Referral label - 1 when a referral is in hand, 0
         otherwise. Referral is the last band in band_rank (below level), so it only breaks ties among
         same-level roles: a referral role ahead of a cold one of the SAME level, but a cold leadership
         role still ahead of a referral IC role (a leadership role without a referral is worked before an
@@ -376,7 +376,7 @@ class Provider(ProviderBase):
 
     @staticmethod
     def _level_band(card):
-        """Return a card's level rank from its 'Priority: ... · <level>' desc line — 0 for
+        """Return a card's level rank from its 'Priority: ... · <level>' desc line - 0 for
         Director/VP-level, every people-manager card (a `Manages people: yes` line), every P1 card
         (IC-level included), every non-job-search card, and a job-search card job-board-poll hasn't
         scored yet; -1 for a P2/P3 IC-level job-search card that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
@@ -399,7 +399,7 @@ class Provider(ProviderBase):
         return False
 
     def _has_skip_label(self, card):
-        """True if the card wears a suppress label (default: ⛔ Blocked) — hidden until it's cleared."""
+        """True if the card wears a suppress label (default: ⛔ Blocked) - hidden until it's cleared."""
         for l in card.get("labels", []):
             nm = (l.get("name") or "").lower()
             if nm and any(tok in nm for tok in self.skip_labels):
@@ -410,7 +410,7 @@ class Provider(ProviderBase):
     def _is_contact_card(card):
         """True if the card is a 👤 Contact person-follow-up card. A person card lives in the
         Identified intake list throughout its life and advances by its Start-date nudge cadence, not by
-        moving list — so telling it apart from a fresh application card sitting in the same list needs
+        moving list - so telling it apart from a fresh application card sitting in the same list needs
         this label check, not the card's list."""
         return any(_CONTACT_RE.match(l.get("name") or "") for l in card.get("labels", []))
 
@@ -454,7 +454,7 @@ class Provider(ProviderBase):
         for card in self._utils.get_board_cards(bid, self.session, fields="all"):
             list_name = lists.get(card.get("idList"))
             # get_board_lists returns only OPEN lists; a card whose list isn't in that map sits on an
-            # archived/closed list (still an open card, but off the board) — not active, skip it.
+            # archived/closed list (still an open card, but off the board) - not active, skip it.
             if not list_name:
                 continue
             if any(tok in list_name.lower() for tok in self.skip_lists):
@@ -479,7 +479,7 @@ class Provider(ProviderBase):
         try:
             return self._enumerate()
         except ProviderError:
-            raise  # already typed (kind preserved) — don't re-wrap as auth
+            raise  # already typed (kind preserved) - don't re-wrap as auth
         except Exception as e:
             # The board/list/card fetches hit the Trello REST API with TRELLO_API_KEY / TRELLO_TOKEN;
             # a bad/expired token or network error surfaces here. Raise the typed error so the poller
@@ -553,7 +553,7 @@ class Provider(ProviderBase):
                     "_referral_band": referral_band,
                     "_level_band": level_band,
                 })
-        # Ranked by band_rank (priority, level, referral — the queue policy, defined in provider_base)
+        # Ranked by band_rank (priority, level, referral - the queue policy, defined in provider_base)
         # then Start date, all descending: a card's Start (most-recent-first) breaks ties within a
         # band+level+referral; an undated card uses its creation date (set above), or `now` if even that
         # couldn't be derived.
@@ -564,7 +564,7 @@ class Provider(ProviderBase):
         # dispatched. Truncating
         # here instead would share one board-local budget across only Trello's own boards: once the OTHER
         # boards' neutral-band cards alone outnumbered it, every P2/P3 job-search card (ranked below
-        # neutral — see _PRIORITY_BAND) would be cut before the poller's real throttle ever saw it,
+        # neutral - see _PRIORITY_BAND) would be cut before the poller's real throttle ever saw it,
         # regardless of how many worker slots were actually free.
         return items
 
@@ -586,19 +586,19 @@ class Provider(ProviderBase):
         return f"{self.name}-{slug(item.get('name'), 40)}-{item['cardId'][-6:]}-{stamp}".strip("-")[:72]
 
     def still_in_inbox_ids(self):
-        """The stable_ids of every currently-startable card across all drained boards — Trello's answer
+        """The stable_ids of every currently-startable card across all drained boards - Trello's answer
         to the reconcile's "is this seen item still outstanding at the source?".
 
         Trello has no inbox, but it has an equivalent: a seen id that STILL names a startable card is one
         whose worker never ran CLEAR (a crashed or closed worker session). CLEAR bumps a card's Start, and the Start
         is part of the stable_id, so a properly cleared card mints a NEW id and its old id is absent from
-        this set — reconcile then leaves it alone, exactly as it leaves an archived email alone. The set
+        this set - reconcile then leaves it alone, exactly as it leaves an archived email alone. The set
         is computed fresh from the boards, so a card CLEAR deferred into the future (its new Start not yet
         arrived) is correctly excluded, and it applies the same gate as enumerate (via _startable_cards),
         so a blocked / skip-listed / reassigned card is never re-queued.
 
         Returns None on any board-fetch failure so reconcile SKIPS Trello that cycle: an empty set would
-        read as "every Trello card is gone" and re-queue all of them — the failure mode the email path
+        read as "every Trello card is gone" and re-queue all of them - the failure mode the email path
         guards against the same way. `capture` writes each item's messageId = its stable_id, so the
         reconcile's existing messageId-in-inbox check works over this set unchanged."""
         if not self.boards:

@@ -1,7 +1,7 @@
 """Test for providers/trello-adapter.py's band ranking (_referral_band, _level_band, and provider_base's
-band_rank — the (priority_band, level_band, referral_band) queue-order policy that both
+band_rank - the (priority_band, level_band, referral_band) queue-order policy that both
 trello-adapter._enumerate and run-poller.py's cross-source needs-you sort read). No network/Trello
-credentials required — _priority_band/_referral_band/_level_band and band_rank are pure functions of a
+credentials required - _priority_band/_referral_band/_level_band and band_rank are pure functions of a
 card dict.
 Run directly:
     python plugins/drainer/tests/test_trello_adapter_level_band.py
@@ -26,14 +26,14 @@ spec = importlib.util.spec_from_file_location("trello_adapter", ADAPTER)
 adapter_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(adapter_mod)
 
-import provider_base  # noqa: E402 — SCRIPTS is on sys.path above; band_rank is the shared queue-order policy
+import provider_base  # noqa: E402 - SCRIPTS is on sys.path above; band_rank is the shared queue-order policy
 
 failures = []
 
 
 def check(name, condition, detail=""):
     status = "PASS" if condition else "FAIL"
-    print(f"  {status}: {name}" + (f" — {detail}" if detail and not condition else ""))
+    print(f"  {status}: {name}" + (f" - {detail}" if detail and not condition else ""))
     if not condition:
         failures.append(name)
 
@@ -75,7 +75,7 @@ def test_referral_label_held_out_of_contacts():
     check("Referral held out; a real person stays a contact", contacts == ["Dana Whitfield"], contacts)
 
 
-# The real queue-order policy under test — the shared band_rank tuple, plus the trailing date key the
+# The real queue-order policy under test - the shared band_rank tuple, plus the trailing date key the
 # adapter/poller each append. Reads through band_rank so the test can never drift from the live order.
 SORT_KEY = lambda it: (*provider_base.band_rank(it), it["_sort_dt"])
 
@@ -102,7 +102,7 @@ def test_sort_key_orders_level_within_band():
 
 
 def test_band_rank_is_priority_then_level_then_referral():
-    print("test: band_rank returns (priority, level, referral) — the one place the queue order is defined")
+    print("test: band_rank returns (priority, level, referral) - the one place the queue order is defined")
     it = {"_priority_band": 5, "_level_band": -1, "_referral_band": 1}
     check("band_rank orders priority, then level, then referral", provider_base.band_rank(it) == (5, -1, 1),
           provider_base.band_rank(it))
@@ -111,7 +111,7 @@ def test_band_rank_is_priority_then_level_then_referral():
 
 
 def test_level_leads_referral_within_band():
-    print("test: within a fit tier, level outranks referral — a cold leadership role ahead of a referral IC role")
+    print("test: within a fit tier, level outranks referral - a cold leadership role ahead of a referral IC role")
     p1 = adapter_mod._PRIORITY_BAND[1]
     # Russell's stated order within a tier: referral+Director → cold+Director → referral+IC → cold+IC.
     # A leadership role without a referral is worked before an IC role even with one.

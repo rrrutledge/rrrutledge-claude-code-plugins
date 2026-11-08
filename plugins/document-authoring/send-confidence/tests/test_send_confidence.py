@@ -408,6 +408,66 @@ def test_score_and_log_supersedes_pending_same_thread_recipient(tmp_path):
     assert drafts[id2]["outcome"] is None
 
 
+def _feedback_of(draft_id):
+    return [e for e in sc.load_events()
+            if e["event"] == "outcome" and e["draft_id"] == draft_id][0]["feedback"]
+
+
+def test_restage_after_a_new_human_message_is_feedback(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0,
+                    body="First draft of this reply, before Russell weighed in on it.")
+    _score(tmp_path, session_id="s1", turns_before_draft=1,
+           body="Second draft of this reply, rewritten after Russell gave feedback.")
+    assert _feedback_of(id1) is True
+
+
+def test_restage_with_no_new_human_message_is_not_feedback(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=2,
+                    body="First draft of this reply, before the worker's own review pass.")
+    _score(tmp_path, session_id="s1", turns_before_draft=2,
+           body="Second draft of this reply, after the worker's own review pass ran.")
+    assert _feedback_of(id1) is False
+
+
+def test_legacy_superseded_outcome_reads_feedback_from_its_replacement(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0, thread_ref="t-old",
+                    body="First draft logged before restages recorded their feedback flag.")
+    _score(tmp_path, session_id="s1", turns_before_draft=2, thread_ref="t-old",
+           body="Second draft logged before restages recorded their feedback flag too.")
+    events = [e for e in sc.load_events()]
+    for e in events:
+        if e["event"] == "outcome":
+            del e["feedback"]
+    assert sc.fold_drafts(events)[id1]["outcome"]["feedback"] is True
+
+
+def test_legacy_backfill_skips_a_reaction_between_a_draft_and_its_replacement(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0, thread_ref="t-r",
+                    body="First draft written before a reaction landed on the same thread.")
+    _score(tmp_path, session_id="s9", turns_before_draft=7, thread_ref="t-r", message_type="reaction",
+           body="eyes")
+    _score(tmp_path, session_id="s1", turns_before_draft=2, thread_ref="t-r",
+           body="Second draft written after the reaction landed on the same thread.")
+    events = sc.load_events()
+    for e in events:
+        if e["event"] == "outcome":
+            e.pop("feedback", None)
+    assert sc.fold_drafts(events)[id1]["outcome"]["feedback"] is True
+
+
+def test_restage_from_another_session_or_unknown_turns_is_unattributed(tmp_path):
+    id1, _ = _score(tmp_path, session_id="s1", turns_before_draft=0, thread_ref="t-a",
+                    body="First draft of a reply that a different session picks up later.")
+    _score(tmp_path, session_id="s2", turns_before_draft=3, thread_ref="t-a",
+           body="Second draft of that reply, staged from a different session entirely.")
+    assert _feedback_of(id1) is None
+    id3, _ = _score(tmp_path, session_id="s3", turns_before_draft=None, thread_ref="t-b",
+                    body="First draft of a reply whose transcript could not be read at all.")
+    _score(tmp_path, session_id="s3", turns_before_draft=None, thread_ref="t-b",
+           body="Second draft of a reply whose transcript could not be read at all.")
+    assert _feedback_of(id3) is None
+
+
 def test_reply_with_unknown_recipient_supersedes_earlier_draft_in_same_thread(tmp_path):
     id1, _ = _score(tmp_path, thread_ref="thread-y", recipient="a@b.com",
                      body="First draft of the reply, staged with its addressee known.")

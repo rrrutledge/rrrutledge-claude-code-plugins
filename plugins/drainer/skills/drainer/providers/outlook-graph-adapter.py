@@ -1,9 +1,9 @@
-"""outlook-graph poller adapter — Microsoft Graph mail via the ms-graph skill's mail.js.
+"""outlook-graph poller adapter - Microsoft Graph mail via the ms-graph skill's mail.js.
 
 All outlook-graph mechanics live HERE, alongside the prose contract in
 `outlook-graph-provider.md`: locating mail.js, the `--list-inbox --json` enumerate, the Graph id
 scheme, and the captured item shape. The poller (`scripts/run-poller.py`) loads this adapter
-dynamically and drives it through the `ProviderBase` interface — it contains no Outlook specifics.
+dynamically and drives it through the `ProviderBase` interface - it contains no Outlook specifics.
 """
 import json
 import os
@@ -44,7 +44,7 @@ class Provider(ProviderBase):
     def _own_outbound_reply(m):
         """True for a message Russell sent to other people that surfaced back in his inbox (a reply
         threaded into the conversation, e.g. his "RE: Travel plans" to a family member). That is his own outbound
-        side, not inbound mail to triage — dropping it here keeps his replies out of the queue. A genuine
+        side, not inbound mail to triage - dropping it here keeps his replies out of the queue. A genuine
         self-note (he is a recipient, so `toMe` is set) is preserved: it's a task he captured for himself.
         `fromMe`/`toMe` come from mail.js, which resolves the mailbox owner's own address."""
         return bool(m.get("fromMe")) and not bool(m.get("toMe"))

@@ -1,4 +1,4 @@
-"""orphan-sessions poller adapter — crash-recovered Claude Code sessions.
+"""orphan-sessions poller adapter - crash-recovered Claude Code sessions.
 
 A thin ProviderBase wrapper, same shape as every other drainer provider, but around
 something session-mgr already owns rather than an external service: the live-session
@@ -8,25 +8,29 @@ plugin's find-orphans.py (the same version-pinned resolver pattern the drainer's
 close-session.py already uses to reach session-mgr's end-session.py) rather than
 re-implementing any registry/liveness logic here.
 
-Unlike every other source, this one has no draft/reply/CLEAR cycle — resuming the session
+Unlike every other source, this one has no draft/reply/CLEAR cycle - resuming the session
 itself, in the background, IS the whole action. See orphan-sessions-provider.md for the (empty)
 worker-facing contract, and run-poller.py for the dedicated spawn_resume() dispatch path and the
 deterministic pre-triage bypass (this source never reaches the AI triage call).
 
-id scheme: `orphan-<session_id>-<slug(started_at)>` — see stable_id() for why started_at
-(not just session_id) is baked into the id. No body file — capture() writes only
+id scheme: `orphan-<session_id>-<slug(started_at)>` - see stable_id() for why started_at
+(not just session_id) is baked into the id. No body file - capture() writes only
 `<id>.json`.
 """
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 
 _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts")
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
-from provider_base import ProviderBase, ProviderError, slug  # noqa: E402
+from provider_base import (  # noqa: E402
+    NODE_TIMEOUT_SECONDS, NO_WINDOW, ProviderBase, ProviderError, run_subprocess_bounded, slug)
+
+# The scan waits on `claude agents` once per account and on respawn/stop calls of up to 60s each,
+# so its own bounds exceed any short limit; this covers them.
+SCAN_TIMEOUT_SECONDS = NODE_TIMEOUT_SECONDS
 
 _REL_FIND_ORPHANS = os.path.join("skills", "resume-sessions", "scripts", "find-orphans.py")
 
@@ -39,7 +43,7 @@ def _parse_version(name):
 
 
 def _find_orphans_script():
-    """Locate the newest INSTALLED session-mgr plugin's find-orphans.py — same version-sort
+    """Locate the newest INSTALLED session-mgr plugin's find-orphans.py - same version-sort
     resolver pattern as the drainer's close-session.py, so this adapter is never tied to a
     floating working-clone branch of session-mgr. Falls back to the working-clone path when
     no installed copy exists yet (a fresh dev machine)."""
@@ -67,12 +71,15 @@ class Provider(ProviderBase):
     def enumerate(self, limit):
         script = _find_orphans_script()
         try:
-            result = subprocess.run(
-                [sys.executable, script], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=30)
-        except (OSError, subprocess.TimeoutExpired) as e:
+            result = run_subprocess_bounded(
+                [sys.executable, script], timeout=SCAN_TIMEOUT_SECONDS, creationflags=NO_WINDOW)
+        except OSError as e:
             raise ProviderError(f"orphan-sessions: failed running find-orphans.py: {e}",
                                 kind="auth")
+        if getattr(result, "timed_out", False):
+            raise ProviderError(
+                f"orphan-sessions: find-orphans.py timed out after {SCAN_TIMEOUT_SECONDS}s",
+                kind="timeout")
         if result.returncode != 0:
             raise ProviderError(
                 f"orphan-sessions: find-orphans.py exited {result.returncode}: "

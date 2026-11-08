@@ -1,4 +1,4 @@
-// Tests for calendar.js's getGapUntilNextCommitment — a mocked Graph client, no network calls.
+// Tests for calendar.js's getGapUntilNextCommitment - a mocked Graph client, no network calls.
 // Run: node --test calendar.gap.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const { getGapUntilNextCommitment } = require('./calendar');
 
 // A minimal chainable stand-in for the `@microsoft/microsoft-graph-client` Client: every builder
-// method returns the same chain object, and `get()` resolves based on the requested path — good
+// method returns the same chain object, and `get()` resolves based on the requested path - good
 // enough for getGapUntilNextCommitment, which never inspects the query params it sends.
 function makeClient({ calendars, eventsByCalId }) {
   return {

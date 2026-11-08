@@ -1,6 +1,6 @@
 // Full-page screenshot capture that works past Chromium's screenshot limit.
-// Chromium's screenshot capture — both `page.screenshot({ fullPage: true })`
-// and a plain screenshot after resizing the viewport to the full page height —
+// Chromium's screenshot capture - both `page.screenshot({ fullPage: true })`
+// and a plain screenshot after resizing the viewport to the full page height -
 // breaks down on pages taller than roughly 16384px (a GPU/texture-size
 // ceiling). It doesn't fail loudly: the resulting image just has content past
 // that point appear to repeat/restart rather than truncating or erroring. A
@@ -21,16 +21,16 @@
 // chunk after that has `position: fixed`/`sticky` elements hidden first,
 // since otherwise the same header/nav would get captured again at every
 // scroll position and appear repeated at regular intervals down the stitched
-// image — the same "page restarting" symptom as the 16384px bug, but from an
+// image - the same "page restarting" symptom as the 16384px bug, but from an
 // unrelated cause.
 //
 // Options:
-//   threshold   (default 14000) — page height in px below which a plain
+//   threshold   (default 14000) - page height in px below which a plain
 //               fullPage screenshot is used. Kept under the ~16384px
 //               breakdown point to leave margin.
-//   chunkHeight (default 2000)  — scroll-chunk height in px for the stitched
+//   chunkHeight (default 2000) - scroll-chunk height in px for the stitched
 //               path. Each chunk is captured as its own screenshot.
-//   width       — capture width in CSS px (default: current viewport width).
+//   width - capture width in CSS px (default: current viewport width).
 
 const fs = require('fs');
 const path = require('path');
@@ -51,7 +51,7 @@ function loadPNG() {
   }
   throw new Error(
     'captureFullPageScreenshot: could not resolve the PNG encoder from ' +
-    'playwright-core/lib/utilsBundle. Do not add a bare pngjs dependency — ' +
+    'playwright-core/lib/utilsBundle. Do not add a bare pngjs dependency - ' +
     'playwright-core already bundles a pngjs-compatible one.'
   );
 }
@@ -89,11 +89,11 @@ async function settle(page) {
 
 // On a content-heavy real page, a style change (like hiding a fixed header)
 // can still be a screenshot or two away from actually reaching the
-// compositor even after settle()'s double rAF — confirmed by capturing a
+// compositor even after settle()'s double rAF - confirmed by capturing a
 // duplicated header sliver on a live page despite the computed style already
 // reading "hidden". Takes screenshots until two consecutive captures are
 // byte-identical (mirrors the same screenshot-diff stability pattern used in
-// snapshot-target.js), and returns the last one — reused as the chunk's
+// snapshot-target.js), and returns the last one - reused as the chunk's
 // actual screenshot instead of taking a fresh one afterward.
 async function waitForPaintStable(page, { maxAttempts = 5, pollMs = 150 } = {}) {
   let previous = await page.screenshot();
@@ -139,7 +139,7 @@ async function captureFullPageScreenshot(page, outPath, opts = {}) {
       // Leave fixed/sticky elements alone for the first chunk (y === 0), so a
       // sticky header/nav is captured once at the top like a normal
       // screenshot. Hide them starting with the second chunk, before that
-      // chunk's screenshot — otherwise the header/nav (still pinned to the
+      // chunk's screenshot - otherwise the header/nav (still pinned to the
       // same on-screen position) gets captured again at every scroll
       // position and appears repeated down the composite.
       let justHid = false;
@@ -151,12 +151,12 @@ async function captureFullPageScreenshot(page, outPath, opts = {}) {
 
       // The browser clamps scrollTo to the max scrollable position, so the
       // final chunk (when height isn't an exact multiple of chunkHeight) may
-      // land short of the requested y — read back where it actually landed
+      // land short of the requested y - read back where it actually landed
       // rather than assuming the request was honored, or the last chunk's
       // content gets stitched in at the wrong offset.
       const actualScrollY = await page.evaluate(() => window.scrollY);
       // Only the chunk right after hiding needs the extra paint-stability
-      // check — every other chunk already reflects settled page state.
+      // check - every other chunk already reflects settled page state.
       const chunkBuffer = justHid ? await waitForPaintStable(page) : await page.screenshot();
       const chunkPng = PNG.sync.read(chunkBuffer);
 

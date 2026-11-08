@@ -17,7 +17,7 @@ The file is just a pointer; the worker fetches the `source:` for the real conten
 ---
 source: https://your-wiki/pages/12345/
 ---
-<slug> — content of record is the linked page.
+<slug> - content of record is the linked page.
 ```
 
 ## Shape B - inline content (no external source)
