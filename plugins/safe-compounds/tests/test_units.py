@@ -26,7 +26,7 @@ from safe_compounds.mcp import classify_mcp_tool  # noqa: E402
 from safe_compounds.enforce import (  # noqa: E402
     detect_complex_bash, detect_simple_expansion, detect_cd_compound, detect_function_definition,
     detect_plugin_cache_reference, detect_claude_jobs_write, detect_global_claude_md_read,detect_gh_api_contents_write, detect_raw_trello_write,
-    detect_unbounded_wide_find, enforce_bash,
+    detect_unbounded_wide_find, detect_tool_results_reference, enforce_bash,
 )
 from safe_compounds.scripts import check_node_segment, check_python_segment, get_block_reason, reset_block_reason  # noqa: E402
 from safe_compounds import ai  # noqa: E402
@@ -1085,6 +1085,45 @@ class TestUnboundedWideFind:
     def test_enforce_bash_blocks_with_redirect(self):
         reason = enforce_bash('find / -iname "trello_utils.py" 2>/dev/null | head -5')
         assert reason and 'skill-directory list' in reason
+
+
+class TestToolResultsBlocking:
+    CP = ('cp "C:/Users/russe/.claude/projects/C--Users-russe-Dev-pod/0d9ac5ac-4a86/tool-results/'
+          'mcp-x-1.txt" .tmp/x.json')
+
+    def test_detects_cp_from_tool_results(self):
+        assert detect_tool_results_reference(self.CP) is True
+
+    def test_detects_jq_in_a_later_segment(self):
+        assert detect_tool_results_reference(
+            "ls; jq '.a' ~/.claude/projects/p/s/tool-results/b1.txt") is True
+
+    def test_detects_backslash_path(self):
+        assert detect_tool_results_reference(
+            r'cat "C:\Users\x\.claude\projects\p\s\tool-results\b1.txt"') is True
+
+    def test_does_not_flag_python_script_run(self):
+        assert detect_tool_results_reference('python .tmp/copy.py') is False
+
+    def test_detects_python_given_the_path_as_an_argument(self):
+        assert detect_tool_results_reference(
+            'python .tmp/copy.py ~/.claude/projects/p/s/tool-results/b1.txt') is True
+
+    def test_detects_directory_without_trailing_slash(self):
+        assert detect_tool_results_reference('ls ~/.claude/projects/p/s/tool-results') is True
+
+    def test_does_not_flag_similarly_named_directory(self):
+        assert detect_tool_results_reference('ls ~/.claude/projects/p/s/tool-results-old/') is False
+
+    def test_does_not_flag_other_claude_project_paths(self):
+        assert detect_tool_results_reference('ls ~/.claude/projects/p/s/') is False
+
+    def test_does_not_flag_repo_tool_results_dir(self):
+        assert detect_tool_results_reference('ls docs/tool-results/') is False
+
+    def test_enforce_bash_blocks_with_script_hint(self):
+        msg = enforce_bash(self.CP)
+        assert msg and 'Python script in .tmp/' in msg
 
 
 class TestPluginCacheBlocking:
