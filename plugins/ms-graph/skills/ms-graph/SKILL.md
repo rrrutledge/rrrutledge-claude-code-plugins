@@ -29,7 +29,7 @@ Claude Code installs the script dependencies automatically from the plugin-root 
 
 ## Entra app registration
 
-A delegated app supporting "personal Microsoft accounts" with redirect URI (Web) `http://localhost:8080/callback` and delegated scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite MailboxSettings.ReadWrite Contacts.ReadWrite Files.Read User.Read offline_access`. The `consumers` authority targets the personal mailbox. Recreate the client secret in the portal before it expires and update `GRAPH_CLIENT_SECRET`. When a new scope is added to `SCOPES` in `graph-client.js`, add the matching Microsoft Graph delegated permission in the Entra app registration's API permissions, then re-run `auth.js` - the existing token cache won't carry the new scope until Russell re-consents.
+A delegated app supporting "personal Microsoft accounts" with redirect URI (Web) `http://localhost:8080/callback` and delegated scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite MailboxSettings.ReadWrite Contacts.ReadWrite Files.Read Notes.Read User.Read offline_access`. The `consumers` authority targets the personal mailbox. Recreate the client secret in the portal before it expires and update `GRAPH_CLIENT_SECRET`. When a new scope is added to `SCOPES` in `graph-client.js`, add the matching Microsoft Graph delegated permission in the Entra app registration's API permissions, then re-run `auth.js` - the existing token cache won't carry the new scope until Russell re-consents.
 
 ## Scripts
 
@@ -74,6 +74,12 @@ All under `scripts/`:
 - **`drive.js`** (personal OneDrive; needs the `Files.Read` scope)
   - Web deep link: `node drive.js weburl "Claude/job-applications/Contoso"` (prints the item's `webUrl` - a one-click `onedrive.live.com` link that opens the file or folder in the browser)
   - List a folder: `node drive.js list "Claude/job-applications"` (prints each child's name and `webUrl`; path defaults to the drive root). Paths are relative to the OneDrive root.
+- **`onenote.js`** (personal OneNote, read-only; needs the `Notes.Read` scope)
+  - List notebooks: `node onenote.js notebooks` (name and id)
+  - List a notebook's sections: `node onenote.js sections "Russell's Notebook"` (name or id; a name matches case-insensitively on a substring and must resolve to one notebook)
+  - List a section's pages: `node onenote.js pages "Gift ideas"` (section name or id)
+  - Find pages by title: `node onenote.js find "gift"` (every page whose title contains the text, across all notebooks)
+  - Print one page: `node onenote.js page <pageId>` (plain text with list and paragraph breaks kept; each link prints as `text (url)`)
 
 ## Auth-error handling (do without being asked)
 
