@@ -16,7 +16,7 @@ Outlook / Teams / outreach are all the **same loop** with different **sources**.
 
 The drainer runs as a **continuous keeper**: a **poller** runs a short cycle every few minutes (a ~5-min cron) and holds each source at **zero un-started actionable items** all day.
 
-- **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away.
+- **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away, or hands the item to the live worker already on its conversation.
   Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.

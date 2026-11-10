@@ -467,7 +467,7 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         remember_account(env.get("CLAUDE_CONFIG_DIR"))
     if m and resume:
         forget_session(resume)
-        record_resume(resume)
+        record_resume(resume, continued_as=session_guid(m.group(1)))  # a continuation's new guid
     return m.group(1) if m else None
 
 
@@ -590,11 +590,21 @@ def _load_paused():
     return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {})}
 
 
+def _paused_at(entry):
+    try:
+        return datetime.datetime.fromisoformat(entry["pausedAt"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _update_paused(mutate):
-    """Apply `mutate` to the record and write it back. Best effort, like the wake log."""
+    """Apply `mutate` to the record and write it back, dropping pauses past PAUSE_HOLD, which no
+    longer count. Best effort, like the wake log."""
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
     for _ in range(5):
         data = _load_paused()
         mutate(data)
+        data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
             tmp_path = PAUSED_PATH + f".tmp.{os.getpid()}"
@@ -647,17 +657,10 @@ def paused_record(session_guid):
 def paused_sessions(agents):
     """`{guid: {"pausedAt", "name", "cwd"}}` for every session paused within PAUSE_HOLD that isn't
     running again: a guid with a pid in `agents` (a claude_agents scan) is running."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
     running = {a.get("sessionId") for a in agents or [] if a.get("pid")}
-    out = {}
-    for guid, entry in _load_paused()["paused"].items():
-        try:
-            at = datetime.datetime.fromisoformat(entry["pausedAt"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if guid not in running and now - at <= PAUSE_HOLD:
-            out[guid] = entry
-    return out
+    return {guid: entry for guid, entry in _load_paused()["paused"].items()
+            if guid not in running and (_paused_at(entry) or cutoff) > cutoff}
 
 
 def forget_session(session_guid):
@@ -796,10 +799,7 @@ def launch(*, cwd, model=None, name=None, brief=None, prompt_file=None, lead="",
     short_id = spawn_bg(seed, model, cwd, name, resume=resume)
     if not short_id:
         return None, None
-    receipt = write_receipt(anchor, short_id) if anchor else session_guid(short_id) or short_id
-    if resume and receipt != short_id:  # a full guid, so the continuation can be followed
-        record_resume(latest_session(resume), continued_as=receipt)
-    return short_id, receipt
+    return short_id, (write_receipt(anchor, short_id) if anchor else session_guid(short_id) or short_id)
 
 
 # ------------------------------------------------------------------------------------ self-knowledge

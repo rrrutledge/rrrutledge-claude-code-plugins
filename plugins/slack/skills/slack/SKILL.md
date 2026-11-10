@@ -38,7 +38,7 @@ Under `scripts/` (run with `node`):
 - **`slack.js`**
   - Auth glance: `node slack.js --check` (calls `auth.test`; prints the signed-in user/team; non-zero
     exit on auth failure)
-  - List unread: `node slack.js --list-unread [--top=50] [--json]` — unread **DMs**, **group DMs**, **unread channel messages (one item per channel, @-mentions of you included)**, and **unread replies in subscribed threads**, newest-first.
+  - List unread: `node slack.js --list-unread [--top=50] [--json]` - unread **DMs**, **group DMs**, **unread channel messages (one item per channel, @-mentions of you included)**, and **unread replies in subscribed threads**, newest-first.
     **Muted conversations are skipped** (muting is the user's "stop").
     `--json` emits a structured array; each item carries `id` (`<channel>:<ts>`), `channel`, `channelType` (`im`/`mpim`/`channel`/`thread`), `ts`, `threadTs` (set for thread items), `from`, `fromId`, `subject`, `channelName`, `received` (ISO), `preview`, `unreadCount`.
     Channel items: `subject` is `"@mention in #name"` when the unread messages mention you, with `from` the last person who mentioned you, else `"Unread in #name"`.

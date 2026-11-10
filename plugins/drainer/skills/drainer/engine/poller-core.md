@@ -8,7 +8,7 @@ The full rationale is in `docs/superpowers/specs/2026-06-17-drainer-continuous-k
 ## Where AI is used (and where it isn't)
 
 The script owns everything deterministic.
-AI is invoked for exactly three things, plus one judgment-free delivery call (step 4 below):
+AI is invoked for exactly three things, plus one judgment-free delivery call (item 4 of this list):
 
 1. **One triage call per new item, once** (a held item's verdict is cached, step 4c) - `run-poller.py` builds the general-rules brain once per cycle (`engine/triage.md`, the local `context.md`, each provider's AUTO-HANDLE rules - gated against the whole cycle's batch), then sends `claude -p` one call per item with that brain as a byte-identical prefix and the single item's payload as the only variable part.
    Full model attention lands on one item at a time instead of splitting across a whole cycle's items, and the repeated stable prefix lets the API's automatic prompt caching serve it cheaply after the first item's call writes it - paid once per cycle, cheap delta per item.
