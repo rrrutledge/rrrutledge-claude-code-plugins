@@ -306,6 +306,7 @@ async function metaItem(gmailId, acct) {
   return {
     id: hdr(idx, 'message-id') || `gmail-${gmailId}`,
     uid: gmailId,
+    threadId: r.data.threadId || '',
     subject: decodeMimeWords(hdr(idx, 'subject')) || '(no subject)',
     from: fromList(fromAddrs),
     fromAddress: fromAddrs[0] ? fromAddrs[0].address : '',

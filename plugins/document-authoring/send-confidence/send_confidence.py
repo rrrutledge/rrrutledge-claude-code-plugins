@@ -1063,6 +1063,10 @@ def record_outcome(draft_id, sent_text, *, discarded, edit_nature, reason, moot=
         draft_text = _read_draft_text(draft_id)
         if scored.get("channel") in EMAIL_CHANNELS:
             draft_text, sent_text = rendered_text(draft_text), rendered_text(sent_text)
+        else:
+            # The sent text gets the reading the draft got, so a sent file holding the same raw
+            # body (a `<@U123>` mention included) compares equal to its own draft.
+            sent_text = _plain_text(sent_text)
         if scored.get("message_type") == REACTION:
             # A reaction has no wording to edit: another emoji, or another message, is a whole change.
             edit_distance = 0.0 if sent_text.strip() == draft_text.strip() else 1.0

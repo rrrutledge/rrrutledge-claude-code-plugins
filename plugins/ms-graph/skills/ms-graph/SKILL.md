@@ -53,7 +53,7 @@ All under `scripts/`:
   - Show one: `node mail.js --show=<messageId>` (prints a `*** DRAFT - NOT SENT ***` banner up top if the message is still a draft).
     The body prints as plain text with paragraph, line, list, and quoted-reply boundaries kept as line breaks.
     Add `--html` for the raw HTML when paragraph structure matters and the plain-text view is in doubt
-  - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker)
+  - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker, and any `X-Forwarded-For` values, the marker of a message a mailbox forwarded here)
   - Sent since: `node mail.js --sent-since=<YYYY-MM-DD> [--json]` (every Sent Items message sent on or after that day, oldest first, with its conversationId, recipients, and plain-text body; read by the send-confidence outcome sweep)
   - Thread: `node mail.js --thread=<conversationId> [--json]` (every message in the conversation across all folders, oldest first, with `fromMe`, the send time, and `isDraft`; read by the drainer's acknowledgement sweep)
   - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.html`
