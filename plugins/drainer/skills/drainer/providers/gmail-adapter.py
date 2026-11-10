@@ -171,7 +171,7 @@ class Provider(ProviderBase):
         item `thread_state` and `send_reply` accept; None when the mailbox doesn't hold it. A REST search,
         so call it per item, never per listing. The copy carries no `uid`: that field is an INBOX UID on
         the IMAP paths, and this copy may not be in the inbox at all."""
-        res = run_node([self.gmailjs, f"--search=rfc822msgid:{message_id}", "--top=1", "--json"])
+        res = run_node([self.gmailjs, f"--search=rfc822msgid:{message_id.strip('<>')}", "--top=1", "--json"])
         if res.returncode != 0:
             raise ProviderError(f"gmail message lookup failed: {res.stderr.strip()[:300]}",
                                 kind=node_failure_kind(res.stderr))

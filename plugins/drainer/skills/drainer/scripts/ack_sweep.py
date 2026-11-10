@@ -622,12 +622,12 @@ def cmd_send(review, key, body_file, handles=False, scored_body=None):
                                                 it.get("_id") or src.stable_id(it), "ack-handled"]).returncode == 0
                                       for src, it in copies])
     else:
+        _cover_entries(review, entry, at)  # first, so a cover never overwrites a copy's sent entry
         for src, it in copies:
             ckey = key if src is p else conversation_key(src, it)
             if ckey:
                 ledger_set(review.runtime_dir, ckey, {"status": "sent", "itemId": it.get("_id") or src.stable_id(it),
                                                       "at": at, "ref": ref, "text": text})
-        _cover_entries(review, entry, at)
     staged = stage_for_scoring(review.runtime_dir, sender.name, current, scored_body or body_file,
                                p.triage_text(current), "send")
     result["sendConfidence"] = "\n".join(filter(None, [
