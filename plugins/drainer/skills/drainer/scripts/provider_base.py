@@ -879,6 +879,12 @@ class ProviderBase:
         "listUnsubscribe": bool, "link": str}`. None when the read failed."""
         return None
 
+    def find_message(self, message_id):
+        """This source's own copy of an email, by RFC822 Message-ID, as an item `thread_state` and
+        `send_reply` accept; None when the source doesn't hold it or isn't a mailbox. Raises
+        ProviderError when the lookup fails."""
+        return None
+
     def send_reply(self, item, body_file):
         """Send the reviewed body in `body_file` into the item's conversation through the source's own
         human-in-the-loop send path, leaving the item itself untouched (still in the inbox, still unread).

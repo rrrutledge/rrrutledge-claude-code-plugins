@@ -110,7 +110,7 @@ Under `scripts/` (run with `node`):
     arrival, which the `From:` line can't give; read by the drainer's security screen; also any
     `List-Unsubscribe` values, the bulk-mail marker)
   - Thread: `node gmail.js --thread=<threadId> [--json]` (every message in one thread, oldest first, with
-    `fromMe`, the send time, and `isDraft`; `<threadId>` is the hex `threadId` `--list-inbox-imap` returns.
+    `fromMe`, the send time, and `isDraft`; `<threadId>` is the hex `threadId` the listings return.
     Read by the drainer's acknowledgement sweep)
   - List drafts: `node gmail.js --list-drafts [--top=30]`
   - Draft reply (never sends): `node gmail.js --reply --message-id=<id> --body-file=reply.md`

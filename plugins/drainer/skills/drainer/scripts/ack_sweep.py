@@ -206,21 +206,25 @@ def read_thread(providers_by_name, provider, item):
     Outlook) is answered from the mailbox it was forwarded from, never from this one: a message sent to
     his ISC address gets its reply from that address. So for a forwarded copy the thread is the original
     mailbox's thread joined to this one, carrying `replyVia` (that mailbox's source and its copy of the
-    message), and a reply Russell sent from either mailbox counts as an answer. A forwarded copy no
-    loaded source holds reads as None, the same as an unreadable thread: no ack from the wrong address."""
+    message), and a reply Russell sent from either mailbox counts as an answer. A copy forwarded from a
+    mailbox no loaded source holds (someone else's forward) is answered here, as any other message is;
+    one whose lookup failed in some mailbox reads as None, the same as an unreadable thread, since that
+    mailbox may be the one it came from."""
     info = provider.thread_state(item)
     if not info or not info.get("forwarded"):
         return info
     message_id = info.get("rfc822MessageId")
     if not message_id:
         return None
+    failed = False
     for other in providers_by_name.values():
-        if other is provider or not hasattr(other, "find_message"):
+        if other is provider:
             continue
         try:
             copy = other.find_message(message_id)
         except ProviderError:
-            return None
+            failed = True
+            continue
         if not copy:
             continue
         original = other.thread_state(copy)
@@ -230,7 +234,7 @@ def read_thread(providers_by_name, provider, item):
                 "hasDraft": bool(info.get("hasDraft") or original.get("hasDraft")),
                 "listUnsubscribe": bool(info.get("listUnsubscribe") or original.get("listUnsubscribe")),
                 "replyVia": {"source": other.name, "item": copy}}
-    return None
+    return None if failed else info
 
 
 # ---------------------------------------------------------------------------- state files
@@ -608,15 +612,21 @@ def cmd_send(review, key, body_file, handles=False, scored_body=None):
     with open(body_file, encoding="utf-8") as f:
         text = f.read().strip()
     result = {"key": key, "sent": True, "ref": ref}
+    # A forwarded copy and the original it was answered on are one message: each gets the same handling.
+    copies = [(p, current)] + ([(sender, via["item"])] if via else [])
     if handles:
         # The short reply IS the item's handling: clear it the way a worker completes one, and record it
         # seen so it never dispatches. It never reaches the ledger.
-        result["cleared"] = bool(p.clear(current))
-        res = run_node([SEEN_STATE, "record", review.runtime_dir, p.name, current["_id"], "ack-handled"])
-        result["recordedSeen"] = res.returncode == 0
+        result["cleared"] = all([bool(src.clear(it)) for src, it in copies])
+        result["recordedSeen"] = all([run_node([SEEN_STATE, "record", review.runtime_dir, src.name,
+                                                it.get("_id") or src.stable_id(it), "ack-handled"]).returncode == 0
+                                      for src, it in copies])
     else:
-        ledger_set(review.runtime_dir, key, {"status": "sent", "itemId": current["_id"], "at": at,
-                                             "ref": ref, "text": text})
+        for src, it in copies:
+            ckey = key if src is p else conversation_key(src, it)
+            if ckey:
+                ledger_set(review.runtime_dir, ckey, {"status": "sent", "itemId": it.get("_id") or src.stable_id(it),
+                                                      "at": at, "ref": ref, "text": text})
         _cover_entries(review, entry, at)
     staged = stage_for_scoring(review.runtime_dir, sender.name, current, scored_body or body_file,
                                p.triage_text(current), "send")

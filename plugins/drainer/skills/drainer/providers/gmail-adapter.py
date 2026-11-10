@@ -181,7 +181,7 @@ class Provider(ProviderBase):
             raise ProviderError("gmail message lookup returned unreadable output")
         if not found or not found[0].get("threadId"):
             return None
-        return {**found[0], "uid": None, "_source": self.name}
+        return {**found[0], "uid": None}
 
     def send_reply(self, item, body_file):
         """Stage a reply in the thread (gmail.js appends the account's signature), then send exactly that

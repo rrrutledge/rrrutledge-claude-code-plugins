@@ -487,6 +487,7 @@ class Origin(Demo):
         return self.held.get(message_id)
 
 
+ack_sweep.CONVERSATIONS["origin"] = lambda it: it.get("conv")
 KING_ID = "<king@example.cn>"
 fwd = item("fwd", "c-fwd", OLD)
 original = {"_id": "orig", "conv": "c-orig", "id": KING_ID}
@@ -511,7 +512,21 @@ due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "origin": origin}, runti
 check("a reply Russell sent from the original mailbox counts as an answer", due, [])
 
 due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "origin": Origin()}, runtime(), set(), now=NOW)
-check("a forwarded copy no loaded source holds gets no ack", due, [])
+check("a copy forwarded from a mailbox no loaded source holds is answered here",
+      [(d["itemId"], d["link"]) for d in due], [("fwd", "https://x/c-fwd")])
+
+
+class Failing(Origin):
+    def find_message(self, message_id):
+        raise ack_sweep.ProviderError("token expired")
+
+
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "bad": Failing(), "origin": Origin({KING_ID: original})},
+                      runtime(), set(), now=NOW)
+check("one mailbox's failed lookup doesn't stop another from finding the original", [d["link"] for d in due],
+      ["https://x/c-orig"])
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "bad": Failing()}, runtime(), set(), now=NOW)
+check("a forwarded copy whose lookup failed with no original found gets no ack", due, [])
 
 origin = Origin({KING_ID: original})
 ack_sweep.sweep([item("plain", "c-plain", OLD)], {"demo": Demo(), "origin": origin}, runtime(), set(), now=NOW)
@@ -530,8 +545,19 @@ with contextlib.redirect_stdout(io.StringIO()):
 check("the ack goes out from the original mailbox, not the forwarded copy's", (origin.sent, demo.sent),
       ([("orig", body)], []))
 check("and is scored under that mailbox's channel", staged_sources[-1], "origin")
-check("the ledger still records it under the forwarded copy's conversation",
-      load_ack_ledger(r.runtime_dir)["demo|c-fwd"]["ref"], {"draftId": "d-orig"})
+ledger = load_ack_ledger(r.runtime_dir)
+check("the ledger records it under both copies' conversations",
+      (ledger["demo|c-fwd"]["ref"], ledger["origin|c-orig"]["itemId"]), ({"draftId": "d-orig"}, "orig"))
+
+r, demo = review_for([due_entry(fwd)], [fwd])
+demo.threads = forwarded_demo().threads
+origin = Origin({KING_ID: original})
+r.providers["origin"] = origin
+with contextlib.redirect_stdout(io.StringIO()):
+    ack_sweep.cmd_send(r, "demo|c-fwd", body, handles=True)
+check("a reply that handles a forwarded copy clears both copies", (demo.cleared, origin.cleared), (["fwd"], ["orig"]))
+check("and records both seen", ("fwd" in load_seen(r.runtime_dir, "demo"), "orig" in load_seen(r.runtime_dir, "origin")),
+      (True, True))
 
 
 # --- the worker's ledger lookup ----------------------------------------------------------------------------
