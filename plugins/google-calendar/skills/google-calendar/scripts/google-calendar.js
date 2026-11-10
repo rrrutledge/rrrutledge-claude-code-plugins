@@ -6,6 +6,9 @@
 //                needs its offset, e.g. 2026-10-01T00:00:00-05:00. --end is
 //                exclusive, so --start=2026-10-01 --end=2026-11-01 is all of October. --json prints the raw
 //                Event resources; without it, one line per event.)
+// Remove Meet:   node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]
+//                (Drops the event's conference - its Google Meet link - leaving every other field as is.
+//                Guests get no update email unless --send is passed.)
 //
 // Reusable from other scripts (require.main-guarded, so requiring this file does not run the CLI):
 //   const { listEvents } = require('<google-calendar>/scripts/google-calendar.js');
@@ -44,7 +47,24 @@ async function listEvents({ calendar = 'primary', start, end } = {}) {
   return out;
 }
 
-module.exports = { listEvents };
+// Remove the conference (Google Meet link) from one event and resolve to the patched Event resource.
+// conferenceDataVersion=1 is what makes the API apply a conferenceData change at all.
+async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
+  if (!event) throw new Error('stripMeet requires { event }');
+  const auth = getAuthedClient();
+  await assertAccountEmail(auth);
+  const api = google.calendar({ version: 'v3', auth });
+  const res = await api.events.patch({
+    calendarId: calendar,
+    eventId: event,
+    conferenceDataVersion: 1,
+    sendUpdates: send ? 'all' : 'none',
+    requestBody: { conferenceData: null },
+  });
+  return res.data;
+}
+
+module.exports = { listEvents, stripMeet };
 
 if (require.main === module) {
   const args = Object.fromEntries(
@@ -54,6 +74,11 @@ if (require.main === module) {
     })
   );
   (async () => {
+    if (args['strip-meet']) {
+      const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: !!args.send });
+      console.log(`${ev.summary || '(no title)'}: Meet link ${ev.hangoutLink ? `still present (${ev.hangoutLink})` : 'removed'}`);
+      return;
+    }
     const events = await listEvents({ calendar: args.calendar, start: args.start, end: args.end });
     if (args.json) { console.log(JSON.stringify(events, null, 2)); return; }
     console.log(`${events.length} event(s) on ${args.calendar || 'primary'} ${args.start}..${args.end}:`);
