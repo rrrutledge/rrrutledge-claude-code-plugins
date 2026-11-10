@@ -4,15 +4,15 @@
 // (reads, including the calendar lookup behind the account guard) plus calendar.events (event edits such as
 // removing a Meet link) and keeps its own token cache (~/.claude/google-calendar/oauth-token.json),
 // separate from gmail's and the other google-* plugins'.
-// A token consented before calendar.events was added still reads; an edit with it fails with
+// A token without calendar.events still reads; an edit with it fails with
 // "insufficient authentication scopes" until the auth script is re-run.
 //
 // Prerequisite: the Google Calendar API must be enabled on the Cloud project the OAuth client belongs to -
 // a one-time, per-project toggle, unrelated to any single token.
 //
 // Wrong-account guard. The token records the address it was authorized for (account_email);
-// assertAccountEmail() re-checks it against the primary calendar's id (which is the signed-in address), so
-// a read can never come from the wrong account's calendar.
+// assertAccountEmail() re-checks it against the primary calendar's id (which is the signed-in address), and
+// refuses a token that recorded no address, so a read or an edit never touches the wrong account's calendar.
 //
 //   const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
 
@@ -56,12 +56,12 @@ async function fetchAccountEmail(authedClient) {
 async function assertAccountEmail(authedClient) {
   const t = readTokens();
   const expected = t && t.account_email ? String(t.account_email).toLowerCase() : null;
-  if (!expected) return;
+  if (!expected) throw new Error(`Account guard: the token records no account. To fix, run: ${signInCommand()}`);
   const live = await fetchAccountEmail(authedClient);
   if (live !== expected) {
     throw new Error(
       `Account guard tripped: this token was set up for ${expected}, but it now authorizes ${live || '(unknown)'}. ` +
-      `Refusing to read the wrong calendar. To fix, run: ${signInCommand()}`
+      `Refusing to touch the wrong calendar. To fix, run: ${signInCommand()}`
     );
   }
 }

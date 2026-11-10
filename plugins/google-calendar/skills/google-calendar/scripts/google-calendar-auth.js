@@ -55,6 +55,13 @@ const expectEmail = (() => {
     throw new Error('No refresh_token returned. Revoke prior access at https://myaccount.google.com/permissions and re-run so Google re-issues one.');
   }
 
+  // Google's consent screen lets the owner untick a scope, so confirm every requested one was granted.
+  const granted = (tokens.scope || '').split(' ');
+  const missing = SCOPES.filter(s => !granted.includes(s));
+  if (missing.length) {
+    throw new Error(`Consent left out ${missing.join(', ')}. Not saving the token - re-run and leave every box checked.`);
+  }
+
   client.setCredentials(tokens);
   const signedInAs = await fetchAccountEmail(client);
   if (signedInAs !== expectEmail) {

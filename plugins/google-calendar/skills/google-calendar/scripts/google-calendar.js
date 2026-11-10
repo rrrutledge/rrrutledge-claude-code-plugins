@@ -1,5 +1,5 @@
-// Read a Google Calendar's events over a time range, via the official `googleapis` Calendar v3 client
-// (OAuth path - see google-calendar-oauth.js).
+// Read a Google Calendar's events over a time range, or remove one event's Google Meet link, via the
+// official `googleapis` Calendar v3 client (OAuth path - see google-calendar-oauth.js).
 //
 // List a range:  node google-calendar.js --start=<date or RFC 3339> --end=<date or RFC 3339> [--calendar=<id>] [--json]
 //                (--calendar defaults to `primary`. A plain YYYY-MM-DD date is local midnight; a timestamp
@@ -7,12 +7,15 @@
 //                exclusive, so --start=2026-10-01 --end=2026-11-01 is all of October. --json prints the raw
 //                Event resources; without it, one line per event.)
 // Remove Meet:   node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]
-//                (Drops the event's conference - its Google Meet link - leaving every other field as is.
-//                Guests get no update email unless --send is passed.)
+//                (Drops the event's conference when it is Google Meet, leaving every other field as is, and
+//                refuses when it is another provider's, such as a Zoom add-on. Guests get no update email
+//                unless --send is passed. An occurrence id changes that one occurrence; the series id
+//                changes the whole series.)
 //
 // Reusable from other scripts (require.main-guarded, so requiring this file does not run the CLI):
-//   const { listEvents } = require('<google-calendar>/scripts/google-calendar.js');
+//   const { listEvents, stripMeet } = require('<google-calendar>/scripts/google-calendar.js');
 //   const events = await listEvents({ start: '2026-10-01', end: '2026-11-01' });
+//   const patched = await stripMeet({ event: '<id>' });
 
 const { google } = require('googleapis');
 const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
@@ -47,13 +50,20 @@ async function listEvents({ calendar = 'primary', start, end } = {}) {
   return out;
 }
 
-// Remove the conference (Google Meet link) from one event and resolve to the patched Event resource.
+// Remove the Google Meet conference from one event and resolve to the patched Event resource. Refuses an
+// event whose conference is another provider's, so a Zoom add-on link is never dropped by mistake.
 // conferenceDataVersion=1 is what makes the API apply a conferenceData change at all.
 async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
-  if (!event) throw new Error('stripMeet requires { event }');
+  if (typeof event !== 'string' || !event) throw new Error('stripMeet requires { event: <id> }');
   const auth = getAuthedClient();
   await assertAccountEmail(auth);
   const api = google.calendar({ version: 'v3', auth });
+  const current = (await api.events.get({ calendarId: calendar, eventId: event })).data;
+  const type = current.conferenceData && current.conferenceData.conferenceSolution &&
+    current.conferenceData.conferenceSolution.key.type;
+  if (current.conferenceData && type !== 'hangoutsMeet') {
+    throw new Error(`Event's conference is ${type || 'of unknown type'}, not Google Meet - left unchanged`);
+  }
   const res = await api.events.patch({
     calendarId: calendar,
     eventId: event,
@@ -75,8 +85,10 @@ if (require.main === module) {
   );
   (async () => {
     if (args['strip-meet']) {
-      const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: !!args.send });
-      console.log(`${ev.summary || '(no title)'}: Meet link ${ev.hangoutLink ? `still present (${ev.hangoutLink})` : 'removed'}`);
+      // Only a bare --send notifies guests; --send=false or any other value stays silent.
+      const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: args.send === true });
+      if (ev.conferenceData || ev.hangoutLink) throw new Error(`${ev.summary}: conference still present after the patch`);
+      console.log(`${ev.summary || '(no title)'}: Meet link removed`);
       return;
     }
     const events = await listEvents({ calendar: args.calendar, start: args.start, end: args.end });
