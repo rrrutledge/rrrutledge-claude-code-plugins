@@ -21,7 +21,7 @@ const CACHE_PATH = path.join(DEP_HOME, 'token-cache.json');
 const AUTHORITY = 'https://login.microsoftonline.com/consumers'; // personal accounts only
 const REDIRECT_URI = 'http://localhost:8080/callback';
 // Resource scopes only - MSAL adds openid/profile/offline_access automatically.
-const SCOPES = ['User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.ReadWrite', 'MailboxSettings.ReadWrite', 'Contacts.ReadWrite', 'Files.Read'];
+const SCOPES = ['User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.ReadWrite', 'MailboxSettings.ReadWrite', 'Contacts.ReadWrite', 'Files.Read', 'Notes.Read'];
 
 const cachePlugin = {
   beforeCacheAccess: async (ctx) => {
