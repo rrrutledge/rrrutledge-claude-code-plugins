@@ -50,8 +50,9 @@ async function listEvents({ calendar = 'primary', start, end } = {}) {
   return out;
 }
 
-// Remove the Google Meet conference from one event and resolve to the patched Event resource. Refuses an
-// event whose conference is another provider's, so a Zoom add-on link is never dropped by mistake.
+// Remove the Google Meet conference from one event the signed-in account organizes. Resolves to the patched
+// Event resource, or to null when the event has no conference (nothing is written and no guest is emailed).
+// Refuses an event whose conference is another provider's, so a Zoom add-on link is never dropped by mistake.
 // conferenceDataVersion=1 is what makes the API apply a conferenceData change at all.
 async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   if (typeof event !== 'string' || !event) throw new Error('stripMeet requires { event: <id> }');
@@ -59,11 +60,16 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   await assertAccountEmail(auth);
   const api = google.calendar({ version: 'v3', auth });
   const current = (await api.events.get({ calendarId: calendar, eventId: event })).data;
-  const type = current.conferenceData && current.conferenceData.conferenceSolution &&
-    current.conferenceData.conferenceSolution.key.type;
-  if (current.conferenceData && type !== 'hangoutsMeet') {
-    throw new Error(`Event's conference is ${type || 'of unknown type'}, not Google Meet - left unchanged`);
+  const title = current.summary || '(no title)';
+  if (!current.organizer?.self) throw new Error(`${title}: organized by someone else - only the organizer can remove Meet`);
+  const conf = current.conferenceData;
+  if (!conf) {
+    if (current.hangoutLink) throw new Error(`${title}: legacy Meet link with no conference data - remove it in the Calendar UI`);
+    return null;
   }
+  // A Meet link still being provisioned carries only a createRequest, not a conferenceSolution yet.
+  const type = conf.conferenceSolution?.key?.type ?? conf.createRequest?.conferenceSolutionKey?.type;
+  if (type !== 'hangoutsMeet') throw new Error(`${title}: conference is ${type || 'of unknown type'}, not Google Meet - left unchanged`);
   const res = await api.events.patch({
     calendarId: calendar,
     eventId: event,
@@ -71,6 +77,7 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
     sendUpdates: send ? 'all' : 'none',
     requestBody: { conferenceData: null },
   });
+  if (res.data.conferenceData || res.data.hangoutLink) throw new Error(`${title}: conference still present after the patch`);
   return res.data;
 }
 
@@ -85,10 +92,8 @@ if (require.main === module) {
   );
   (async () => {
     if (args['strip-meet']) {
-      // Only a bare --send notifies guests; --send=false or any other value stays silent.
       const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: args.send === true });
-      if (ev.conferenceData || ev.hangoutLink) throw new Error(`${ev.summary}: conference still present after the patch`);
-      console.log(`${ev.summary || '(no title)'}: Meet link removed`);
+      console.log(ev ? `${ev.summary || '(no title)'}: Meet link removed` : 'No conference on that event - nothing changed');
       return;
     }
     const events = await listEvents({ calendar: args.calendar, start: args.start, end: args.end });

@@ -38,8 +38,7 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 - **Remove an event's Google Meet link:** `node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]`
   Guests get no update email unless `--send` is passed, and whether to notify them is Russell's call.
   The event id is the `id` the connector's `create_event` / `list_events` returns.
-  For a recurring meeting, pick the scope: an occurrence id clears that one date, and its `recurringEventId` clears the whole series.
-  It refuses an event whose conference is another provider's, such as a Zoom add-on.
+  For a recurring meeting, pick the scope: an occurrence id clears that one date, and its `recurringEventId` clears the series, except occurrences already edited on their own, which each need their own id.
 - **Call it from another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, recurring events expanded to single instances and ordered by start time.
   Cancelled events are left out.
-  `stripMeet({ calendar, event, send })` from the same module resolves to the patched `Event`.
+  `stripMeet({ calendar, event, send })` from the same module resolves to the patched `Event`, or `null` when the event had no conference.
