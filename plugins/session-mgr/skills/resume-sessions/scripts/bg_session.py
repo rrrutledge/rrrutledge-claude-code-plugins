@@ -614,8 +614,8 @@ def record_pause(session_guid, name, cwd):
 
 
 def record_resume(session_guid, continued_as=None):
-    """Record that `session_guid` was resumed: it is no longer paused, and when the resume continued it
-    under a new guid, `continued_as` is that guid's successor."""
+    """Record that `session_guid` is no longer paused (it was resumed, or closed for good), and when a
+    resume continued it under a new guid, `continued_as` is that guid's successor."""
     def mutate(d):
         d["paused"].pop(session_guid, None)
         if continued_as and continued_as != session_guid:
@@ -623,13 +623,20 @@ def record_resume(session_guid, continued_as=None):
     _update_paused(mutate)
 
 
-def latest_session(session_guid):
-    """The guid `session_guid`'s history continues under now, following each resume's successor."""
-    successors, seen = _load_paused()["successors"], set()
+def latest_session(session_guid, successors=None):
+    """The guid `session_guid`'s history continues under now, following each resume's successor.
+    `successors` is the record's map when the caller already loaded it (session_resolver)."""
+    successors, seen = _load_paused()["successors"] if successors is None else successors, set()
     while session_guid in successors and session_guid not in seen:
         seen.add(session_guid)
         session_guid = successors[session_guid]
     return session_guid
+
+
+def session_resolver():
+    """latest_session over one read of the record, for a caller resolving many guids at once."""
+    successors = _load_paused()["successors"]
+    return lambda session_guid: latest_session(session_guid, successors)
 
 
 def paused_record(session_guid):
@@ -637,10 +644,10 @@ def paused_record(session_guid):
     return _load_paused()["paused"].get(latest_session(session_guid))
 
 
-def paused_sessions(agents=None, now=None):
+def paused_sessions(agents):
     """`{guid: {"pausedAt", "name", "cwd"}}` for every session paused within PAUSE_HOLD that isn't
     running again: a guid with a pid in `agents` (a claude_agents scan) is running."""
-    now = now or datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
     running = {a.get("sessionId") for a in agents or [] if a.get("pid")}
     out = {}
     for guid, entry in _load_paused()["paused"].items():
@@ -717,21 +724,16 @@ def live_peers(agents, parent_id):
     return lines[-MAX_PEERS:], parent_title
 
 
-def paused_peers(agents):
-    """One `- <title> (paused, resume id <guid>)` line per paused session (paused_sessions): it is
-    stopped, so its peers resume it rather than message it, and the guid is what the resume takes."""
-    return [f"- {' '.join((e.get('name') or '').split()) or '(untitled)'} (paused, resume id {guid})"
-            for guid, e in paused_sessions(agents).items()]
-
-
 def duplicate_check_section(agents, parent_id=None):
     """The launch-prompt section listing the live sessions to compare against (the newest MAX_PEERS, the
-    parent left out and named), then the paused ones, pointing at duplicate-sessions.md. "" when the
-    scan failed (`agents` is None) or there is nothing to list, so a launch never waits on it."""
+    parent left out and named), then the paused ones with the guid a resume takes, pointing at
+    duplicate-sessions.md. "" when the scan failed (`agents` is None) or there is nothing to list, so a
+    launch never waits on it."""
     if agents is None:
         return ""
     peers, parent_title = live_peers(agents, parent_id)
-    peers += paused_peers(agents)
+    peers += [f"- {' '.join((e.get('name') or '').split()) or '(untitled)'} (paused, resume id {guid})"
+              for guid, e in paused_sessions(agents).items()]
     if not peers and not parent_title:
         return ""
     parent_line = DUPLICATE_PARENT_LINE.format(title=parent_title) + "\n" if parent_title else ""
@@ -791,13 +793,12 @@ def launch(*, cwd, model=None, name=None, brief=None, prompt_file=None, lead="",
     `(None, None)` when nothing launched."""
     anchor = brief or prompt_file
     seed = brief_seed(brief) if brief else prompt_seed(prompt_file, lead) if prompt_file else None
-    resumed = latest_session(resume) if resume else None
     short_id = spawn_bg(seed, model, cwd, name, resume=resume)
     if not short_id:
         return None, None
     receipt = write_receipt(anchor, short_id) if anchor else session_guid(short_id) or short_id
-    if resumed and receipt != short_id:  # a full guid, so the continuation can be followed
-        record_resume(resumed, continued_as=receipt)
+    if resume and receipt != short_id:  # a full guid, so the continuation can be followed
+        record_resume(latest_session(resume), continued_as=receipt)
     return short_id, receipt
 
 

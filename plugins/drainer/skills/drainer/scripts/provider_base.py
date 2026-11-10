@@ -368,8 +368,10 @@ claude_agents = bg_session.claude_agents
 # The launch-time duplicate check every launched session gets. The two plugins update separately, so an
 # installed session-mgr older than this builder adds no section rather than breaking every launch.
 duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda agents, parent_id=None: "")
-# The sessions that closed paused, waiting to be resumed; an older session-mgr records none.
-paused_sessions = getattr(bg_session, "paused_sessions", lambda agents=None, now=None: {})
+# The sessions that closed paused, waiting to be resumed, and the guid each resumed session continues
+# under now; an older session-mgr records neither.
+paused_sessions = getattr(bg_session, "paused_sessions", lambda agents: {})
+session_resolver = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)
 
 
 # ---------------------------------------------------------------------------- correspondent identity

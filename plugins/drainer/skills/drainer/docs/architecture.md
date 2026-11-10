@@ -31,7 +31,8 @@ There is no per-cycle work cap upstream of that: every source is asked for every
 AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only), plus one judgment-free delivery call that carries a routed item to the live worker already on its conversation (`engine/poller-core.md`).
 The once-a-day acknowledgement sweep is code reading that triage verdict from the verdict cache; the acks themselves are drafted in the end-of-day ack review session.
 
-This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets a **worker** (the conversation's live worker when it has one) that handles it to completion in a fresh context (its own headless background session), so context stays bounded and nothing is half-done.
+This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets a **worker** that handles it to completion in its own headless background session, so context stays bounded and nothing is half-done.
+A new item in a conversation a worker already holds goes to that worker (`engine/poller-core.md`, "One conversation, one worker").
 The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss

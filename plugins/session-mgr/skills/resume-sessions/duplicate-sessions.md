@@ -25,11 +25,10 @@ When a peer looks like it covers the same work, exactly one of you keeps it:
 3. The session standing down stands down only for the part of its work the keeper confirms it will carry through to completion.
    Ask the keeper to name what it will deliver, and compare that against everything you were launched to get done.
 4. When your work has other parts the keeper is not doing, hand over the overlapping part and stay open for the rest.
-5. When one of your steps comes after the keeper's work, such as a reply you owe the person who asked, it stays yours: you hold the context of who asked and why.
-   Hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you when its work is done and you send the reply.
-   The one exception is a reply into the keeper's own conversation, which the keeper sends; confirm that before standing down.
-6. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`.
-   Hand the work over without asking Russell whether the keeper is fine taking it.
+5. When one of your steps comes after the keeper's work, that step stays yours, since you hold the context of who asked and why.
+   Hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you when its work is done and you finish the step.
+   The one exception is a step inside the keeper's own conversation, which the keeper takes on; confirm that before standing down.
+6. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`, or the close your own skill names.
 7. When you are unsure whether the keeper covers it all, stay open.
 8. A session that a peer asks about this answers before going on.
 9. The keeper tells the peer what it will deliver, and folds what the peer hands over into its own work.
@@ -45,5 +44,4 @@ When it covers your work, it keeps the work, since it holds the history of who a
 1. Write a note to a file in your working directory's `.tmp/` naming the work you were launched for: what it is, and the path of your brief or captured item.
    Say in it that this arrived while the session was paused: it handles the new work now when what it waits on doesn't block that, and closes paused again when it does.
 2. Resume the paused peer with that note, using its resume id from your list and the `scripts/spawn-session.py` beside this doc: `python "<spawn-session.py>" --resume <resume id> --prompt-file "<note>"`.
-   The resume finds the peer's own working directory from its paused record.
-3. Close with `session-mgr:close` (a drainer worker: `close-session.py`), leaving the work to the resumed peer.
+3. Close as in step 6 above, leaving the work to the resumed peer.

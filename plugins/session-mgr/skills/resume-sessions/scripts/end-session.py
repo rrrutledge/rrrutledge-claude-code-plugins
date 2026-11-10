@@ -62,7 +62,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bg_session import is_background_session, record_pause  # noqa: E402
+from bg_session import is_background_session, record_pause, record_resume  # noqa: E402
 
 PLUGIN_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                            "..", "..", ".."))
@@ -211,17 +211,22 @@ def close_headless(session_id, claude_pid, pause=False):
     fire_session_end(session_id)
     if pause:
         _record_pause(session_id)
+    else:
+        record_resume(session_id)  # closed for good: a pause it was resumed from by hand no longer holds
     return stop_own_bg_session(session_id, pause)
 
 
 def _record_pause(session_id):
     """Record the paused close (bg_session.record_pause), named and placed from the session's own job
     record, so other sessions can tell it apart from a finished one that also stopped."""
-    try:
-        with open(os.path.join(os.environ.get("CLAUDE_JOB_DIR") or "", "state.json"), encoding="utf-8") as f:
-            state = json.load(f)
-    except (OSError, ValueError):
-        state = {}
+    state = {}
+    job_dir = os.environ.get("CLAUDE_JOB_DIR")
+    if job_dir:
+        try:
+            with open(os.path.join(job_dir, "state.json"), encoding="utf-8") as f:
+                state = json.load(f)
+        except (OSError, ValueError):
+            pass
     state = state if isinstance(state, dict) else {}
     record_pause(session_id, state.get("name"), state.get("cwd") or os.getcwd())
 

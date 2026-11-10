@@ -54,8 +54,9 @@ def test_record_and_bound():
     check("name and cwd kept", bg_session.paused_sessions([])[A]["cwd"] == "C:/repo")
     check("a running session is not paused", A not in bg_session.paused_sessions([{"sessionId": A, "pid": 7}]))
     check("a stopped listing still counts", A in bg_session.paused_sessions([{"sessionId": A}]))
-    later = datetime.datetime.now(datetime.timezone.utc) + bg_session.PAUSE_HOLD + datetime.timedelta(minutes=1)
-    check("past the bound it no longer holds", A not in bg_session.paused_sessions([], now=later))
+    old = datetime.datetime.now(datetime.timezone.utc) - bg_session.PAUSE_HOLD - datetime.timedelta(minutes=1)
+    bg_session._update_paused(lambda d: d["paused"][A].__setitem__("pausedAt", old.isoformat()))
+    check("past the bound it no longer holds", A not in bg_session.paused_sessions([]))
 
 
 def test_resume_clears_and_follows():
@@ -69,6 +70,7 @@ def test_resume_clears_and_follows():
     bg_session.record_resume(B, continued_as=C)
     check("the chain is followed", bg_session.latest_session(A) == C)
     check("an unknown guid is itself", bg_session.latest_session("zzz") == "zzz")
+    check("the resolver follows the same chain", bg_session.session_resolver()(A) == C)
     bg_session.record_resume(C, continued_as=C)
     check("a wake in place records no successor", bg_session.latest_session(C) == C)
 
@@ -144,6 +146,10 @@ def test_end_session_records_pause():
     try:
         end_session.close_headless(A, None, pause=True)
         end_session.close_headless(B, None, pause=False)
+        bg_session.record_pause(C, "reopened by hand", "C:/work")
+        end_session.close_headless(C, None, pause=False)
+        os.environ.pop("CLAUDE_JOB_DIR")
+        end_session.close_headless(B, None, pause=True)
     finally:
         if saved is None:
             os.environ.pop("CLAUDE_JOB_DIR", None)
@@ -152,8 +158,10 @@ def test_end_session_records_pause():
     paused = bg_session.paused_sessions([])
     check("paused close recorded with name and cwd",
           paused.get(A, {}).get("name") == "Waiting worker" and paused[A]["cwd"] == "C:/work", paused)
-    check("a plain close records nothing", B not in paused, paused)
-    check("both still stop", stops == [True, False], stops)
+    check("a plain close clears a pause the session was reopened from", C not in paused, paused)
+    check("with no job dir, the cwd stands in and no stray state.json is read",
+          paused.get(B, {}).get("name") == "" and paused[B]["cwd"] == os.getcwd(), paused)
+    check("every close still stops", stops == [True, False, False, True], stops)
 
 
 if __name__ == "__main__":

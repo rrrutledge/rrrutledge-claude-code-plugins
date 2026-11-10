@@ -49,7 +49,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           duplicate_check_section, paused_sessions,
+                           duplicate_check_section, paused_sessions, session_resolver,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
@@ -1484,7 +1484,7 @@ def paused_ids(agents):
     return {i for guid in paused_sessions(agents) for i in (guid, guid.split("-", 1)[0])}
 
 
-def open_conversations(runtime_dir, live, paused=frozenset()):
+def open_conversations(runtime_dir, live, paused):
     """`{conversation key: (worker receipt id, "live" | "paused")}` for every conversation a live or
     paused worker holds right now, a live holder winning when both do.
 
@@ -1495,7 +1495,7 @@ def open_conversations(runtime_dir, live, paused=frozenset()):
     launches normally. `paused` is paused_ids' set. Empty `live` and `paused` yield `{}`."""
     live = live or set()
     out = {}
-    for receipt, rec in _worker_items(runtime_dir, live | set(paused)):
+    for receipt, rec in _worker_items(runtime_dir, live | paused):
         key = rec.get("conversationKey")
         if key and out.get(key, ("", ""))[1] != "live":
             out[key] = (receipt, "live" if receipt in live else "paused")
@@ -1504,9 +1504,12 @@ def open_conversations(runtime_dir, live, paused=frozenset()):
 
 def _worker_items(runtime_dir, ids):
     """(receipt id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt is in
-    `ids`. Bounded by the number of session files, the same per-cycle work reconcile already does."""
+    `ids`. A receipt names the session as launched; a session resumed since continues under a newer
+    guid (session_resolver), so the receipt is read as that one. Bounded by the number of session
+    files, the same per-cycle work reconcile already does."""
     if not ids:
         return
+    resolve = session_resolver()
     seeds_dir = os.path.join(runtime_dir, "seeds")
     items_dir = os.path.join(runtime_dir, "items")
     suffix = ".prompt.txt.session"
@@ -1519,7 +1522,7 @@ def _worker_items(runtime_dir, ids):
             continue
         try:
             with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
-                receipt = f.read().strip()
+                receipt = resolve(f.read().strip())
         except OSError:
             continue
         if receipt not in ids:
@@ -1604,7 +1607,7 @@ def _forward_delivered(stream, to, message):
                 try:
                     if json.loads(result or "{}").get("success") is True:
                         return True
-                except (ValueError, AttributeError):
+                except (ValueError, AttributeError, TypeError):  # a result shape this check doesn't know
                     continue
     return False
 
@@ -2188,16 +2191,19 @@ def main():
     # until that worker can receive them.
     open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
     claimed_convs = set()
-    peers = list(agents or [])  # the duplicate check's session list, grown as this cycle launches workers
+    # The duplicate check's session list, grown as this cycle launches workers; None when the scan failed,
+    # so a seed never claims a partial list is the machine's live sessions.
+    peers = None if agents is None else list(agents)
 
     if args.dry_run:
         def print_route(it, key):
             """Print the conversation-routing action for an item, True when it takes one."""
             route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
             if route:
+                holder = open_convs.get(key, ("",))[0]
                 action = {"hold": "HOLD (same conversation)",
-                          "paused": f"HOLD (paused worker {open_convs.get(key, ('',))[0]} holds the conversation)",
-                          "forward": f"FORWARD to the live worker {open_convs.get(key, ('',))[0]}"}[route]
+                          "paused": f"HOLD (paused worker {holder} holds the conversation)",
+                          "forward": f"FORWARD to the live worker {holder}"}[route]
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
                       f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
             return bool(route)
@@ -2310,7 +2316,7 @@ def main():
         # closes without surfacing anything, so it can't hold a needs-you follow-up, and a needs-you
         # holder lacks the standing rule to run an auto-handle item.
         if spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                        peers=peers):
+                        peers=peers) and peers is not None:
             peers.append(launched_peer(_worker_title(iid, json_file)))
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
@@ -2368,7 +2374,7 @@ def main():
             spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
                                    peers=peers)
             if spawned:
-                if not it.get("_screen"):  # a flagged item's subject-built title stays out of other seeds
+                if not it.get("_screen") and peers is not None:  # a flagged item's subject-built title stays out of other seeds
                     peers.append(launched_peer(_worker_title(iid, json_file)))
                 if "conversationKey" in stamp:
                     claimed_convs.add(key)

@@ -104,7 +104,7 @@ rt = workspace([("w1", "guid-live", {"conversationKey": KEY, "correspondent": "g
                 ("w2", "guid-dead", {"conversationKey": "gmail|t2"}),
                 ("w3", "guid-live2", {"correspondent": "x@y.z"}),
                 ("w4", "guid-paused", {"conversationKey": "gmail|t4"})])
-check("the live holder is found", poller.open_conversations(rt, {"guid-live", "guid-live2"}),
+check("the live holder is found", poller.open_conversations(rt, {"guid-live", "guid-live2"}, set()),
       {KEY: ("guid-live", "live")})
 check("a paused holder is reported as paused",
       poller.open_conversations(rt, {"guid-live"}, {"guid-paused"}),
@@ -112,7 +112,15 @@ check("a paused holder is reported as paused",
 rt2 = workspace([("a", "guid-paused", {"conversationKey": KEY}), ("b", "guid-live", {"conversationKey": KEY})])
 check("a live holder wins over a paused one", poller.open_conversations(rt2, {"guid-live"}, {"guid-paused"}),
       {KEY: ("guid-live", "live")})
-check("no live scan and nothing paused -> nothing held, every item launches", poller.open_conversations(rt, None), {})
+check("no live scan and nothing paused -> nothing held, every item launches",
+      poller.open_conversations(rt, None, set()), {})
+real_resolver = poller.session_resolver
+poller.session_resolver = lambda: lambda guid: {"guid-paused": "guid-resumed"}.get(guid, guid)
+try:
+    check("a receipt is read as the session it was resumed into",
+          poller.open_conversations(rt, {"guid-resumed"}, set()).get("gmail|t4"), ("guid-resumed", "live"))
+finally:
+    poller.session_resolver = real_resolver
 check("open_correspondents still reads the same scan",
       poller.open_correspondents(rt, {"guid-live", "guid-live2"}), {"georg", "x@y.z"})
 

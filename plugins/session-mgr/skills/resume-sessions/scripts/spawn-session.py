@@ -215,9 +215,7 @@ def main(argv=None):
                     help="a side quest: this (launching) session carries on with its own work after "
                          "the launch, so it stays open")
     a = ap.parse_args(argv)
-    if not a.cwd:
-        a.cwd = (paused_record(a.resume) or {}).get("cwd") if a.resume else None
-        a.cwd = a.cwd or os.getcwd()
+    a.cwd = a.cwd or (a.resume and (paused_record(a.resume) or {}).get("cwd")) or os.getcwd()
     if a.keep_open and a.resume_me:
         print("spawn-session: --keep-open and --resume-me contradict each other: one stays open, "
               "the other closes paused.")

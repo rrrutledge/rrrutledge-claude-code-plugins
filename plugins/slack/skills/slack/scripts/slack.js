@@ -399,25 +399,26 @@ async function listUnread() {
   // Channels with unread activity: one item per channel, keyed to the latest unread top-level message, its
   // span holding every unread message, @-mentions of me included. The channel's top-level timeline is one
   // conversation, so a mention rides in it rather than becoming its own item; the subject says when the
-  // span mentions me, the way a thread item's does. `mention_count` also opens the channel, so a mention
-  // whose has_unreads flag lags still surfaces; a stale badge whose mention is older than last_read finds
-  // no unread message and adds nothing.
+  // span mentions me, the way a thread item's does, and the item's sender is whoever mentioned me last,
+  // since that is who is asking. `mention_count` also opens the channel, so a mention whose has_unreads
+  // flag lags still surfaces; a stale badge whose mention is older than last_read finds no unread message
+  // and adds nothing.
   for (const c of counts.channels || []) {
     if (muted.has(c.id) || (!c.has_unreads && !(c.mention_count > 0))) continue;
     const msgs = await unreadMessages(c.id, c.last_read, me);
     if (!msgs.length) continue;
     const info = await convInfo(c.id);
     const chName = await convDisplayName(c.id, info);
-    const mentioned = msgs.some(m => (m.text || '').includes(`<@${me}>`));
+    const mention = msgs.find(m => (m.text || '').includes(`<@${me}>`));
     const latest = msgs[0];
-    const from = await userName(latest.user);
+    const sender = mention || latest;
     items.push({
       id: `${c.id}:${latest.ts}`, channel: c.id, channelType: 'channel',
-      ts: latest.ts, threadTs: '', from, fromId: latest.user,
-      subject: mentioned ? `@mention in ${chName}` : `Unread in ${chName}`,
+      ts: latest.ts, threadTs: '', from: await userName(sender.user), fromId: sender.user,
+      subject: mention ? `@mention in ${chName}` : `Unread in ${chName}`,
       channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
       preview: await previewText(msgs), unread: await unreadSpan(msgs),
-      knownContact: false, fromBot: await fromBot(latest),
+      knownContact: false, fromBot: await fromBot(sender),
     });
   }
 

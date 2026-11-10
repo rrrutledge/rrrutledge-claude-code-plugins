@@ -147,19 +147,16 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one worker"), so the poller can't route it and this check catches it.
+Same work arriving by another source carries its own conversation key (poller-core, "One conversation, one worker"), so it reaches you as a separate item, and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
 When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.
 Like the silent closes listed in §6a, standing down queues no digest entry: the keeper is the one carrying the item.
 
 **When your seed names a live session already on this item's conversation, ask it first.**
-The poller says so when it found that session but couldn't hand the item to it.
-Settle with that session before any other work, by the rule in `duplicate-sessions.md`; it keeps the work unless it says it has finished with the conversation.
+Settle with that session before any other work, by the rule in `duplicate-sessions.md`.
 
-**A new item in your own conversation arrives as a message from the drainer.**
-Handle it as part of this conversation before you close, the same as an item you were launched on: read it, then fold it into the reply you are drafting or work it as its own ask.
-Its source is still uncleared, so run its provider's CLEAR on that item once it is handled, as you do for your own (§2d and §6).
+**A new item in your own conversation arrives as a message from the drainer; handle it under §2d and §6 like your own.**
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
