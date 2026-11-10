@@ -148,6 +148,10 @@ class Provider(ProviderBase):
             return item.get("preview") or ""
         return "\n".join(f"{m.get('from', '?')}: {m.get('text', '')}" for m in new_msgs)
 
+    def conversation_key(self, item):
+        conv_id = item.get("id")  # the IC3 conversation id: one chat is one conversation
+        return f"{self.name}|{conv_id}" if conv_id else None
+
     def stable_id(self, item):
         lm = item.get("lastMessage") or {}
         digits = "".join(c for c in (lm.get("time") or "") if c.isdigit())

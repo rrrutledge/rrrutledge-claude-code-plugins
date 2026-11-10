@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import types
 import uuid
@@ -28,6 +29,7 @@ REGISTRY_PATH = os.path.expanduser("~/.claude/session-mgr/live-sessions.json")
 _spec = importlib.util.spec_from_file_location("end_session", END_SESSION)
 end_session = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(end_session)
+sys.modules["bg_session"].PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # not the machine's record
 
 failures = []
 
