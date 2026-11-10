@@ -143,11 +143,11 @@ Before authoring that new top-level message, drain the conversation now:
     python ~/.claude/drainer/launch-drainer.py --mode poller --repo <drainer project> --channel=<C> --now --resume-me
 
 `--repo` is the project the scheduled DrainerKeeper task drains (on this machine, `C:/Users/russe/Dev/personal-ai-pod`).
-Act on its `on-demand:` lines; when it prints several, a launched or held line decides over a filed one.
+Act on its `on-demand:` line:
 
-- **Nothing waits on Russell:** every line reads "nothing to drain" or files an item as fyi or junk, so author and stage the new message now.
+- **Nothing waits on Russell:** the line reads "nothing to drain" or files the item as fyi or junk, so author and stage the new message now.
 - **A worker was launched:** the line reads "launched", and that worker resumes this session once its item is done.
-  Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
+  Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`; a "warning" line beside it means the Stop hook won't enforce the pause, so close paused all the same.
 - **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
   Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names, then close paused.
 - **A paused worker holds it:** the line reads "held behind paused worker", and that worker closed paused with this person's earlier messages unfinished.

@@ -1292,8 +1292,8 @@ def _skill_dirs_block():
 @functools.lru_cache(maxsize=None)
 def _spawn_session():
     """session-mgr's spawn-session.py, loaded once as a module: the one home of --resume-me's
-    instruction text, and the importer of launch_marker, which the Stop hook reads. None when
-    session-mgr isn't installed."""
+    instruction text, and the module that imports launch_marker, whose marker the launcher's Stop hook
+    reads. None when session-mgr isn't installed."""
     path = session_mgr_script("spawn-session.py")
     if not path:
         return None
@@ -2156,9 +2156,8 @@ def main():
         all_new.extend(new)
         if not new:
             print(f"{provider.name}: {total} enumerated, 0 new.")
-    # Dry-run is a manual diagnostic often run from a shell without the User-scope creds; persisting
-    # health then would log false failures, so only a live cycle records the outcome.
-    # Only a scheduled live cycle saves provider health and the heartbeat.
+    # Only a scheduled live cycle saves provider health and the heartbeat; a dry-run, often run from a
+    # shell without the User-scope creds, would log false failures.
     if not args.dry_run and not args.channel:
         record_heartbeat(health)  # a full live cycle ran
         save_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
@@ -2262,7 +2261,7 @@ def main():
     # fail closed: open no new needs-you workers this cycle) ---
     wcounts = worker_counts()
     if args.channel:  # scan health and its diagnostic are the scheduled cycle's
-        waiting, total = wcounts if wcounts is not None else (None, None)
+        waiting, total = wcounts or (None, None)
     elif wcounts is None:
         waiting = total = None
         fails = _record_scan_failure(health)
@@ -2309,6 +2308,13 @@ def main():
     # until that worker can receive them.
     open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
     claimed_convs = set()
+    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the session
+    # waits on that worker rather than a same-person hold it can only rerun past.
+    thread_holder = None
+    if args.channel:
+        base = prov["slack"].conversation_key({"channel": args.channel})
+        thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
+        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
     # The duplicate check's session list, grown as this cycle launches workers; None when the scan failed,
     # so a seed never claims a partial list is the machine's live sessions.
     peers = None if agents is None else list(agents)
@@ -2434,6 +2440,9 @@ def main():
         provider = prov[it["_source"]]
         iid = it["_id"]
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
+        if iid in load_seen(cfg["runtime_dir"], it["_source"]):  # a concurrent cycle dispatched it since enumerate
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
+            continue
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
         # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
@@ -2462,6 +2471,11 @@ def main():
         # Ahead of the correspondent hold and the buffer: a worker already open on this conversation takes
         # the item, which costs no new session.
         if routed(it, provider, key):
+            continue
+        if thread_holder:
+            held += 1
+            on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
+                             f"{thread_holder[0]} on {args.channel}.")
             continue
         corr = provider.correspondent(it)
         # A failed hand-over means the holder can't take the item, so it launches rather than waiting
