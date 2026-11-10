@@ -1,0 +1,66 @@
+// One-time interactive sign-in for the Calendar API. Runs the OAuth2 authorization-code loopback flow:
+// prints (and serves) a consent URL, captures the code on a local callback, exchanges it for tokens, and
+// caches them under ~/.claude/google-calendar/.
+//
+// Run via browser-chauffeur, which navigates to the printed URL - the account owner completes the consent
+// themselves (pick the intended account), since granting a new scope to an app is their call.
+//
+//   node google-calendar-auth.js --expect-email=<address>
+//
+// --expect-email (required) is the wrong-account guard: after consent the flow reads the signed-in address
+// and refuses to save the token unless it matches, then records the address for every later run to re-check.
+
+const http = require('http');
+const { buildOAuthClient, writeTokens, fetchAccountEmail, SCOPES, REDIRECT_URI } = require('./google-calendar-oauth');
+
+const expectEmail = (() => {
+  for (const a of process.argv.slice(2)) {
+    const m = a.match(/^--expect-email=(.+)$/);
+    if (m) return m[1].toLowerCase();
+  }
+  return null;
+})();
+
+(async () => {
+  if (!expectEmail) throw new Error('--expect-email=<address> is required');
+  const client = buildOAuthClient();
+  // The code exchange emits 'tokens', and the cache listener would save the new token before the account
+  // check below runs, overwriting a working token on a wrong-account sign-in. Save only after the check.
+  client.removeAllListeners('tokens');
+  // access_type=offline + prompt=consent forces Google to return a refresh_token.
+  const authUrl = client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: SCOPES, login_hint: expectEmail });
+  console.log('AUTH_URL: ' + authUrl);
+
+  const port = new URL(REDIRECT_URI).port;
+  const code = await new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, REDIRECT_URI);
+      if (u.pathname === '/callback') {
+        const c = u.searchParams.get('code');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(c ? '<h2>Consent received. You can close this tab.</h2>' : '<h2>Sign-in was not completed.</h2>');
+        server.close();
+        if (c) resolve(c); else reject(new Error('No code in callback: ' + req.url));
+      } else {
+        res.writeHead(404); res.end();
+      }
+    });
+    server.listen(port, () => console.log(`Listening on ${REDIRECT_URI}`));
+    // unref so the process exits as soon as sign-in finishes; the timer only ends an abandoned sign-in.
+    setTimeout(() => { server.close(); reject(new Error('Auth flow timed out after 15 min')); }, 900000).unref();
+  });
+
+  const { tokens } = await client.getToken(code);
+  if (!tokens.refresh_token) {
+    throw new Error('No refresh_token returned. Revoke prior access at https://myaccount.google.com/permissions and re-run so Google re-issues one.');
+  }
+
+  client.setCredentials(tokens);
+  const signedInAs = await fetchAccountEmail(client);
+  if (signedInAs !== expectEmail) {
+    throw new Error(`Consent was for ${signedInAs || '(unknown)'}, but --expect-email=${expectEmail}. Not saving the token - sign in as the intended account and re-run.`);
+  }
+
+  writeTokens({ ...tokens, account_email: signedInAs });
+  console.log(`Signed in as ${signedInAs} - Calendar token cached. google-calendar.js will run silently now.`);
+})().catch(e => { console.error('Error:', e.message); process.exit(1); });

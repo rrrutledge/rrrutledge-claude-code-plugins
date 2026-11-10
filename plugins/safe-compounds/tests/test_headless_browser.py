@@ -63,6 +63,13 @@ class TestHeadlessBrowser:
                f'--print-to-pdf="{OUT}" "{PAGE}?print=1"')
         assert is_headless_browser_safe(seg) is True
 
+    def test_chrome_pdf_with_first_run_flags_approved(self):
+        chrome = '"/c/Program Files/Google/Chrome/Application/chrome.exe"'
+        seg = (f'{chrome} --headless=new --disable-gpu --no-first-run --no-default-browser-check '
+               f'--user-data-dir="C:/Users/russe/docs/Election 2026/.tmp/chrome-pdf-profile" '
+               f'--no-pdf-header-footer --print-to-pdf="{OUT}" "{PAGE}"')
+        assert is_headless_browser_safe(seg) is True
+
     def test_no_page_prompts(self):
         assert is_headless_browser_safe(f'{EDGE} --headless --screenshot="{OUT}"') is False
 

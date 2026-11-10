@@ -305,9 +305,16 @@ print("\nreview")
 sent_outcomes = []
 ack_sweep.has_receipt = lambda body: "unreviewed" not in body
 ack_sweep.record_outcome = lambda *a: sent_outcomes.append(a) or "recorded"
-staged_calls = []
-ack_sweep.stage_for_scoring = lambda rt, entry, current, body, inputs, verb: (
-    staged_calls.append((body, inputs, verb, len(sent_outcomes))) or "staged")
+staged_calls, staged_sources = [], []
+
+
+def fake_stage(rt, source, current, body, inputs, verb):
+    staged_sources.append(source)
+    staged_calls.append((body, inputs, verb, len(sent_outcomes)))
+    return "staged"
+
+
+ack_sweep.stage_for_scoring = fake_stage
 
 
 def review_for(due_entries, listing, opened=frozenset()):
@@ -461,6 +468,96 @@ check("and records the draft as discarded and moot", ("--moot" in sent_outcomes[
       (True, True))
 check("and stages the skipped draft for scoring before that outcome",
       staged_calls[-1][::2], (body, "skip"))
+
+
+# --- a forwarded copy is answered from the mailbox it was forwarded from -----------------------------------
+print("\nforwarded copies")
+
+
+class Origin(Demo):
+    """The mailbox that auto-forwarded a copy to the demo source (ISC Gmail, forwarding to Outlook)."""
+    name = "origin"
+
+    def __init__(self, held=None):
+        super().__init__()
+        self.held, self.lookups = held or {}, []
+
+    def find_message(self, message_id):
+        self.lookups.append(message_id)
+        return self.held.get(message_id)
+
+
+ack_sweep.CONVERSATIONS["origin"] = lambda it: it.get("conv")
+KING_ID = "<king@example.cn>"
+fwd = item("fwd", "c-fwd", OLD)
+original = {"_id": "orig", "conv": "c-orig", "id": KING_ID}
+
+
+def forwarded_demo():
+    demo = Demo()
+    demo.threads["c-fwd"] = {"messages": [], "hasDraft": False, "listUnsubscribe": False, "link": "https://x/c-fwd",
+                             "forwarded": True, "rfc822MessageId": KING_ID}
+    return demo
+
+
+origin = Origin({KING_ID: original})
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "origin": origin}, runtime(), set(), now=NOW)
+check("a forwarded copy is looked up in the other mailbox by its Message-ID", origin.lookups, [KING_ID])
+check("and its due entry links to the original's thread", [d["link"] for d in due], ["https://x/c-orig"])
+
+origin = Origin({KING_ID: original})
+origin.threads["c-orig"] = {"messages": [mine(OLD + timedelta(hours=1))], "hasDraft": False,
+                            "listUnsubscribe": False, "link": ""}
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "origin": origin}, runtime(), set(), now=NOW)
+check("a reply Russell sent from the original mailbox counts as an answer", due, [])
+
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "origin": Origin()}, runtime(), set(), now=NOW)
+check("a copy forwarded from a mailbox no loaded source holds is answered here",
+      [(d["itemId"], d["link"]) for d in due], [("fwd", "https://x/c-fwd")])
+
+
+class Failing(Origin):
+    def find_message(self, message_id):
+        raise ack_sweep.ProviderError("token expired")
+
+
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "bad": Failing(), "origin": Origin({KING_ID: original})},
+                      runtime(), set(), now=NOW)
+check("one mailbox's failed lookup doesn't stop another from finding the original", [d["link"] for d in due],
+      ["https://x/c-orig"])
+due = ack_sweep.sweep([fwd], {"demo": forwarded_demo(), "bad": Failing()}, runtime(), set(), now=NOW)
+check("a forwarded copy whose lookup failed with no original found gets no ack", due, [])
+
+origin = Origin({KING_ID: original})
+ack_sweep.sweep([item("plain", "c-plain", OLD)], {"demo": Demo(), "origin": origin}, runtime(), set(), now=NOW)
+check("a copy that wasn't forwarded never searches another mailbox", origin.lookups, [])
+
+r, demo = review_for([due_entry(fwd)], [fwd])
+demo.threads = forwarded_demo().threads
+origin = Origin({KING_ID: original})
+r.providers["origin"] = origin
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    ack_sweep.cmd_prepare(r)
+check("prepare names the mailbox the reply goes out from", json.loads(buf.getvalue())[0]["repliesFrom"], "origin")
+with contextlib.redirect_stdout(io.StringIO()):
+    ack_sweep.cmd_send(r, "demo|c-fwd", body)
+check("the ack goes out from the original mailbox, not the forwarded copy's", (origin.sent, demo.sent),
+      ([("orig", body)], []))
+check("and is scored under that mailbox's channel", staged_sources[-1], "origin")
+ledger = load_ack_ledger(r.runtime_dir)
+check("the ledger records it under both copies' conversations",
+      (ledger["demo|c-fwd"]["ref"], ledger["origin|c-orig"]["itemId"]), ({"draftId": "d-orig"}, "orig"))
+
+r, demo = review_for([due_entry(fwd)], [fwd])
+demo.threads = forwarded_demo().threads
+origin = Origin({KING_ID: original})
+r.providers["origin"] = origin
+with contextlib.redirect_stdout(io.StringIO()):
+    ack_sweep.cmd_send(r, "demo|c-fwd", body, handles=True)
+check("a reply that handles a forwarded copy clears both copies", (demo.cleared, origin.cleared), (["fwd"], ["orig"]))
+check("and records both seen", ("fwd" in load_seen(r.runtime_dir, "demo"), "orig" in load_seen(r.runtime_dir, "origin")),
+      (True, True))
 
 
 # --- the worker's ledger lookup ----------------------------------------------------------------------------

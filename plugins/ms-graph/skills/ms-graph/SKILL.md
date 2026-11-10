@@ -29,7 +29,7 @@ Claude Code installs the script dependencies automatically from the plugin-root 
 
 ## Entra app registration
 
-A delegated app supporting "personal Microsoft accounts" with redirect URI (Web) `http://localhost:8080/callback` and delegated scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite MailboxSettings.ReadWrite Contacts.ReadWrite Files.Read User.Read offline_access`. The `consumers` authority targets the personal mailbox. Recreate the client secret in the portal before it expires and update `GRAPH_CLIENT_SECRET`. When a new scope is added to `SCOPES` in `graph-client.js`, add the matching Microsoft Graph delegated permission in the Entra app registration's API permissions, then re-run `auth.js` - the existing token cache won't carry the new scope until Russell re-consents.
+A delegated app supporting "personal Microsoft accounts" with redirect URI (Web) `http://localhost:8080/callback` and delegated scopes `Mail.ReadWrite Mail.Send Calendars.ReadWrite MailboxSettings.ReadWrite Contacts.ReadWrite Files.Read Notes.Read User.Read offline_access`. The `consumers` authority targets the personal mailbox. Recreate the client secret in the portal before it expires and update `GRAPH_CLIENT_SECRET`. When a new scope is added to `SCOPES` in `graph-client.js`, add the matching Microsoft Graph delegated permission in the Entra app registration's API permissions, then re-run `auth.js` - the existing token cache won't carry the new scope until Russell re-consents.
 
 ## Scripts
 
@@ -45,6 +45,7 @@ All under `scripts/`:
   - Update reminder: `node calendar.js --update --subject="Dentist" --reminder=off`
   - Times are `--tz` (default `America/Chicago`). Events have **no** reminder unless `--reminder=N` (minutes before; 0 = at start).
   - Reusable from other scripts: `require('<…>/calendar.js')` exports `getCalendars()`, `getEvents({calendar,start,end,tz})`, `resolveCalendarId()` (CLI is `require.main`-guarded, so requiring it is side-effect-free).
+    `getEvents` resolves to `[{ id, date, subject, minutes, start, end, allDay }]`; a recurring meeting comes back once per occurrence, each with its own instance id.
 - **`mail.js`**
   - List unread: `node mail.js --list-unread [--top=30]` (inbox unread, newest-first; one block per message with id + webLink)
   - List inbox (read+unread): `node mail.js --list-inbox [--top=50] [--json]` (inbox items regardless of read state, newest-first, count-capped by `--top`; `--json` emits a structured array for scripts)
@@ -52,7 +53,7 @@ All under `scripts/`:
   - Show one: `node mail.js --show=<messageId>` (prints a `*** DRAFT - NOT SENT ***` banner up top if the message is still a draft).
     The body prints as plain text with paragraph, line, list, and quoted-reply boundaries kept as line breaks.
     Add `--html` for the raw HTML when paragraph structure matters and the plain-text view is in doubt
-  - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker)
+  - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker, and any `X-Forwarded-For` values, the marker of a message a mailbox forwarded here)
   - Sent since: `node mail.js --sent-since=<YYYY-MM-DD> [--json]` (every Sent Items message sent on or after that day, oldest first, with its conversationId, recipients, and plain-text body; read by the send-confidence outcome sweep)
   - Thread: `node mail.js --thread=<conversationId> [--json]` (every message in the conversation across all folders, oldest first, with `fromMe`, the send time, and `isDraft`; read by the drainer's acknowledgement sweep)
   - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.html`
@@ -73,6 +74,12 @@ All under `scripts/`:
 - **`drive.js`** (personal OneDrive; needs the `Files.Read` scope)
   - Web deep link: `node drive.js weburl "Claude/job-applications/Contoso"` (prints the item's `webUrl` - a one-click `onedrive.live.com` link that opens the file or folder in the browser)
   - List a folder: `node drive.js list "Claude/job-applications"` (prints each child's name and `webUrl`; path defaults to the drive root). Paths are relative to the OneDrive root.
+- **`onenote.js`** (personal OneNote, read-only; needs the `Notes.Read` scope)
+  - List notebooks: `node onenote.js notebooks` (name and id)
+  - List a notebook's sections: `node onenote.js sections "Russell's Notebook"` (name or id; a name matches case-insensitively on a substring and must resolve to one notebook)
+  - List a section's pages: `node onenote.js pages "Gift ideas"` (section name or id)
+  - Find pages by title: `node onenote.js find "gift"` (every page whose title contains the text, across all notebooks)
+  - Print one page: `node onenote.js page <pageId>` (plain text with list and paragraph breaks kept; each link prints as `text (url)`)
 
 ## Auth-error handling (do without being asked)
 

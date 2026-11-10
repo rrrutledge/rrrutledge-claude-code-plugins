@@ -99,7 +99,8 @@ class Provider(ProviderBase):
 
     def thread_state(self, item):
         """The conversation's messages across every folder (Russell's sent replies and any staged draft
-        included), plus whether the item carries a List-Unsubscribe header."""
+        included), plus whether the item carries a List-Unsubscribe header, its RFC822 Message-ID, and
+        whether another mailbox auto-forwarded it here (`forwarded`, from Gmail's X-Forwarded-For)."""
         res = run_node([self.mailjs, f"--thread={item.get('conversationId')}", "--json"])
         if res.returncode != 0:
             return None
@@ -107,18 +108,21 @@ class Provider(ProviderBase):
             msgs = json.loads(res.stdout or "[]")
         except ValueError:
             return None
-        unsub = False
+        headers = {}
         message_id = item.get("id") or item.get("messageId")
         if message_id:
             auth = run_node([self.mailjs, f"--auth={message_id}"])
             if auth.returncode != 0:
                 return None
             try:
-                unsub = bool(json.loads(auth.stdout or "{}").get("listUnsubscribe"))
+                headers = json.loads(auth.stdout or "{}")
             except ValueError:
                 return None
         return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
-                "listUnsubscribe": unsub, "link": item.get("webLink") or item.get("url") or ""}
+                "listUnsubscribe": bool(headers.get("listUnsubscribe")),
+                "rfc822MessageId": headers.get("internetMessageId") or "",
+                "forwarded": bool(headers.get("forwardedFor")),
+                "link": item.get("webLink") or item.get("url") or ""}
 
     def send_reply(self, item, body_file):
         """Stage a reply-all draft in the thread, then send exactly that draft."""

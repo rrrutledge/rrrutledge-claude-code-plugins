@@ -402,9 +402,11 @@ async function auth(client) {
   // domains that actually authenticated); Received-SPF carries the SPF check on its own. Both can appear
   // more than once (each relay adds its own), so every instance is returned. internetMessageHeaders is
   // the same header source --unsubscribe already reads. Interpretation lives in the drainer's Python
-  // adapters, so this just exposes the raw values.
+  // adapters, so this just exposes the raw values. X-Forwarded-For is the header Gmail stamps on a
+  // message its forwarding filter auto-forwarded here, naming the mailbox it was forwarded from; with
+  // the RFC822 Message-ID, it lets the drainer find that mailbox's copy of the same message.
   const m = await client.api(`/me/messages/${args.auth}`)
-    .select('from,internetMessageHeaders').get();
+    .select('from,internetMessageId,internetMessageHeaders').get();
   const headers = m.internetMessageHeaders || [];
   const all = (name) => headers
     .filter(h => (h.name || '').toLowerCase() === name)
@@ -415,6 +417,8 @@ async function auth(client) {
     authenticationResults: all('authentication-results'),
     receivedSpf: all('received-spf'),
     listUnsubscribe: all('list-unsubscribe'),
+    internetMessageId: m.internetMessageId || '',
+    forwardedFor: all('x-forwarded-for'),
   }, null, 2));
 }
 

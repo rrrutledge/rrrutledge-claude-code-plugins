@@ -166,6 +166,23 @@ class Provider(ProviderBase):
         return {"messages": msgs, "hasDraft": any(m.get("isDraft") for m in msgs),
                 "listUnsubscribe": unsub, "link": self._web_link(item.get("id") or item.get("messageId"))}
 
+    def find_message(self, message_id):
+        """This mailbox's copy of a message, by RFC822 Message-ID, wherever it is filed (All Mail), as an
+        item `thread_state` and `send_reply` accept; None when the mailbox doesn't hold it. A REST search,
+        so call it per item, never per listing. The copy carries no `uid`: that field is an INBOX UID on
+        the IMAP paths, and this copy may not be in the inbox at all."""
+        res = run_node([self.gmailjs, f"--search=rfc822msgid:{message_id.strip('<>')}", "--top=1", "--json"])
+        if res.returncode != 0:
+            raise ProviderError(f"gmail message lookup failed: {res.stderr.strip()[:300]}",
+                                kind=node_failure_kind(res.stderr))
+        try:
+            found = json.loads(res.stdout or "[]")
+        except ValueError:
+            raise ProviderError("gmail message lookup returned unreadable output")
+        if not found or not found[0].get("threadId"):
+            return None
+        return {**found[0], "uid": None}
+
     def send_reply(self, item, body_file):
         """Stage a reply in the thread (gmail.js appends the account's signature), then send exactly that
         draft."""

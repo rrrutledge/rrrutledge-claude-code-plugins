@@ -12,7 +12,7 @@ written down in advance:
   and nothing else;
 - the ack ledger reads (writes go through seen-state.js, the one writer of seen.json);
 - the review session's script steps: re-checking each due item, sending an approved ack through the
-  source's own send path, writing the ledger, clearing a reply that fully handles its item, and recording
+  source's own send path (or, for a copy another mailbox auto-forwarded, that mailbox's), writing the ledger, clearing a reply that fully handles its item, and recording
   the send-confidence outcome.
 
 Drafting the ack, the "deeply personal" call, the "does a short reply fully handle this" call, and
@@ -199,6 +199,44 @@ def thread_verdict(info, clock_start, ledger_entry, relay=False):
     return None
 
 
+def read_thread(providers_by_name, provider, item):
+    """The item's live thread, or None when it can't be read.
+
+    A copy another mailbox auto-forwarded here (ISC Gmail forwards everything to Russell's personal
+    Outlook) is answered from the mailbox it was forwarded from, never from this one: a message sent to
+    his ISC address gets its reply from that address. So for a forwarded copy the thread is the original
+    mailbox's thread joined to this one, carrying `replyVia` (that mailbox's source and its copy of the
+    message), and a reply Russell sent from either mailbox counts as an answer. A copy forwarded from a
+    mailbox no loaded source holds (someone else's forward) is answered here, as any other message is;
+    one whose lookup failed in some mailbox reads as None, the same as an unreadable thread, since that
+    mailbox may be the one it came from."""
+    info = provider.thread_state(item)
+    if not info or not info.get("forwarded"):
+        return info
+    message_id = info.get("rfc822MessageId")
+    if not message_id:
+        return None
+    failed = False
+    for other in providers_by_name.values():
+        if other is provider:
+            continue
+        try:
+            copy = other.find_message(message_id)
+        except ProviderError:
+            failed = True
+            continue
+        if not copy:
+            continue
+        original = other.thread_state(copy)
+        if original is None:
+            return None
+        return {**original, "messages": (info.get("messages") or []) + (original.get("messages") or []),
+                "hasDraft": bool(info.get("hasDraft") or original.get("hasDraft")),
+                "listUnsubscribe": bool(info.get("listUnsubscribe") or original.get("listUnsubscribe")),
+                "replyVia": {"source": other.name, "item": copy}}
+    return None if failed else info
+
+
 # ---------------------------------------------------------------------------- state files
 
 def _read_json(path, default):
@@ -271,14 +309,14 @@ def sweep(waiting, providers_by_name, runtime_dir, active_correspondents, now=No
         info = None
         if target.get("_chaser"):
             # Only a chaser's clock depends on the thread, so only it reads the thread before the threshold.
-            info = p.thread_state(target)
+            info = read_thread(providers_by_name, p, target)
             if info is None:
                 continue  # couldn't read the thread: no ack on a guess
             clock = wait_clock(target, info)
         hours = business_hours_between(clock, now)
         if hours < ACK_THRESHOLD_HOURS:
             continue
-        info = info or p.thread_state(target)
+        info = info or read_thread(providers_by_name, p, target)
         if info is None:
             continue  # couldn't read the thread: no ack on a guess
         relay = is_relay(p, target)
@@ -382,15 +420,15 @@ ACK_ASK = ("Acknowledge this message in Russell's voice: one short positive line
            "No date, no commitment, and no answer to their asks.")
 
 
-def stage_for_scoring(runtime_dir, entry, current, body_file, inputs, verb):
+def stage_for_scoring(runtime_dir, source, current, body_file, inputs, verb):
     """Record and score the ack draft Russell reviewed, the way the stage gate does for a staged
-    draft. The send runs inside this script, out of the gate's sight, so the script hands the gate
-    its stage itself - with the ack's ask and the message it answers as the scoring context.
-    Fail-open."""
+    draft, under the channel of the source it goes out through. The send runs inside this script,
+    out of the gate's sight, so the script hands the gate its stage itself - with the ack's ask and
+    the message it answers as the scoring context. Fail-open."""
     gate = _doc_authoring_script(os.path.join("hooks", "verify_gate.py"))
     if not gate:
         return "send-confidence: not installed; stage not recorded."
-    meta = {"channel": _SCORE_CHANNELS.get(entry.get("source"), "other"),
+    meta = {"channel": _SCORE_CHANNELS.get(source, "other"),
             "recipient": current.get("fromAddress") or current.get("channel"),
             "thread_ref": current.get("_id"), "stage_kind": "draft",
             "script": "ack_sweep.py", "verb": verb,
@@ -494,9 +532,9 @@ class Review:
         corr = p.correspondent(current)
         if corr and corr in opened:
             return None, "a worker is already open for this person", None
-        info = p.thread_state(current)
+        info = read_thread(self.providers, p, current)
         if info is None:
-            return None, "could not read the thread", None
+            return None, "could not read the thread, or find a forwarded copy's original", None
         # A message that arrived after the sweep and moves the conversation forward restarts the wait (see
         # wait_clock), so the clock is the later of the stored clockStart and the live item's wait_clock,
         # and the threshold is checked again.
@@ -541,7 +579,7 @@ def cmd_prepare(review):
                 link = m.group(0) if m else link
             linkedin = "linkedin.com" in (current.get("fromAddress") or "").lower()
             row.update(status="ready", link=link, hasDraft=bool(info.get("hasDraft")), message=text,
-                       linkedin=linkedin)
+                       linkedin=linkedin, repliesFrom=(info.get("replyVia") or {}).get("source", entry["source"]))
         out.append(row)
     print(json.dumps(out, indent=2))
 
@@ -562,27 +600,35 @@ def cmd_send(review, key, body_file, handles=False, scored_body=None):
         raise SystemExit(f"{key} has no programmatic send path; Russell sends it by hand (hand-done)")
     if not has_receipt(body_file):
         raise SystemExit(f"{body_file} has no fresh writing-review receipt; review and mint it first")
-    current, reason, _ = review.recheck(entry)
+    current, reason, info = review.recheck(entry)
     if not current:
         print(json.dumps({"key": key, "sent": False, "reason": reason}))
         sys.exit(3)
     p = review.providers[entry["source"]]
-    ref = p.send_reply(current, body_file)
+    via = info.get("replyVia")
+    sender = review.providers[via["source"]] if via else p
+    ref = sender.send_reply(via["item"] if via else current, body_file)
     at = _iso(_now())
     with open(body_file, encoding="utf-8") as f:
         text = f.read().strip()
     result = {"key": key, "sent": True, "ref": ref}
+    # A forwarded copy and the original it was answered on are one message: each gets the same handling.
+    copies = [(p, current)] + ([(sender, via["item"])] if via else [])
     if handles:
         # The short reply IS the item's handling: clear it the way a worker completes one, and record it
         # seen so it never dispatches. It never reaches the ledger.
-        result["cleared"] = bool(p.clear(current))
-        res = run_node([SEEN_STATE, "record", review.runtime_dir, p.name, current["_id"], "ack-handled"])
-        result["recordedSeen"] = res.returncode == 0
+        result["cleared"] = all([bool(src.clear(it)) for src, it in copies])
+        result["recordedSeen"] = all([run_node([SEEN_STATE, "record", review.runtime_dir, src.name,
+                                                it.get("_id") or src.stable_id(it), "ack-handled"]).returncode == 0
+                                      for src, it in copies])
     else:
-        ledger_set(review.runtime_dir, key, {"status": "sent", "itemId": current["_id"], "at": at,
-                                             "ref": ref, "text": text})
-        _cover_entries(review, entry, at)
-    staged = stage_for_scoring(review.runtime_dir, entry, current, scored_body or body_file,
+        _cover_entries(review, entry, at)  # first, so a cover never overwrites a copy's sent entry
+        for src, it in copies:
+            ckey = key if src is p else conversation_key(src, it)
+            if ckey:
+                ledger_set(review.runtime_dir, ckey, {"status": "sent", "itemId": it.get("_id") or src.stable_id(it),
+                                                      "at": at, "ref": ref, "text": text})
+    staged = stage_for_scoring(review.runtime_dir, sender.name, current, scored_body or body_file,
                                p.triage_text(current), "send")
     result["sendConfidence"] = "\n".join(filter(None, [
         staged, record_outcome("--body-file", scored_body or body_file, "--sent-file", body_file)]))
@@ -594,7 +640,8 @@ def cmd_skip(review, key, body_file=None):
     ledger_set(review.runtime_dir, key, {"status": "skipped", "itemId": entry["itemId"], "at": _iso(_now())})
     result = {"key": key, "skipped": True}
     if body_file:
-        staged = stage_for_scoring(review.runtime_dir, entry, {"_id": entry["itemId"]}, body_file, None, "skip")
+        staged = stage_for_scoring(review.runtime_dir, entry["source"], {"_id": entry["itemId"]}, body_file,
+                                   None, "skip")
         result["sendConfidence"] = "\n".join(filter(None, [staged, record_outcome(
             "--body-file", body_file, "--discarded", "--moot",
             "--reason", "ack skipped in review (about the recipient, not the text)")]))
