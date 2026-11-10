@@ -151,6 +151,12 @@ Each provider names the conversation (`conversation_key()`), and `run-poller.py`
 A hand-over that fails launches a worker, so the worst case is a duplicate.
 Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).
 
+## On demand: drain one Slack conversation now
+
+`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs the cycle's enumerate, triage, screen, and dispatch on one Slack DM or group DM, so an item drained on demand gets the same verdicts, routing, and worker a scheduled cycle gives it.
+A session about to send someone a new Slack message runs it first, per the `slack` skill's **Answer before a new message**.
+The flags and the `on-demand:` outcome lines are in the script's header.
+
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
 
 - Seen-state is a separate id store, not the read/unread flag - losing it re-processes (safe).

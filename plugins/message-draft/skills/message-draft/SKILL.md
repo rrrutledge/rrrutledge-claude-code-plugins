@@ -50,6 +50,7 @@ The driving turns stay entirely in the subagent's isolated context, and the orch
 
 **The split - what stays in the orchestrator, what goes into the subagent:**
 
+- **Orchestrator, before a message that starts something new in a Slack DM or group DM:** run the **`slack`** skill's **Answer before a new message** step on that conversation.
 - **Orchestrator, before it spawns the subagent:** author the body in Russell's voice (the **Voice** step), run the `document-authoring` pass, and complete the **Review gate** step (above).
   That is the human-facing writing, and it stays on the main thread.
   The receipt the Review gate mints must exist before the composer runs, so finish it before spawning the subagent.
