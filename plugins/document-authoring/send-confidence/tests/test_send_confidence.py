@@ -584,6 +584,16 @@ def test_staged_slack_mention_token_reads_as_the_sent_mention(tmp_path, monkeypa
     assert result["learn_reasons"] == []
 
 
+def test_slack_sent_file_holding_the_raw_mention_token_is_sent_as_is(tmp_path, monkeypatch):
+    monkeypatch.setattr(sc, "_slack_display_name", lambda slack_id: "Dana Avery")
+    draft_id = _seed_scored("d-slack-mention", "Thanks for thinking of me, <@U0123ABCD>!  I'll take a look",
+                            NEUTRAL, score=50, channel="slack")
+    result = sc.record_outcome(draft_id, "Thanks for thinking of me, <@U0123ABCD>!  I'll take a look",
+                               discarded=False, edit_nature=[], reason=None)
+    assert result["edit_distance"] == 0
+    assert result["disposition"] == "sent-as-is"
+
+
 def test_factual_correction_implicates_fact_support(tmp_path):
     factors = {**NEUTRAL, "fact_support": 80}
     draft_id = _seed_scored("d-factual", "Original draft body text here today please now.", factors, score=56)

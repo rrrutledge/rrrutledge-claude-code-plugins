@@ -40,6 +40,7 @@ Run the cold `writing-review` on every body, then mint each with the reviewer's 
 One numbered list, each entry pairing what the person said with the text that answers it, so Russell can judge the fit:
 
 - **Who, where, how long** - the sender, the source, how long they've waited, and the thread link.
+  When the row's `repliesFrom` differs from its source, name the mailbox the reply goes out from: the row is a copy another mailbox forwarded (ISC Gmail to personal Outlook), and `send` answers it from that mailbox's thread.
 - **What they said** - a quote or tight paraphrase, with every ask in it for a multi-message span, plus the other threads it covers.
 - **The draft** - the body text, marked **closes the item on send** when it is a reply that handles the item.
 

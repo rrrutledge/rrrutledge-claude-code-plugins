@@ -84,7 +84,8 @@ Under `scripts/` (run with `node`):
   - Auth glance: `node gmail.js --check` (signs in, reports inbox count; non-zero exit on auth failure)
   - List inbox: `node gmail.js --list-inbox [--top=50] [--json]` (newest-first; `--json` emits a
     structured array for scripts - each item has the RFC822 Message-ID as `id`, plus `uid` (Gmail's
-    internal message id), `subject`, `from`, `fromAddress`, `fromMe`, `toMe`, `received`, `isRead`)
+    internal message id), `threadId` (the hex id `--thread` takes), `subject`, `from`, `fromAddress`,
+    `fromMe`, `toMe`, `received`, `isRead`)
   - List inbox via IMAP: `node gmail.js --list-inbox-imap [--top=50] [--json]` (identical output shape to
     `--list-inbox` above, fetched over IMAP instead of REST - see the credential-pair note above for why.
     Reach for it yourself only if you're deliberately avoiding the REST quota for a bulk listing.)
