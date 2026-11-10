@@ -1595,8 +1595,11 @@ def _forward_delivered(stream, to, message):
             event = json.loads(line)
         except ValueError:
             continue
-        content = (event.get("message") or {}).get("content") if isinstance(event, dict) else None
+        msg = event.get("message") if isinstance(event, dict) else None
+        content = msg.get("content") if isinstance(msg, dict) else None  # a status event's message is text
         for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict):
+                continue
             if block.get("type") == "tool_use" and block.get("name") == "SendMessage":
                 args = block.get("input") or {}
                 if args.get("to") == to and (args.get("message") or "").strip() == message.strip():

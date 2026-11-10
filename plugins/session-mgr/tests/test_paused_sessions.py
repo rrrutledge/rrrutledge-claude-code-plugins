@@ -100,6 +100,25 @@ def test_launch_resumes_the_latest():
     check("the new continuation is followed", bg_session.latest_session(A) == C)
 
 
+def test_successor_from_job_record():
+    print("test: a continuation too new for `claude agents` takes its guid from its job record")
+    reset()
+    real = (bg_session.run_bounded, bg_session._wake_account, bg_session.session_guid, bg_session.transcript_account,
+            bg_session.find_job)
+    bg_session.run_bounded = lambda args, **kw: type(
+        "R", (), {"returncode": 0, "stdout": "backgrounded · cccccccc · x", "stderr": ""})()
+    bg_session._wake_account = lambda guid: False
+    bg_session.session_guid = lambda short, agents=None: None
+    bg_session.transcript_account = lambda guid: None
+    bg_session.find_job = lambda short: (None, {"sessionId": C})
+    try:
+        bg_session.spawn_bg("seed", None, TMP, None, resume=A)
+    finally:
+        (bg_session.run_bounded, bg_session._wake_account, bg_session.session_guid, bg_session.transcript_account,
+         bg_session.find_job) = real
+    check("successor recorded from the job record", bg_session.latest_session(A) == C)
+
+
 def test_duplicate_check_lists_paused():
     print("test: the duplicate check lists a paused session with its resume id")
     reset()
@@ -168,6 +187,7 @@ if __name__ == "__main__":
     test_record_and_bound()
     test_resume_clears_and_follows()
     test_launch_resumes_the_latest()
+    test_successor_from_job_record()
     test_duplicate_check_lists_paused()
     test_resume_cwd_defaults_to_paused_record()
     test_end_session_records_pause()

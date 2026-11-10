@@ -180,6 +180,9 @@ check("model doubled a backslash in the address -> not delivered",
 check("model altered the text -> not delivered",
       poller._forward_delivered(stream(TO, "something else", {"success": True}), TO, MSG), False)
 check("no output -> not delivered", poller._forward_delivered("", TO, MSG), False)
+status = json.dumps({"type": "system", "message": "retrying..."}) + "\n"
+check("a status event with a text message is skipped, not a crash",
+      poller._forward_delivered(status + stream(TO, MSG, {"success": True}), TO, MSG), True)
 
 print("\nforward_note: built from code values only, with a forward-slashed path")
 note = poller.forward_note("slack-x", "C:\\rt\\items\\slack-x.json", "needs-you")

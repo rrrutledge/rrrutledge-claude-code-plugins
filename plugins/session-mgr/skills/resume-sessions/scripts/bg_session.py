@@ -467,7 +467,9 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         remember_account(env.get("CLAUDE_CONFIG_DIR"))
     if m and resume:
         forget_session(resume)
-        record_resume(resume, continued_as=session_guid(m.group(1)))  # a continuation's new guid
+        # A continuation's new guid; a session too new for `claude agents` is in its job record already.
+        new_guid = session_guid(m.group(1)) or (find_job(m.group(1))[1] or {}).get("sessionId")
+        record_resume(resume, continued_as=new_guid)
     return m.group(1) if m else None
 
 

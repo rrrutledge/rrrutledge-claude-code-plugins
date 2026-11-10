@@ -417,7 +417,9 @@ async function listUnread() {
       ts: latest.ts, threadTs: '', from: await userName(sender.user), fromId: sender.user,
       subject: mention ? `@mention in ${chName}` : `Unread in ${chName}`,
       channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
-      preview: await previewText(msgs), unread: await unreadSpan(msgs),
+      // The preview (what triage reads) always carries the mention, even when newer chatter buries it.
+      preview: await previewText(!mention || msgs.slice(0, 5).includes(mention) ? msgs : [...msgs.slice(0, 4), mention]),
+      unread: await unreadSpan(msgs),
       knownContact: false, fromBot: await fromBot(sender),
     });
   }
