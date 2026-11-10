@@ -182,18 +182,14 @@ class Provider(ProviderBase):
                 "cursor": sent.get("cursor")}
 
     def conversation_key(self, item):
-        """A DM or group DM is one conversation. A 1:1 DM's thread replies join it too, since its channel id
-        names it a DM; a thread inside a group DM carries no such marker, so it keys as its own thread.
-        In a channel the conversation is a thread, keyed by its root ts, and a top-level message is its
-        own root, so a thread's @mention, its later replies, and an `Unread in` item whose newest message
-        is the thread's root all share one key."""
+        """A thread is one conversation, keyed by its root; a DM, a group DM, or a channel's top-level
+        timeline is another, keyed by the channel, since its item moves to the newest message every time
+        another one arrives."""
         channel = item.get("channel")
         if not channel:
             return None
-        if item.get("channelType") in ("im", "mpim") or channel.startswith("D"):
-            return f"{self.name}:{channel}"
-        root = item.get("threadTs") or item.get("ts")
-        return f"{self.name}:{channel}:{root}" if root else None
+        thread = item.get("threadTs")
+        return f"{self.name}|{channel}|{thread}" if thread else f"{self.name}|{channel}"
 
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify

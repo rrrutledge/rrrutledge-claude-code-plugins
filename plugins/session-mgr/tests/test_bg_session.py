@@ -19,6 +19,7 @@ SCRIPTS = os.path.abspath(os.path.join(HERE, "..", "skills", "resume-sessions", 
 sys.path.insert(0, SCRIPTS)
 import bg_session  # noqa: E402
 
+bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # not the machine's record
 _spec = importlib.util.spec_from_file_location("spawn_session", os.path.join(SCRIPTS, "spawn-session.py"))
 spawn_session = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(spawn_session)

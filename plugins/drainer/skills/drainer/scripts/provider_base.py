@@ -368,6 +368,8 @@ claude_agents = bg_session.claude_agents
 # The launch-time duplicate check every launched session gets. The two plugins update separately, so an
 # installed session-mgr older than this builder adds no section rather than breaking every launch.
 duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda agents, parent_id=None: "")
+# The sessions that closed paused, waiting to be resumed; an older session-mgr records none.
+paused_sessions = getattr(bg_session, "paused_sessions", lambda agents=None, now=None: {})
 
 
 # ---------------------------------------------------------------------------- correspondent identity
@@ -843,9 +845,10 @@ class ProviderBase:
     def conversation_key(self, item):
         """A stable key for the conversation an item belongs to: an email thread, a Slack thread, a chat.
         The poller hands a new item to the live worker already holding its conversation instead of
-        launching a second worker on it, so one conversation has one live worker. Namespaced by provider
-        so two sources' ids never collide. None (the default) means the source has no conversation to key
-        on, so its items always dispatch on their own."""
+        launching a second worker on it, so one conversation has one live worker, and the ack sweep keys
+        its ledger on it. `<source>|<conversation>`, namespaced by provider so two sources' ids never
+        collide; the ack ledger stores this form, so it stays fixed. None (the default) means the source
+        has no conversation to key on, so its items always dispatch on their own."""
         return None
 
     def stable_id(self, item):

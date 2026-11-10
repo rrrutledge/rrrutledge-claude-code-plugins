@@ -218,7 +218,7 @@ class Provider(ProviderBase):
 
     def conversation_key(self, item):
         thread = item.get("threadId")
-        return f"{self.name}:{thread}" if thread else None
+        return f"{self.name}|{thread}" if thread else None
 
     def stable_id(self, item):
         # Timestamp to the second so two messages from the same sender with the same opening subject in

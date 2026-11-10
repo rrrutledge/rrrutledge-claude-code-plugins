@@ -21,6 +21,8 @@ POLLER = os.path.join(SCRIPTS, "run-poller.py")
 sys.path.insert(0, SCRIPTS)
 import provider_base  # noqa: E402
 
+provider_base.bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # not the machine's record
+
 
 def load(path, name):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -58,26 +60,29 @@ mention = {"channel": CH, "channelType": "thread", "ts": "1793726307.979309", "t
 reply1 = {"channel": CH, "channelType": "thread", "ts": "1793729462.312419", "threadTs": ROOT}
 reply2 = {"channel": CH, "channelType": "thread", "ts": "1793730756.421599", "threadTs": ROOT}
 keys = {slack.conversation_key(i) for i in (mention, reply1, reply2)}
-check("three thread items -> one key", keys, {f"slack:{CH}:{ROOT}"})
-root_unread = {"channel": CH, "channelType": "channel", "ts": ROOT, "threadTs": ""}
-check("an Unread-in item for the thread's root message shares the thread's key",
-      slack.conversation_key(root_unread), f"slack:{CH}:{ROOT}")
+check("three thread items -> one key", keys, {f"slack|{CH}|{ROOT}"})
 top_a = {"channel": CH, "channelType": "channel", "ts": "1793723372.599409", "threadTs": ""}
 top_b = {"channel": CH, "channelType": "channel", "ts": "1793725772.527749", "threadTs": ""}
-check("two top-level messages are two conversations",
-      slack.conversation_key(top_a) == slack.conversation_key(top_b), False)
+check("a channel's top-level messages are one conversation, apart from its threads",
+      {slack.conversation_key(top_a), slack.conversation_key(top_b)}, {f"slack|{CH}"})
 dm_a = {"channel": "D061W7Y6M6V", "channelType": "im", "ts": "1.1", "threadTs": ""}
 dm_thread = {"channel": "D061W7Y6M6V", "channelType": "thread", "ts": "1.3", "threadTs": "1.1"}
-check("a DM is one conversation, thread replies included",
-      {slack.conversation_key(dm_a), slack.conversation_key(dm_thread)}, {"slack:D061W7Y6M6V"})
+check("a DM is one conversation, a thread in it another",
+      (slack.conversation_key(dm_a), slack.conversation_key(dm_thread)), ("slack|D061W7Y6M6V", "slack|D061W7Y6M6V|1.1"))
 check("no channel -> no key", slack.conversation_key({}), None)
 
 print("\nemail and Teams: the thread / conversation id, namespaced by provider")
-check("gmail thread", gmail.conversation_key({"threadId": "18f"}), "gmail:18f")
-check("outlook conversation", outlook.conversation_key({"conversationId": "AAQk"}), "outlook-graph:AAQk")
-check("teams chat", teams.conversation_key({"id": "19:abc@thread.v2"}), "teams:19:abc@thread.v2")
+check("gmail thread", gmail.conversation_key({"threadId": "18f"}), "gmail|18f")
+check("outlook conversation", outlook.conversation_key({"conversationId": "AAQk"}), "outlook-graph|AAQk")
+check("teams chat", teams.conversation_key({"id": "19:abc@thread.v2"}), "teams|19:abc@thread.v2")
 check("no id -> no key", (gmail.conversation_key({}), outlook.conversation_key({})), (None, None))
 check("a source with no conversation keys nothing", provider_base.ProviderBase().conversation_key({"x": 1}), None)
+
+print("\nack sweep: keys by the provider's own conversation_key, in its own sources only")
+import ack_sweep  # noqa: E402
+check("the ledger key is the provider's key", ack_sweep.conversation_key(slack, mention), f"slack|{CH}|{ROOT}")
+check("the ledger's persisted form holds for email", ack_sweep.conversation_key(gmail, {"threadId": "18f"}), "gmail|18f")
+check("Teams stays out of the ack sweep", ack_sweep.conversation_key(teams, {"id": "19:abc"}), None)
 
 
 def workspace(sessions):
@@ -93,24 +98,44 @@ def workspace(sessions):
     return rt
 
 
-print("\nopen_conversations: only a LIVE worker holds its conversation")
-KEY = f"slack:{CH}:{ROOT}"
+print("\nopen_conversations: a live or paused worker holds its conversation; a finished one doesn't")
+KEY = f"slack|{CH}|{ROOT}"
 rt = workspace([("w1", "guid-live", {"conversationKey": KEY, "correspondent": "georg"}),
-                ("w2", "guid-dead", {"conversationKey": "gmail:t2"}),
-                ("w3", "guid-live2", {"correspondent": "x@y.z"})])
-check("the live holder is found", poller.open_conversations(rt, {"guid-live", "guid-live2"}), {KEY: "guid-live"})
-check("no live scan -> nothing held, every item launches", poller.open_conversations(rt, None), {})
+                ("w2", "guid-dead", {"conversationKey": "gmail|t2"}),
+                ("w3", "guid-live2", {"correspondent": "x@y.z"}),
+                ("w4", "guid-paused", {"conversationKey": "gmail|t4"})])
+check("the live holder is found", poller.open_conversations(rt, {"guid-live", "guid-live2"}),
+      {KEY: ("guid-live", "live")})
+check("a paused holder is reported as paused",
+      poller.open_conversations(rt, {"guid-live"}, {"guid-paused"}),
+      {KEY: ("guid-live", "live"), "gmail|t4": ("guid-paused", "paused")})
+rt2 = workspace([("a", "guid-paused", {"conversationKey": KEY}), ("b", "guid-live", {"conversationKey": KEY})])
+check("a live holder wins over a paused one", poller.open_conversations(rt2, {"guid-live"}, {"guid-paused"}),
+      {KEY: ("guid-live", "live")})
+check("no live scan and nothing paused -> nothing held, every item launches", poller.open_conversations(rt, None), {})
 check("open_correspondents still reads the same scan",
       poller.open_correspondents(rt, {"guid-live", "guid-live2"}), {"georg", "x@y.z"})
 
-print("\nconversation_route: forward to a live holder, hold behind a same-cycle launch, else dispatch")
-check("live holder -> forward", poller.conversation_route(KEY, {KEY: "g"}, set()), "forward")
+print("\nconversation_route: forward to a live holder, hold behind a same-cycle launch or a paused holder")
+check("live holder -> forward", poller.conversation_route(KEY, {KEY: ("g", "live")}, set()), "forward")
+check("paused holder -> held for it", poller.conversation_route(KEY, {KEY: ("g", "paused")}, set()), "paused")
 check("claimed this cycle -> hold", poller.conversation_route(KEY, {}, {KEY}), "hold")
 check("unheld conversation -> dispatch", poller.conversation_route(KEY, {}, set()), None)
-check("no key -> dispatch", poller.conversation_route(None, {KEY: "g"}, {KEY}), None)
-check("a screen-flagged item gets its own worker", poller.conversation_route(KEY, {KEY: "g"}, set(), True), None)
+check("no key -> dispatch", poller.conversation_route(None, {KEY: ("g", "live")}, {KEY}), None)
+check("a screen-flagged item gets its own worker",
+      poller.conversation_route(KEY, {KEY: ("g", "live")}, set(), True), None)
+check("a screen-flagged item is not held behind a paused holder",
+      poller.conversation_route(KEY, {KEY: ("g", "paused")}, set(), True), None)
 check("a screen-flagged item is not held behind a same-cycle launch",
       poller.conversation_route(KEY, {}, {KEY}, True), None)
+
+print("\npaused_ids: each paused session's guid and short id, so a receipt in either form matches")
+real_paused = poller.paused_sessions
+poller.paused_sessions = lambda agents: {"abc12345-0000-1111": {"name": "x"}}
+try:
+    check("guid and short id", poller.paused_ids([]), {"abc12345-0000-1111", "abc12345"})
+finally:
+    poller.paused_sessions = real_paused
 
 print("\nsession_address: the receipt's live session -> its messaging pipe, on its own account")
 account = tempfile.mkdtemp(prefix="conv-account-")  # the session's CLAUDE_CONFIG_DIR

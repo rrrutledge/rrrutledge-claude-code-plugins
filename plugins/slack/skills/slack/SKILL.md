@@ -39,13 +39,13 @@ Under `scripts/` (run with `node`):
   - Auth glance: `node slack.js --check` (calls `auth.test`; prints the signed-in user/team; non-zero
     exit on auth failure)
   - List unread: `node slack.js --list-unread [--top=50] [--json]` — unread **DMs**, **group DMs**,
-    **@-mentions of you in channels**, **unread channel messages (no @-mention, one item per channel)**,
+    **unread channel messages (one item per channel, @-mentions of you included)**,
     and **unread replies in subscribed threads**, newest-first. **Muted conversations are skipped**
     (muting is the user's "stop"). `--json` emits a structured array; each item carries `id`
     (`<channel>:<ts>`), `channel`, `channelType` (`im`/`mpim`/`channel`/`thread`), `ts`, `threadTs`
     (set for thread items), `from`, `fromId`, `subject`, `channelName`, `received` (ISO), `preview`,
-    `unreadCount`. Channel items: `subject` is `"@mention in #name"` for @-mention items or
-    `"Unread in #name"` for non-mention unread items.
+    `unreadCount`. Channel items: `subject` is `"@mention in #name"` when the unread messages mention
+    you, else `"Unread in #name"`.
   - Show one: `node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]` — the message
     text plus a `chat.getPermalink` url. Pass `--thread-ts` to read a threaded reply. `--json` emits
     `{channel,ts,threadTs,from,fromId,received,text,permalink}`.
@@ -178,6 +178,6 @@ These constraints keep send safe:
 
 - The load-bearing identifier is **`<channel>:<ts>`** (the `id` in `--json`): a Slack `ts` is unique per
   message. Pass the `channel`/`ts` (and `threadTs` for a thread item) to `--show` and `--mark`.
-- An **item** is one **conversation** for a DM/group-DM (keyed to its latest unread message), one
-  **message** for each channel @-mention, and one **thread** for each subscribed thread with unread
-  replies (keyed to its latest unread reply).
+- An **item** is one **conversation**: a DM, a group DM, or a channel's top-level timeline (each keyed
+  to its latest unread message), or a subscribed thread with unread replies (keyed to its latest unread
+  reply).

@@ -145,7 +145,7 @@ class Provider(ProviderBase):
 
     def conversation_key(self, item):
         conversation = item.get("conversationId")
-        return f"{self.name}:{conversation}" if conversation else None
+        return f"{self.name}|{conversation}" if conversation else None
 
     def stable_id(self, item):
         # Timestamp to the second (plus ms when Graph supplies them) so two messages from the same

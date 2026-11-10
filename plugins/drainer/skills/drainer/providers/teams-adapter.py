@@ -150,7 +150,7 @@ class Provider(ProviderBase):
 
     def conversation_key(self, item):
         conv_id = item.get("id")  # the IC3 conversation id: one chat is one conversation
-        return f"{self.name}:{conv_id}" if conv_id else None
+        return f"{self.name}|{conv_id}" if conv_id else None
 
     def stable_id(self, item):
         lm = item.get("lastMessage") or {}

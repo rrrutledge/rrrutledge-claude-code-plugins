@@ -49,7 +49,7 @@ PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           duplicate_check_section,
+                           duplicate_check_section, paused_sessions,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
@@ -1475,24 +1475,37 @@ def open_correspondents(runtime_dir, live):
     the same order of per-cycle work reconcile already does. A None/empty `live` (scan failed, or nothing
     open) yields the empty set, so a cross-cycle hold fails open - the in-cycle dedup in main still holds
     a same-cycle burst."""
-    return {rec["correspondent"] for _, rec in _live_worker_items(runtime_dir, live) if rec.get("correspondent")}
+    return {rec["correspondent"] for _, rec in _worker_items(runtime_dir, live) if rec.get("correspondent")}
 
 
-def open_conversations(runtime_dir, live):
-    """`{conversation key: worker receipt id}` for every conversation a LIVE worker holds right now.
-
-    A new item whose conversation is in here is handed to that worker instead of getting its own, so
-    one conversation has one live worker (see the needs loop in main). Read off the same live-session
-    signal as open_correspondents, so a worker that has closed or died holds nothing and the next item
-    in its conversation launches normally. A None/empty `live` yields `{}`: every item launches."""
-    return {rec["conversationKey"]: receipt for receipt, rec in _live_worker_items(runtime_dir, live)
-            if rec.get("conversationKey")}
+def paused_ids(agents):
+    """The full guids and short ids of the sessions that closed paused and wait to be resumed
+    (session-mgr's paused record, bounded so one that never wakes stops holding its work)."""
+    return {i for guid in paused_sessions(agents) for i in (guid, guid.split("-", 1)[0])}
 
 
-def _live_worker_items(runtime_dir, live):
+def open_conversations(runtime_dir, live, paused=frozenset()):
+    """`{conversation key: (worker receipt id, "live" | "paused")}` for every conversation a live or
+    paused worker holds right now, a live holder winning when both do.
+
+    A new item whose conversation a live worker holds is handed to that worker instead of getting its
+    own, so one conversation has one worker; one whose holder is paused waits for that worker to be
+    resumed (see the needs loop in main). Read off the same live-session signal as open_correspondents,
+    so a worker that has finished, or died, holds nothing and the next item in its conversation
+    launches normally. `paused` is paused_ids' set. Empty `live` and `paused` yield `{}`."""
+    live = live or set()
+    out = {}
+    for receipt, rec in _worker_items(runtime_dir, live | set(paused)):
+        key = rec.get("conversationKey")
+        if key and out.get(key, ("", ""))[1] != "live":
+            out[key] = (receipt, "live" if receipt in live else "paused")
+    return out
+
+
+def _worker_items(runtime_dir, ids):
     """(receipt id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt is in
-    `live`. Bounded by the number of session files, the same per-cycle work reconcile already does."""
-    if not live:
+    `ids`. Bounded by the number of session files, the same per-cycle work reconcile already does."""
+    if not ids:
         return
     seeds_dir = os.path.join(runtime_dir, "seeds")
     items_dir = os.path.join(runtime_dir, "items")
@@ -1509,7 +1522,7 @@ def _live_worker_items(runtime_dir, live):
                 receipt = f.read().strip()
         except OSError:
             continue
-        if receipt not in live:
+        if receipt not in ids:
             continue
         try:
             with open(os.path.join(items_dir, f"{fn[:-len(suffix)]}.json"), encoding="utf-8") as f:
@@ -1674,13 +1687,17 @@ def held_for_correspondent(corr, active):
 def conversation_route(key, open_convs, claimed, flagged=False):
     """How dispatch treats an item by its conversation: "hold" when a worker launched earlier this cycle
     holds the conversation but can't take a message yet, "forward" when a live worker from an earlier
-    cycle holds it, None to dispatch as usual. A screen-flagged item is never forwarded: it gets its own
-    worker, which leads with the warning for Russell."""
+    cycle holds it, "paused" when its holder closed paused and waits to be resumed, None to dispatch as
+    usual. A screen-flagged item is never forwarded or held: it gets its own worker, which leads with
+    the warning for Russell."""
     if not key or flagged:
         return None
     if key in claimed:
         return "hold"
-    return "forward" if key in open_convs else None
+    holder = open_convs.get(key)
+    if not holder:
+        return None
+    return "forward" if holder[1] == "live" else "paused"
 
 
 # An orphan that ended within this window dispatches ahead of every other source; an older one waits
@@ -2165,10 +2182,11 @@ def main():
     # and the rest wait. Recomputed each cycle from live sessions, never a stored flag, so a dead worker
     # frees it within one cycle (see open_correspondents).
     active_correspondents = open_correspondents(cfg["runtime_dir"], live)
-    # One conversation, one live worker: a new item whose conversation a live worker already holds is
-    # handed to that worker instead of getting its own, and a conversation that gets a new worker this
-    # cycle holds its later items for one cycle, until that worker can receive them.
-    open_convs = open_conversations(cfg["runtime_dir"], live)
+    # One conversation, one worker: a new item whose conversation a live worker already holds is handed
+    # to that worker instead of getting its own, one whose worker closed paused waits for it to be
+    # resumed, and a conversation that gets a new worker this cycle holds its later items for one cycle,
+    # until that worker can receive them.
+    open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
     claimed_convs = set()
     peers = list(agents or [])  # the duplicate check's session list, grown as this cycle launches workers
 
@@ -2177,8 +2195,9 @@ def main():
             """Print the conversation-routing action for an item, True when it takes one."""
             route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
             if route:
-                action = ("HOLD (same conversation)" if route == "hold"
-                          else f"FORWARD to the live worker {open_convs[key]}")
+                action = {"hold": "HOLD (same conversation)",
+                          "paused": f"HOLD (paused worker {open_convs.get(key, ('',))[0]} holds the conversation)",
+                          "forward": f"FORWARD to the live worker {open_convs.get(key, ('',))[0]}"}[route]
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
                       f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
             return bool(route)
@@ -2249,28 +2268,32 @@ def main():
         return
 
     dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
-    forwarded, held_conv = 0, 0
+    forwarded, held_conv, held_paused = 0, 0, 0
 
     def routed(it, provider, key):
         """Apply conversation_route to one item: True when the item is held or handed to its
         conversation's live worker (the caller moves on), False when it dispatches as usual."""
-        nonlocal forwarded, held, held_conv
+        nonlocal forwarded, held, held_conv, held_paused
         route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
         if route == "hold":
             held += 1  # unrecorded: next cycle it forwards to the worker that claimed its conversation
             held_conv += 1
             return True
+        if route == "paused":
+            held += 1  # unrecorded: retried each cycle until its worker is resumed or its pause expires
+            held_paused += 1
+            return True
         if route == "forward":
+            holder = open_convs[key][0]
             # One attempt per holder: a send that timed out may still have landed, so a held item never
             # re-sends the same note to the same holder on a later cycle.
-            if (_failed_forward(cfg["runtime_dir"], it["_id"]) != open_convs[key]
-                    and route_to_live_worker(it, provider, key, open_convs[key], agents, cfg["runtime_dir"], repo)):
+            if (_failed_forward(cfg["runtime_dir"], it["_id"]) != holder
+                    and route_to_live_worker(it, provider, key, holder, agents, cfg["runtime_dir"], repo)):
                 forwarded += 1
                 return True
             # The hand-over failed, so this item gets its own worker; its seed names the live session
             # already on the conversation, so the two settle which one keeps it (worker-core §2).
-            it["_conversationHolder"] = (((_live_agent(open_convs[key], agents) or {}).get("name") or "").strip()
-                                         or open_convs[key])
+            it["_conversationHolder"] = ((_live_agent(holder, agents) or {}).get("name") or "").strip() or holder
         return False
 
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
@@ -2411,7 +2434,8 @@ def main():
           f"{rescued_count} un-junked to the Inbox, "
           f"{forwarded} handed to the live worker on their conversation, "
           f"held {held} (of which {held_corr} behind an open item from the same correspondent, "
-          f"{held_conv} behind a worker launched this cycle on the same conversation) at "
+          f"{held_conv} behind a worker launched this cycle on the same conversation, "
+          f"{held_paused} behind a paused worker on their conversation) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
 
 

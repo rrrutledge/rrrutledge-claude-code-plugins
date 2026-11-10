@@ -55,11 +55,14 @@ check("an end before the start is zero", ack_sweep.business_hours_between(FRI_9,
 
 
 # --- a fake source -----------------------------------------------------------------------------------------
-ack_sweep.CONVERSATIONS["demo"] = lambda it: it.get("conv")
+ack_sweep.SOURCES.add("demo")
 
 
 class Demo(ProviderBase):
     name = "demo"
+
+    def conversation_key(self, item):
+        return f"{self.name}|{item['conv']}" if item.get("conv") else None
 
     def __init__(self):
         self.thread_calls, self.threads, self.sent, self.cleared, self.listing = [], {}, [], [], []
@@ -487,7 +490,7 @@ class Origin(Demo):
         return self.held.get(message_id)
 
 
-ack_sweep.CONVERSATIONS["origin"] = lambda it: it.get("conv")
+ack_sweep.SOURCES.add("origin")
 KING_ID = "<king@example.cn>"
 fwd = item("fwd", "c-fwd", OLD)
 original = {"_id": "orig", "conv": "c-orig", "id": KING_ID}

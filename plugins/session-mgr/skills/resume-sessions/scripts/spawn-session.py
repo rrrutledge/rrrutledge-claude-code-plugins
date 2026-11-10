@@ -58,7 +58,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from bg_session import DUPLICATE_CHECK_HEADING, claude_agents, duplicate_check_section, launch, session_name  # noqa: E402
+from bg_session import (DUPLICATE_CHECK_HEADING, claude_agents, duplicate_check_section, launch,  # noqa: E402
+                        paused_record, session_name)
 import launch_marker  # noqa: E402
 import worker_job  # noqa: E402
 
@@ -193,8 +194,9 @@ def _read_summary(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--title", help="session name, shown in `claude agents` and the Claude app's session list")
-    ap.add_argument("--cwd", "--repo", dest="cwd", default=os.getcwd(),
-                    help="working directory for the session (a resume's own original cwd)")
+    ap.add_argument("--cwd", "--repo", dest="cwd",
+                    help="working directory for the session (a resume's own original cwd; a paused "
+                         "session's recorded cwd when omitted, else the current directory)")
     seed = ap.add_mutually_exclusive_group()
     seed.add_argument("--brief", help="handoff doc (.tmp/handoff-<slug>.md) holding the full brief")
     seed.add_argument("--prompt-file", help="instructions file the session opens and follows")
@@ -213,6 +215,9 @@ def main(argv=None):
                     help="a side quest: this (launching) session carries on with its own work after "
                          "the launch, so it stays open")
     a = ap.parse_args(argv)
+    if not a.cwd:
+        a.cwd = (paused_record(a.resume) or {}).get("cwd") if a.resume else None
+        a.cwd = a.cwd or os.getcwd()
     if a.keep_open and a.resume_me:
         print("spawn-session: --keep-open and --resume-me contradict each other: one stays open, "
               "the other closes paused.")

@@ -147,7 +147,7 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one live worker"), so the poller can't route it and this check catches it.
+Same work arriving by another source has no shared conversation key (poller-core, "One conversation, one worker"), so the poller can't route it and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
 When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.

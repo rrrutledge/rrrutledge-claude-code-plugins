@@ -22,7 +22,7 @@ AI is invoked for exactly three things, plus one judgment-free delivery call (st
 3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
 4. **The delivery call for a routed item** - when a new item belongs to a conversation a live worker already holds, one `claude -p` call carries a code-built note to that worker.
-   It makes no judgment: the routing decision is code, and code verifies the send (see "One conversation, one live worker" below).
+   It makes no judgment: the routing decision is code, and code verifies the send (see "One conversation, one worker" below).
 
 Triage's `sender` field (person / automated) is cached with the rest of the verdict, where the once-a-day acknowledgement sweep in the digest's daily task reads it (`engine/ack-review.md`).
 
@@ -62,7 +62,7 @@ No AI re-implements the loop.
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic):
-   - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one (see "One conversation, one live worker" below).
+   - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one, and if a paused worker holds it, hold the item (see "One conversation, one worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
      The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
@@ -143,9 +143,10 @@ For a recognized relay the identity is instead the name parsed out of the notifi
 The per-relay recognition and extraction live in `provider_base.RELAY_CORRESPONDENTS`; each captured email item persists its resolved `correspondent` in `items/<id>.json` so `open_correspondents` can read it back off a live session.
 New relays plug in by adding a registry entry.
 
-## One conversation, one live worker
+## One conversation, one worker
 
 A new needs-you item in a conversation a live worker already holds goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
+When the conversation's worker closed paused, waiting on other work, the item waits unrecorded until that worker is resumed, and stops waiting once the pause is three days old.
 Each provider names the conversation (`conversation_key()`), and `run-poller.py` does the routing and the hand-over (`route_to_live_worker` and the functions it calls); the mechanics are documented there.
 A hand-over that fails launches a worker, so the worst case is a duplicate.
 Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).

@@ -396,46 +396,29 @@ async function listUnread() {
     }
   }
 
-  // Channels with unread activity: an @-mention message (since last_read) that names me becomes one item
-  // per mention; otherwise — including when `mention_count` says there's a mention but none turns up in
-  // the fetch window, e.g. a stale badge left over from a mention that's actually older than last_read —
-  // fall back to one plain "Unread in #channel" item keyed to the latest unread message. Merging these
-  // into a single pass (rather than skipping the plain-unread pass whenever mention_count >= 1) means a
-  // channel's genuinely new message is never silently dropped just because Slack's mention badge hasn't
-  // caught up to the read cursor.
+  // Channels with unread activity: one item per channel, keyed to the latest unread top-level message, its
+  // span holding every unread message, @-mentions of me included. The channel's top-level timeline is one
+  // conversation, so a mention rides in it rather than becoming its own item; the subject says when the
+  // span mentions me, the way a thread item's does. `mention_count` also opens the channel, so a mention
+  // whose has_unreads flag lags still surfaces; a stale badge whose mention is older than last_read finds
+  // no unread message and adds nothing.
   for (const c of counts.channels || []) {
     if (muted.has(c.id) || (!c.has_unreads && !(c.mention_count > 0))) continue;
     const msgs = await unreadMessages(c.id, c.last_read, me);
     if (!msgs.length) continue;
-    const mentions = msgs.filter(m => (m.text || '').includes(`<@${me}>`));
     const info = await convInfo(c.id);
     const chName = await convDisplayName(c.id, info);
-    if (mentions.length) {
-      for (const m of mentions) {
-        const from = await userName(m.user);
-        const rendered = await messageText(m);
-        const unreadEntry = { ts: m.ts, from, received: tsToIso(m.ts), text: rendered };
-        if (m.files && m.files.length) unreadEntry.files = fileMeta(m.files);
-        items.push({
-          id: `${c.id}:${m.ts}`, channel: c.id, channelType: 'channel',
-          ts: m.ts, threadTs: '', from, fromId: m.user, subject: `@mention in ${chName}`, channelName: chName,
-          received: tsToIso(m.ts), isRead: false, unreadCount: 1,
-          preview: rendered.slice(0, 600),
-          unread: [unreadEntry],
-          knownContact: false, fromBot: await fromBot(m),
-        });
-      }
-    } else {
-      const latest = msgs[0];
-      const from = await userName(latest.user);
-      items.push({
-        id: `${c.id}:${latest.ts}`, channel: c.id, channelType: 'channel',
-        ts: latest.ts, threadTs: '', from, fromId: latest.user, subject: `Unread in ${chName}`,
-        channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
-        preview: await previewText(msgs), unread: await unreadSpan(msgs),
-        knownContact: false, fromBot: await fromBot(latest),
-      });
-    }
+    const mentioned = msgs.some(m => (m.text || '').includes(`<@${me}>`));
+    const latest = msgs[0];
+    const from = await userName(latest.user);
+    items.push({
+      id: `${c.id}:${latest.ts}`, channel: c.id, channelType: 'channel',
+      ts: latest.ts, threadTs: '', from, fromId: latest.user,
+      subject: mentioned ? `@mention in ${chName}` : `Unread in ${chName}`,
+      channelName: chName, received: tsToIso(latest.ts), isRead: false, unreadCount: msgs.length,
+      preview: await previewText(msgs), unread: await unreadSpan(msgs),
+      knownContact: false, fromBot: await fromBot(latest),
+    });
   }
 
   // Subscribed threads with unread replies: one item per thread, keyed to the latest unread reply. A
