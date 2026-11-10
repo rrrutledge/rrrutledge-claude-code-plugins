@@ -29,10 +29,33 @@ spawns; other needs-you items (Teams, Trello) are cleared by their worker on com
 Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # one live cycle
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
+    python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --channel=<C> [--now] [--resume-me]
+
+On demand, --channel=<C> runs a cycle's enumerate, triage, screen, and dispatch on one Slack DM or
+group DM's items: only the Slack provider enumerates, and the conversation's top-level item goes on
+through the same conversation routing a scheduled cycle uses. Only a scheduled cycle runs reconcile and
+saves provider health, scan health, and the heartbeat. Two flags change how that conversation dispatches:
+    --now        dispatch its item without waiting for a free worker slot (a failed session scan still holds).
+    --resume-me  the launching Claude session's next step waits on this drain: a launched worker's seed
+                 gets session-mgr's resume-the-launcher instruction and the launcher's Stop hook gets the
+                 launch marker, as spawn-session.py --resume-me gives them.
+The run ends with `on-demand:` lines, one per outcome:
+    nothing to drain in <C>.
+    launched worker for <id> / launched auto-handle worker for <id>
+    filed <id> as fyi|junk (nothing waits on Russell)
+    held behind open worker <session id> on <C>.        (a live worker holds the conversation)
+    held behind paused worker <session id> on <C>.      (a worker closed paused holds it)
+    held - the session scan failed, ...                 (a holder can't be ruled out)
+    held <id> - <reason>                                (triage, screen, session scan, buffer, same person,
+                                                         a worker launched this cycle, a concurrent cycle)
+    drain failed - <reason>
+    warning - no launch marker for session <id>, ...    (with --resume-me: close paused by hand)
 """
 import argparse
+import functools
 import glob
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -52,7 +75,7 @@ from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, Provider
                            duplicate_check_section, paused_sessions, session_resolver,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
-                           resolve_skill_dirs)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
+                           resolve_skill_dirs, session_mgr_script)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -1266,7 +1289,44 @@ def _skill_dirs_block():
             "Run or import it from there; never search the filesystem for a plugin script:\n" + lines)
 
 
-def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item, peers=None):
+@functools.lru_cache(maxsize=None)
+def _spawn_session():
+    """session-mgr's spawn-session.py, loaded once as a module: the one home of --resume-me's
+    instruction text, and the module that imports launch_marker, whose marker the launcher's Stop hook
+    reads. None when session-mgr isn't installed."""
+    path = session_mgr_script("spawn-session.py")
+    if not path:
+        return None
+    spec = importlib.util.spec_from_file_location("spawn_session", path)
+    module = importlib.util.module_from_spec(spec)
+    saved_path = list(sys.path)  # spawn-session.py puts its own dir first; the drainer's imports keep theirs
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = saved_path
+    return module
+
+
+def _append_resume_launcher(prompt_file, launcher_id, done_title):
+    """Append session-mgr's resume-the-launcher instruction to a worker seed, so the worker resumes the
+    session that ran this on-demand drain once the item is done. The launcher resumes in this process's
+    cwd, the directory it ran the poller from. Returns the resume command, or None when session-mgr
+    can't build one."""
+    module = _spawn_session()
+    return module._append_resume_me(prompt_file, launcher_id, os.getcwd(), done_title) if module else None
+
+
+def _mark_launcher_resume(launcher_id, title, short_id):
+    """Record the launch for the launcher's Stop hook, as spawn-session.py --resume-me does, so the hook
+    holds the launching session to closing paused this turn."""
+    module = _spawn_session()
+    if not (module and module.launch_marker.write(launcher_id, "resume", title, short_id)):
+        print(f"on-demand: warning - no launch marker for session {launcher_id}, so its Stop hook "
+              "cannot hold it to closing paused; close it paused by hand.")
+
+
+def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, config_repo, item, peers=None,
+                 resume_launcher=None):
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, f"{iid}.prompt.txt")
@@ -1344,6 +1404,10 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     summary_text = _worker_summary(json_file)
     with open(summary_file, "w", encoding="utf-8") as f:
         f.write(summary_text)
+    if resume_launcher and not _append_resume_launcher(prompt_file, resume_launcher, _worker_title(iid, json_file)):
+        # The launcher waits paused on this worker's resume instruction, so a worker without one stays unlaunched.
+        print(f"spawn_worker {iid}: --resume-me could not build the resume command; not launched.")
+        return False
     # A worker is a headless `claude --bg` background session launched through session-mgr's
     # bg_session. Its id (the full guid when `claude agents` can resolve it, else the short id) goes into
     # the receipt every reader uses (<prompt_file>.session), so open_correspondents, reconcile, and peek
@@ -1356,6 +1420,8 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
                      scratch_only=True)
     if bg_id:
         write_receipt(prompt_file, bg_id)
+        if resume_launcher:
+            _mark_launcher_resume(resume_launcher, _worker_title(iid, json_file), bg_id)
         return True
     print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
           "left unrecorded to retry next cycle.")
@@ -1988,7 +2054,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--channel", help="drain only this Slack DM or group DM id, on demand")
+    ap.add_argument("--now", action="store_true", help="with --channel: skip the wait for a free worker slot")
+    ap.add_argument("--resume-me", action="store_true",
+                    help="with --channel: a launched worker resumes the calling Claude session when done")
     args = ap.parse_args()
+    if (args.now or args.resume_me) and not args.channel:
+        ap.error("--now and --resume-me apply to an on-demand --channel run")
+    launcher_id = os.environ.get("CLAUDE_CODE_SESSION_ID") if args.resume_me else None
+    if args.resume_me and not launcher_id:
+        ap.error("--resume-me runs from inside the launching session via the Bash tool, so "
+                 "$CLAUDE_CODE_SESSION_ID names the session to resume; it is not set here.")
     # source_repo is the real repo: runtime state, worker/triage cwd, and the git origin main is
     # fetched from live there. config_repo is the drainer-owned worktree pinned to origin/main that all
     # CONFIG is read from, so a feature branch left checked out at the real repo root can't make the
@@ -2001,6 +2077,11 @@ def main():
     health = load_health(cfg["runtime_dir"])
 
     providers = load_providers(cfg, health)
+    if args.channel:
+        providers = [p for p in providers if p.name == "slack"]
+        if not providers:
+            print(f"on-demand: drain failed - the slack provider is not enabled, so {args.channel} was not checked.")
+            return
     if not providers:
         print("No providers with a poller adapter are enabled; nothing to do.")
         if not args.dry_run:
@@ -2015,9 +2096,10 @@ def main():
     # the conversation routing needs to reach a live worker, and the titles a new worker's seed lists.
     agents = _claude_agents()
     live = live_session_ids(agents)
-    unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
-    if args.dry_run:
-        print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s).")
+    if not args.channel:
+        unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
+        if args.dry_run:
+            print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s).")
 
     # --- enumerate ALL providers first, accumulate into one global list ---
     # Each provider's enumerate is isolated: a failure (expired creds, network/API blip) is caught,
@@ -2031,6 +2113,9 @@ def main():
         try:
             new, total, seen = collect_new(provider, cfg)
         except ProviderError as e:
+            if args.channel:  # the scheduled cycle owns health records and diagnostics
+                print(f"on-demand: drain failed - {provider.name} enumerate: {e}")
+                return
             record_health_failure(health, provider.name, str(e), e.kind)
             print(f"{provider.name}: enumerate FAILED [{e.kind}] - {e}. Skipping; other providers continue.")
             # A config-kind failure (broken deploy, e.g. a missing npm dependency) will fail every cycle
@@ -2056,20 +2141,45 @@ def main():
                 health[provider.name]["last_auth_alert_ts"] = datetime.now(timezone.utc).isoformat()
             continue
         except Exception as e:  # unexpected adapter fault - still isolate it, never abort the cycle
+            if args.channel:
+                print(f"on-demand: drain failed - {provider.name} enumerate: {e}")
+                return
             record_health_failure(health, provider.name, str(e), "unknown")
             print(f"{provider.name}: enumerate FAILED [unknown] - {e}. Skipping; other providers continue.")
             continue
         record_health_ok(health, provider.name)
+        if args.channel:
+            new = [it for it in new
+                   if it.get("channel") == args.channel and it.get("channelType") in ("im", "mpim")]
         seen_by_source[provider.name] = seen
         totals[provider.name] = total
         all_new.extend(new)
         if not new:
             print(f"{provider.name}: {total} enumerated, 0 new.")
-    # Dry-run is a manual diagnostic often run from a shell without the User-scope creds; persisting
-    # health then would log false failures, so only a live cycle records the outcome.
-    if not args.dry_run:
+    # Only a scheduled live cycle saves provider health and the heartbeat; a dry-run, often run from a
+    # shell without the User-scope creds, would log false failures.
+    if not args.dry_run and not args.channel:
         record_heartbeat(health)  # a full live cycle ran
         save_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
+
+    if args.channel and not all_new:
+        # Nothing new to pick up, but a worker an earlier cycle launched may still hold the conversation's
+        # waiting messages: the drain finishes only when that worker's reply goes out.
+        if live is None:
+            print(f"on-demand: held - the session scan failed, so a worker on {args.channel} can't be ruled out; "
+                  "retry shortly.")
+            return
+        # The DM itself, or any thread in it, counts as this conversation.
+        key = providers[0].conversation_key({"channel": args.channel})
+        holders = [h for k, h in open_conversations(cfg["runtime_dir"], live, paused_ids(agents)).items()
+                   if k == key or k.startswith(key + "|")]
+        holder = next((h for h in holders if h[1] == "live"), holders[0] if holders else None)
+        if holder:
+            print(f"on-demand: held behind {'open' if holder[1] == 'live' else 'paused'} worker {holder[0]} "
+                  f"on {args.channel}.")
+        else:
+            print(f"on-demand: nothing to drain in {args.channel}.")
+        return
 
     if not all_new:
         print("0 new items across all sources. Nothing to dispatch.")
@@ -2150,7 +2260,9 @@ def main():
     # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
     # fail closed: open no new needs-you workers this cycle) ---
     wcounts = worker_counts()
-    if wcounts is None:
+    if args.channel:  # scan health and its diagnostic are the scheduled cycle's
+        waiting, total = wcounts or (None, None)
+    elif wcounts is None:
         waiting = total = None
         fails = _record_scan_failure(health)
         if (fails >= SCAN_FAILURE_ALERT_THRESHOLD and not args.dry_run
@@ -2196,6 +2308,13 @@ def main():
     # until that worker can receive them.
     open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
     claimed_convs = set()
+    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
+    # line names that worker and the launching session can wait on it.
+    thread_holder = None
+    if args.channel:
+        base = prov["slack"].conversation_key({"channel": args.channel})
+        thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
+        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
     # The duplicate check's session list, grown as this cycle launches workers; None when the scan failed,
     # so a seed never claims a partial list is the machine's live sessions.
     peers = None if agents is None else list(agents)
@@ -2245,7 +2364,7 @@ def main():
                 continue
             corr = prov[it["_source"]].correspondent(it)
             corr_held = held_for_correspondent(corr, active_correspondents)
-            held = corr_held or slots <= 0
+            held = corr_held or (slots <= 0 and not (args.now and wcounts is not None))
             if not held:
                 slots -= 1
                 if corr:
@@ -2280,6 +2399,9 @@ def main():
 
     dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
     forwarded, held_conv, held_paused = 0, 0, 0
+    # An on-demand --channel run's outcome lines, printed at the end (see the header).
+    on_demand = [f"filed {it['_id']} as {it['_bucket']} (nothing waits on Russell)" for it in others]
+    on_demand += [f"held {iid} - triage or screen unavailable, retry shortly" for iid in unjudged]
 
     def routed(it, provider, key):
         """Apply conversation_route to one item: True when the item is held or handed to its
@@ -2289,10 +2411,12 @@ def main():
         if route == "hold":
             held += 1  # unrecorded: next cycle it forwards to the worker that claimed its conversation
             held_conv += 1
+            on_demand.append(f"held {it['_id']} - a worker launched this cycle holds its conversation, retry shortly")
             return True
         if route == "paused":
             held += 1  # unrecorded: retried each cycle until its worker is resumed or its pause expires
             held_paused += 1
+            on_demand.append(f"held behind paused worker {open_convs[key][0]} on {args.channel}.")
             return True
         if route == "forward":
             holder = open_convs[key][0]
@@ -2301,6 +2425,7 @@ def main():
             if (_failed_forward(cfg["runtime_dir"], it["_id"]) != holder
                     and route_to_live_worker(it, provider, key, holder, agents, cfg["runtime_dir"], repo)):
                 forwarded += 1
+                on_demand.append(f"held behind open worker {holder} on {args.channel}.")
                 return True
             # The hand-over failed, so this item gets its own worker; its seed names the live session
             # already on the conversation, so the two settle which one keeps it (worker-core §2).
@@ -2315,14 +2440,22 @@ def main():
         provider = prov[it["_source"]]
         iid = it["_id"]
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
+        if iid in load_seen(cfg["runtime_dir"], it["_source"]):  # a concurrent cycle dispatched it since this cycle enumerated
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
+            continue
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
         # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
         # closes without surfacing anything, so it can't hold a needs-you follow-up, and a needs-you
         # holder lacks the standing rule to run an auto-handle item.
         if spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                        peers=peers) and peers is not None:
-            peers.append(launched_peer(_worker_title(iid, json_file)))
+                        peers=peers, resume_launcher=launcher_id):
+            on_demand.append(f"launched auto-handle worker for {iid}")
+            if peers is not None:
+                peers.append(launched_peer(_worker_title(iid, json_file)))
+        elif args.channel:
+            on_demand.append(f"drain failed - the worker for {iid} did not launch")
+            continue  # left unrecorded, so the next cycle picks it up again
         seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
@@ -2339,6 +2472,11 @@ def main():
         # the item, which costs no new session.
         if routed(it, provider, key):
             continue
+        if thread_holder and not it.get("_screen") and "_conversationHolder" not in it:
+            held += 1
+            on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
+                             f"{thread_holder[0]} on {args.channel}.")
+            continue
         corr = provider.correspondent(it)
         # A failed hand-over means the holder can't take the item, so it launches rather than waiting
         # behind that same holder's correspondent; its seed names the holder instead.
@@ -2349,9 +2487,19 @@ def main():
             # worker has already read the full context.
             held += 1
             held_corr += 1
+            on_demand.append(f"held {iid} - an open worker on the same person holds it, retry shortly")
             continue
-        if slots <= 0:
+        if iid in load_seen(cfg["runtime_dir"], it["_source"]):
+            # A concurrent cycle (the scheduled one, or an on-demand --channel run) dispatched it since
+            # this cycle enumerated.
+            held += 1
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
+            continue
+        # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.
+        if slots <= 0 and not (args.now and wcounts is not None):
             held += 1  # buffer full (or a failed scan held it): leave UNRECORDED -> re-enumerated next cycle, verdicts read back from the cache
+            on_demand.append(f"held {iid} - " + ("session scan failed, retry shortly" if wcounts is None
+                                                  else "worker buffer full (--now skips this wait)"))
             continue
         it["_correspondent"] = corr
         json_file = provider.capture(it, iid, cfg["runtime_dir"])
@@ -2377,8 +2525,12 @@ def main():
         else:
             model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
             spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                                   peers=peers)
+                                   peers=peers, resume_launcher=launcher_id)
+            if not spawned and args.channel:
+                on_demand.append(f"drain failed - the worker for {iid} did not launch")
+                continue  # left unrecorded, so the next cycle picks it up again
             if spawned:
+                on_demand.append(f"launched worker for {iid}")
                 if not it.get("_screen") and peers is not None:  # a flagged item's subject-built title stays out of other seeds
                     peers.append(launched_peer(_worker_title(iid, json_file)))
                 if "conversationKey" in stamp:
@@ -2448,6 +2600,9 @@ def main():
           f"{held_conv} behind a worker launched this cycle on the same conversation, "
           f"{held_paused} behind a paused worker on their conversation) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
+    if args.channel:
+        for line in on_demand or [f"nothing to drain in {args.channel}."]:
+            print(f"on-demand: {line}")
 
 
 if __name__ == "__main__":
