@@ -2308,8 +2308,8 @@ def main():
     # until that worker can receive them.
     open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
     claimed_convs = set()
-    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the session
-    # waits on that worker rather than a same-person hold it can only rerun past.
+    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
+    # line names that worker and the launching session can wait on it.
     thread_holder = None
     if args.channel:
         base = prov["slack"].conversation_key({"channel": args.channel})
@@ -2440,7 +2440,7 @@ def main():
         provider = prov[it["_source"]]
         iid = it["_id"]
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-        if iid in load_seen(cfg["runtime_dir"], it["_source"]):  # a concurrent cycle dispatched it since enumerate
+        if iid in load_seen(cfg["runtime_dir"], it["_source"]):  # a concurrent cycle dispatched it since this cycle enumerated
             on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
             continue
         it["_correspondent"] = provider.correspondent(it)
@@ -2472,7 +2472,7 @@ def main():
         # the item, which costs no new session.
         if routed(it, provider, key):
             continue
-        if thread_holder:
+        if thread_holder and not it.get("_screen") and "_conversationHolder" not in it:
             held += 1
             on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
                              f"{thread_holder[0]} on {args.channel}.")
