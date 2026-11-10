@@ -1,7 +1,7 @@
 {
   "name": "google-calendar",
-  "version": "1.0.0",
-  "description": "Read a Google Calendar's events over a time range via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate read-only token scoped to calendar.readonly.",
+  "version": "1.1.0",
+  "description": "Read a Google Calendar's events over a time range, or remove an event's Google Meet link, via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to calendar.readonly and calendar.events.",
   "author": {
     "name": "Russell Rutledge"
   },
