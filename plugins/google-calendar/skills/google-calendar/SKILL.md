@@ -16,8 +16,7 @@ A token without `calendar.events` still lists events; re-run the sign-in once be
 The claude.ai Google Calendar connector's `create_event` attaches a Meet link to any event with guests unless the call passes `addGoogleMeetUrl: false` explicitly; leaving the flag out gets a Meet link despite its documented `false` default.
 So for a meeting whose real link is Zoom, create it through the connector with `addGoogleMeetUrl: false`, and put the Zoom join URL in `location` and `description`.
 
-The connector's `update_event` can add a Meet link but has no way to remove one.
-To take a Meet link off an existing event, use `--strip-meet` below.
+The connector's `update_event` can only add a Meet link, so take one off an existing event with `--strip-meet` below.
 
 ## Setup (per machine, one-time)
 

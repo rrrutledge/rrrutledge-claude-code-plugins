@@ -12,7 +12,7 @@
 //
 // Wrong-account guard. The token records the address it was authorized for (account_email);
 // assertAccountEmail() re-checks it against the primary calendar's id (which is the signed-in address), and
-// refuses a token that recorded no address, so a read or an edit never touches the wrong account's calendar.
+// refuses a token that recorded no address, so every read and edit lands on the account the token was set up for.
 //
 //   const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
 

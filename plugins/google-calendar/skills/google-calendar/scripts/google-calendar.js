@@ -8,9 +8,7 @@
 //                Event resources; without it, one line per event.)
 // Remove Meet:   node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]
 //                (Drops the event's conference when it is Google Meet, leaving every other field as is, and
-//                refuses when it is another provider's, such as a Zoom add-on. Guests get no update email
-//                unless --send is passed. An occurrence id changes that one occurrence; the series id
-//                changes the whole series.)
+//                refuses when it is another provider's, such as a Zoom add-on.)
 //
 // Reusable from other scripts (require.main-guarded, so requiring this file does not run the CLI):
 //   const { listEvents, stripMeet } = require('<google-calendar>/scripts/google-calendar.js');
@@ -52,7 +50,7 @@ async function listEvents({ calendar = 'primary', start, end } = {}) {
 
 // Remove the Google Meet conference from one event the signed-in account organizes. Resolves to the patched
 // Event resource, or to null when the event has no conference (nothing is written and no guest is emailed).
-// Refuses an event whose conference is another provider's, so a Zoom add-on link is never dropped by mistake.
+// Refuses an event whose conference is another provider's, so a Zoom add-on link stays in place.
 // conferenceDataVersion=1 is what makes the API apply a conferenceData change at all.
 async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   if (typeof event !== 'string' || !event) throw new Error('stripMeet requires { event: <id> }');
@@ -61,12 +59,10 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   const api = google.calendar({ version: 'v3', auth });
   const current = (await api.events.get({ calendarId: calendar, eventId: event })).data;
   const title = current.summary || '(no title)';
-  if (!current.organizer?.self) throw new Error(`${title}: organized by someone else - only the organizer can remove Meet`);
   const conf = current.conferenceData;
-  if (!conf) {
-    if (current.hangoutLink) throw new Error(`${title}: legacy Meet link with no conference data - remove it in the Calendar UI`);
-    return null;
-  }
+  if (!conf && !current.hangoutLink) return null;
+  if (!current.organizer?.self) throw new Error(`${title}: organized by someone else - only the organizer can remove Meet`);
+  if (!conf) throw new Error(`${title}: legacy Meet link with no conference data - remove it in the Calendar UI`);
   // A Meet link still being provisioned carries only a createRequest, not a conferenceSolution yet.
   const type = conf.conferenceSolution?.key?.type ?? conf.createRequest?.conferenceSolutionKey?.type;
   if (type !== 'hangoutsMeet') throw new Error(`${title}: conference is ${type || 'of unknown type'}, not Google Meet - left unchanged`);
@@ -77,7 +73,9 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
     sendUpdates: send ? 'all' : 'none',
     requestBody: { conferenceData: null },
   });
-  if (res.data.conferenceData || res.data.hangoutLink) throw new Error(`${title}: conference still present after the patch`);
+  if (res.data.conferenceData || res.data.hangoutLink) {
+    throw new Error(`${title}: the patch was applied, but the response still shows a conference - check the event before retrying`);
+  }
   return res.data;
 }
 
@@ -92,7 +90,7 @@ if (require.main === module) {
   );
   (async () => {
     if (args['strip-meet']) {
-      const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: args.send === true });
+      const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: args.send === true || args.send === 'true' });
       console.log(ev ? `${ev.summary || '(no title)'}: Meet link removed` : 'No conference on that event - nothing changed');
       return;
     }
