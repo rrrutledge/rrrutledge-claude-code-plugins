@@ -545,6 +545,7 @@ HEADLESS_BROWSER_FLAGS = {
     '--run-all-compositor-stages-before-draw', '--no-pdf-header-footer',
     '--blink-settings', '--window-size', '--virtual-time-budget',
     '--default-background-color', '--force-device-scale-factor',
+    '--no-first-run', '--no-default-browser-check',
 }
 HEADLESS_OUTPUT_FLAGS = {'--screenshot', '--print-to-pdf'}
 _LOCAL_URL = re.compile(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?(/|$)', re.IGNORECASE)
