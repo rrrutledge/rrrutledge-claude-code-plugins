@@ -73,6 +73,7 @@ Innocent: a genuinely open decision, asked as one direct question and stopped th
 
 **Skill prose carries only the steps that need the running Claude session.**
 In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
+The same sort applies to a how-to doc or runbook for a repeatable procedure; "Tokens build tools, tools do the work" in Russell's global `CLAUDE.md` states the principle.
 The prose keeps the steps that need judgment and the calls to harness tools a script can't make.
 A script runs the same way on every invocation and spends no tokens doing it, so the skill's behavior stays fixed across runs.
 Once a step lives in a script, the skill names the call and the decisions the session makes from what it returns; how the script does its work lives in the script's header comment, its one canonical home.
