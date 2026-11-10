@@ -143,16 +143,16 @@ Before authoring that new top-level message, drain the conversation now:
     python ~/.claude/drainer/launch-drainer.py --mode poller --repo <drainer project> --channel=<C> --now --resume-me
 
 `--repo` is the project the scheduled DrainerKeeper task drains (on this machine, `C:/Users/russe/Dev/personal-ai-pod`).
-Act on its `on-demand:` lines:
+Act on its `on-demand:` lines; when it prints several, a launched or held line decides over a filed one.
 
-- **Nothing waits on Russell:** the run printed "nothing to drain" or filed the item as fyi or junk, so author and stage the new message now.
-- **A worker was launched:** it resumes this session once its item is done.
+- **Nothing waits on Russell:** every line reads "nothing to drain" or files an item as fyi or junk, so author and stage the new message now.
+- **A worker was launched:** the line reads "launched", and that worker resumes this session once its item is done.
   Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`.
 - **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
   Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names, then close paused.
 - **A paused worker holds it:** the line reads "held behind paused worker", and that worker closed paused with this person's earlier messages unfinished.
-  Tell Russell the worker the line names and ask whether to resume it or send the new message anyway.
-- **Held or failed for another reason:** the line names the reason.
+  Tell Russell that worker by its title from `claude agents`, with the id beside it, and ask whether to resume it or send the new message anyway.
+- **Held or failed for another reason, or no `on-demand:` line at all:** the line or the error names the reason.
   Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
 
 ## Sending

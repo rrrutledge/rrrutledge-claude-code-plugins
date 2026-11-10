@@ -31,11 +31,10 @@ Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --channel=<C> [--now] [--resume-me]
 
-On demand, --channel=<C> runs this cycle's enumerate, triage, screen, and dispatch on one Slack DM or
-group DM: only the Slack provider enumerates and only that conversation's item goes on, through the same
-conversation routing a scheduled cycle uses. The cycle-wide state (reconcile, provider health, the
-heartbeat, diagnostics) stays with the scheduled cycle. Two flags, each explicit, change how that one
-conversation dispatches:
+On demand, --channel=<C> runs a cycle's enumerate, triage, screen, and dispatch on one Slack DM or
+group DM's items: only the Slack provider enumerates, and the conversation's top-level item goes on
+through the same conversation routing a scheduled cycle uses. Only a scheduled cycle runs reconcile and
+saves provider health, scan health, and the heartbeat. Two flags change how that conversation dispatches:
     --now        dispatch its item without waiting for a free worker slot (a failed session scan still holds).
     --resume-me  the launching Claude session's next step waits on this drain: a launched worker's seed
                  gets session-mgr's resume-the-launcher instruction and the launcher's Stop hook gets the
@@ -46,10 +45,14 @@ The run ends with `on-demand:` lines, one per outcome:
     filed <id> as fyi|junk (nothing waits on Russell)
     held behind open worker <session id> on <C>.        (a live worker holds the conversation)
     held behind paused worker <session id> on <C>.      (a worker closed paused holds it)
-    held <id> - <reason>                                (triage, screen, session scan, buffer)
+    held - the session scan failed, ...                 (a holder can't be ruled out)
+    held <id> - <reason>                                (triage, screen, session scan, buffer, same person,
+                                                         a worker launched this cycle, a concurrent cycle)
     drain failed - <reason>
+    warning - no launch marker for session <id>, ...    (with --resume-me: close paused by hand)
 """
 import argparse
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -1286,9 +1289,11 @@ def _skill_dirs_block():
             "Run or import it from there; never search the filesystem for a plugin script:\n" + lines)
 
 
+@functools.lru_cache(maxsize=None)
 def _spawn_session():
-    """session-mgr's spawn-session.py, loaded as a module: the one home of --resume-me's instruction
-    text and of the launch marker the Stop hook reads. None when session-mgr isn't installed."""
+    """session-mgr's spawn-session.py, loaded once as a module: the one home of --resume-me's
+    instruction text, and the importer of launch_marker, which the Stop hook reads. None when
+    session-mgr isn't installed."""
     path = session_mgr_script("spawn-session.py")
     if not path:
         return None
@@ -2153,7 +2158,7 @@ def main():
             print(f"{provider.name}: {total} enumerated, 0 new.")
     # Dry-run is a manual diagnostic often run from a shell without the User-scope creds; persisting
     # health then would log false failures, so only a live cycle records the outcome.
-    # Provider health and the heartbeat are the scheduled cycle's to save; an on-demand run leaves its copy as is.
+    # Only a scheduled live cycle saves provider health and the heartbeat.
     if not args.dry_run and not args.channel:
         record_heartbeat(health)  # a full live cycle ran
         save_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
@@ -2165,8 +2170,11 @@ def main():
             print(f"on-demand: held - the session scan failed, so a worker on {args.channel} can't be ruled out; "
                   "retry shortly.")
             return
+        # The DM itself, or any thread in it, counts as this conversation.
         key = providers[0].conversation_key({"channel": args.channel})
-        holder = open_conversations(cfg["runtime_dir"], live, paused_ids(agents)).get(key)
+        holders = [h for k, h in open_conversations(cfg["runtime_dir"], live, paused_ids(agents)).items()
+                   if k == key or k.startswith(key + "|")]
+        holder = next((h for h in holders if h[1] == "live"), holders[0] if holders else None)
         if holder:
             print(f"on-demand: held behind {'open' if holder[1] == 'live' else 'paused'} worker {holder[0]} "
                   f"on {args.channel}.")
@@ -2253,7 +2261,9 @@ def main():
     # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
     # fail closed: open no new needs-you workers this cycle) ---
     wcounts = worker_counts()
-    if wcounts is None:
+    if args.channel:  # scan health and its diagnostic are the scheduled cycle's
+        waiting, total = wcounts if wcounts is not None else (None, None)
+    elif wcounts is None:
         waiting = total = None
         fails = _record_scan_failure(health)
         if (fails >= SCAN_FAILURE_ALERT_THRESHOLD and not args.dry_run
@@ -2464,6 +2474,12 @@ def main():
             held += 1
             held_corr += 1
             on_demand.append(f"held {iid} - an open worker on the same person holds it, retry shortly")
+            continue
+        if iid in load_seen(cfg["runtime_dir"], it["_source"]):
+            # A concurrent cycle (the scheduled one, or an on-demand --channel run) dispatched it since
+            # this cycle enumerated.
+            held += 1
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
             continue
         # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.
         if slots <= 0 and not (args.now and wcounts is not None):
