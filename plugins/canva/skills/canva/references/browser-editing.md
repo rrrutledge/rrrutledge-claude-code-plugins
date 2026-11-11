@@ -7,7 +7,7 @@ This file covers what the scripts leave to you: the browser, how to batch the wo
 ## The browser
 
 Run `canva-edit.js` through browser-chauffeur like any browser script: Phase 0 brings up its browser and passes `--cdp-port`, which defaults to the chauffeur's 9222.
-Each command opens its own tab and closes only that tab.
+Each design command opens or reuses its own tagged tab and closes only that tab; `--expand` keeps its scratch tab open until `--close`.
 
 **An idle Canva renderer freezes, and a frozen renderer hangs `connectOverCDP`.**
 Run `node canva-edit.js --nudge --cdp-port=<port>` before every batch.

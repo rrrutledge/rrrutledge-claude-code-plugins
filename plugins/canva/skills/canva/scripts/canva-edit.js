@@ -89,7 +89,7 @@ async function cmdReplaceWord() {
   const nth = +arg('nth', 0);
   await E.withDesign(arg('design'), 'cvword', async (tab) => {
     await E.reloadToPage(tab, n);
-    const { expected } = await E.replaceWord(tab, word, nth, repl);
+    const expected = await E.replaceWord(tab, word, nth, repl);
     await E.reloadToPage(tab, n);
     const ok = await tab.evaluate((e) => document.body.innerText.includes(e), expected);
     console.log('page text after reload:', (await E.textRuns(tab)).map(t => t.t).join(' / '));
@@ -110,7 +110,7 @@ async function applyItem(tab, n, item, L) {
   if (hits.length !== 1) throw new Error(`p${n}: ${hits.length} layers match ${JSON.stringify(item.match)} and ${done.length} sit at ${JSON.stringify(item.to)}`);
   const old = hits[0];
   if (item.file && done.length === 1 && !E.sameBox(done[0].box, old.box, 3)) {
-    await finishSwap(tab, n, old, done[0].box, old.i - (done[0].i < old.i ? 1 : 0));
+    await finishSwap(tab, n, old.i, old.box, done[0].box, old.i - (done[0].i < old.i ? 1 : 0));
     L(`p${n} finished an interrupted swap for ${path.basename(item.file)}`);
     return;
   }
@@ -123,25 +123,27 @@ async function applyItem(tab, n, item, L) {
   if (!fs.existsSync(item.file)) throw new Error('missing file ' + item.file);
   await E.addImage(tab, item.file);
   const placed = await E.placeSelected(tab, item.to);
-  await finishSwap(tab, n, old, placed, old.i);
+  // addImage puts the new image in front, at row 0, which shifts the old layer down one row.
+  await finishSwap(tab, n, old.i + 1, old.box, placed, old.i);
   L(`p${n} swapped ${old.label} for ${path.basename(item.file)}`, JSON.stringify(placed));
 }
 
-// Deletes the old layer and moves the new image (at box placed) to layer index slot, the old layer's place in the stack.
-async function finishSwap(tab, n, old, placed, slot) {
-  const olds = (await E.layers(tab)).filter(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3));
-  if (olds.length !== 1) throw new Error(`p${n}: old layer not uniquely found next to the new image (${olds.length})`);
-  await E.deleteLayer(tab, olds[0]);
-  for (let t = 0; ; t++) {
-    const rows = await E.layers(tab);
-    if (rows.some(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3))) throw new Error(`p${n}: the old layer is still on the page after Delete`);
-    const me = rows.find(r => E.sameBox(r.box, placed, 1.5));
-    if (!me) throw new Error(`p${n}: new image lost after deleting the old one`);
-    if (me.i === slot) break;
-    if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${slot}`);
+// Deletes the old layer (row oldIndex, expected at oldBox) and steps the new image (at box placed) to layer index
+// slot, the old layer's place in the stack. The old layer is found by index, not box, so a recut placed in the old
+// layer's exact box still works; deleteLayer confirms the Layers list lost a row.
+async function finishSwap(tab, n, oldIndex, oldBox, placed, slot) {
+  const target = (await E.layers(tab))[oldIndex];
+  if (!target || !E.sameBox(target.box, oldBox, 1)) throw new Error(`p${n}: layer ${oldIndex} is not the old layer at ${JSON.stringify(oldBox)}`);
+  await E.deleteLayer(tab, target);
+  for (let t = 0; t < 8; t++) {
+    const mine = (await E.layers(tab)).filter(r => E.sameBox(r.box, placed, 1.5));
+    if (mine.length !== 1) throw new Error(`p${n}: ${mine.length} layers at the new image's box after deleting the old one`);
+    const me = mine[0];
+    if (me.i === slot) return;
     await E.selectLayer(tab, me);
-    if (!(await E.moveSelected(tab, me, me.i < slot ? 'Backward' : 'Forward', Math.abs(slot - me.i)))) break;
+    if (!(await E.moveSelected(tab, me.i < slot ? 'Backward' : 'Forward'))) return;
   }
+  throw new Error(`p${n}: could not move the new image to the old slot ${slot}`);
 }
 
 async function verifyPage(tab, items) {
@@ -165,7 +167,9 @@ async function cmdApply() {
     for (const n of pages) {
       const items = plan[String(n)];
       if (!items) { errors.push(`p${n}: not in the plan`); continue; }
-      if (!has('force') && prog.has(`done ${n}`)) { L(`p${n} already done`); continue; }
+      // A page is done for this design and these exact items; a changed plan or another design redoes it.
+      const key = `done ${E.designId(arg('design'))} ${n} ${require('crypto').createHash('md5').update(JSON.stringify(items)).digest('hex').slice(0, 10)}`;
+      if (!has('force') && prog.has(key)) { L(`p${n} already done`); continue; }
       try {
         await E.reloadToPage(tab, n);
         for (const item of items) await applyItem(tab, n, item, L);
@@ -173,7 +177,7 @@ async function cmdApply() {
         const bad = await verifyPage(tab, items);
         await E.presentShot(tab, path.join(out, `p${String(n).padStart(2, '0')}.png`));
         if (bad.length) { errors.push(`p${n} after reload: ${bad.join('; ')}`); L(`p${n} CHECK FAILED`, bad.join('; ')); continue; }
-        prog.add(`done ${n}`);
+        prog.add(key);
         L(`p${n} done, verified after reload`);
       } catch (e) {
         errors.push(e.message);
@@ -290,9 +294,14 @@ async function cmdExpand() {
   }
 }
 
+const REQUIRED = { layers: ['design', 'page'], shots: ['design', 'pages', 'out'], measure: ['design', 'pages', 'out'], 'replace-word': ['design', 'page', 'word', 'with'], apply: ['design', 'plan', 'pages', 'out'], expand: ['name', 'out'] };
+
 (async () => {
   try {
-    if (has('nudge')) console.log('nudged', await E.nudge(), 'window(s)');
+    const cmd = Object.keys(REQUIRED).find(has);
+    const missing = cmd ? REQUIRED[cmd].filter(k => arg(k) == null) : [];
+    if (missing.length) errors.push(`--${cmd} needs ${missing.map(k => '--' + k + '=').join(' ')}`);
+    else if (has('nudge')) console.log('nudged', await E.nudge(), 'window(s)');
     else if (has('layers')) await cmdLayers();
     else if (has('shots')) await cmdShots();
     else if (has('measure')) await cmdMeasure();
