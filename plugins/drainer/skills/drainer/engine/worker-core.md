@@ -282,6 +282,7 @@ This applies whether Trello is your own source or you found the card from anothe
 **After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all staging mechanics, leaving the draft un-sent.
 The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
 The draft is already staged when you show it (per the provider's DRAFT-MODE); the reply shows the staged text plus where it lives.
+A draft carrying an attachment or inline image also sends each file to Russell in that reply, per `document-authoring:writing-flow`'s **Stage** step.
 Don't send on your own initiative - only on Russell's explicit per-message instruction this turn, reviewing this exact draft (per the send exception in §0's framing above); silence or a generic go-ahead earlier in the conversation doesn't count.
 
 **The reply reports the sender's ask done, in the past tense.**
