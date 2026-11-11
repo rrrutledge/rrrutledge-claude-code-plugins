@@ -38,29 +38,4 @@ function rawTokensIn(blocks) {
   return found;
 }
 
-// The distinct user ids a mrkdwn body mentions, in order of first appearance.
-function mentionIds(text) {
-  return [...new Set([...text.matchAll(MENTION_RE)].map(m => m[3]).filter(Boolean))];
-}
-
-// The distinct user ids saved blocks mention as real user elements.
-function userIdsIn(blocks) {
-  const found = [];
-  const walk = (els) => {
-    for (const e of els || []) {
-      if (e.type === 'user') found.push(e.user_id);
-      else if (e.elements) walk(e.elements);
-    }
-  };
-  for (const b of blocks || []) walk(b.elements);
-  return [...new Set(found)];
-}
-
-// Whether `channel` is somewhere other than the signed-in user `me`'s own self-DM, so a body tagging
-// them there tags the wrong person. `channel` may be the user's own id, which Slack accepts as their
-// self-DM; `info` is the conversation's conversations.info record.
-function outsideSelfDm(me, channel, info) {
-  return channel !== me && !(info.is_im && info.user === me);
-}
-
-module.exports = { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, outsideSelfDm };
+module.exports = { richTextBlocks, rawTokensIn };

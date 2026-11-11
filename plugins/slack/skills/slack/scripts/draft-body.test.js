@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, outsideSelfDm } = require('./draft-body');
+const { richTextBlocks, rawTokensIn } = require('./draft-body');
 
 const section = (text) => richTextBlocks(text)[0].elements[0].elements;
 
@@ -29,24 +29,4 @@ test('literal tokens left in text are reported', () => {
 
 test('ordinary words are not reported', () => {
   assert.deepStrictEqual(rawTokensIn(richTextBlocks('HELLO WORLD, see CONFERENCES soon')), []);
-});
-
-test('mentionIds lists each mentioned user once, skipping channels and links', () => {
-  assert.deepStrictEqual(
-    mentionIds('hi <@U0123ABCD> and <@W0999ZZZZ|pat>, see <#C0123ABCD> and <https://x.y|z>, thanks <@U0123ABCD>'),
-    ['U0123ABCD', 'W0999ZZZZ']);
-});
-
-test('outsideSelfDm is true everywhere but the user\'s own self-DM', () => {
-  const me = 'U0ME00000';
-  assert.strictEqual(outsideSelfDm(me, 'C0123ABCD', {}), true);
-  assert.strictEqual(outsideSelfDm(me, 'D0123ABCD', { is_im: true, user: 'U0OTHER00' }), true);
-  assert.strictEqual(outsideSelfDm(me, 'D0123ABCD', { is_im: true, user: me }), false);
-  assert.strictEqual(outsideSelfDm(me, me, {}), false);
-});
-
-test('userIdsIn counts user elements and skips raw tokens left in text', () => {
-  const blocks = richTextBlocks('hi <@U0123ABCD> and <@U0123ABCD>');
-  blocks[0].elements[0].elements.push({ type: 'text', text: ' <@U0999ZZZZ>' });
-  assert.deepStrictEqual(userIdsIn(blocks), ['U0123ABCD']);
 });
