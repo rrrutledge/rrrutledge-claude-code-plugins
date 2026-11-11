@@ -337,7 +337,7 @@ async function previewText(msgs) {
 async function unreadSpan(msgs) {
   const out = [];
   for (const m of msgs.slice().reverse()) {
-    const entry = { ts: m.ts, from: await userName(m.user), received: tsToIso(m.ts), text: await messageText(m) };
+    const entry = { ts: m.ts, from: await userName(m.user), fromId: m.user, received: tsToIso(m.ts), text: await messageText(m) };
     if (m.files && m.files.length) entry.files = fileMeta(m.files);
     out.push(entry);
   }
@@ -952,7 +952,7 @@ async function createDraft() {
       await deleteDraftById(saved);
       await deleteUploads(fileIds);
     }
-    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Take the person's id from a message they wrote (the <@U...> after their name in --show/--history) or the user id --find-dm prints, or fix the token.`);
+    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Fix the token with the person's own id (see the slack skill's Mentions rule under Send).`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }

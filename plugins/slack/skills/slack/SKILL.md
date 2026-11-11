@@ -44,7 +44,7 @@ Under `scripts/` (run with `node`):
     Channel items: `subject` is `"@mention in #name"` when the unread messages mention you, with `from` the last person who mentioned you, else `"Unread in #name"`.
   - Show one: `node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]` — the message
     text plus a `chat.getPermalink` url. Pass `--thread-ts` to read a threaded reply. `--json` emits
-    `{channel,ts,threadTs,from,fromId,isMe,received,text,permalink}`, where `isMe` marks a message you posted.
+    `{channel,ts,threadTs,from,fromId,isMe,received,text,permalink}`, with `isMe` as in History.
   - Sent since: `node slack.js --sent-since=<YYYY-MM-DD> [--json]` - every message you posted on or
     after that day, oldest first, from `search.messages` `from:me`: channel, ts, threadTs, send time, and
     the raw mrkdwn text.
