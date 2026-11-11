@@ -73,8 +73,6 @@ Under `scripts/` (run with `node`):
     writing-review gate read and receipt the exact bytes that go out. See **Sending** below - this runs only
     on Russ's explicit per-message say-so.
     A person's mention id is the `fromId` of a message they wrote (`--show` and `--history` print it after the author's name as `<@U…>`), or the id `--find-dm` returns.
-    A file permalink's `/files/<id>/` segment holds the viewing account's id - Russ's own - whoever owns the file.
-    A body that mentions Russ himself fails outside his own self-DM; on that failure, replace the token with the addressee's `fromId`.
     A send or stage prints a `Mentions:` line naming each person the body tags; confirm it names the person you are writing to.
     Add `--file=<path>` to attach local files, comma-separated for several (`--file=a.png,b.png`).
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts

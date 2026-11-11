@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { richTextBlocks, rawTokensIn, mentionIds } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn } = require('./draft-body');
 
 const section = (text) => richTextBlocks(text)[0].elements[0].elements;
 
@@ -35,4 +35,10 @@ test('mentionIds lists each mentioned user once, skipping channels and links', (
   assert.deepStrictEqual(
     mentionIds('hi <@U0123ABCD> and <@W0999ZZZZ|pat>, see <#C0123ABCD> and <https://x.y|z>, thanks <@U0123ABCD>'),
     ['U0123ABCD', 'W0999ZZZZ']);
+});
+
+test('userIdsIn counts user elements and skips raw tokens left in text', () => {
+  const blocks = richTextBlocks('hi <@U0123ABCD> and <@U0123ABCD>');
+  blocks[0].elements[0].elements.push({ type: 'text', text: ' <@U0999ZZZZ>' });
+  assert.deepStrictEqual(userIdsIn(blocks), ['U0123ABCD']);
 });

@@ -786,7 +786,7 @@ async function send() {
     permalink = (await call('chat.getPermalink', { channel: r.channel, message_ts: r.ts })).permalink || '';
   } catch { /* permalink optional — the send already succeeded */ }
   if (args.json) {
-    console.log(JSON.stringify({ channel: r.channel, ts: r.ts, permalink, ...(cursor ? { cursor } : {}) }, null, 2));
+    console.log(JSON.stringify({ channel: r.channel, ts: r.ts, permalink, mentions, ...(cursor ? { cursor } : {}) }, null, 2));
     return;
   }
   console.log(`Sent to ${r.channel} at ts ${r.ts}.${permalink ? ` Link: ${permalink}` : ''}`);
@@ -814,7 +814,7 @@ function readBody(verb) {
   return text;
 }
 
-const { richTextBlocks, rawTokensIn, mentionIds } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn } = require('./draft-body');
 
 // Each user a body mentions, by name. A body that mentions the signed-in user fails unless it goes to
 // their own self-DM: a reply never tags its own sender, and the usual source of that id is a file's
@@ -823,7 +823,7 @@ async function checkMentions(verb, text, channel) {
   const ids = mentionIds(text);
   if (!ids.length) return [];
   const me = (await call('auth.test')).user_id;
-  if (ids.includes(me)) {
+  if (ids.includes(me) && channel !== me) {
     const info = await convInfo(channel);
     if (!(info.is_im && info.user === me)) {
       throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
@@ -831,10 +831,16 @@ async function checkMentions(verb, text, channel) {
         + 'message\'s fromId (--show/--history --json) or from --find-dm.');
     }
   }
-  return Promise.all(ids.map(async id => ({ id, name: await userName(id) })));
+  return namedMentions(ids);
 }
 
-const mentionLine = (mentions) => mentions.length ? `Mentions: ${mentions.map(m => `@${m.name}`).join(', ')}` : '';
+// Names one id at a time, so a listing of many drafts never bursts into Slack's rate limit.
+async function namedMentions(ids) {
+  const out = [];
+  for (const id of ids) out.push({ id, name: await userName(id) });
+  return out;
+}
+const mentionLine = (mentions) => `Mentions: ${mentions.map(m => `@${m.name}`).join(', ')}`;
 
 // The plain text of a draft's rich_text blocks, for listing.
 function draftText(blocks) {
@@ -866,11 +872,12 @@ async function listDrafts() {
       updated: d.last_updated_ts ? tsToIso(d.last_updated_ts) : '',
       text: draftText(d.blocks),
       rawTokens: rawTokensIn(d.blocks),
+      mentions: userIdsIn(d.blocks),
       files: d.file_ids,
     }));
   for (const d of out) {
     d.files = await draftFiles(d.files);
-    d.mentions = await Promise.all(mentionIds(d.text).map(async id => ({ id, name: await userName(id) })));
+    d.mentions = await namedMentions(d.mentions);
   }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }

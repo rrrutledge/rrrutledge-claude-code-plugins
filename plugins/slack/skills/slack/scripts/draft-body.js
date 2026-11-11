@@ -43,4 +43,17 @@ function mentionIds(text) {
   return [...new Set([...text.matchAll(MENTION_RE)].map(m => m[3]).filter(Boolean))];
 }
 
-module.exports = { richTextBlocks, rawTokensIn, mentionIds };
+// The distinct user ids saved blocks mention as real user elements.
+function userIdsIn(blocks) {
+  const found = [];
+  const walk = (els) => {
+    for (const e of els || []) {
+      if (e.type === 'user') found.push(e.user_id);
+      else if (e.elements) walk(e.elements);
+    }
+  };
+  for (const b of blocks || []) walk(b.elements);
+  return [...new Set(found)];
+}
+
+module.exports = { richTextBlocks, rawTokensIn, mentionIds, userIdsIn };
