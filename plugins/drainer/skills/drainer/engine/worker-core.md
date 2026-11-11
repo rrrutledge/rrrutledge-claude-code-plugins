@@ -147,18 +147,16 @@ No match → treat it as genuinely new.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
-The poller's duplicate guard tracks the item ids it dispatched itself, which excludes sessions Russell or a handoff started.
-A recurring card whose Start date arrives while its work is in motion therefore gets a second worker.
-Run `ListAgents` and look for a peer that may cover the same work, including one that arrived by a different source (an email and a Trello card, a Slack thread and an email that are really one piece of work).
-Judge relatedness from the titles and, when a title is ambiguous, from the peer's brief or this item's own link (a Trello card URL, a thread link) appearing in it.
-Russell's own interactive session counts the same as a background worker.
-When a peer looks like it covers the same work:
-1. `SendMessage` the peer what this worker was launched on and ask whether it is the same work.
-2. If the peer confirms, `SendMessage` it everything useful this worker has gathered (card state, thread context, links, findings), then close this worker via `python <skill>/scripts/close-session.py`.
-   Leave a card un-cleared and its Start untouched, so the peer owns the item.
-   Hand the item over without asking Russell whether the peer is fine taking it.
-   Like the silent closes listed in §6a, this queues no digest entry: the peer is the one carrying the item.
-3. If the peer says it is different work, or no peer looks related, carry on as normal.
+Same work arriving by another source carries its own conversation key (poller-core, "One conversation, one worker"), so it reaches you as a separate item, and this check catches it.
+A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
+Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
+When you stand down for a keeper, leave a card un-cleared and its Start untouched, so the keeper owns the item, and close via `python <skill>/scripts/close-session.py`.
+Like the silent closes listed in §6a, standing down queues no digest entry: the keeper is the one carrying the item.
+
+**When your seed names a live session already on this item's conversation, ask it first.**
+Settle with that session before any other work, by the rule in `duplicate-sessions.md`.
+
+**A new item in your own conversation arrives as a message from the drainer; handle it under §2d and §6 like your own.**
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.

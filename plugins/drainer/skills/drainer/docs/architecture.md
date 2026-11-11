@@ -16,7 +16,7 @@ Outlook / Teams / outreach are all the **same loop** with different **sources**.
 
 The drainer runs as a **continuous keeper**: a **poller** runs a short cycle every few minutes (a ~5-min cron) and holds each source at **zero un-started actionable items** all day.
 
-- **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away.
+- **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away, or hands the item to the live worker already on its conversation.
   Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.
@@ -28,10 +28,11 @@ The drainer runs as a **continuous keeper**: a **poller** runs a short cycle eve
 
 The loop - enumerate everything eligible → drop already-seen → dispatch against the worker buffer → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
 There is no per-cycle work cap upstream of that: every source is asked for everything it currently has.
-AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only).
+AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only), plus one judgment-free delivery call that carries a routed item to the live worker already on its conversation (`engine/poller-core.md`).
 The once-a-day acknowledgement sweep is code reading that triage verdict from the verdict cache; the acks themselves are drafted in the end-of-day ack review session.
 
-This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets its **own worker** that handles it to completion in a fresh context (its own headless background session), so context stays bounded and nothing is half-done.
+This is the **poller / worker split**: the poller enumerates and triages but never does an item's work; each needs-you item gets a **worker** that handles it to completion in its own headless background session, so context stays bounded and nothing is half-done.
+A new item in a conversation a worker already holds goes to that worker (`engine/poller-core.md`, "One conversation, one worker").
 The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss

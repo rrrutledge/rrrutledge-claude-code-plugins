@@ -18,11 +18,10 @@ The `slack` `slack.js` lives at `<slack-skill>/scripts/slack.js` - run it with `
 ## What is an item
 - one **unread DM** (im) - keyed to its latest unread message,
 - one **unread group DM** (mpim) - keyed to its latest unread message,
-- one **@-mention in a channel** - one item per mentioning message,
-- one **unread channel** (no @-mention) - one item per channel, keyed to its latest unread message,
+- one **unread channel** - keyed to its latest unread top-level message, its span holding every unread one, @-mentions of you included (subject format per the `slack` skill's `--list-unread`),
 - one **subscribed thread with unread replies** - keyed to its latest unread reply (the `subject` notes whether it also @-mentions you).
 
-**Muted conversations are skipped** by enumerate for the first four kinds above - muting a channel/DM is the user's "stop" on ambient noise, so the drainer honors it.
+**Muted conversations are skipped** by enumerate for the first three kinds above - muting a channel/DM is the user's "stop" on ambient noise, so the drainer honors it.
 A **subscribed thread** is different: it only exists because Russell replied to it or was mentioned in it, so it still surfaces even when the parent channel is muted - the same distinction Slack's own Threads panel makes.
 A new message/reply produces a new `ts`, so the conversation re-surfaces next cycle.
 
@@ -86,9 +85,8 @@ Marking read advances the cursor to `ts` in one move, clearing every unread mess
 This is worker-core §2d's clear-as-soon-as-scope-is-accounted-for principle, same as every other source - it just lands later here because a Slack item's full scope (how many distinct asks the unread span holds) isn't knowable until the §2 grouping read is done.
 Once it is: mark read as soon as every ask in the span is handled, staged, or tracked - don't hold it for step 6 beyond that point.
 
-- **DM / group DM / channel mention / channel unread** - `node slack.js --mark --channel=<channel> --ts=<ts>` (`conversations.mark`).
-  Advances the read cursor to `ts`.
-  For a channel @-mention this clears the mention badge but leaves any newer messages unread (the channel may re-surface as "Unread in #channel" on the next cycle - that is expected, not an error).
+- **DM / group DM / channel** - `node slack.js --mark --channel=<channel> --ts=<ts>` (`conversations.mark`).
+  Advances the read cursor to `ts` (above).
 - **Thread item** - `node slack.js --mark --channel=<channel> --ts=<ts> --thread-ts=<threadTs>` (`subscriptions.thread.mark`) - advances the thread's own read cursor.
 
 **Poll-time clear (fyi/junk).**

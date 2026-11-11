@@ -91,29 +91,14 @@ def _local(dt):
 
 # ---------------------------------------------------------------------------- eligibility
 
-def _slack_conversation(item):
-    """A Slack thread item's conversation is its thread; a DM, group DM, or channel item's is the whole
-    channel, since its item id moves to the newest message every time another one arrives."""
-    channel = item.get("channel")
-    if not channel:
-        return None
-    return f"{channel}|{item['threadTs']}" if item.get("threadTs") else channel
-
-
-# The sources the sweep covers, each with the item field (on an enumerated item and a captured record
-# alike) naming the conversation the item belongs to.
-CONVERSATIONS = {
-    "outlook-graph": lambda it: it.get("conversationId"),
-    "gmail": lambda it: it.get("threadId"),
-    "slack": _slack_conversation,
-}
+# The sources the sweep covers.
+SOURCES = {"outlook-graph", "gmail", "slack"}
 
 
 def conversation_key(provider, item):
-    """`<source>|<conversation>`, or None for a source or item the sweep doesn't cover."""
-    read = CONVERSATIONS.get(provider.name) if provider else None
-    conv = read(item) if read else None
-    return f"{provider.name}|{conv}" if conv else None
+    """The provider's own conversation key (`<source>|<conversation>`, the form the ledger stores), or
+    None for a source or item the sweep doesn't cover."""
+    return provider.conversation_key(item) if provider and provider.name in SOURCES else None
 
 
 def wait_started(item):
@@ -363,7 +348,7 @@ def daily_sweep(review, now=None, dry_run=False):
     verdicts = _read_json(os.path.join(review.runtime_dir, VERDICTS_FILE), {})
     waiting = []
     for name, p in review.providers.items():
-        if name not in CONVERSATIONS:
+        if name not in SOURCES:
             continue  # out of the sweep's scope; skip its listing entirely
         seen = load_seen(review.runtime_dir, name)
         try:

@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / @-mentions / unread thread replies (muted conversations skipped), show a message with its permalink, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting runs through the message-draft skill's `slack` mode, which stages with this skill's `--create-draft`; this skill's send posts an already-reviewed body.
+description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / channels (@-mentions included) / unread thread replies (muted conversations skipped), show a message with its permalink, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting runs through the message-draft skill's `slack` mode, which stages with this skill's `--create-draft`; this skill's send posts an already-reviewed body.
 ---
 
 # Slack — Read/Mark a Workspace via the Web API
@@ -38,14 +38,10 @@ Under `scripts/` (run with `node`):
 - **`slack.js`**
   - Auth glance: `node slack.js --check` (calls `auth.test`; prints the signed-in user/team; non-zero
     exit on auth failure)
-  - List unread: `node slack.js --list-unread [--top=50] [--json]` — unread **DMs**, **group DMs**,
-    **@-mentions of you in channels**, **unread channel messages (no @-mention, one item per channel)**,
-    and **unread replies in subscribed threads**, newest-first. **Muted conversations are skipped**
-    (muting is the user's "stop"). `--json` emits a structured array; each item carries `id`
-    (`<channel>:<ts>`), `channel`, `channelType` (`im`/`mpim`/`channel`/`thread`), `ts`, `threadTs`
-    (set for thread items), `from`, `fromId`, `subject`, `channelName`, `received` (ISO), `preview`,
-    `unreadCount`. Channel items: `subject` is `"@mention in #name"` for @-mention items or
-    `"Unread in #name"` for non-mention unread items.
+  - List unread: `node slack.js --list-unread [--top=50] [--json]` - unread **DMs**, **group DMs**, **unread channel messages (one item per channel, @-mentions of you included)**, and **unread replies in subscribed threads**, newest-first.
+    **Muted conversations are skipped** (muting is the user's "stop").
+    `--json` emits a structured array; each item carries `id` (`<channel>:<ts>`), `channel`, `channelType` (`im`/`mpim`/`channel`/`thread`), `ts`, `threadTs` (set for thread items), `from`, `fromId`, `subject`, `channelName`, `received` (ISO), `preview`, `unreadCount`.
+    Channel items: `subject` is `"@mention in #name"` when the unread messages mention you, with `from` the last person who mentioned you, else `"Unread in #name"`.
   - Show one: `node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]` — the message
     text plus a `chat.getPermalink` url. Pass `--thread-ts` to read a threaded reply. `--json` emits
     `{channel,ts,threadTs,from,fromId,received,text,permalink}`.
@@ -138,6 +134,27 @@ Under `scripts/` (run with `node`):
   internally by `--find-dm` once it's matched a name to a user).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).
 
+## Answer before a new message
+
+Before a new message goes to a person, the drainer handles what they already sent Russell, so he answers them first.
+This covers a message that starts something new in a DM or group DM; a reply to the person's waiting messages is the drain's own work.
+Before authoring that new top-level message, drain the conversation now:
+
+    python ~/.claude/drainer/launch-drainer.py --mode poller --repo <drainer project> --channel=<C> --now --resume-me
+
+`--repo` is the project the scheduled DrainerKeeper task drains (on this machine, `C:/Users/russe/Dev/personal-ai-pod`).
+Act on its `on-demand:` line:
+
+- **Nothing waits on Russell:** the line reads "nothing to drain" or files the item as fyi or junk, so author and stage the new message now.
+- **A worker was launched:** the line reads "launched", and that worker resumes this session once its item is done.
+  Close this session paused in the same turn, per session-mgr's `resume-on-completion.md`; a "warning" line beside it means the Stop hook won't enforce the pause, so close paused all the same.
+- **An open worker holds it:** the line reads "held behind open worker", and that worker already has this person's waiting messages.
+  Hand it the resume instruction by the existing-peer path in `resume-on-completion.md`, using the session id the line names, then close paused.
+- **A paused worker holds it:** the line reads "held behind paused worker", and that worker closed paused with this person's earlier messages unfinished.
+  Tell Russell that worker by its title from `claude agents`, with the id beside it, and ask whether to resume it or send the new message anyway.
+- **Held or failed for another reason, or no `on-demand:` line at all:** the line or the error names the reason.
+  Rerun the command a few minutes later, and tell Russell when a rerun gives the same reason.
+
 ## Sending
 
 Reading and drafting stay draft-only; `--send` is the single exception, and it is human-in-the-loop.
@@ -178,6 +195,4 @@ These constraints keep send safe:
 
 - The load-bearing identifier is **`<channel>:<ts>`** (the `id` in `--json`): a Slack `ts` is unique per
   message. Pass the `channel`/`ts` (and `threadTs` for a thread item) to `--show` and `--mark`.
-- An **item** is one **conversation** for a DM/group-DM (keyed to its latest unread message), one
-  **message** for each channel @-mention, and one **thread** for each subscribed thread with unread
-  replies (keyed to its latest unread reply).
+- An **item** is one conversation, as listed under `--list-unread` above.

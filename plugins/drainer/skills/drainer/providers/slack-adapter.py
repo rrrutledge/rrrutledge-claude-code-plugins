@@ -181,6 +181,16 @@ class Provider(ProviderBase):
         return {"channel": sent.get("channel"), "ts": sent.get("ts"), "permalink": sent.get("permalink"),
                 "cursor": sent.get("cursor")}
 
+    def conversation_key(self, item):
+        """A thread is one conversation, keyed by its root; a DM, a group DM, or a channel's top-level
+        timeline is another, keyed by the channel, since its item moves to the newest message every time
+        another one arrives."""
+        channel = item.get("channel")
+        if not channel:
+            return None
+        thread = item.get("threadTs")
+        return f"{self.name}|{channel}|{thread}" if thread else f"{self.name}|{channel}"
+
     def stable_id(self, item):
         # <channel>:<ts> is already unique per message (a Slack ts is unique within a channel); slugify
         # to a filesystem-safe id and keep it stable across cycles so seen-state dedups on it.

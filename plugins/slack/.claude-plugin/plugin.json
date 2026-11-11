@@ -1,6 +1,6 @@
 {
   "name": "slack",
-  "version": "1.15.2",
+  "version": "1.16.1",
   "description": "Read, react, and mark-read a Slack workspace via the Slack Web API. List unread DMs, group DMs, @-mentions, channel unreads, and unread thread replies (muted conversations skipped), show a message with its permalink, read recent thread/channel history, add an emoji reaction, mark a conversation or thread read, and list or create server-side drafts, optionally with attached files. No browser; the message-draft skill's slack mode stages replies through these drafts.",
   "author": {
     "name": "Russell Rutledge"

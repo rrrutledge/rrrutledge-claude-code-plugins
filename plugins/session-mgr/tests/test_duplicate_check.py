@@ -13,8 +13,10 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.abspath(os.path.join(HERE, "..", "skills", "resume-sessions", "scripts"))
 sys.path.insert(0, SCRIPTS)
+import bg_session  # noqa: E402
 import launch_marker  # noqa: E402
 
+bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # no machine paused record in the lists
 launch_marker.session_registry.REGISTRY_DIR = tempfile.mkdtemp()
 launch_marker.session_registry.REGISTRY_PATH = os.path.join(launch_marker.session_registry.REGISTRY_DIR, "live-sessions.json")
 

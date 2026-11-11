@@ -365,6 +365,13 @@ write_receipt = bg_session.write_receipt
 prompt_seed = bg_session.prompt_seed
 session_name = bg_session.session_name
 claude_agents = bg_session.claude_agents
+# The launch-time duplicate check every launched session gets. The two plugins update separately, so an
+# installed session-mgr older than this builder adds no section rather than breaking every launch.
+duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda agents, parent_id=None: "")
+# The sessions that closed paused, waiting to be resumed, and the guid each resumed session continues
+# under now; an older session-mgr records neither.
+paused_sessions = getattr(bg_session, "paused_sessions", lambda agents: {})
+session_resolver = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)
 
 
 # ---------------------------------------------------------------------------- correspondent identity
@@ -836,6 +843,15 @@ class ProviderBase:
         its docstring. None means there is no identity to hold on, so the item always dispatches."""
         relay = relay_correspondent(item, lambda: self._fetch_body(item))
         return relay if relay is not False else from_identity(item)
+
+    def conversation_key(self, item):
+        """A stable key for the conversation an item belongs to: an email thread, a Slack thread, a chat.
+        The poller hands a new item to the live worker already holding its conversation instead of
+        launching a second worker on it, so one conversation has one live worker, and the ack sweep keys
+        its ledger on it. `<source>|<conversation>`, namespaced by provider so two sources' ids never
+        collide; the ack ledger stores this form, so it stays fixed. None (the default) means the source
+        has no conversation to key on, so its items always dispatch on their own."""
+        return None
 
     def stable_id(self, item):
         """A deterministic id for an item (stable across cycles), used for seen-state."""

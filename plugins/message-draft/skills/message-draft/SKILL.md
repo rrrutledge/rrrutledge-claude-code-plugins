@@ -188,6 +188,7 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    A person by name resolves through `slack.js --find-dm=<full name>`, a known user ID through `--open-dm=<user ID>`.
    A person `--find-dm` can't find (a Slack Connect or external contact) is reached through a link Russell gives to the conversation, whose path carries the channel id.
    Confirm the conversation is the intended one with `slack.js --resolve-name=<channel>` before staging; a person's Slack handle can differ from their real name, so check it is them.
+   For a message that starts something new in a DM or group DM, run the **`slack`** skill's **Answer before a new message** on that conversation before writing the body.
 2. **Check for an existing draft.** `slack.js --list-drafts --channel=<C> [--thread-ts=<tts>]`.
    A listed draft whose destination is this exact target is one the user left: for a top-level message, that is a destination line with no `thread:`.
    Preserve it: surface it verbatim for review, and stage over it with `--replace` only on an explicit OK.

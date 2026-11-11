@@ -1,15 +1,18 @@
 // Shared OAuth2 client for the Google Calendar API. Reuses the same Google Cloud OAuth "Desktop app"
 // client the `gmail` plugin already registered (GMAIL_OAUTH_CLIENT_ID / _SECRET) - one OAuth client, many
-// scopes; each token cache only holds the scopes it was consented for. This path requests the read-only
-// calendar.readonly scope and keeps its own token cache (~/.claude/google-calendar/oauth-token.json),
+// scopes; each token cache only holds the scopes it was consented for. This path requests calendar.readonly
+// (reads, including the calendar lookup behind the account guard) plus calendar.events (event edits such as
+// removing a Meet link) and keeps its own token cache (~/.claude/google-calendar/oauth-token.json),
 // separate from gmail's and the other google-* plugins'.
+// A token without calendar.events still reads; an edit with it fails with
+// "insufficient authentication scopes" until the auth script is re-run.
 //
 // Prerequisite: the Google Calendar API must be enabled on the Cloud project the OAuth client belongs to -
 // a one-time, per-project toggle, unrelated to any single token.
 //
 // Wrong-account guard. The token records the address it was authorized for (account_email);
-// assertAccountEmail() re-checks it against the primary calendar's id (which is the signed-in address), so
-// a read can never come from the wrong account's calendar.
+// assertAccountEmail() re-checks it against the primary calendar's id (which is the signed-in address), and
+// refuses a token that recorded no address, so every read and edit lands on the account the token was set up for.
 //
 //   const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
 
@@ -24,7 +27,10 @@ const TOKEN_PATH = path.join(DEP_HOME, 'oauth-token.json');
 const PRIMARY_URL = 'https://www.googleapis.com/calendar/v3/calendars/primary';
 // Distinct from gmail's 8710, google-docs' 8711, google-sheets/forms' 8712, and google-drive's 8713.
 const REDIRECT_URI = 'http://localhost:8714/callback';
-const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+];
 
 function readTokens() {
   try { return JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8')); } catch { return null; }
@@ -50,12 +56,12 @@ async function fetchAccountEmail(authedClient) {
 async function assertAccountEmail(authedClient) {
   const t = readTokens();
   const expected = t && t.account_email ? String(t.account_email).toLowerCase() : null;
-  if (!expected) return;
+  if (!expected) throw new Error(`Account guard: the token records no account. To fix, run: ${signInCommand()}`);
   const live = await fetchAccountEmail(authedClient);
   if (live !== expected) {
     throw new Error(
       `Account guard tripped: this token was set up for ${expected}, but it now authorizes ${live || '(unknown)'}. ` +
-      `Refusing to read the wrong calendar. To fix, run: ${signInCommand()}`
+      `Refusing to touch the wrong calendar. To fix, run: ${signInCommand()}`
     );
   }
 }

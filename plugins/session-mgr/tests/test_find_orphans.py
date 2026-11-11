@@ -25,6 +25,7 @@ spec = importlib.util.spec_from_file_location("find_orphans", FIND_ORPHANS)
 find_orphans = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find_orphans)
 bg_session = find_orphans.bg_session
+bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # not the machine's record
 
 failures = []
 
