@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, mentionsSelfElsewhere } = require('./draft-body');
 
 const section = (text) => richTextBlocks(text)[0].elements[0].elements;
 
@@ -35,6 +35,15 @@ test('mentionIds lists each mentioned user once, skipping channels and links', (
   assert.deepStrictEqual(
     mentionIds('hi <@U0123ABCD> and <@W0999ZZZZ|pat>, see <#C0123ABCD> and <https://x.y|z>, thanks <@U0123ABCD>'),
     ['U0123ABCD', 'W0999ZZZZ']);
+});
+
+test('mentionsSelfElsewhere blocks a self-tag outside the self-DM only', () => {
+  const me = 'U0ME00000';
+  assert.strictEqual(mentionsSelfElsewhere([me], me, 'C0123ABCD', {}), true);
+  assert.strictEqual(mentionsSelfElsewhere([me], me, 'D0123ABCD', { is_im: true, user: 'U0OTHER00' }), true);
+  assert.strictEqual(mentionsSelfElsewhere([me], me, 'D0123ABCD', { is_im: true, user: me }), false);
+  assert.strictEqual(mentionsSelfElsewhere([me], me, me, {}), false);
+  assert.strictEqual(mentionsSelfElsewhere(['U0OTHER00'], me, 'C0123ABCD', {}), false);
 });
 
 test('userIdsIn counts user elements and skips raw tokens left in text', () => {

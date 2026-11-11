@@ -542,7 +542,7 @@ async function history() {
   if (!out.length) { console.log('No messages.'); return; }
   console.log(`${out.length} message(s), oldest first:`);
   for (const m of out) {
-    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from}${m.fromId ? ` <@${m.fromId}>` : ''} (ts=${m.ts}` +
+    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from}${m.fromId ? ` <@${m.fromId}>` : ''}${m.isMe ? ' (you)' : ''} (ts=${m.ts}` +
       `${m.threadTs ? `, thread=${m.threadTs}` : ''}${m.replyCount ? `, replies=${m.replyCount}` : ''})`);
     console.log(m.text || '(no text)');
     for (const f of m.files || []) console.log(`[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
@@ -814,7 +814,7 @@ function readBody(verb) {
   return text;
 }
 
-const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, mentionsSelfElsewhere } = require('./draft-body');
 
 // Each user a body mentions, by name. A body that mentions the signed-in user fails unless it goes to
 // their own self-DM: a reply never tags its own sender, and the usual source of that id is a file's
@@ -823,13 +823,10 @@ async function checkMentions(verb, text, channel) {
   const ids = mentionIds(text);
   if (!ids.length) return [];
   const me = (await call('auth.test')).user_id;
-  if (ids.includes(me) && channel !== me) {
-    const info = await convInfo(channel);
-    if (!(info.is_im && info.user === me)) {
-      throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
-        + 'A file permalink\'s /files/<id>/ is your own id, not the owner\'s; take the person\'s id from their '
-        + 'message\'s fromId (--show/--history --json) or from --find-dm.');
-    }
+  if (ids.includes(me) && mentionsSelfElsewhere(ids, me, channel, await convInfo(channel))) {
+    throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
+      + 'A file permalink\'s /files/<id>/ is your own id, not the owner\'s; take the person\'s id from their '
+      + 'message\'s fromId (--show/--history --json) or from --find-dm.');
   }
   return namedMentions(ids);
 }
@@ -955,7 +952,7 @@ async function createDraft() {
     destination.broadcast = true;
   }
   const filePaths = filePathsArg('--create-draft');
-  const mentions = await checkMentions('--create-draft', text, args.channel);
+  await checkMentions('--create-draft', text, args.channel);
   const fileIds = filePaths.length ? (await uploadFiles('--create-draft', filePaths)).ids : [];
   const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
@@ -990,7 +987,8 @@ async function createDraft() {
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
-  if (mentions.length) console.log(mentionLine(mentions));
+  const staged = await namedMentions(userIdsIn((saved || r.draft || {}).blocks));
+  if (staged.length) console.log(mentionLine(staged));
 }
 
 async function check() {

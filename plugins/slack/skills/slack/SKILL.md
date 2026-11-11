@@ -72,7 +72,7 @@ Under `scripts/` (run with `node`):
     is `<url|anchor text>` and a mention is `<@U…>`. `--body-file` (never an inline body) is what lets the
     writing-review gate read and receipt the exact bytes that go out. See **Sending** below - this runs only
     on Russ's explicit per-message say-so.
-    A person's mention id is the `fromId` of a message they wrote (`--show` and `--history` print it after the author's name as `<@U…>`), or the id `--find-dm` returns.
+    **Mentions:** a person's mention id is the `fromId` of a message they wrote (`--show` and `--history` print it after the author's name as `<@U…>`), or the id `--find-dm` returns.
     A send or stage prints a `Mentions:` line naming each person the body tags; confirm it names the person you are writing to.
     Add `--file=<path>` to attach local files, comma-separated for several (`--file=a.png,b.png`).
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts
@@ -84,7 +84,7 @@ Under `scripts/` (run with `node`):
     Add `--keep-unread` to leave it exactly as unread as it was: the send reads the read cursors before and
     after the post and puts back any the post moved (the drainer's acknowledgement sends use this, so an ack
     never marks the person's still-unhandled message read).
-    `--json` prints `{channel,ts,permalink,cursor}`, where `cursor` reports the before/after values and what was restored.
+    `--json` prints `{channel,ts,permalink,mentions,cursor}`, where `mentions` lists each tagged person's id and name, and `cursor` reports the before/after values and what was restored.
   - List drafts: `node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]` - the active
     (unsent, undeleted) drafts on Slack's server, optionally only those addressed to one conversation or thread.
     This server list is what the user's own Slack syncs from, so it is where a staged draft's text is read back.
@@ -94,7 +94,7 @@ Under `scripts/` (run with `node`):
     review and send himself.
     It reaches no one.
     The Send mrkdwn (`<url|anchor text>`, `<@U…>`) becomes real links and mentions; `<#C…>`, `<#G…>` (a private channel or group), `<!here>`, and `<!channel>` do too.
-    Mention ids follow the same sourcing and self-mention check as Send.
+    Mention ids are sourced and confirmed by Send's **Mentions** rule.
     The staged draft shows the channel name.
     After saving, `--create-draft` re-reads the draft and, when any raw `<#…>`, `<@…>`, or bare channel/user id is still in its text, deletes it and fails instead of reporting success; `--list-drafts` flags such a draft with a `!! RAW` line (`rawTokens` in `--json`).
     `*bold*`, `_italic_`, and `~strike~` spans render as styled text; a lone `*`, `snake_case_words`, and anything inside a URL or backtick code span stay literal.
