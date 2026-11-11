@@ -41,6 +41,11 @@ from provider_base import ProviderBase, ProviderError, run_node, find_skill_scri
 _UNRECOVERABLE_MARKER = "auto-refresh did not fix it"
 
 
+def _author_id(user_id):
+    """The author's mention token after their name, so the id a worker tags in a reply is the sender's."""
+    return f" <@{user_id}>" if user_id else ""
+
+
 def _attachment_lines(files):
     """Render slack.js's per-message `files` metadata (name/mimetype/permalink) as body lines so a
     worker always knows a message carried an image/file, and where to look - see the handoff this
@@ -231,7 +236,7 @@ class Provider(ProviderBase):
         # call); fall back to the single shown message when it's absent (older slack.js or a lone message).
         unread = item.get("unread") or []
         if len(unread) > 1:
-            parts = [f"**{m.get('from') or item.get('from') or '?'}** "
+            parts = [f"**{m.get('from') or item.get('from') or '?'}**{_author_id(m.get('fromId'))} "
                      f"({(m.get('received') or '')[:16].replace('T', ' ')}):\n{m.get('text', '')}"
                      f"{_attachment_lines(m.get('files'))}"
                      for m in unread]
@@ -246,7 +251,7 @@ class Provider(ProviderBase):
         else:
             body = text + _attachment_lines(shown_files)
         with open(body_file, "w", encoding="utf-8") as f:
-            f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}\n"
+            f.write(f"# {item.get('subject')}\n\nFrom: {item.get('from')}{_author_id(item.get('fromId'))}\n"
                     f"Channel: {item.get('channelName')} ({channel})\nReceived: {item.get('received')}\n"
                     f"Unread messages: {item.get('unreadCount')}\n"
                     f"Link: {permalink}\nMessageRef: {channel}:{ts}\n\n---\n\n{body}\n")
