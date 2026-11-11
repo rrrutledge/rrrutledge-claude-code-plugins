@@ -41,8 +41,8 @@ Write placement plans in those units and nothing needs converting.
 
 ## Calls the scripts leave to you
 
-- **Replace or add:** in a one-off script, use Replace only for a file with the old image's aspect ratio, since Replace keeps the old box; otherwise add the new image and delete the old.
-- **Insert from Uploads** to put an image on another page; copying between pages is flaky.
+- **Replace or add:** in a one-off script, use Replace for a file with the old image's aspect ratio, since Replace keeps the old box; for any other file, add the new image and delete the old.
+- **Insert from Uploads** to put an image on another page.
 - **A stray "Your paragraph text" box** means something typed with nothing selected.
   Undo it with Ctrl+Z, re-reading the page text after each press.
 
@@ -50,7 +50,6 @@ Write placement plans in those units and nothing needs converting.
 
 Magic Expand extends a photo with generated pixels.
 It works on a free Canva account.
-`--expand` runs it in a fresh scratch design, since it is a generative edit.
 
 1. `canva-edit.js --expand --file=<png> --name=<slug> --out=<dir> --top=<px> --bottom=<px>` (also `--left`, `--right`) stops at `<out>/<slug>-results.png`, showing four results.
 2. Look at the results screenshot yourself.
@@ -58,11 +57,11 @@ It works on a free Canva account.
    `--more` asks for four new results instead.
 4. `--close` closes the scratch tab.
 
-Each run leaves an "Untitled design" in the account.
+Each run leaves its scratch design in the account as an "Untitled design".
 A design delete is permanent, so hand the user the scratch design ids from `<out>/run.log` to trash themselves.
 
 On a low-res or busy source, Magic Expand often invents limbs, patterns or blobs.
-Judge each result at full size, and place only a natural-looking one; when none is, use that person's photo unexpanded.
+Judge each result at full size and place a natural-looking one; when none is, use that person's photo unexpanded.
 
 ## Other flows seen working
 

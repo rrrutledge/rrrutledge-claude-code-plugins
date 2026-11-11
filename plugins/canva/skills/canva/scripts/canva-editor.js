@@ -129,7 +129,8 @@ async function pageCount(tab) {
 async function gotoPage(tab, n) {
   for (let k = 0; k < 60 && !(await pageLoc(tab, n).count()); k++) {
     const nums = await shownPages(tab);
-    const pick = n > Math.max(...nums) ? Math.max(...nums) : Math.min(...nums);
+    if (!nums.length) { await wait(tab, 1000); continue; }
+    const pick =n > Math.max(...nums) ? Math.max(...nums) : Math.min(...nums);
     await pageLoc(tab, pick).scrollIntoViewIfNeeded();
     await pageLoc(tab, pick).click();
     await wait(tab, 400);
@@ -341,20 +342,6 @@ async function uploadFile(tab, file) {
   throw new Error('uploaded thumbnail never appeared for ' + path.basename(file));
 }
 
-// Swaps the selected image's picture, keeping its layer slot. Canva keeps the old box, so only use this when the
-// new file has the old image's aspect ratio, then size it with placeSelected.
-async function replaceSelectedImage(tab, file) {
-  await tab.getByRole('button', { name: 'Replace', exact: true }).first().click();
-  await wait(tab, 1200);
-  await tab.getByText('Uploads', { exact: true }).first().click();
-  const pick = await uploadFile(tab, file);
-  await tab.mouse.click(pick.x, pick.y);
-  await wait(tab, 3000);
-  const close = tab.getByRole('button', { name: 'Close', exact: true });
-  if (await close.count()) await close.first().click().catch(() => {});
-  await wait(tab, 800);
-}
-
 // Adds the file to the current page as a new, selected, front-most image and returns its box.
 async function addImage(tab, file) {
   const [fw, fh] = pngDims(file);
@@ -502,6 +489,7 @@ async function replaceWord(tab, word, nth, replacement) {
   let sel = '';
   for (let k = 0; k < 2 && sel.trim() !== word; k++) {
     hits = await findWord(tab, word);
+    if (!hits[nth]) { await tab.keyboard.press('Escape'); throw new Error(`"${word}" occurrence ${nth} vanished after selecting its text`); }
     await tab.mouse.dblclick(hits[nth].x, hits[nth].y);
     await wait(tab, 700);
     sel = await tab.evaluate(() => String(window.getSelection()));
@@ -527,6 +515,6 @@ function progress(file) {
 module.exports = {
   openTab, closeTab, argValue, cdpPort, wait, near, sameBox, pngDims, connectBrowser, nudge, designId, withDesign, ready,
   pageCount, gotoPage, pageRect, deselect, showTab, openPositionPanel, readArrange, isImageSelected, layers,
-  selectLayer, setRatioLock, setArrange, placeSelected, uploadFile, replaceSelectedImage, addImage, deleteLayer,
+  selectLayer, setRatioLock, setArrange, placeSelected, uploadFile, addImage, deleteLayer,
   moveSelected, waitSaved, reloadToPage, presentShot, textRuns, findWord, replaceWord, progress,
 };

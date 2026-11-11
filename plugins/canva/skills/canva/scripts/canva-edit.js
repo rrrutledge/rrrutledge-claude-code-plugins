@@ -22,8 +22,8 @@
 //   { "pages": { "5": [
 //       { "match": {"x":120,"y":300,"w":540,"h":780}, "file": "C:/.../cutout.png", "to": {"x":96,"y":250,"h":830} },
 //       { "match": {"x":800,"y":400,"w":700,"h":260}, "to": {"x":780,"y":410} } ] } }
-// "match" is the layer's current box (within 1.5 px). With "file", the layer's picture becomes that file, sized by
-// "to" with the ratio locked, keeping the layer's front-to-back slot. Without "file", the layer is moved (and sized,
+// "match" is the layer's current box (within 1.5 px). With "file", that file is added as a new image sized by "to" with
+// the ratio locked, the old layer is deleted, and the new image takes the old layer's front-to-back slot. Without "file", the layer is moved (and sized,
 // if "to" has h or w). Each item checks the page first and skips itself when a layer already sits at "to", so a rerun
 // resumes where the page really is. Pages that pass their check are logged in <out>/progress.txt and skipped unless --force.
 
@@ -124,17 +124,6 @@ async function applyItem(tab, n, item, L) {
     return;
   }
   if (!fs.existsSync(item.file)) throw new Error('missing file ' + item.file);
-  const [fw, fh] = E.pngDims(item.file);
-  await E.selectLayer(tab, old);
-  if (old.img && old.label === 'Image' && E.near(old.box.w / old.box.h, fw / fh, 0.005 * fw / fh)) {
-    await E.replaceSelectedImage(tab, item.file);
-    const same = (await E.layers(tab)).filter(r => r.img && E.sameBox(r.box, old.box));
-    if (same.length !== 1) throw new Error(`p${n}: replaced image not found in its old box`);
-    await E.selectLayer(tab, same[0]);
-    const got = await E.placeSelected(tab, item.to);
-    L(`p${n} replaced in place ${path.basename(item.file)}`, JSON.stringify(got));
-    return;
-  }
   await E.addImage(tab, item.file);
   const placed = await E.placeSelected(tab, item.to);
   await finishSwap(tab, n, old, placed, old.i);
@@ -147,7 +136,9 @@ async function finishSwap(tab, n, old, placed, slot) {
   if (olds.length !== 1) throw new Error(`p${n}: old layer not uniquely found next to the new image (${olds.length})`);
   await E.deleteLayer(tab, olds[0]);
   for (let t = 0; ; t++) {
-    const me = (await E.layers(tab)).find(r => E.sameBox(r.box, placed, 1.5));
+    const rows = await E.layers(tab);
+    if (rows.some(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3))) throw new Error(`p${n}: the old layer is still on the page after Delete`);
+    const me = rows.find(r => E.sameBox(r.box, placed, 1.5));
     if (!me) throw new Error(`p${n}: new image lost after deleting the old one`);
     if (me.i === slot) break;
     if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${slot}`);
@@ -285,6 +276,8 @@ async function cmdExpand() {
       await E.closeTab(tab);
       delete st[name];
       fs.writeFileSync(stateFile, JSON.stringify(st, null, 1));
+    } else {
+      errors.push('--expand needs --file=<png>, --pick=K, --more or --close');
     }
   } catch (e) {
     errors.push(e.message);

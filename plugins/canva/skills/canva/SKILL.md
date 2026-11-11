@@ -7,11 +7,12 @@ description: Work in a Canva account two ways. The Connect API (no browser) crea
 
 Two halves, each with its own script:
 
-- **Connect API** (`scripts/canva.js`): assets and folders, no browser. The rest of this file covers it.
-- **Browser editing** (`scripts/canva-edit.js`): edits a design's pages, which the Connect API can't do.
+- **Connect API** (`scripts/canva.js`): assets and folders, no browser.
+  The rest of this file covers it.
+- **Browser editing** (`scripts/canva-edit.js`): edits a design's pages.
   **Before any edit to a design, read [references/browser-editing.md](references/browser-editing.md).**
   It covers the dedicated browser the editing needs, waking a frozen editor, batching and checking each edit, Magic Expand, and the editor's traps.
-  Run `canva-edit.js` through browser-chauffeur; its header lists every command, and the reference has the placement-plan format.
+  Run `canva-edit.js` through browser-chauffeur; its header lists every command and the `--apply` plan format.
 
 ## Connect API
 
@@ -28,7 +29,7 @@ Canva mandates PKCE on every integration, confidential or not.
   Not implemented here; a separate addition if ever needed.
 - **Editing an existing design's pages** has no Connect API endpoint; browser editing covers it.
 - **Per-person sharing** is not in the public API - Canva's per-collaborator share model is a UI (and Business/Enterprise team-membership) feature with no Connect API endpoint.
-  Sharing a folder or design with a specific person's email stays a manual step via browser-chauffeur, not something `canva.js` can do.
+  Sharing a folder or design with a person runs in the browser; see the sharing entry in [references/browser-editing.md](references/browser-editing.md).
 
 ### First-time setup
 
