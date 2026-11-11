@@ -2,7 +2,7 @@
 cycle beside it, then exits cleanly so the scheduled task starts a fresh copy.
 
 The `DrainerKeeper` scheduled task starts the poller every 5 minutes and ignores a start while one is
-running. The poller's scheduled form now runs this keeper, so the task is its watchdog: a keeper that is
+running. The poller's scheduled form runs this keeper, so the task is its watchdog: a keeper that is
 alive makes the task's start a no-op, and one that died or recycled is back within 5 minutes. The keeper
 also holds a single-instance lock, so a second start from any other path exits at once.
 
@@ -17,11 +17,13 @@ The keeper recycles (stops starting feeds, waits for the running one, releases t
 has run `max_age` seconds, when its memory passes `max_rss_mb`, or when `should_recycle()` says so (the
 poller passes a check that a newer drainer version has been installed).
 """
+import ctypes
+import msvcrt
 import os
 import subprocess
-import sys
 import threading
 import time
+from ctypes import wintypes
 from datetime import datetime
 
 LOCK_FILE = "keeper.lock"
@@ -62,60 +64,38 @@ class InstanceLock:
             self.fh.close()
             self.fh = None
 
-    def __enter__(self):
-        return self
 
-    def __exit__(self, *exc):
-        self.release()
+# The drainer runs on Windows (its scheduled task is a Windows Scheduled Task), so the lock and the memory
+# reading use the Windows APIs.
+def _lock(fh):
+    fh.seek(0)
+    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
 
 
-if os.name == "nt":
-    import msvcrt
+def _unlock(fh):
+    fh.seek(0)
+    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
-    def _lock(fh):
-        fh.seek(0)
-        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
 
-    def _unlock(fh):
-        fh.seek(0)
-        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
-else:
-    import fcntl
-
-    def _lock(fh):
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-    def _unlock(fh):
-        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+class _Counters(ctypes.Structure):
+    _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
 
 
 def rss_mb():
-    """This process's resident memory in MB, or None where it can't be read."""
-    if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        class Counters(ctypes.Structure):
-            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
-                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
-                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
-        c = Counters()
-        c.cb = ctypes.sizeof(c)
-        get_process = ctypes.windll.kernel32.GetCurrentProcess
-        get_process.restype = wintypes.HANDLE
-        psapi = ctypes.WinDLL("psapi")
-        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
-        if psapi.GetProcessMemoryInfo(get_process(), ctypes.byref(c), c.cb):
-            return c.WorkingSetSize / 1_048_576
-        return None
-    try:
-        import resource
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
-    except (ImportError, OSError):
-        return None
+    """This process's working-set memory in MB, or None when it can't be read."""
+    c = _Counters()
+    c.cb = ctypes.sizeof(c)
+    get_process = ctypes.windll.kernel32.GetCurrentProcess
+    get_process.restype = wintypes.HANDLE
+    psapi = ctypes.WinDLL("psapi")
+    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_Counters), wintypes.DWORD]
+    if psapi.GetProcessMemoryInfo(get_process(), ctypes.byref(c), c.cb):
+        return c.WorkingSetSize / 1_048_576
+    return None
 
 
 class Log:
@@ -139,6 +119,17 @@ class Log:
                     f.write(line)
             except OSError:
                 pass
+
+
+def kill_tree(proc):
+    """End a feed cycle and every process it started (its node helpers and `claude -p` calls), which a
+    plain kill on Windows would leave running."""
+    try:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    proc.kill()
 
 
 def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=300, feed_timeout=1800,
@@ -166,11 +157,20 @@ def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=
                     code = proc.wait(timeout=feed_timeout)
                     log(f"feed cycle exited {code} after {clock() - t0:.0f}s")
                 except subprocess.TimeoutExpired:
-                    proc.kill()
+                    kill_tree(proc)
                     proc.wait()
                     log(f"feed cycle killed after {feed_timeout}s")
             except Exception as e:  # a failed start is retried next interval, never fatal
                 log(f"feed cycle failed to start: {e}")
+            # The version check runs here, between feed cycles: its plugin update can take 30 seconds and
+            # can replace the directory a running cycle executes from, so it waits for no cycle to be
+            # running and never holds up a dispatch pass.
+            try:
+                if should_recycle and should_recycle():
+                    reason.append("a newer drainer version is installed")
+                    stop.set()
+            except Exception as e:
+                log(f"recycle check failed: {e}")
             wake.set()  # dispatch the items this cycle just added
             stop.wait(max(0.0, feed_interval - (clock() - t0)))
 
@@ -188,14 +188,8 @@ def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=
                 reason.append(f"ran {age / 3600:.1f}h")
             elif mem is not None and mem >= max_rss_mb:
                 reason.append(f"memory {mem:.0f} MB")
-            elif not feeder.is_alive():
+            elif not feeder.is_alive() and not reason:
                 reason.append("feed thread ended")
-            else:
-                try:
-                    if should_recycle and should_recycle():
-                        reason.append("a newer drainer version is installed")
-                except Exception as e:
-                    log(f"recycle check failed: {e}")
             if reason:
                 break
             wake.wait(dispatch_interval)
@@ -211,7 +205,6 @@ def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=
                     dispatch()
                 except Exception as e:
                     log(f"dispatch pass failed: {type(e).__name__}: {e}")
-        why = reason[0] if reason else f"stopped by {sys.exc_info()[0].__name__ if sys.exc_info()[0] else 'exit'}"
-        log(f"keeper recycling: {why}")
+        log(f"keeper recycling: {reason[0] if reason else 'stopped'}")
         lock.release()
     return reason[0]

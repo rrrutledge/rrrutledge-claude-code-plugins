@@ -31,6 +31,7 @@ class Proc:
     def __init__(self, hang=False):
         self.hang = hang
         self.killed = False
+        self.pid = 0
 
     def wait(self, timeout=None):
         if self.hang and not self.killed:
@@ -55,6 +56,7 @@ def harness(hang=False):
     return calls, dispatch, popen
 
 
+keeper.kill_tree = lambda proc: proc.kill()  # the fakes have no process tree to end
 FAST = dict(dispatch_interval=0.02, feed_interval=0.05, feed_timeout=0.05)
 
 print("\nInstanceLock: one holder at a time, free again once released")
@@ -108,14 +110,15 @@ keeper.run(rt, flaky, ["feed"], popen=popen, log=calls["log"].append, max_age=0.
 check("passes kept running", count[0] >= 3, True)
 check("the failure is logged", any("dispatch pass failed: RuntimeError: boom" in line for line in calls["log"]), True)
 
-print("\nrun: recycles when should_recycle says a newer version is installed")
+print("\nrun: recycles when should_recycle says a newer version is installed, checked between feed cycles")
 rt = tempfile.mkdtemp(prefix="keeper-")
 calls, dispatch, popen = harness()
 answers = iter([False, False, True])
 reason = keeper.run(rt, dispatch, ["feed"], popen=popen, log=calls["log"].append,
                     should_recycle=lambda: next(answers, True), **FAST)
 check("the reason names the new version", reason, "a newer drainer version is installed")
-check("it dispatched before recycling", calls["dispatch"], 3)
+check("it ran a check after each of three feed cycles, then stopped feeding", len(calls["feeds"]), 3)
+check("it dispatched meanwhile", calls["dispatch"] >= 1, True)
 
 print("\nrun: recycles past the memory threshold")
 rt = tempfile.mkdtemp(prefix="keeper-")

@@ -8,7 +8,7 @@ instructions: |-
   For each: read the underlying conversation → decide the ACTION (reply / do work / nudge / stop / nothing) → DO the doable part now (safe, reversible work proceeds; irreversible/outbound-to-others waits for the user's OK) → draft any reply in the user's voice **draft-only, never sent** → clear the item.
   Outlook / Teams / outreach are the **same loop over different sources**.
 
-  It runs as a **continuous keeper**: one long-running process (`scripts/run-poller.py`) whose feed cycle finds and judges new items every 5 minutes and whose dispatch loop opens workers about once a minute, holding each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker, dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
+  It runs as a **continuous keeper**: one long-running process (`scripts/run-poller.py`) that holds each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker, dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
   The loop is code; AI is used only to **triage** each cycle's new items and to run each **worker**.
 
   ### 1. Load per-machine settings FIRST

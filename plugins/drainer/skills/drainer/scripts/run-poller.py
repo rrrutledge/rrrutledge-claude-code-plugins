@@ -151,6 +151,36 @@ def save_health(runtime_dir, health):
     write_json_atomic(os.path.join(runtime_dir, HEALTH_FILE), health)
 
 
+HEALTH_LOCK_FILE = "provider-health.lock"
+FEED_POLLER_FIELDS = ("last_run_ts", "last_drained_ts")  # the feed's heartbeat; the dispatch pass owns the scan fields
+
+
+@contextlib.contextmanager
+def health_lock(runtime_dir):
+    """Held around every read-modify-write of the health file: the feed cycle and the keeper's dispatch
+    pass both update it. Proceeds unlocked if the lock can't be had in 10 seconds, since a lost health
+    update costs one count, never an item."""
+    lock = keeper.InstanceLock(os.path.join(runtime_dir, HEALTH_LOCK_FILE))
+    lock.acquire(timeout=10)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def save_feed_health(runtime_dir, health):
+    """Write the feed cycle's per-provider outcomes and heartbeat onto the current health file, keeping
+    the scan-failure fields a dispatch pass wrote while the cycle ran."""
+    with health_lock(runtime_dir):
+        current = load_health(runtime_dir)
+        for name, entry in health.items():
+            if name == POLLER_KEY:
+                current.setdefault(POLLER_KEY, {}).update({f: entry[f] for f in FEED_POLLER_FIELDS if f in entry})
+            else:
+                current[name] = entry
+        save_health(runtime_dir, current)
+
+
 def record_health_ok(health, name):
     """A successful enumerate resets the failure streak and stamps last_ok_ts; keeps prior error fields
     for reference (so the digest can say 'recovered at <last_ok_ts> after failing since <last_error_ts>')."""
@@ -2105,7 +2135,7 @@ def main():
         print("No providers with a poller adapter are enabled; nothing to do.")
         if not args.dry_run:
             record_heartbeat(health)  # ran a full live cycle (just nothing to drain)
-            save_health(cfg["runtime_dir"], health)  # persist any config-load failures recorded above
+            save_feed_health(cfg["runtime_dir"], health)  # persist any config-load failures recorded above
         return
 
     # One live-session scan for the whole cycle: reconcile reads it to spot workers that never finished,
@@ -2182,7 +2212,7 @@ def main():
     # shell without the User-scope creds, would log false failures.
     if not args.dry_run and not args.channel:
         record_heartbeat(health)  # a full live cycle ran
-        save_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
+        save_feed_health(cfg["runtime_dir"], health)  # persist this cycle's per-provider outcomes
 
     if args.channel and not all_new:
         # Nothing new to pick up, but a worker an earlier cycle launched may still hold the conversation's
@@ -2439,7 +2469,11 @@ def main():
             print(f"on-demand: {line}")
         return
 
-    feed_pending(cfg["runtime_dir"], offered, auto + needs, others + correctly_junked + to_rescue)
+    # An item whose triage or screen was unavailable this cycle leaves the list too: one already on it
+    # came back to judging only because its listing changed, so its stored verdicts no longer cover what
+    # it says, and it waits off the list (fail-closed) until a cycle can judge it.
+    held_unjudged = [it for it in ai_triage if it["_id"] in unjudged]
+    feed_pending(cfg["runtime_dir"], offered, auto + needs, others + correctly_junked + to_rescue + held_unjudged)
     if args.once:
         run_dispatch(cfg, prov, repo, config_repo)
 
@@ -2495,42 +2529,54 @@ def feed_pending(runtime_dir, offered, keep, drop):
           f"{removed} entr(ies) removed.")
 
 
-def run_dispatch(cfg, prov, repo, config_repo):
+def run_dispatch(cfg, prov, repo, config_repo, recent=None):
     """One dispatch pass over the whole pending list, under the dispatch lock."""
     with dispatch_lock(cfg["runtime_dir"]) as locked:
         if not locked:
             print("dispatch: another pass holds the dispatch lock; skipped.")
             return
-        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]))
+        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]), recent=recent)
 
 
-def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, launcher_id=None, on_demand=None):
+# How long a worker this process launched keeps holding its conversation and its correspondent, by this
+# process's own record rather than the session scan: a worker a minute old may not be listed or reachable
+# yet, so without this the next pass would launch a second worker for the same conversation or person.
+LAUNCH_HOLD = timedelta(minutes=5)
+
+
+def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, launcher_id=None, on_demand=None,
+                  recent=None):
     """Open workers for the top judged items, up to the free slots. The only code that opens item workers.
 
-    Reads the machine's sessions once, drops any item already recorded seen (dispatched by an earlier
-    pass, or by a concurrent on-demand run) from the pending list, then dispatches auto-handle items
-    unconditionally and needs-you items in order_needs order while slots remain, with the correspondent
-    hold, the conversation routing and the still-pending check exactly as a full cycle applied them.
+    Reads the machine's sessions once, drops any item already recorded seen from the pending list, then
+    dispatches auto-handle items unconditionally and needs-you items in order_needs order while slots
+    remain, with the correspondent hold and the conversation routing applied to each item.
     An item that opens a worker, or is handed to a live one, is recorded seen and leaves the pending list;
-    a held item stays on it for the next pass. `channel`, `now`, `launcher_id` and `on_demand` carry an
-    on-demand --channel run's flags and outcome lines."""
+    a held item stays on it for the next pass. An item whose source isn't loaded this pass waits for a pass
+    that has it. `recent` is the keeper's record of the conversations and correspondents its launches
+    claimed, as `{"convs": {key: when}, "corrs": {identity: when}}`, kept across passes for LAUNCH_HOLD.
+    `channel`, `now`, `launcher_id` and `on_demand` carry an on-demand --channel run's flags and outcome
+    lines."""
     runtime_dir = cfg["runtime_dir"]
     on_demand = [] if on_demand is None else on_demand
+    recent = {"convs": {}, "corrs": {}} if recent is None else recent
+    started = datetime.now(timezone.utc)
+    for claims in recent.values():
+        for k in [k for k, when in claims.items() if started - when >= LAUNCH_HOLD]:
+            del claims[k]
     agents = _claude_agents()
     live = live_session_ids(agents)
 
+    # The dispatch lock makes this pass the only writer of needs-you and auto-handle seen records while it
+    # runs, so one read of the seen record up front is the still-pending check for the whole pass.
     seen_by = {}
-
-    def already_seen(it):
-        if it["_source"] not in seen_by:
-            seen_by[it["_source"]] = load_seen(runtime_dir, it["_source"])
-        return it["_id"] in seen_by[it["_source"]]
-
     fresh = []
     for it in items:
-        if it["_source"] not in prov or already_seen(it):
-            # Dispatched since it was listed, or its source is no longer enabled: either way it is not
-            # this pass's to open, and the next feed cycle re-lists anything still waiting.
+        if it["_source"] not in prov:
+            continue
+        if it["_source"] not in seen_by:
+            seen_by[it["_source"]] = load_seen(runtime_dir, it["_source"])
+        if it["_id"] in seen_by[it["_source"]]:
             pending.remove(runtime_dir, it["_source"], it["_id"])
             continue
         fresh.append(it)
@@ -2538,20 +2584,17 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
     # fail closed: open no new needs-you workers this pass) ---
     wcounts = worker_counts(agents)
-    if channel:  # scan health and its diagnostic are the scheduled keeper's
-        waiting, total = wcounts or (None, None)
-    else:
-        health = load_health(runtime_dir)
-        if wcounts is None:
-            waiting = total = None
-            fails = _record_scan_failure(health)
-            if fails >= SCAN_FAILURE_ALERT_THRESHOLD and _scan_failure_alert_due(health):
-                _spawn_scan_diagnostic(repo, runtime_dir, cfg["worker_model"])
-                health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
-            save_health(runtime_dir, health)
-        else:
-            waiting, total = wcounts
-            if health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
+    waiting, total = wcounts or (None, None)
+    if not channel:  # scan health and its diagnostic are the scheduled keeper's
+        with health_lock(runtime_dir):
+            health = load_health(runtime_dir)
+            if wcounts is None:
+                fails = _record_scan_failure(health)
+                if fails >= SCAN_FAILURE_ALERT_THRESHOLD and _scan_failure_alert_due(health):
+                    _spawn_scan_diagnostic(repo, runtime_dir, cfg["worker_model"])
+                    health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
+                save_health(runtime_dir, health)
+            elif health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
                 _record_scan_ok(health)
                 save_health(runtime_dir, health)
 
@@ -2578,13 +2621,14 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     # duplicates in the SAME pass don't both spawn - the first claims the identity and the rest wait.
     # Recomputed each pass from live sessions, never a stored flag, so a dead worker frees it within one
     # pass (see open_correspondents).
-    active_correspondents = open_correspondents(runtime_dir, live)
+    active_correspondents = open_correspondents(runtime_dir, live) | set(recent["corrs"])
+    seeded_correspondents = set(active_correspondents)
     # One conversation, one worker: a new item whose conversation a live worker already holds is handed
     # to that worker instead of getting its own, one whose worker closed paused waits for it to be
-    # resumed, and a conversation that gets a new worker this pass holds its later items until that
-    # worker can receive them.
+    # resumed, and a conversation that got a new worker within LAUNCH_HOLD holds its later items until
+    # that worker can receive them.
     open_convs = open_conversations(runtime_dir, live, paused_ids(agents))
-    claimed_convs = set()
+    claimed_convs = set(recent["convs"])
     # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
     # line names that worker and the launching session can wait on it.
     thread_holder = None
@@ -2641,10 +2685,6 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
         provider = prov[it["_source"]]
         iid = it["_id"]
         model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-        if iid in load_seen(runtime_dir, it["_source"]):  # a concurrent run dispatched it since this pass read the list
-            pending.remove(runtime_dir, it["_source"], iid)
-            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
-            continue
         it["_correspondent"] = provider.correspondent(it)
         json_file = provider.capture(it, iid, runtime_dir)
         # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
@@ -2689,13 +2729,6 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
             held += 1
             held_corr += 1
             on_demand.append(f"held {iid} - an open worker on the same person holds it, retry shortly")
-            continue
-        if iid in load_seen(runtime_dir, it["_source"]):
-            # A concurrent run (an on-demand --channel run, or a pass before it) dispatched it since this
-            # pass read the list.
-            pending.remove(runtime_dir, it["_source"], iid)
-            held += 1
-            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
             continue
         # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.
         if slots <= 0 and not (now and wcounts is not None):
@@ -2759,6 +2792,10 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
           f"{held_conv} behind a worker launched this pass on the same conversation, "
           f"{held_paused} behind a paused worker on their conversation) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
+    for key in claimed_convs - set(recent["convs"]):
+        recent["convs"][key] = started
+    for corr in active_correspondents - seeded_correspondents:
+        recent["corrs"][corr] = started
     return dispatched + auto_dispatched
 
 
@@ -2793,14 +2830,16 @@ def _newer_version_check():
 def serve(source_repo):
     """The scheduled form: run the keeper (keeper.py) until it recycles. Its dispatch loop runs a dispatch
     pass over the pending list about once a minute, and its feed thread runs this script's --feed cycle
-    every 5 minutes. Config and providers are re-read each pass, so a knob change applies within a minute."""
+    every 5 minutes. Config is re-read each pass, so a buffer knob change applies within a minute; the
+    providers load once per keeper, so a provider change applies when the keeper recycles."""
     config_repo = ensure_main_worktree(source_repo)
-    runtime_dir = read_config(config_repo, runtime_root=source_repo)["runtime_dir"]
+    cfg = read_config(config_repo, runtime_root=source_repo)
+    runtime_dir = cfg["runtime_dir"]
+    prov = {p.name: p for p in load_providers(cfg, {})}
+    recent = {"convs": {}, "corrs": {}}
 
     def dispatch():
-        cfg = read_config(config_repo, runtime_root=source_repo)
-        providers = load_providers(cfg, {})
-        run_dispatch(cfg, {p.name: p for p in providers}, source_repo, config_repo)
+        run_dispatch(read_config(config_repo, runtime_root=source_repo), prov, source_repo, config_repo, recent)
 
     feed_cmd = [sys.executable, os.path.abspath(__file__), "--repo", source_repo, "--feed"]
     reason = keeper.run(runtime_dir, dispatch, feed_cmd, should_recycle=_newer_version_check())

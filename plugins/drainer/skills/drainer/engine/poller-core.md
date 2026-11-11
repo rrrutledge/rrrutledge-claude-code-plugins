@@ -56,7 +56,7 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 `python run-poller.py --repo <project> --feed` (or `--once`, or `--dry-run`)
 
 1. **Read config** from `<project>/.claude/drainer.local.md`: enabled providers, `runtime_dir`.
-   Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-cycle throttle in the whole loop (see step 5).
+   Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-pass throttle in the whole loop (see step 5).
 2. **Reconcile** (`reconcile_unhandled()`) - re-queue any email item whose source object is still unhandled with no live worker session on it, so it re-enumerates below.
    See the section after this list for the rule and its guards.
 3. **Per provider - enumerate everything eligible:** call the provider's enumerate (for outlook-graph, `mail.js --list-inbox --json --top=<ENUMERATE_PAGE_SIZE>` - read+unread, newest-first, no time window).
@@ -87,7 +87,7 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 5. **Dispatch** (deterministic) - the feed cycle files fyi and junk items itself and writes needs-you and auto-handle items to the pending list; the dispatch loop's pass then works the list, dropping any item already recorded seen before it decides:
    - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one, and if a paused worker holds it, hold the item (see "One conversation, one worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
-     The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
+     The buffer is dynamic: each pass opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
      The point is that whenever Russell turns his attention there is always something waiting for review, so he is never idle on the AI; while he is busy those waiting workers stay unresolved, so the buffer stays full and few new ones open.
      With no room: the item stays **unrecorded** on the pending list, and a later pass picks it up (throttle + fail-safe).
@@ -157,7 +157,7 @@ If one matches, the item is left **unrecorded** on the pending list - the same p
 The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
 If a worker dies without clearing, the hold behind it goes false on the next pass, and reconcile re-queues *its* item within one feed cycle - both read the same liveness signal, not a separate flag.
 Worst case is one feed cycle's delay, never indefinite starvation.
-A live-session scan that fails yields no held-open set, so a cross-cycle hold **fails open** (dispatch proceeds); the same-cycle dedup still holds a burst.
+A live-session scan that fails yields no held-open set, so a hold across passes **fails open** (dispatch proceeds); the same-pass dedup still holds a burst.
 
 **Correspondent identity is per-provider, not always the envelope From address.**
 For direct email the From address *is* the correspondent, so two messages from the same person share it.

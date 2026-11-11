@@ -59,19 +59,19 @@ def get(runtime_dir, source, iid):
     return _read(_path(runtime_dir, source, iid))
 
 
-def put(runtime_dir, item, now=None):
+def put(runtime_dir, item):
     """Store or refresh one item's entry. Keeps the `_pendingSince` of an earlier entry, and skips the
     write when nothing changed, so a feed cycle re-finding a held item costs a read, not a write."""
     path = _path(runtime_dir, item["_source"], item["_id"])
     old = _read(path)
-    entry = dict(item)
-    entry["_pendingSince"] = (old or {}).get("_pendingSince") or (now or datetime.now(timezone.utc)).isoformat()
+    entry = json.loads(json.dumps(item, default=str))  # the form it reads back in, so the compare is like for like
+    entry["_pendingSince"] = (old or {}).get("_pendingSince") or datetime.now(timezone.utc).isoformat()
     if old == entry:
         return False
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = f"{path}.{os.getpid()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(entry, f, default=str)
+        json.dump(entry, f)
     _replace(tmp, path)
     return True
 
@@ -99,13 +99,13 @@ def load_all(runtime_dir):
     return out
 
 
-def prune(runtime_dir, source, still_pending_ids, entries=None):
-    """Drop every entry of `source` whose id is not in `still_pending_ids`, the ids that source listed
-    as new (unseen) this cycle. Called only after that source listed successfully, so an entry goes once
-    its item has been dispatched, has left the source (archived or handled by hand), or was re-judged
-    as needing no worker. Returns the count removed."""
+def prune(runtime_dir, source, still_pending_ids, entries):
+    """Drop every one of `entries` (load_all's list) of `source` whose id is not in `still_pending_ids`,
+    the ids that source listed as new (unseen) this cycle. Called only after that source listed
+    successfully, so an entry goes once its item has been dispatched, has left the source (archived or
+    handled by hand), or was re-judged as needing no worker. Returns the count removed."""
     removed = 0
-    for e in entries if entries is not None else load_all(runtime_dir):
+    for e in entries:
         if e["_source"] == source and e["_id"] not in still_pending_ids:
             removed += remove(runtime_dir, source, e["_id"])
     return removed

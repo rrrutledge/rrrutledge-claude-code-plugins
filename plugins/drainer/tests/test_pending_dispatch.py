@@ -64,7 +64,7 @@ check("an unreadable entry reads as absent", ids(pending.load_all(rt)), ["a:1/x"
 
 print("\nprune drops only the named source's entries it no longer offers")
 pending.put(rt, item("d"))
-check("two gmail entries go, one stays", pending.prune(rt, "gmail", {"d"}), 1)
+check("two gmail entries go, one stays", pending.prune(rt, "gmail", {"d"}, pending.load_all(rt)), 1)
 check("slack is untouched", ids(pending.load_all(rt)), ["c", "d"])
 
 # ---------------------------------------------------------------------------- verdict reuse
@@ -168,11 +168,36 @@ poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
 check("only the auto-handle item opens", launched, ["x"])
 check("its seen label is auto-handle", seen.get("gmail", {}).get("x"), "auto-handle")
 
-print("\ndispatch_pass: an item whose source is no longer enabled is dropped")
+print("\ndispatch_pass: an item whose source isn't loaded waits for a pass that has it")
 rt, cfg = setup([item("z", source="teams")])
 poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
 check("nothing opens", launched, [])
-check("the entry is gone", pending.load_all(rt), [])
+check("the entry stays", ids(pending.load_all(rt)), ["z"])
+
+print("\ndispatch_pass: a launch keeps holding its correspondent on later passes for LAUNCH_HOLD")
+recent = {"convs": {}, "corrs": {}}
+rt, cfg = setup([item("a", who="addie")])
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
+check("the first item opens", launched, ["a"])
+check("its correspondent is remembered", sorted(recent["corrs"]), ["addie"])
+# The session scan doesn't list the new worker yet, so only the remembered claim can hold the follow-up.
+pending.put(rt, item("b", who="addie"))
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
+check("the follow-up waits on the next pass", (launched, ids(pending.load_all(rt))), (["a"], ["b"]))
+recent["corrs"]["addie"] -= poller.LAUNCH_HOLD
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
+check("once the hold lapses it opens", launched, ["a", "b"])
+
+print("\nsave_feed_health keeps the scan fields a dispatch pass wrote meanwhile")
+rt = tempfile.mkdtemp(prefix="health-")
+poller.save_health(rt, {poller.POLLER_KEY: {"tab_scan_consecutive_failures": 2, "last_run_ts": "old"},
+                        "gmail": {"consecutive_failures": 3}})
+poller.save_feed_health(rt, {poller.POLLER_KEY: {"last_run_ts": "new", "last_drained_ts": "new"},
+                             "gmail": {"consecutive_failures": 0}})
+h = poller.load_health(rt)
+check("the scan count survives", h[poller.POLLER_KEY].get("tab_scan_consecutive_failures"), 2)
+check("the heartbeat updates", h[poller.POLLER_KEY].get("last_run_ts"), "new")
+check("the provider outcome updates", h["gmail"]["consecutive_failures"], 0)
 
 print("\ndispatch_pass: a failed session scan opens nothing (fail-closed)")
 agents_scan = None

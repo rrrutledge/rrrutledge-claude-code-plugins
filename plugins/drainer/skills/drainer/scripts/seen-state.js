@@ -77,7 +77,13 @@ function withLock(runtimeDir, fn) {
     } catch (e) {
       if (e.code !== 'EEXIST' && e.code !== 'EPERM') throw e;
       try {
-        if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) { fs.rmSync(lock, { force: true }); continue; }
+        const stale = fs.statSync(lock).mtimeMs;
+        if (Date.now() - stale > LOCK_STALE_MS) {
+          // Another waiter may have taken the stale lock over between the two stats; its fresh lock has a
+          // new mtime, so only the same stale file is removed.
+          if (fs.statSync(lock).mtimeMs === stale) fs.rmSync(lock, { force: true });
+          continue;
+        }
       } catch { continue; }  // the holder just released it
       if (Date.now() > deadline) throw new Error(`seen-state is locked by another writer (${lock})`);
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
