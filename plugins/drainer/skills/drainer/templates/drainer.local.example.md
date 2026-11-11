@@ -41,9 +41,9 @@ runtime_dir: .tmp/drainer
 # The continuous-keeper (run-poller.py) has no per-cycle work cap: every cycle enumerates everything
 # eligible from every source. The worker buffer - tuned via the DRAINER_TARGET_REVIEWABLE (default 5)
 # and DRAINER_MAX_CONCURRENT (default 18) environment variables, not here - is the only thing that
-# throttles how much of it actually gets dispatched at once: each cycle tops the workers waiting for
-# review up toward DRAINER_TARGET_REVIEWABLE, never exceeding DRAINER_MAX_CONCURRENT total live
-# workers; anything held simply retries next cycle.
+# throttles how much of it actually gets dispatched at once: each dispatch pass tops the workers waiting
+# for review up toward DRAINER_TARGET_REVIEWABLE, never exceeding DRAINER_MAX_CONCURRENT total live
+# workers; anything held waits on the pending list for a later pass.
 
 # Worker model per item - the poller picks by triage complexity (simple -> worker_model,
 # complex -> worker_model_complex). Set an EXPLICIT model so workers don't inherit whatever the

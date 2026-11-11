@@ -127,7 +127,7 @@ check("open_correspondents still reads the same scan",
 print("\nconversation_route: forward to a live holder, hold behind a same-cycle launch or a paused holder")
 check("live holder -> forward", poller.conversation_route(KEY, {KEY: ("g", "live")}, set()), "forward")
 check("paused holder -> held for it", poller.conversation_route(KEY, {KEY: ("g", "paused")}, set()), "paused")
-check("claimed this cycle -> hold", poller.conversation_route(KEY, {}, {KEY}), "hold")
+check("claimed by a recent launch -> hold", poller.conversation_route(KEY, {}, {KEY}), "hold")
 check("unheld conversation -> dispatch", poller.conversation_route(KEY, {}, set()), None)
 check("no key -> dispatch", poller.conversation_route(None, {KEY: ("g", "live")}, {KEY}), None)
 check("a screen-flagged item gets its own worker",
@@ -247,9 +247,9 @@ try:
 finally:
     poller.session_address, poller.forward_to_worker, poller.seen_state = real
 
-print("\nlaunched_peer: a worker launched earlier this cycle shows in the shared duplicate check")
-check("listed as launched this cycle",
-      "- Slack: x (background, launched this cycle)" in poller.duplicate_check_section([poller.launched_peer("Slack: x")]),
+print("\nlaunched_peer: a worker launched earlier this pass shows in the shared duplicate check")
+check("listed as launched this pass",
+      "- Slack: x (background, launched this pass)" in poller.duplicate_check_section([poller.launched_peer("Slack: x")]),
       True)
 
 print("\n_failed_forward: reads back the holder a failed hand-over noted")

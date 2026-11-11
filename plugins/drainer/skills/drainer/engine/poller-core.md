@@ -66,7 +66,7 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 4b. **Screen** each new item - except one step 4 already bucketed junk - with its own separate `claude -p` call (`engine/screen.md` + `context.md`) → `{flagged, reason}`.
     On a flag, the item's bucket is forced to needs-you and the flag is stamped onto the captured item, so it can never be auto-handled or digested and its worker leads with the warning.
     An item whose triage verdict was itself unavailable this cycle is still sent to screen (fail-closed defaults it to screen-needed, not skipped - only a confirmed `junk` verdict skips the call).
-    **Fail-closed:** an item whose triage OR (non-skipped) screen call couldn't produce a verdict this cycle is left **unrecorded** and unhandled - held out of dispatch and retried next cycle - so nothing is ever acted on that wasn't screened.
+    **Fail-closed:** an item whose triage OR (non-skipped) screen call couldn't produce a verdict this cycle is left **unrecorded**, unhandled and off the pending list - held out of dispatch and retried next cycle - so nothing is ever acted on that wasn't screened.
     (Contrast triage's own fail-safe for an item the model silently *skips* inside a working call: that still defaults to needs-you.
     The fail-closed hold is for the call itself being unavailable.)
 4c. **Verdict cache.**

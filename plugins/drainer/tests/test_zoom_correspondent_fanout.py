@@ -3,7 +3,7 @@
 A meeting fans out into one needs-you item per owner-assigned next step plus one recap. Every candidate
 carries the meeting topic as its `from`, so the default correspondent (which keys on `from`) would give
 all of them one shared identity. The dispatch loop holds any needs-you item whose correspondent is already
-active this cycle, so a shared identity throttles a whole meeting's action items to one dispatch per cycle
+active, so a shared identity throttles a whole meeting's action items to one open worker at a time
 and, in a busy needs-you queue, starves the rest indefinitely.
 
 The override returns None for every zoom item, so each fanned-out action item competes for a tab slot on
@@ -91,8 +91,8 @@ def test_whole_meeting_dispatches_in_one_cycle():
     p = make_provider()
     actions = [it for it in meeting_items(p) if it.get("kind") == "action-item"]
 
-    # Replays the needs-loop's correspondent discipline (run-poller.main): an item is held when its
-    # correspondent is already active this cycle; on dispatch its correspondent is registered. Tab cap is
+    # Replays the needs-loop's correspondent discipline (run-poller.dispatch_pass): an item is held when its
+    # correspondent is already active; on dispatch its correspondent is registered. Tab cap is
     # left out on purpose - this isolates the correspondent throttle, which is what the fix addresses.
     active = set()
     dispatched = 0

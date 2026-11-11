@@ -37,8 +37,9 @@ Usage:
 
 On demand, --channel=<C> runs a cycle's enumerate, triage, screen, and dispatch on one Slack DM or
 group DM's items: only the Slack provider enumerates, and the conversation's top-level item goes on
-through the same conversation routing a scheduled cycle uses. Only a scheduled cycle runs reconcile and
-saves provider health, scan health, and the heartbeat. Two flags change how that conversation dispatches:
+through the same conversation routing the keeper uses. Only the keeper's feed cycle runs reconcile and saves
+provider health and the heartbeat, and only its dispatch passes save scan health. Two flags change how that
+conversation dispatches:
     --now        dispatch its item without waiting for a free worker slot (a failed session scan still holds).
     --resume-me  the launching Claude session's next step waits on this drain: a launched worker's seed
                  gets session-mgr's resume-the-launcher instruction and the launcher's Stop hook gets the
@@ -50,8 +51,9 @@ The run ends with `on-demand:` lines, one per outcome:
     held behind open worker <session id> on <C>.        (a live worker holds the conversation)
     held behind paused worker <session id> on <C>.      (a worker closed paused holds it)
     held - the session scan failed, ...                 (a holder can't be ruled out)
+    held - another drainer dispatch pass is running, ... (the keeper's pass holds the dispatch lock)
     held <id> - <reason>                                (triage, screen, session scan, buffer, same person,
-                                                         a worker launched this cycle, a concurrent cycle)
+                                                         a worker launched in the last few minutes)
     drain failed - <reason>
     warning - no launch marker for session <id>, ...    (with --resume-me: close paused by hand)
 """
@@ -94,16 +96,16 @@ HEALTH_FILE = "provider-health.json"
 HANDLED_FILE = "reconciled.json"
 VERDICTS_FILE = "judged-verdicts.json"
 BACKOFF_FILE = "background-backoff.json"
-# How long a cached triage / screen verdict stays good. A held item is re-judged at most this often, so a
-# rubric or context.md change reaches items that have sat held for days without paying a call per cycle.
+# How long a cached triage / screen verdict stays good, so a rubric or context.md change reaches an item
+# that keeps coming back to judging without paying a call per cycle. An item waiting on the pending list
+# keeps its stored verdicts instead, for as long as its listing is unchanged (reuse_pending_verdicts).
 VERDICT_TTL = timedelta(hours=24)
 # A page-size ceiling for each provider's own API list call - not a per-cycle work throttle. There is
 # no such throttle: every cycle enumerates everything currently eligible from every source, and the
 # worker buffer (target_reviewable / max_concurrent) is the only thing that gates how much of it
-# actually gets dispatched (held items retry next cycle). This constant only bounds how many rows one
-# API call asks for, generous enough
-# that a real inbox/board/channel backlog fits in a single page; if a source's backlog ever exceeds
-# it, that source's overflow just carries to the next cycle same as a held dispatch would.
+# actually gets dispatched (held items wait on the pending list). This constant only bounds how many rows
+# one API call asks for, generous enough that a real inbox/board/channel backlog fits in a single page; if
+# a source's backlog ever exceeds it, that source's overflow carries to the next cycle.
 ENUMERATE_PAGE_SIZE = 500
 POLLER_KEY = "_poller"  # the poller's own heartbeat entry in the health file - not a provider; the digest skips it
 # Flags shared by the headless triage and screen calls. Both are pure text-in / JSON-out, so they run
@@ -228,10 +230,10 @@ def record_heartbeat(health):
 
 # ---------------------------------------------------------------------------- judged-verdict cache
 #
-# A needs-you item the dispatch step can't place (the worker buffer is full, or an earlier item from the
-# same correspondent still open) is left unrecorded so it re-enumerates next cycle - and would be triaged
-# and screened all over again, for as long as it stays held. Each real model verdict is persisted here
-# instead, keyed by item id, so a held item is judged once and later cycles read the answer back. An entry
+# An unrecorded item re-enumerates every cycle. One waiting on the pending list with an unchanged listing
+# takes its verdicts from its entry; every other one that comes back to judging (its listing changed, its
+# entry was dropped while its source failed to list, its un-junk failed) would be triaged and screened all
+# over again. Each real model verdict is persisted here, keyed by item id, so later cycles read it back. An entry
 # is good only while the text the model saw is unchanged (a chat whose unread span grew is a new question)
 # and only for VERDICT_TTL. Only verdicts a model actually returned are stored: the fail-safe default for a
 # skipped item and anything that landed in an `unavailable` set are not verdicts, so they are retried.
@@ -1193,16 +1195,16 @@ def _spawn_scan_diagnostic(repo, runtime_dir, worker_model):
     """Launch a single diagnostic worker session to find out why worker_counts() failed to scan/parse.
 
     A failed scan means the worker-buffer throttle can't see how many background workers are running or
-    waiting, so dispatch now fail-CLOSES (holds every needs-you item this cycle) instead of dispatching
+    waiting, so the dispatch pass fail-CLOSES (holds every needs-you item) instead of dispatching
     unbounded. This session is Russell's visible signal that it happened, and a chance to
-    find and fix the real cause rather than it recurring silently every cycle.
+    find and fix the real cause rather than it recurring silently every pass.
     """
     body = (
         "You are a drainer diagnostic worker. Read `~/.claude/CLAUDE.md` first.\n\n"
         "The drainer poller's `worker_counts()` (run-poller.py, drainer plugin scripts/) just failed to "
         "run or parse its `claude agents --json` scan. That scan feeds the worker-buffer throttle "
         "(DRAINER_TARGET_REVIEWABLE / DRAINER_MAX_CONCURRENT), so a failed scan means dispatch was held "
-        "back entirely this cycle rather than risking an unbounded burst.\n\n"
+        "back entirely on that pass rather than risking an unbounded burst.\n\n"
         "Diagnose why the scan failed: run the exact command yourself - `claude agents --json` - and see "
         "what happens (hangs, errors, returns something unparseable). Check whether the machine was under "
         "heavy load (many open sessions, high CPU/memory) as a likely cause. If you find a concrete, safe "
@@ -1546,14 +1548,14 @@ def _claude_agents():
 def live_session_ids(agents=_LIVE_UNSET):
     """The set of ids of the live worker sessions, so a second item from a correspondent whose earlier
     one still has a live worker is held, and reconcile can tell 'worker gone, never going to finish' from
-    'parked, waiting for Russell'. One scan per cycle.
+    'parked, waiting for Russell'. One scan per feed cycle and one per dispatch pass.
 
     A worker runs headless (`claude --bg`), so this holds, for every live BACKGROUND session, both its
     short `id` and its full `sessionId`: a receipt written by write_receipt holds the full guid when it
     could be resolved at launch, and the short id otherwise (or from before receipts carried the guid),
     and readers test a receipt with a plain `in`. A finished worker stays listed until it
     self-terminates, parked for Russell. Returns None if the scan can't be run/parsed - the caller then SKIPS the liveness fast-path
-    this cycle (the time-based backstop still applies), so an inability to see sessions never reaps a
+    that time (the time-based backstop still applies), so an inability to see sessions never reaps a
     live worker.
 
     `claude stop` (end-session.py's headless close) does not actually drop a background session out of
@@ -1562,7 +1564,7 @@ def live_session_ids(agents=_LIVE_UNSET):
     So `pid` presence - not just `kind` - is what "live" actually means here; a dead entry with no pid is
     a stale record, not a worker still holding a correspondent's identity.
 
-    `agents` is the cycle's one `_claude_agents()` scan when the caller already has it; omitted, this scans."""
+    `agents` is the caller's `_claude_agents()` scan when it already has one; omitted, this scans."""
     if agents is _LIVE_UNSET:
         agents = _claude_agents()
     if agents is None:
@@ -1577,19 +1579,18 @@ def live_session_ids(agents=_LIVE_UNSET):
 def open_correspondents(runtime_dir, live):
     """The correspondent identities that currently have a LIVE worker session on a captured item.
 
-    A second item from one of these is held out of dispatch (see the needs loop in main) while an
+    A second item from one of these is held out of dispatch (see the needs loop in dispatch_pass) while an
     earlier one of theirs is still being worked, so one worker reads both with full context instead of two
-    racing independently and possibly drafting two separate replies. Recomputed fresh every cycle from
+    racing independently and possibly drafting two separate replies. Recomputed fresh every pass from
     the same live-session signal `reconcile_unhandled` trusts - never a persisted "waiting" flag - so a
-    worker that dies without clearing releases the hold within one cycle: reconcile re-queues that item,
-    and on the same cycle this set no longer contains its correspondent, so anything behind it dispatches.
-    Worst case is one poll cycle's delay, never indefinite starvation.
+    worker that dies without clearing releases the hold on the next pass, and reconcile re-queues its item
+    within one feed cycle. Worst case is one feed cycle's delay, never indefinite starvation.
 
     Keyed off `live` (the live background sessions' short ids and full guids, so a receipt in either
     form matches): for each worker session file whose id is live, read its captured item's persisted `correspondent`. Bounded by the number of session files,
-    the same order of per-cycle work reconcile already does. A None/empty `live` (scan failed, or nothing
-    open) yields the empty set, so a cross-cycle hold fails open - the in-cycle dedup in main still holds
-    a same-cycle burst."""
+    the same order of work reconcile already does. A None/empty `live` (scan failed, or nothing open)
+    yields the empty set, so a hold across passes fails open - the same-pass dedup in dispatch_pass still
+    holds a burst."""
     return {rec["correspondent"] for _, rec in _worker_items(runtime_dir, live) if rec.get("correspondent")}
 
 
@@ -1794,22 +1795,22 @@ def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
 
 
 def launched_peer(title):
-    """A `claude agents`-shaped entry for a worker launched earlier this cycle, which the cycle's one scan
+    """A `claude agents`-shaped entry for a worker launched earlier this pass, which the pass's one scan
     predates, so later workers' duplicate checks list it too."""
-    return {"name": title, "pid": "this cycle", "kind": "background", "state": "launched this cycle"}
+    return {"name": title, "pid": "this pass", "kind": "background", "state": "launched this pass"}
 
 
 def held_for_correspondent(corr, active):
-    """Whether an item should wait: it has a non-empty correspondent identity that is already active
-    this cycle - an open worker on one of theirs, or one dispatched earlier in this same cycle's loop."""
+    """Whether an item should wait: it has a non-empty correspondent identity that is already active -
+    an open worker on one of theirs, or one launched earlier this pass or within LAUNCH_HOLD."""
     return bool(corr) and corr in active
 
 
 def conversation_route(key, open_convs, claimed, flagged=False):
-    """How dispatch treats an item by its conversation: "hold" when a worker launched earlier this cycle
-    holds the conversation but can't take a message yet, "forward" when a live worker from an earlier
-    cycle holds it, "paused" when its holder closed paused and waits to be resumed, None to dispatch as
-    usual. A screen-flagged item is never forwarded or held: it gets its own worker, which leads with
+    """How dispatch treats an item by its conversation: "hold" when a worker launched this pass or within
+    LAUNCH_HOLD holds the conversation but may not take a message yet, "forward" when a live worker
+    launched before that holds it, "paused" when its holder closed paused and waits to be resumed, None to
+    dispatch as usual. A screen-flagged item is never forwarded or held: it gets its own worker, which leads with
     the warning for Russell."""
     if not key or flagged:
         return None
@@ -1866,12 +1867,12 @@ def worker_counts(agents=_LIVE_UNSET):
     registry record with no `pid` and no `status` key, only a stale `state` from before they ended. Left
     in, every one of those permanently inflates `waiting` (a missing `status` trivially satisfies `!=
     "busy"`) with a session that is not competing for Russell's attention at all - which starves dispatch
-    for good once enough of them pile up, not just for one cycle.
+    for good once enough of them pile up, not just for one pass.
 
-    Returns None if the scan can't be run/parsed - the caller then treats this cycle as AT the cap
+    Returns None if the scan can't be run/parsed - the caller then treats this pass as AT the cap
     (fail CLOSED: open no new needs-you workers rather than dispatch unbounded), since a scan failure is
     exactly the condition - a bogged-down machine - most likely to coincide with a large eligible
-    backlog. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD consecutive
+    backlog. A single blip retries silently next pass; SCAN_FAILURE_ALERT_THRESHOLD consecutive
     failures launches one diagnostic session.
 
     `agents` is the caller's `_claude_agents()` scan when it already has one; omitted, this scans."""
@@ -1886,13 +1887,13 @@ def worker_counts(agents=_LIVE_UNSET):
 
 
 def open_slots(waiting, total, auto_count, cfg):
-    """How many fresh needs-you workers this cycle may open, per the dynamic-concurrency rule: top the
+    """How many fresh needs-you workers this pass may open, per the dynamic-concurrency rule: top the
     waiting pile up toward target_reviewable, bounded by the max_concurrent headroom. Each opened worker
     starts out working (not yet waiting) but consumes one of both budgets - it will mature into a waiting
     reviewable, and it counts against the concurrency cap now - so the loop decrements this per dispatch.
-    `auto_count` is the auto-handle workers already opened this cycle (unconditional, but still live
+    `auto_count` is the auto-handle workers already opened this pass (unconditional, but still live
     background sessions), subtracted from the concurrency headroom so the cap holds. `waiting`/`total`
-    are None when the session scan failed - then this is 0, fail-closed: open nothing this cycle."""
+    are None when the session scan failed - then this is 0, fail-closed: open nothing this pass."""
     if waiting is None or total is None:
         return 0
     return max(0, min(cfg["target_reviewable"] - waiting,
@@ -1982,8 +1983,7 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     Under `dry_run` it counts and prints what it would requeue, touching no state.
 
     `live` (the live background sessions' short ids and full guids) is normally scanned here, but the caller may pass the
-    set it already scanned this cycle so the correspondent-hold below reuses it - keeping the whole cycle
-    to one session scan."""
+    set it already scanned this cycle, keeping the feed cycle to one session scan."""
     if live is _LIVE_UNSET:
         live = live_session_ids()
     if live is None:
@@ -2149,10 +2149,9 @@ def main():
         return
 
     # One live-session scan for the whole cycle: reconcile reads it to spot workers that never finished,
-    # and the dispatch step below reuses it to hold a second item from a correspondent whose earlier item
-    # still has a live worker (open_correspondents). Runs BEFORE the enumerate, so anything reconcile
-    # re-queues is picked up in this same cycle. The raw scan is kept too: it holds the session details
-    # the conversation routing needs to reach a live worker, and the titles a new worker's seed lists.
+    # and the dry-run report and an on-demand run's nothing-new check read it too (every dispatch pass
+    # takes its own scan). Runs BEFORE the enumerate,
+    # so anything reconcile re-queues is picked up in this same cycle.
     agents = _claude_agents()
     live = live_session_ids(agents)
     if not args.channel:
@@ -2718,7 +2717,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
         if route == "hold":
             held += 1  # stays pending: the next pass forwards it to the worker that claimed its conversation
             held_conv += 1
-            on_demand.append(f"held {it['_id']} - a worker launched this cycle holds its conversation, retry shortly")
+            on_demand.append(f"held {it['_id']} - a worker launched in the last few minutes holds its conversation, retry shortly")
             return True
         if route == "paused":
             held += 1  # stays pending, retried each pass until its worker is resumed or its pause expires
