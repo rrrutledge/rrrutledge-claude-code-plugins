@@ -4,8 +4,8 @@ stdout/stderr pipes open - even after being killed. `subprocess.run(..., timeout
 on Windows in exactly that situation (its own stdlib implementation calls `communicate()` a SECOND time
 with no timeout at all, to drain leftover output, after a TimeoutExpired kill). These tests simulate a
 child that never responds to `communicate()`, not even after being killed, and assert the call still
-returns within a small bounded wall-clock time instead of hanging - the thing that used to freeze the
-whole poller (and every scheduled cycle after it) for 45+ minutes.
+returns within a small bounded wall-clock time instead of hanging - a hung child freezes the loop that
+called it (the feed cycle or the dispatch pass) for as long as it stays hung.
 
 Run directly:
     python plugins/drainer/tests/test_run_subprocess_bounded.py

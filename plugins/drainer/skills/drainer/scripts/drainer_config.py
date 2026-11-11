@@ -126,19 +126,20 @@ def read_config(repo, runtime_root=None):
         "repo": repo,  # so adapters that drain configured targets (e.g. trello boards) can re-read this file
         "runtime_dir": runtime_dir,
         "local_dir": local_dir,
-        # The worker buffer, expressed as two numbers the dispatch loop reads together (see run-poller's
-        # main dispatch). The point of the buffer was never "N workers" - it is "whenever Russell turns
+        # The worker buffer, expressed as two numbers the dispatch loop reads together (see `dispatch_pass`
+        # in run-poller). The point of the buffer was never "N workers" - it is "whenever Russell turns
         # his attention there is always something waiting for his review, so he is never idle waiting on
-        # the AI". So each cycle the poller tops the WAITING pile up toward target_reviewable (any live
+        # the AI". So each dispatch pass tops the WAITING pile up toward target_reviewable (any live
         # session not actively busy - a parked background worker, or an idle interactive session Russell
         # left open), opening `target_reviewable - waiting` fresh needs-you workers, floored at 0 - no
         # in-flight accounting. max_concurrent caps the TOTAL live-session load
         # as a load guard - every session in the Claude app, background drainer workers and interactive
         # sessions Russell started himself alike - so the drainer also backs off when he already has a lot
-        # open, and it bounds the working pile-up that "open the difference" can create over several cycles
-        # before fresh workers mature into the waiting state. At ~1 worker/minute matured and a 5-minute
-        # cycle, a target of 5 keeps a full review buffer. Both are read from env each cycle (a fresh
-        # process), so a changed value takes effect on the very next cycle.
+        # open, and it bounds the working pile-up that "open the difference" can create over several passes
+        # before fresh workers mature into the waiting state. At ~1 worker/minute matured and a pass about
+        # once a minute, a target of 5 keeps a full review buffer. Both are read from the process
+        # environment, so the keeper sees a changed value when it recycles (at most 4 hours) and each
+        # feed cycle, a fresh process, sees it at once.
         "target_reviewable": int(os.environ.get("DRAINER_TARGET_REVIEWABLE", "5")),
         "max_concurrent": int(os.environ.get("DRAINER_MAX_CONCURRENT", "18")),
         # Worker sessions need an explicit model - otherwise they inherit the session default, which may

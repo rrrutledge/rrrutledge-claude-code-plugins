@@ -52,7 +52,59 @@ function writeJsonAtomic(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, file);
+  // On Windows the rename fails while a reader has the target open; that read is over in milliseconds.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY' && e.code !== 'EACCES') throw e;
+      if (attempt >= 20) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+}
+
+// Every write is a whole-file read-modify-write, and the drainer's feed cycle and dispatch loop run at
+// the same time, so two writers could each read the old file and one would drop the other's change - a
+// lost "dispatched" mark would open a second worker for the item. Each write therefore holds an exclusive
+// lock file for its few milliseconds. A lock older than LOCK_STALE_MS belongs to a writer that died
+// mid-write and is taken over, and a waiter outlasts that, so a dead writer's lock costs the next writer
+// a wait, never a failed write.
+const LOCK_FILE = 'seen-state.lock';
+const LOCK_STALE_MS = 30000;
+const LOCK_WAIT_MS = 45000;
+
+function withLock(runtimeDir, fn) {
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  const lock = path.join(runtimeDir, LOCK_FILE);
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  let fd;
+  for (;;) {
+    try {
+      fd = fs.openSync(lock, 'wx');
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST' && e.code !== 'EPERM') throw e;
+      try {
+        const stale = fs.statSync(lock).mtimeMs;
+        if (Date.now() - stale > LOCK_STALE_MS) {
+          // Another waiter may have taken the stale lock over between the two stats; its fresh lock has a
+          // new mtime, so only the same stale file is removed.
+          if (fs.statSync(lock).mtimeMs === stale) fs.rmSync(lock, { force: true });
+          continue;
+        }
+      } catch { continue; }  // the holder just released it
+      if (Date.now() > deadline) throw new Error(`seen-state is locked by another writer (${lock})`);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.closeSync(fd);
+    fs.rmSync(lock, { force: true });
+  }
 }
 
 function seenPath(runtimeDir) { return path.join(runtimeDir, SEEN_FILE); }
@@ -76,21 +128,25 @@ function isSeen(runtimeDir, source, id) {
 
 function record(runtimeDir, source, id, triage) {
   assertSource(source);
-  const seen = loadSeen(runtimeDir);
-  if (!seen[source]) seen[source] = {};
-  // Idempotent: an id already recorded keeps the triage it was first dispatched under.
-  if (!seen[source][id]) {
-    seen[source][id] = { triage };
-  }
-  writeJsonAtomic(seenPath(runtimeDir), seen);
+  withLock(runtimeDir, () => {
+    const seen = loadSeen(runtimeDir);
+    if (!seen[source]) seen[source] = {};
+    // Idempotent: an id already recorded keeps the triage it was first dispatched under.
+    if (!seen[source][id]) {
+      seen[source][id] = { triage };
+    }
+    writeJsonAtomic(seenPath(runtimeDir), seen);
+  });
 }
 
 function queueAdd(runtimeDir, source, id, item) {
-  const queue = loadQueue(runtimeDir);
-  if (!queue.some(e => e.id === id)) {
-    queue.push({ id, source, item });
-    writeJsonAtomic(queuePath(runtimeDir), queue);
-  }
+  withLock(runtimeDir, () => {
+    const queue = loadQueue(runtimeDir);
+    if (!queue.some(e => e.id === id)) {
+      queue.push({ id, source, item });
+      writeJsonAtomic(queuePath(runtimeDir), queue);
+    }
+  });
 }
 
 function queueList(runtimeDir) {
@@ -98,8 +154,10 @@ function queueList(runtimeDir) {
 }
 
 function queueClear(runtimeDir, id) {
-  const queue = loadQueue(runtimeDir).filter(e => e.id !== id);
-  writeJsonAtomic(queuePath(runtimeDir), queue);
+  withLock(runtimeDir, () => {
+    const queue = loadQueue(runtimeDir).filter(e => e.id !== id);
+    writeJsonAtomic(queuePath(runtimeDir), queue);
+  });
 }
 
 // Recovery: an item the poller's reconcile found unfinished - its source object still unhandled with no
@@ -110,11 +168,13 @@ function queueClear(runtimeDir, id) {
 // doesn't come back.)
 function requeue(runtimeDir, source, id) {
   assertSource(source);
-  const seen = loadSeen(runtimeDir);
-  if (seen[source] && seen[source][id]) {
-    delete seen[source][id];
-    writeJsonAtomic(seenPath(runtimeDir), seen);
-  }
+  withLock(runtimeDir, () => {
+    const seen = loadSeen(runtimeDir);
+    if (seen[source] && seen[source][id]) {
+      delete seen[source][id];
+      writeJsonAtomic(seenPath(runtimeDir), seen);
+    }
+  });
 }
 
 function ackList(runtimeDir) {
@@ -125,9 +185,11 @@ function ackList(runtimeDir) {
 function ackSet(runtimeDir, key, entry) {
   if (!key) throw new Error('ack-set needs a conversation key');
   if (!entry || typeof entry !== 'object' || !entry.status) throw new Error('ack-set entry needs a status');
-  const seen = loadSeen(runtimeDir);
-  seen[ACK_KEY] = { ...ackList(runtimeDir), [key]: entry };
-  writeJsonAtomic(seenPath(runtimeDir), seen);
+  withLock(runtimeDir, () => {
+    const seen = loadSeen(runtimeDir);
+    seen[ACK_KEY] = { ...ackList(runtimeDir), [key]: entry };
+    writeJsonAtomic(seenPath(runtimeDir), seen);
+  });
 }
 
 module.exports = {

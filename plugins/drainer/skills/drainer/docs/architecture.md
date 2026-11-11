@@ -14,10 +14,10 @@ Outlook / Teams / outreach are all the **same loop** with different **sources**.
 
 ## The continuous keeper (the one model)
 
-The drainer runs as a **continuous keeper**: a **poller** runs a short cycle every few minutes (a ~5-min cron) and holds each source at **zero un-started actionable items** all day.
+The drainer runs as a **continuous keeper**: one long-running process that holds each source at **zero un-started actionable items** all day, its feed cycle storing the items that need a worker on a pending list and its dispatch loop opening workers from that list (`engine/poller-core.md`, "The keeper").
 
 - **needs-you →** the poller immediately spawns a **headless worker** (a background session, per `engine/poller-core.md` step 5) so the user starts acting right away, or hands the item to the live worker already on its conversation.
-  Dispatch is governed by a dynamic buffer: each cycle tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait for a later cycle.
+  Dispatch is governed by a dynamic buffer: each dispatch pass tops the sessions **waiting for the user** (anything idle/parked, not actively busy - a background worker or an idle interactive session) up toward `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5), capped so the total live sessions in the Claude app - background workers and any session the user started himself - never exceed `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18); beyond that, items wait on the pending list for a later pass.
 - **auto-handle →** a standing-rule item; the poller spawns a worker that acts autonomously, clears the source, queues a digest entry, and finishes without interrupting the user.
 - **fyi / junk →** captured to a **digest queue** for a once-a-day readout; nothing is disposed of silently in the fast loop.
 - **A person waiting 48 business hours →** the once-a-day acknowledgement sweep in the digest's daily task lists the conversation as due, and an end-of-day review session sends a short ack on the user's approval while the item keeps its place in the queue.
@@ -26,7 +26,7 @@ The drainer runs as a **continuous keeper**: a **poller** runs a short cycle eve
 
 ## The poller is code; AI is judgment
 
-The loop - enumerate everything eligible → drop already-seen → dispatch against the worker buffer → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
+The keeper's feed cycle and dispatch loop (`engine/poller-core.md`, "The keeper") are deterministic algorithms, so they live in scripts (`scripts/run-poller.py`, `keeper.py`, `pending.py`): cheaper and more reliable than asking an AI to follow them on every run.
 There is no per-cycle work cap upstream of that: every source is asked for everything it currently has.
 AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only), plus one judgment-free delivery call that carries a routed item to the live worker already on its conversation (`engine/poller-core.md`).
 The once-a-day acknowledgement sweep is code reading that triage verdict from the verdict cache; the acks themselves are drafted in the end-of-day ack review session.
@@ -37,7 +37,7 @@ The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss
 
-Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted cycle retries next time); workers are idempotent (a duplicate worker's situational-check resolves quietly).
+Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted dispatch pass leaves the item on the pending list for the next pass); workers are idempotent (a duplicate worker's situational-check resolves quietly).
 Completion follows the same principle - it is **observed on the source**, not reported by the worker: an item still unhandled in its source with no live worker session on it is re-queued for a fresh worker, while an open, live worker session is left alone however long it's up, because it's either being worked or parked for the user.
 
 ## Config comes from merged main, not the checked-out branch
@@ -48,13 +48,13 @@ Without this, config was read from whatever branch a human session left checked 
 
 Two things stay anchored to the **real** repo, on purpose:
 
-- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
+- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`, `pending/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
 - **Worker/digest cwd** - worker sessions run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
   A worker that must commit branches into its own worktree (per the `git-workflow` skill), so it never disturbs the config worktree.
   Repo-tracked config a worker needs (above all `initiatives/<slug>.md`) is read from the config repo, whose path the worker seed carries.
 
 Resetting the config worktree every cycle is safe because nothing writes to it in place.
-It is **fail-safe**: on any git error - offline, no `origin`, or a refresh race between the ~5-min poller and the daily digest - `ensure_main_worktree` returns the real repo, so the drainer still runs (against possibly stale config) rather than not at all.
+It is **fail-safe**: on any git error - offline, no `origin`, or a refresh race between the keeper and the daily digest - `ensure_main_worktree` returns the real repo, so the drainer still runs (against possibly stale config) rather than not at all.
 
 ## Two layers: the plugin vs. what each machine injects
 
