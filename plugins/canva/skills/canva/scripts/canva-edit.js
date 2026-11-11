@@ -24,7 +24,8 @@
 //       { "match": {"x":800,"y":400,"w":700,"h":260}, "to": {"x":780,"y":410} } ] } }
 // "match" is the layer's current box (within 1.5 px). With "file", the layer's picture becomes that file, sized by
 // "to" with the ratio locked, keeping the layer's front-to-back slot. Without "file", the layer is moved (and sized,
-// if "to" has h or w). Each finished item and page is logged in <out>/progress.txt, so a rerun resumes where it stopped.
+// if "to" has h or w). Each item checks the page first and skips itself when a layer already sits at "to", so a rerun
+// resumes where the page really is. Pages that pass their check are logged in <out>/progress.txt and skipped unless --force.
 
 const fs = require('fs');
 const path = require('path');
@@ -35,8 +36,8 @@ const has = (k) => process.argv.includes(`--${k}`);
 const errors = [];
 const log = (out) => (...a) => { const s = a.join(' '); console.log(s); if (out) fs.appendFileSync(path.join(out, 'run.log'), new Date().toISOString() + ' ' + s + '\n'); };
 
-function pageList(spec, total) {
-  if (spec === 'all') return Array.from({ length: total }, (_, i) => i + 1);
+async function pageList(spec, tab) {
+  if (spec === 'all') return Array.from({ length: await E.pageCount(tab) }, (_, i) => i + 1);
   return spec.split(',').map(Number).filter(Boolean);
 }
 
@@ -57,7 +58,7 @@ async function cmdShots() {
   const out = arg('out');
   fs.mkdirSync(out, { recursive: true });
   await E.withDesign(arg('design'), 'cvshots', async (tab) => {
-    for (const n of pageList(arg('pages'), await E.pageCount(tab))) {
+    for (const n of await pageList(arg('pages'), tab)) {
       await E.gotoPage(tab, n);
       const f = path.join(out, `p${String(n).padStart(2, '0')}.png`);
       await E.presentShot(tab, f);
@@ -70,7 +71,7 @@ async function cmdMeasure() {
   const out = arg('out');
   fs.mkdirSync(out, { recursive: true });
   await E.withDesign(arg('design'), 'cvmeasure', async (tab) => {
-    for (const n of pageList(arg('pages'), await E.pageCount(tab))) {
+    for (const n of await pageList(arg('pages'), tab)) {
       await E.gotoPage(tab, n);
       const stem = path.join(out, `p${String(n).padStart(2, '0')}`);
       const rec = { page: n, layers: await E.layers(tab), texts: await E.textRuns(tab) };
@@ -91,18 +92,31 @@ async function cmdReplaceWord() {
     const before = await E.replaceWord(tab, word, nth, repl);
     await E.reloadToPage(tab, n);
     const after = (await E.findWord(tab, word)).length;
+    const inRepl = [...repl.matchAll(new RegExp('(?<![\\p{L}\\p{N}])' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}])', 'gu'))].length;
     const lines = (await E.textRuns(tab)).map(t => t.t);
     console.log('page text after reload:', lines.join(' / '));
-    if (after !== before - 1 || !lines.some(t => t.includes(repl))) errors.push(`after reload "${word}" appears ${after} times (was ${before}) and "${repl}" ${lines.some(t => t.includes(repl)) ? 'is' : 'is not'} on the page`);
+    const want = before - 1 + inRepl;
+    if (after !== want || !lines.some(t => t.includes(repl))) errors.push(`after reload "${word}" appears ${after} times (expected ${want}) and "${repl}" ${lines.some(t => t.includes(repl)) ? 'is' : 'is not'} on the page`);
     if (arg('out')) { fs.mkdirSync(arg('out'), { recursive: true }); await E.presentShot(tab, path.join(arg('out'), `p${String(n).padStart(2, '0')}-text.png`)); }
   });
 }
 
+const atTo = (rows, to) => rows.filter(r => r.box && E.near(r.box.x, to.x, 2.5) && E.near(r.box.y, to.y, 2.5) && (to.h == null || E.near(r.box.h, to.h, 2.5)) && (to.w == null || to.h != null || E.near(r.box.w, to.w, 2.5)));
+
+// Each item reads the page first, so a rerun after a crash or a failed check picks up where the page really is:
+// a layer at "to" and none at "match" means done; both present means a swap stopped before the old layer was deleted.
 async function applyItem(tab, n, item, L) {
   const rows = await E.layers(tab);
   const hits = rows.filter(r => E.sameBox(r.box, item.match));
-  if (hits.length !== 1) throw new Error(`p${n}: ${hits.length} layers match ${JSON.stringify(item.match)}`);
+  const done = atTo(rows, item.to);
+  if (done.length === 1 && !hits.length) { L(`p${n} item already at ${JSON.stringify(item.to)}`); return; }
+  if (hits.length !== 1) throw new Error(`p${n}: ${hits.length} layers match ${JSON.stringify(item.match)} and ${done.length} sit at ${JSON.stringify(item.to)}`);
   const old = hits[0];
+  if (item.file && done.length === 1 && !E.sameBox(done[0].box, old.box, 3)) {
+    await finishSwap(tab, n, old, done[0].box, old.i - (done[0].i < old.i ? 1 : 0));
+    L(`p${n} finished an interrupted swap for ${path.basename(item.file)}`);
+    return;
+  }
   if (!item.file) {
     await E.selectLayer(tab, old);
     const got = item.to.h != null || item.to.w != null ? await E.placeSelected(tab, item.to) : await E.setArrange(tab, { x: item.to.x, y: item.to.y });
@@ -123,26 +137,30 @@ async function applyItem(tab, n, item, L) {
   }
   await E.addImage(tab, item.file);
   const placed = await E.placeSelected(tab, item.to);
-  const after = await E.layers(tab);
-  const olds = after.filter(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3));
-  if (olds.length !== 1) throw new Error(`p${n}: old layer not uniquely found after adding the new image (${olds.length})`);
+  await finishSwap(tab, n, old, placed, old.i);
+  L(`p${n} swapped ${old.label} for ${path.basename(item.file)}`, JSON.stringify(placed));
+}
+
+// Deletes the old layer and moves the new image (at box placed) to layer index slot, the old layer's place in the stack.
+async function finishSwap(tab, n, old, placed, slot) {
+  const olds = (await E.layers(tab)).filter(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3));
+  if (olds.length !== 1) throw new Error(`p${n}: old layer not uniquely found next to the new image (${olds.length})`);
   await E.deleteLayer(tab, olds[0]);
   for (let t = 0; ; t++) {
     const me = (await E.layers(tab)).find(r => E.sameBox(r.box, placed, 1.5));
     if (!me) throw new Error(`p${n}: new image lost after deleting the old one`);
-    if (me.i === old.i) break;
-    if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${old.i}`);
+    if (me.i === slot) break;
+    if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${slot}`);
     await E.selectLayer(tab, me);
-    await E.moveSelected(tab, me.i < old.i ? 'Backward' : 'Forward', Math.abs(old.i - me.i));
+    await E.moveSelected(tab, me.i < slot ? 'Backward' : 'Forward', Math.abs(slot - me.i));
   }
-  L(`p${n} swapped ${old.label} for ${path.basename(item.file)}`, JSON.stringify(placed));
 }
 
-async function verifyPage(tab, n, items) {
+async function verifyPage(tab, items) {
   const rows = await E.layers(tab);
   const bad = [];
   items.forEach((item, k) => {
-    const hits = rows.filter(r => r.box && E.near(r.box.x, item.to.x, 2.5) && E.near(r.box.y, item.to.y, 2.5) && (item.to.h == null || E.near(r.box.h, item.to.h, 2.5)) && (item.to.w == null || item.to.h != null || E.near(r.box.w, item.to.w, 2.5)));
+    const hits = atTo(rows, item.to);
     if (hits.length !== 1) bad.push(`item ${k}: ${hits.length} layers at ${JSON.stringify(item.to)}`);
   });
   return bad;
@@ -155,20 +173,16 @@ async function cmdApply() {
   const plan = JSON.parse(fs.readFileSync(arg('plan'), 'utf8')).pages;
   const prog = E.progress(path.join(out, 'progress.txt'));
   await E.withDesign(arg('design'), 'cvapply', async (tab) => {
-    const pages = arg('pages') === 'all' ? Object.keys(plan).map(Number).sort((a, b) => a - b) : pageList(arg('pages'));
+    const pages = arg('pages') === 'all' ? Object.keys(plan).map(Number).sort((a, b) => a - b) : await pageList(arg('pages'), tab);
     for (const n of pages) {
       const items = plan[String(n)];
       if (!items) { errors.push(`p${n}: not in the plan`); continue; }
       if (!has('force') && prog.has(`done ${n}`)) { L(`p${n} already done`); continue; }
       try {
         await E.reloadToPage(tab, n);
-        for (let k = 0; k < items.length; k++) {
-          if (!has('force') && prog.has(`item ${n}:${k}`)) continue;
-          await applyItem(tab, n, items[k], L);
-          prog.add(`item ${n}:${k}`);
-        }
+        for (const item of items) await applyItem(tab, n, item, L);
         await E.reloadToPage(tab, n);
-        const bad = await verifyPage(tab, n, items);
+        const bad = await verifyPage(tab, items);
         await E.presentShot(tab, path.join(out, `p${String(n).padStart(2, '0')}.png`));
         if (bad.length) { errors.push(`p${n} after reload: ${bad.join('; ')}`); L(`p${n} CHECK FAILED`, bad.join('; ')); continue; }
         prog.add(`done ${n}`);

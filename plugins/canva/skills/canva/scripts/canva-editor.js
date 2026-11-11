@@ -140,9 +140,10 @@ async function gotoPage(tab, n) {
   await wait(tab, 1200);
 }
 
-// The editing canvas: the most common on-screen 16:9 div wider than 600 px. s converts screen px to design px.
+// The editing canvas of a 1920x1080 design: the most common on-screen 16:9 div wider than 600 px.
+// s converts screen px to design px.
 async function pageRect(tab) {
-  return tab.evaluate(() => {
+  const r = await tab.evaluate(() => {
     const c = [...document.querySelectorAll('div')].map(e => e.getBoundingClientRect()).filter(r => r.width > 600 && Math.abs(r.width / r.height - 16 / 9) < 0.02 && r.x > 70 && r.y > 60);
     const key = (r) => [Math.round(r.x), Math.round(r.y), Math.round(r.width)].join(',');
     const cnt = {}; c.forEach(r => { cnt[key(r)] = (cnt[key(r)] || 0) + 1; });
@@ -150,6 +151,8 @@ async function pageRect(tab) {
     const r = c[0];
     return r ? { x: r.x, y: r.y, w: r.width, h: r.height, s: r.width / 1920 } : null;
   });
+  if (!r) throw new Error('no 16:9 page canvas on screen: the design is still loading, zoomed out of view, or not a 1920x1080 design');
+  return r;
 }
 
 // (1490, 165) is empty grey canvas at withDesign's 1528x1400 viewport; a click there clears any selection.
