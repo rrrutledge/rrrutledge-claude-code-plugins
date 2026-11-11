@@ -1,7 +1,9 @@
-"""Drainer continuous-keeper poller - ONE fast-loop cycle, orchestrated in code.
+"""Drainer continuous-keeper poller - the feed cycle and the dispatch pass, orchestrated in code.
 
-The loop itself (enumerate -> drop seen -> cap -> dispatch -> record) is a deterministic algorithm, so
-it lives here in Python - cheaper and more reliable than asking an AI to follow it each cycle. AI is used
+Its scheduled form runs the keeper (keeper.py): a long-running process whose feed thread runs this script's
+--feed cycle (enumerate -> drop seen -> judge -> file fyi/junk -> write needs-you and auto-handle items to the
+pending list, pending.py) and whose dispatch loop runs dispatch_pass over that list about once a minute
+(cap -> dispatch -> record). Both are deterministic algorithms, so they live here in Python - cheaper and more reliable than asking an AI to follow it each cycle. AI is used
 for exactly three things, each a `claude -p` call sharing a cached general-rules prefix: one **triage**
 call per new item (the needs-you / fyi / junk judgment, per engine/triage.md), one **security screen**
 call per new item triage didn't already bucket as junk (a separate input-guardrail pass, per
@@ -27,7 +29,9 @@ needs-you item whose provider implements clear (email, Slack) is cleared by the 
 spawns; other needs-you items (Teams, Trello) are cleared by their worker on completion. See engine/poller-core.md for the contract.
 
 Usage:
-    python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # one live cycle
+    python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # the keeper (the scheduled form)
+    python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --feed     # one feed cycle, no workers
+    python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --once     # one feed cycle, one dispatch pass
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --dry-run  # triage report only
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod --channel=<C> [--now] [--resume-me]
 
@@ -52,6 +56,7 @@ The run ends with `on-demand:` lines, one per outcome:
     warning - no launch marker for session <id>, ...    (with --resume-me: close paused by hand)
 """
 import argparse
+import contextlib
 import functools
 import glob
 import hashlib
@@ -69,6 +74,7 @@ from datetime import datetime, timedelta, timezone
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_DIR = os.path.dirname(SCRIPT_DIR)
 PROVIDERS_DIR = os.path.join(SKILL_DIR, "providers")
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
@@ -79,6 +85,8 @@ from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, Provider
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
+import pending  # noqa: E402  (the on-disk list of judged items waiting for a worker)
+import keeper  # noqa: E402  (the long-running dispatch loop and feed thread the scheduled task starts)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 HEALTH_FILE = "provider-health.json"
@@ -1796,7 +1804,7 @@ def order_needs(needs_you_items, now=None):
     return ([it for it in orphans if recent(it)] + other + [it for it in orphans if not recent(it)])
 
 
-def worker_counts():
+def worker_counts(agents=_LIVE_UNSET):
     """The two numbers the dynamic-concurrency dispatch rule reads, as `(waiting, total)`:
 
       - `waiting` - every live session NOT actively busy (`claude agents --json` status != "busy"): a
@@ -1824,8 +1832,11 @@ def worker_counts():
     (fail CLOSED: open no new needs-you workers rather than dispatch unbounded), since a scan failure is
     exactly the condition - a bogged-down machine - most likely to coincide with a large eligible
     backlog. A single blip retries silently next cycle; SCAN_FAILURE_ALERT_THRESHOLD consecutive
-    failures launches one diagnostic session."""
-    agents = _claude_agents()
+    failures launches one diagnostic session.
+
+    `agents` is the caller's `_claude_agents()` scan when it already has one; omitted, this scans."""
+    if agents is _LIVE_UNSET:
+        agents = _claude_agents()
     if agents is None:
         return None
     live = [a for a in agents if a.get("pid")]
@@ -2058,9 +2069,17 @@ def main():
     ap.add_argument("--now", action="store_true", help="with --channel: skip the wait for a free worker slot")
     ap.add_argument("--resume-me", action="store_true",
                     help="with --channel: a launched worker resumes the calling Claude session when done")
+    ap.add_argument("--feed", action="store_true",
+                    help="one discovery cycle that fills the pending list and opens no workers (the keeper's feed)")
+    ap.add_argument("--once", action="store_true", help="one discovery cycle, then one dispatch pass")
     args = ap.parse_args()
     if (args.now or args.resume_me) and not args.channel:
         ap.error("--now and --resume-me apply to an on-demand --channel run")
+    if sum(map(bool, (args.dry_run, args.channel, args.feed, args.once))) > 1:
+        ap.error("--dry-run, --channel, --feed and --once are separate modes; pass at most one")
+    if not (args.dry_run or args.channel or args.feed or args.once):
+        serve(os.path.abspath(args.repo))
+        return
     launcher_id = os.environ.get("CLAUDE_CODE_SESSION_ID") if args.resume_me else None
     if args.resume_me and not launcher_id:
         ap.error("--resume-me runs from inside the launching session via the Bash tool, so "
@@ -2108,7 +2127,9 @@ def main():
     # broken deploy that won't self-heal, e.g. a missing dependency), or an auth failure a provider's OWN
     # transport already tried and failed to self-heal (kind="auth-unrecoverable" - see slack-adapter.py),
     # gets an immediate diagnostic session instead.
-    all_new, seen_by_source, totals = [], {}, {}
+    # offered: per source that listed cleanly, the ids it offered as new, which is what keeps an item on
+    # the pending list (see pending.prune).
+    all_new, seen_by_source, totals, offered = [], {}, {}, {}
     for provider in providers:
         try:
             new, total, seen = collect_new(provider, cfg)
@@ -2153,6 +2174,7 @@ def main():
                    if it.get("channel") == args.channel and it.get("channelType") in ("im", "mpim")]
         seen_by_source[provider.name] = seen
         totals[provider.name] = total
+        offered[provider.name] = {it["_id"] for it in new}
         all_new.extend(new)
         if not new:
             print(f"{provider.name}: {total} enumerated, 0 new.")
@@ -2183,6 +2205,10 @@ def main():
 
     if not all_new:
         print("0 new items across all sources. Nothing to dispatch.")
+        if not args.dry_run and not args.channel:
+            feed_pending(cfg["runtime_dir"], offered, [], [])
+            if args.once:
+                run_dispatch(cfg, {p.name: p for p in providers}, repo, config_repo)
         return
 
     # --- deterministic pre-triage rules ---
@@ -2214,6 +2240,8 @@ def main():
             it["_bucket"], it["_kind"] = "needs-you", "work"
             it["_complexity"] = "simple"
             pre_triaged.append(it)
+        elif reuse_pending_verdicts(cfg["runtime_dir"], it):
+            pre_triaged.append(it)  # judged in an earlier cycle and still waiting for a slot
         else:
             ai_triage.append(it)
 
@@ -2250,76 +2278,28 @@ def main():
         print(f"  {len(unjudged)} item(s) held this cycle (triage unavailable: {len(triage_unavailable_ids)}, "
               f"unscreened: {n_screen_only}); will retry next cycle.")
     if pre_triaged:
-        print(f"  {len(pre_triaged)} trello card(s) -> needs-you (deterministic, skipped AI)")
+        print(f"  {len(pre_triaged)} item(s) judged without an AI call (Trello, orphan sessions, physical tasks "
+              "by rule; anything already on the pending list by its stored verdicts)")
 
     # Split off the Junk-folder items AFTER triage and screening: they never dispatch. Genuine junk (and
     # anything the screen flagged) stays put, recorded seen with zero noise (no capture, no queue-add);
     # misfiled mail is un-junked below and the inbox provider works it from there.
     correctly_junked, to_rescue, needs_and_others = split_junk_items(all_new)
 
-    # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
-    # fail closed: open no new needs-you workers this cycle) ---
-    wcounts = worker_counts()
-    if args.channel:  # scan health and its diagnostic are the scheduled cycle's
-        waiting, total = wcounts or (None, None)
-    elif wcounts is None:
-        waiting = total = None
-        fails = _record_scan_failure(health)
-        if (fails >= SCAN_FAILURE_ALERT_THRESHOLD and not args.dry_run
-                and _scan_failure_alert_due(health)):
-            _spawn_scan_diagnostic(repo, cfg["runtime_dir"], cfg["worker_model"])
-            health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
-        save_health(cfg["runtime_dir"], health)
-    else:
-        waiting, total = wcounts
-        if health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
-            _record_scan_ok(health)
-            save_health(cfg["runtime_dir"], health)
-
     # --- split: needs-you (globally ordered), auto-handle (own worker, no cap), others (digest) ---
-    # Ordered by order_needs: recent and older orphan-sessions bracket every other source, which runs by
-    # band_rank (priority, level, referral - the queue policy defined once in provider_base) then
-    # `received` date, descending. Only job-search cards carry a non-neutral value
-    # in any band; email/Slack, ordinary Trello cards, and cold Director/VP-level job cards all sit at the
-    # shared neutral ranks, so within a priority band those interleave purely by `received` date (an inbox
-    # message's arrival time, a card's Start date, or a Start-less card's creation date). Because level
-    # leads referral, an IC-level job card drops below that neutral level and waits (a leadership role
-    # without a referral is worked before an IC role even with one); within a level a 🤝 Referral card
-    # lifts above and leads.
+    # needs-you and auto-handle items go to the pending list for the dispatch loop (dispatch_pass), which
+    # orders them; others are queued for the digest right here, since they open no worker.
     needs = order_needs([it for it in needs_and_others if it["_bucket"] == "needs-you"])
-    # auto-handle items get a worker too (they need a browser to act), but the worker acts and CLEARs the
-    # source without ever waiting on Russell - so they resolve fast and are dispatched unconditionally,
-    # never held behind the worker-buffer throttle that gates needs-you below, letting a standing-rule
-    # action run without waiting behind workers parked for Russell's attention. They still consume a
-    # concurrency slot, so the needs-you budget below subtracts the auto workers opened this cycle.
     auto = [it for it in needs_and_others if it["_bucket"] == "auto-handle"]
     others = [it for it in needs_and_others if it["_bucket"] not in ("needs-you", "auto-handle")]
 
-    # Correspondents that already have an open worker this cycle - seed of the dispatch hold below. A
-    # second needs-you item from one of these waits, so one worker reads both with full context instead of
-    # two racing. Grown as items dispatch (auto-handle and needs-you both register their correspondent),
-    # so even two duplicates arriving in the SAME cycle don't both spawn - the first claims the identity
-    # and the rest wait. Recomputed each cycle from live sessions, never a stored flag, so a dead worker
-    # frees it within one cycle (see open_correspondents).
-    active_correspondents = open_correspondents(cfg["runtime_dir"], live)
-    # One conversation, one worker: a new item whose conversation a live worker already holds is handed
-    # to that worker instead of getting its own, one whose worker closed paused waits for it to be
-    # resumed, and a conversation that gets a new worker this cycle holds its later items for one cycle,
-    # until that worker can receive them.
-    open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
-    claimed_convs = set()
-    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
-    # line names that worker and the launching session can wait on it.
-    thread_holder = None
-    if args.channel:
-        base = prov["slack"].conversation_key({"channel": args.channel})
-        thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
-        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
-    # The duplicate check's session list, grown as this cycle launches workers; None when the scan failed,
-    # so a seed never claims a partial list is the machine's live sessions.
-    peers = None if agents is None else list(agents)
-
     if args.dry_run:
+        wcounts = worker_counts(agents)
+        waiting, total = wcounts or (None, None)
+        active_correspondents = open_correspondents(cfg["runtime_dir"], live)
+        open_convs = open_conversations(cfg["runtime_dir"], live, paused_ids(agents))
+        claimed_convs = set()
+
         def print_route(it, key):
             """Print the conversation-routing action for an item, True when it takes one."""
             route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
@@ -2397,156 +2377,10 @@ def main():
                   + ", ".join(it.get("convId") or it["_id"] for it in teams_others))
         return
 
-    dispatched, auto_dispatched, held, held_corr, queued, poll_cleared, spawn_archived = 0, 0, 0, 0, 0, 0, 0
-    forwarded, held_conv, held_paused = 0, 0, 0
+    queued, poll_cleared = 0, 0
     # An on-demand --channel run's outcome lines, printed at the end (see the header).
     on_demand = [f"filed {it['_id']} as {it['_bucket']} (nothing waits on Russell)" for it in others]
     on_demand += [f"held {iid} - triage or screen unavailable, retry shortly" for iid in unjudged]
-
-    def routed(it, provider, key):
-        """Apply conversation_route to one item: True when the item is held or handed to its
-        conversation's live worker (the caller moves on), False when it dispatches as usual."""
-        nonlocal forwarded, held, held_conv, held_paused
-        route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
-        if route == "hold":
-            held += 1  # unrecorded: next cycle it forwards to the worker that claimed its conversation
-            held_conv += 1
-            on_demand.append(f"held {it['_id']} - a worker launched this cycle holds its conversation, retry shortly")
-            return True
-        if route == "paused":
-            held += 1  # unrecorded: retried each cycle until its worker is resumed or its pause expires
-            held_paused += 1
-            on_demand.append(f"held behind paused worker {open_convs[key][0]} on {args.channel}.")
-            return True
-        if route == "forward":
-            holder = open_convs[key][0]
-            # One attempt per holder: a send that timed out may still have landed, so a held item never
-            # re-sends the same note to the same holder on a later cycle.
-            if (_failed_forward(cfg["runtime_dir"], it["_id"]) != holder
-                    and route_to_live_worker(it, provider, key, holder, agents, cfg["runtime_dir"], repo)):
-                forwarded += 1
-                on_demand.append(f"held behind open worker {holder} on {args.channel}.")
-                return True
-            # The hand-over failed, so this item gets its own worker; its seed names the live session
-            # already on the conversation, so the two settle which one keeps it (worker-core §2).
-            it["_conversationHolder"] = ((_live_agent(holder, agents) or {}).get("name") or "").strip() or holder
-        return False
-
-    # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
-    # throttled by the worker buffer, recorded with its own triage so capture stamps the json and the seed
-    # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
-    # is stamped and registered so a same-cycle needs-you duplicate from the same person waits behind it.
-    for it in auto:
-        provider = prov[it["_source"]]
-        iid = it["_id"]
-        model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-        if iid in load_seen(cfg["runtime_dir"], it["_source"]):  # a concurrent cycle dispatched it since this cycle enumerated
-            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
-            continue
-        it["_correspondent"] = provider.correspondent(it)
-        json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
-        # closes without surfacing anything, so it can't hold a needs-you follow-up, and a needs-you
-        # holder lacks the standing rule to run an auto-handle item.
-        if spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                        peers=peers, resume_launcher=launcher_id):
-            on_demand.append(f"launched auto-handle worker for {iid}")
-            if peers is not None:
-                peers.append(launched_peer(_worker_title(iid, json_file)))
-        elif args.channel:
-            on_demand.append(f"drain failed - the worker for {iid} did not launch")
-            continue  # left unrecorded, so the next cycle picks it up again
-        seen_state("record", cfg["runtime_dir"], it["_source"], iid, "auto-handle")
-        if it["_correspondent"]:
-            active_correspondents.add(it["_correspondent"])
-        auto_dispatched += 1
-    # This cycle's needs-you budget: top the waiting pile up toward target_reviewable, capped by the
-    # max_concurrent headroom left after the auto workers just opened. Decremented per dispatch below;
-    # 0 when the session scan failed, so a failed scan holds every needs-you item (fail-closed).
-    slots = open_slots(waiting, total, auto_dispatched, cfg)
-    for it in needs:
-        provider = prov[it["_source"]]
-        iid = it["_id"]
-        key = provider.conversation_key(it)
-        # Ahead of the correspondent hold and the buffer: a worker already open on this conversation takes
-        # the item, which costs no new session.
-        if routed(it, provider, key):
-            continue
-        if thread_holder and not it.get("_screen") and "_conversationHolder" not in it:
-            held += 1
-            on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
-                             f"{thread_holder[0]} on {args.channel}.")
-            continue
-        corr = provider.correspondent(it)
-        # A failed hand-over means the holder can't take the item, so it launches rather than waiting
-        # behind that same holder's correspondent; its seed names the holder instead.
-        if "_conversationHolder" not in it and held_for_correspondent(corr, active_correspondents):
-            # An earlier item from this correspondent is still open (a live worker, or one dispatched
-            # earlier this cycle). Leave this UNRECORDED so it re-enumerates next cycle (its verdicts are
-            # read back from the cache, not re-judged); once that worker clears, the hold is gone and one
-            # worker has already read the full context.
-            held += 1
-            held_corr += 1
-            on_demand.append(f"held {iid} - an open worker on the same person holds it, retry shortly")
-            continue
-        if iid in load_seen(cfg["runtime_dir"], it["_source"]):
-            # A concurrent cycle (the scheduled one, or an on-demand --channel run) dispatched it since
-            # this cycle enumerated.
-            held += 1
-            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
-            continue
-        # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.
-        if slots <= 0 and not (args.now and wcounts is not None):
-            held += 1  # buffer full (or a failed scan held it): leave UNRECORDED -> re-enumerated next cycle, verdicts read back from the cache
-            on_demand.append(f"held {iid} - " + ("session scan failed, retry shortly" if wcounts is None
-                                                  else "worker buffer full (--now skips this wait)"))
-            continue
-        it["_correspondent"] = corr
-        json_file = provider.capture(it, iid, cfg["runtime_dir"])
-        stamp = {}
-        if it.get("_screen"):
-            stamp["screen"] = it["_screen"]  # so the worker leads with the injection warning
-        if it.get("_selfAuthenticated"):
-            stamp["selfAuthenticated"] = True  # so the worker's own re-screen acts on Russell's own directive
-        if key and "_conversationHolder" not in it and not it.get("_screen"):
-            # So the conversation's later items find this worker. A fallback launch beside a live holder
-            # doesn't claim it: the holder started earlier, keeps the work, and keeps receiving them. Nor
-            # does a screen-flagged item's worker, which exists to put the warning in front of Russell.
-            stamp["conversationKey"] = key
-        if stamp:
-            _stamp_item_fields(json_file, **stamp)
-        spawned = False
-        if it["_source"] == "orphan-sessions":
-            # A failed resume stays unrecorded, so the same orphan, whose id changes only when it
-            # ends again, is tried again next cycle.
-            if not spawn_resume(it["session_id"], it["cwd"], repo):
-                slots -= 1
-                continue
-        else:
-            model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
-            spawned = spawn_worker(iid, json_file, repo, cfg["runtime_dir"], model, cfg["local_dir"], config_repo, it,
-                                   peers=peers, resume_launcher=launcher_id)
-            if not spawned and args.channel:
-                on_demand.append(f"drain failed - the worker for {iid} did not launch")
-                continue  # left unrecorded, so the next cycle picks it up again
-            if spawned:
-                on_demand.append(f"launched worker for {iid}")
-                if not it.get("_screen") and peers is not None:  # a flagged item's subject-built title stays out of other seeds
-                    peers.append(launched_peer(_worker_title(iid, json_file)))
-                if "conversationKey" in stamp:
-                    claimed_convs.add(key)
-        seen_state("record", cfg["runtime_dir"], it["_source"], iid, "needs-you")
-        # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
-        # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
-        # a launch that returned a session id: a failed archive leaves the mail in the inbox (reconcile
-        # re-queues it if the worker dies), and a failed launch never archives mail nobody is working. A
-        # worker that dies after the archive is resumed by orphan-sessions, same as for a §2d early clear.
-        if spawned and provider.clear(it):
-            spawn_archived += 1
-        if corr:
-            active_correspondents.add(corr)
-        slots -= 1
-        dispatched += 1
     for it in others:
         provider = prov[it["_source"]]
         iid = it["_id"]
@@ -2589,20 +2423,388 @@ def main():
     if teams_others and prov.get("teams"):
         _spawn_teams_mark_read(teams_others, prov["teams"], repo, cfg["runtime_dir"], cfg["worker_model"])
 
-    buf = ("scan failed" if wcounts is None
-           else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
-    print(f"dispatched {dispatched} worker(s) ({spawn_archived} source mail archived at spawn), {auto_dispatched} auto-handle worker(s), "
-          f"queued {queued} for digest ({poll_cleared} archived at triage), "
-          f"{correctly_junked_count} correctly-filed junk (no action), "
-          f"{rescued_count} un-junked to the Inbox, "
-          f"{forwarded} handed to the live worker on their conversation, "
-          f"held {held} (of which {held_corr} behind an open item from the same correspondent, "
-          f"{held_conv} behind a worker launched this cycle on the same conversation, "
-          f"{held_paused} behind a paused worker on their conversation) at "
-          f"worker buffer {buf}. Workers clear needs-you on completion.")
+    print(f"queued {queued} for digest ({poll_cleared} archived at triage), "
+          f"{correctly_junked_count} correctly-filed junk (no action), {rescued_count} un-junked to the Inbox.")
+
     if args.channel:
+        # On demand, this run dispatches its own conversation's items, under the dispatch lock so it never
+        # opens workers at the same time as the keeper's dispatch loop.
+        with dispatch_lock(cfg["runtime_dir"]) as locked:
+            if locked:
+                dispatch_pass(cfg, prov, repo, config_repo, auto + needs, channel=args.channel, now=args.now,
+                              launcher_id=launcher_id, on_demand=on_demand)
+            else:
+                on_demand.append("held - another drainer dispatch pass is running, retry shortly")
         for line in on_demand or [f"nothing to drain in {args.channel}."]:
             print(f"on-demand: {line}")
+        return
+
+    feed_pending(cfg["runtime_dir"], offered, auto + needs, others + correctly_junked + to_rescue)
+    if args.once:
+        run_dispatch(cfg, prov, repo, config_repo)
+
+
+# ---------------------------------------------------------------------------- pending list and dispatch
+
+DISPATCH_LOCK_FILE = "dispatch.lock"
+DISPATCH_LOCK_WAIT = 120  # seconds an on-demand run or a pass waits for another pass to finish
+
+
+@contextlib.contextmanager
+def dispatch_lock(runtime_dir, timeout=DISPATCH_LOCK_WAIT):
+    """Held around every dispatch pass, so the keeper's loop and an on-demand run never open workers at
+    the same moment from two views of the same sessions. Yields whether the lock was taken."""
+    lock = keeper.InstanceLock(os.path.join(runtime_dir, DISPATCH_LOCK_FILE))
+    got = lock.acquire(timeout=timeout)
+    try:
+        yield got
+    finally:
+        lock.release()
+
+
+def reuse_pending_verdicts(runtime_dir, it):
+    """Give an item the verdicts it already holds on the pending list, when its listing is unchanged.
+
+    A held item is judged once: the next cycle that finds it again copies its stored verdict fields
+    (the `_` keys the triage, the screen and the Slack overrides set) back onto it instead of fetching its
+    text again and asking the cache. True when the item was filled in this way."""
+    entry = pending.get(runtime_dir, it["_source"], it["_id"])
+    if not entry or entry.get("_bucket") not in ("needs-you", "auto-handle"):
+        return False
+    listing = {k: v for k, v in it.items() if not k.startswith("_")}
+    stored = {k: v for k, v in entry.items() if not k.startswith("_")}
+    if json.loads(json.dumps(listing, default=str)) != stored:
+        return False  # the source changed the item (a longer unread span, an edited card): judge it again
+    for k, v in entry.items():
+        if k.startswith("_") and k not in ("_id", "_source", "_pendingSince"):
+            it[k] = v
+    return True
+
+
+def feed_pending(runtime_dir, offered, keep, drop):
+    """Bring the pending list in line with this cycle: store every needs-you and auto-handle item, drop
+    the ones this cycle judged as needing no worker, and drop every entry a cleanly-listed source no
+    longer offers as new (dispatched, archived, or handled by hand). A source whose listing failed this
+    cycle keeps its entries untouched."""
+    added = sum(pending.put(runtime_dir, it) for it in keep)
+    removed = sum(pending.remove(runtime_dir, it["_source"], it["_id"]) for it in drop)
+    entries = pending.load_all(runtime_dir)
+    for source, ids in offered.items():
+        removed += pending.prune(runtime_dir, source, ids, entries)
+    print(f"pending list: {len(keep)} item(s) waiting for a worker ({added} new or changed), "
+          f"{removed} entr(ies) removed.")
+
+
+def run_dispatch(cfg, prov, repo, config_repo):
+    """One dispatch pass over the whole pending list, under the dispatch lock."""
+    with dispatch_lock(cfg["runtime_dir"]) as locked:
+        if not locked:
+            print("dispatch: another pass holds the dispatch lock; skipped.")
+            return
+        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]))
+
+
+def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, launcher_id=None, on_demand=None):
+    """Open workers for the top judged items, up to the free slots. The only code that opens item workers.
+
+    Reads the machine's sessions once, drops any item already recorded seen (dispatched by an earlier
+    pass, or by a concurrent on-demand run) from the pending list, then dispatches auto-handle items
+    unconditionally and needs-you items in order_needs order while slots remain, with the correspondent
+    hold, the conversation routing and the still-pending check exactly as a full cycle applied them.
+    An item that opens a worker, or is handed to a live one, is recorded seen and leaves the pending list;
+    a held item stays on it for the next pass. `channel`, `now`, `launcher_id` and `on_demand` carry an
+    on-demand --channel run's flags and outcome lines."""
+    runtime_dir = cfg["runtime_dir"]
+    on_demand = [] if on_demand is None else on_demand
+    agents = _claude_agents()
+    live = live_session_ids(agents)
+
+    seen_by = {}
+
+    def already_seen(it):
+        if it["_source"] not in seen_by:
+            seen_by[it["_source"]] = load_seen(runtime_dir, it["_source"])
+        return it["_id"] in seen_by[it["_source"]]
+
+    fresh = []
+    for it in items:
+        if it["_source"] not in prov or already_seen(it):
+            # Dispatched since it was listed, or its source is no longer enabled: either way it is not
+            # this pass's to open, and the next feed cycle re-lists anything still waiting.
+            pending.remove(runtime_dir, it["_source"], it["_id"])
+            continue
+        fresh.append(it)
+
+    # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
+    # fail closed: open no new needs-you workers this pass) ---
+    wcounts = worker_counts(agents)
+    if channel:  # scan health and its diagnostic are the scheduled keeper's
+        waiting, total = wcounts or (None, None)
+    else:
+        health = load_health(runtime_dir)
+        if wcounts is None:
+            waiting = total = None
+            fails = _record_scan_failure(health)
+            if fails >= SCAN_FAILURE_ALERT_THRESHOLD and _scan_failure_alert_due(health):
+                _spawn_scan_diagnostic(repo, runtime_dir, cfg["worker_model"])
+                health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
+            save_health(runtime_dir, health)
+        else:
+            waiting, total = wcounts
+            if health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
+                _record_scan_ok(health)
+                save_health(runtime_dir, health)
+
+    # Ordered by order_needs: recent and older orphan-sessions bracket every other source, which runs by
+    # band_rank (priority, level, referral - the queue policy defined once in provider_base) then
+    # `received` date, descending. Only job-search cards carry a non-neutral value
+    # in any band; email/Slack, ordinary Trello cards, and cold Director/VP-level job cards all sit at the
+    # shared neutral ranks, so within a priority band those interleave purely by `received` date (an inbox
+    # message's arrival time, a card's Start date, or a Start-less card's creation date). Because level
+    # leads referral, an IC-level job card drops below that neutral level and waits (a leadership role
+    # without a referral is worked before an IC role even with one); within a level a 🤝 Referral card
+    # lifts above and leads.
+    needs = order_needs([it for it in fresh if it.get("_bucket") == "needs-you"])
+    # auto-handle items get a worker too (they need a browser to act), but the worker acts and CLEARs the
+    # source without ever waiting on Russell - so they resolve fast and are dispatched unconditionally,
+    # never held behind the worker-buffer throttle that gates needs-you below, letting a standing-rule
+    # action run without waiting behind workers parked for Russell's attention. They still consume a
+    # concurrency slot, so the needs-you budget below subtracts the auto workers opened this pass.
+    auto = [it for it in fresh if it.get("_bucket") == "auto-handle"]
+
+    # Correspondents that already have an open worker - seed of the dispatch hold below. A second needs-you
+    # item from one of these waits, so one worker reads both with full context instead of two racing.
+    # Grown as items dispatch (auto-handle and needs-you both register their correspondent), so even two
+    # duplicates in the SAME pass don't both spawn - the first claims the identity and the rest wait.
+    # Recomputed each pass from live sessions, never a stored flag, so a dead worker frees it within one
+    # pass (see open_correspondents).
+    active_correspondents = open_correspondents(runtime_dir, live)
+    # One conversation, one worker: a new item whose conversation a live worker already holds is handed
+    # to that worker instead of getting its own, one whose worker closed paused waits for it to be
+    # resumed, and a conversation that gets a new worker this pass holds its later items until that
+    # worker can receive them.
+    open_convs = open_conversations(runtime_dir, live, paused_ids(agents))
+    claimed_convs = set()
+    # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
+    # line names that worker and the launching session can wait on it.
+    thread_holder = None
+    if channel:
+        base = prov["slack"].conversation_key({"channel": channel})
+        thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
+        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
+    # The duplicate check's session list, grown as this pass launches workers; None when the scan failed,
+    # so a seed never claims a partial list is the machine's live sessions.
+    peers = None if agents is None else list(agents)
+
+    dispatched, auto_dispatched, held, held_corr, spawn_archived = 0, 0, 0, 0, 0
+    forwarded, held_conv, held_paused = 0, 0, 0
+
+    def recorded(it, triage_label):
+        seen_state("record", runtime_dir, it["_source"], it["_id"], triage_label)
+        pending.remove(runtime_dir, it["_source"], it["_id"])
+
+    def routed(it, provider, key):
+        """Apply conversation_route to one item: True when the item is held or handed to its
+        conversation's live worker (the caller moves on), False when it dispatches as usual."""
+        nonlocal forwarded, held, held_conv, held_paused
+        route = conversation_route(key, open_convs, claimed_convs, bool(it.get("_screen")))
+        if route == "hold":
+            held += 1  # stays pending: the next pass forwards it to the worker that claimed its conversation
+            held_conv += 1
+            on_demand.append(f"held {it['_id']} - a worker launched this cycle holds its conversation, retry shortly")
+            return True
+        if route == "paused":
+            held += 1  # stays pending, retried each pass until its worker is resumed or its pause expires
+            held_paused += 1
+            on_demand.append(f"held behind paused worker {open_convs[key][0]} on {channel}.")
+            return True
+        if route == "forward":
+            holder = open_convs[key][0]
+            # One attempt per holder: a send that timed out may still have landed, so a held item never
+            # re-sends the same note to the same holder on a later pass.
+            if (_failed_forward(runtime_dir, it["_id"]) != holder
+                    and route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo)):
+                pending.remove(runtime_dir, it["_source"], it["_id"])  # recorded seen by the hand-over
+                forwarded += 1
+                on_demand.append(f"held behind open worker {holder} on {channel}.")
+                return True
+            # The hand-over failed, so this item gets its own worker; its seed names the live session
+            # already on the conversation, so the two settle which one keeps it (worker-core §2).
+            it["_conversationHolder"] = ((_live_agent(holder, agents) or {}).get("name") or "").strip() or holder
+        return False
+
+    # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not
+    # throttled by the worker buffer, recorded with its own triage so capture stamps the json and the seed
+    # names engine/auto-handle.md, whose branch the worker runs (act -> CLEAR -> queue digest -> close up). Its correspondent
+    # is stamped and registered so a same-pass needs-you duplicate from the same person waits behind it.
+    for it in auto:
+        provider = prov[it["_source"]]
+        iid = it["_id"]
+        model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
+        if iid in load_seen(runtime_dir, it["_source"]):  # a concurrent run dispatched it since this pass read the list
+            pending.remove(runtime_dir, it["_source"], iid)
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
+            continue
+        it["_correspondent"] = provider.correspondent(it)
+        json_file = provider.capture(it, iid, runtime_dir)
+        # Auto-handle sits outside conversation routing both ways: its worker runs a standing rule and
+        # closes without surfacing anything, so it can't hold a needs-you follow-up, and a needs-you
+        # holder lacks the standing rule to run an auto-handle item.
+        if spawn_worker(iid, json_file, repo, runtime_dir, model, cfg["local_dir"], config_repo, it,
+                        peers=peers, resume_launcher=launcher_id):
+            on_demand.append(f"launched auto-handle worker for {iid}")
+            if peers is not None:
+                peers.append(launched_peer(_worker_title(iid, json_file)))
+        elif channel:
+            on_demand.append(f"drain failed - the worker for {iid} did not launch")
+            continue  # left unrecorded and pending, so the next pass picks it up again
+        recorded(it, "auto-handle")
+        if it["_correspondent"]:
+            active_correspondents.add(it["_correspondent"])
+        auto_dispatched += 1
+    # This pass's needs-you budget: top the waiting pile up toward target_reviewable, capped by the
+    # max_concurrent headroom left after the auto workers just opened. Decremented per dispatch below;
+    # 0 when the session scan failed, so a failed scan holds every needs-you item (fail-closed).
+    slots = open_slots(waiting, total, auto_dispatched, cfg)
+    for it in needs:
+        provider = prov[it["_source"]]
+        iid = it["_id"]
+        key = provider.conversation_key(it)
+        # Ahead of the correspondent hold and the buffer: a worker already open on this conversation takes
+        # the item, which costs no new session.
+        if routed(it, provider, key):
+            continue
+        if thread_holder and not it.get("_screen") and "_conversationHolder" not in it:
+            held += 1
+            on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
+                             f"{thread_holder[0]} on {channel}.")
+            continue
+        corr = provider.correspondent(it)
+        # A failed hand-over means the holder can't take the item, so it launches rather than waiting
+        # behind that same holder's correspondent; its seed names the holder instead.
+        if "_conversationHolder" not in it and held_for_correspondent(corr, active_correspondents):
+            # An earlier item from this correspondent is still open (a live worker, or one dispatched
+            # earlier this pass). It stays pending with its verdicts; once that worker clears, the hold is
+            # gone and one worker has already read the full context.
+            held += 1
+            held_corr += 1
+            on_demand.append(f"held {iid} - an open worker on the same person holds it, retry shortly")
+            continue
+        if iid in load_seen(runtime_dir, it["_source"]):
+            # A concurrent run (an on-demand --channel run, or a pass before it) dispatched it since this
+            # pass read the list.
+            pending.remove(runtime_dir, it["_source"], iid)
+            held += 1
+            on_demand.append(f"held {iid} - another drainer cycle just dispatched it, retry shortly")
+            continue
+        # --now skips the wait for a free slot, but a failed session scan (wcounts None) still holds.
+        if slots <= 0 and not (now and wcounts is not None):
+            held += 1  # buffer full (or a failed scan held it): stays pending for the next pass
+            on_demand.append(f"held {iid} - " + ("session scan failed, retry shortly" if wcounts is None
+                                                  else "worker buffer full (--now skips this wait)"))
+            continue
+        it["_correspondent"] = corr
+        json_file = provider.capture(it, iid, runtime_dir)
+        stamp = {}
+        if it.get("_screen"):
+            stamp["screen"] = it["_screen"]  # so the worker leads with the injection warning
+        if it.get("_selfAuthenticated"):
+            stamp["selfAuthenticated"] = True  # so the worker's own re-screen acts on Russell's own directive
+        if key and "_conversationHolder" not in it and not it.get("_screen"):
+            # So the conversation's later items find this worker. A fallback launch beside a live holder
+            # doesn't claim it: the holder started earlier, keeps the work, and keeps receiving them. Nor
+            # does a screen-flagged item's worker, which exists to put the warning in front of Russell.
+            stamp["conversationKey"] = key
+        if stamp:
+            _stamp_item_fields(json_file, **stamp)
+        spawned = False
+        if it["_source"] == "orphan-sessions":
+            # A failed resume stays unrecorded and pending, so the same orphan, whose id changes only when
+            # it ends again, is tried again next pass.
+            if not spawn_resume(it["session_id"], it["cwd"], repo):
+                slots -= 1
+                continue
+        else:
+            model = cfg["worker_model_complex"] if it["_complexity"] == "complex" else cfg["worker_model"]
+            spawned = spawn_worker(iid, json_file, repo, runtime_dir, model, cfg["local_dir"], config_repo, it,
+                                   peers=peers, resume_launcher=launcher_id)
+            if not spawned and channel:
+                on_demand.append(f"drain failed - the worker for {iid} did not launch")
+                continue  # left unrecorded and pending, so the next pass picks it up again
+            if spawned:
+                on_demand.append(f"launched worker for {iid}")
+                if not it.get("_screen") and peers is not None:  # a flagged item's subject-built title stays out of other seeds
+                    peers.append(launched_peer(_worker_title(iid, json_file)))
+                if "conversationKey" in stamp:
+                    claimed_convs.add(key)
+        recorded(it, "needs-you")
+        # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
+        # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
+        # a launch that returned a session id: a failed archive leaves the mail in the inbox (reconcile
+        # re-queues it if the worker dies), and a failed launch never archives mail nobody is working. A
+        # worker that dies after the archive is resumed by orphan-sessions, same as for a §2d early clear.
+        if spawned and provider.clear(it):
+            spawn_archived += 1
+        if corr:
+            active_correspondents.add(corr)
+        slots -= 1
+        dispatched += 1
+
+    buf = ("scan failed" if wcounts is None
+           else f"{waiting}/{cfg['target_reviewable']} waiting, {total}/{cfg['max_concurrent']} total")
+    print(f"dispatched {dispatched} worker(s) ({spawn_archived} source mail archived at spawn), "
+          f"{auto_dispatched} auto-handle worker(s), "
+          f"{forwarded} handed to the live worker on their conversation, "
+          f"held {held} (of which {held_corr} behind an open item from the same correspondent, "
+          f"{held_conv} behind a worker launched this pass on the same conversation, "
+          f"{held_paused} behind a paused worker on their conversation) at "
+          f"worker buffer {buf}. Workers clear needs-you on completion.")
+    return dispatched + auto_dispatched
+
+
+# ---------------------------------------------------------------------------- the keeper
+
+VERSION_CHECK_INTERVAL = 15 * 60
+
+
+def _newer_version_check():
+    """A should_recycle() for the keeper: every VERSION_CHECK_INTERVAL, pull the latest published drainer
+    the way the task's launcher does at start, and report True once the installed version is no longer the
+    one this process runs from, so the keeper exits and the task starts the new version. A keeper run from
+    a checkout outside the plugin cache never recycles for this."""
+    spec = importlib.util.spec_from_file_location("launch_drainer", os.path.join(SCRIPT_DIR, "launch-drainer.py"))
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    here = os.path.normcase(os.path.abspath(PLUGIN_ROOT))
+    if not here.startswith(os.path.normcase(os.path.abspath(launcher.CACHE_DIR))):
+        return lambda: False
+    last = [time.monotonic()]
+
+    def check():
+        if time.monotonic() - last[0] < VERSION_CHECK_INTERVAL:
+            return False
+        last[0] = time.monotonic()
+        launcher._auto_update()
+        installed = launcher.resolve_install_path()
+        return bool(installed) and os.path.normcase(os.path.abspath(installed)) != here
+    return check
+
+
+def serve(source_repo):
+    """The scheduled form: run the keeper (keeper.py) until it recycles. Its dispatch loop runs a dispatch
+    pass over the pending list about once a minute, and its feed thread runs this script's --feed cycle
+    every 5 minutes. Config and providers are re-read each pass, so a knob change applies within a minute."""
+    config_repo = ensure_main_worktree(source_repo)
+    runtime_dir = read_config(config_repo, runtime_root=source_repo)["runtime_dir"]
+
+    def dispatch():
+        cfg = read_config(config_repo, runtime_root=source_repo)
+        providers = load_providers(cfg, {})
+        run_dispatch(cfg, {p.name: p for p in providers}, source_repo, config_repo)
+
+    feed_cmd = [sys.executable, os.path.abspath(__file__), "--repo", source_repo, "--feed"]
+    reason = keeper.run(runtime_dir, dispatch, feed_cmd, should_recycle=_newer_version_check())
+    print(f"keeper: {reason}")
 
 
 if __name__ == "__main__":

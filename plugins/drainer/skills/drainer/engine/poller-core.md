@@ -1,7 +1,8 @@
 # drainer poller-core - the continuous keeper's contract
 
-The drainer runs as a **continuous keeper**: a poller runs one short cycle every few minutes and holds each source at **zero un-started actionable items**.
-The cycle is a deterministic algorithm, so it is implemented as a **script** - `scripts/run-poller.py` - not prose an AI re-derives each run.
+The drainer runs as a **continuous keeper**: one long-running process that holds each source at **zero un-started actionable items**.
+Its feed cycle finds and judges new items every 5 minutes, and its dispatch loop opens workers for them about once a minute (see "The keeper" below).
+Both are deterministic algorithms, so they are implemented as **scripts** - `scripts/run-poller.py`, `scripts/keeper.py`, `scripts/pending.py` - not prose an AI re-derives each run.
 This doc is the *contract*: what the script does and where AI is (and isn't) used.
 The full rationale is in `docs/superpowers/specs/2026-06-17-drainer-continuous-keeper-redesign.md`.
 
@@ -29,9 +30,30 @@ Triage's `sender` field (person / automated) is cached with the rest of the verd
 Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record - is code.
 No AI re-implements the loop.
 
-## What `run-poller.py` does each cycle
+## The keeper
 
-`python run-poller.py --repo <project> [--dry-run]`
+`python run-poller.py --repo <project>` is the form the `DrainerKeeper` scheduled task runs, and it starts the keeper (`scripts/keeper.py`).
+The task starts it every 5 minutes and ignores a start while one is running, so the task is the keeper's watchdog: a keeper that died or recycled is back within 5 minutes.
+The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a second start from any path exits at once.
+
+- **The feed thread** runs `run-poller.py --repo <project> --feed` as a child process: the cycle below, through judging and the fyi/junk handling, ending with every needs-you and auto-handle item written to the pending list.
+  Each cycle starts 5 minutes after the previous one started, or at once when that one ran longer; a cycle still running after 30 minutes is killed and the next one starts.
+- **The pending list** (`scripts/pending.py`) holds one file per item under `<runtime_dir>/pending/`, the item with its verdicts, until a worker opens for it.
+  The feed writes and prunes entries: an entry goes once a source that listed cleanly no longer offers its item as new, or once its item is re-judged as needing no worker.
+- **The dispatch loop** (the keeper's main thread) runs one dispatch pass (step 5) over the whole pending list about once a minute, and at once whenever a feed cycle finishes.
+  It is the only code that opens item workers.
+  An item that opens a worker, or is handed to a live one, is recorded seen and leaves the list; a held item stays on it for the next pass.
+  Every pass, and an on-demand `--channel` run, holds the dispatch lock (`<runtime_dir>/dispatch.lock`), so two passes never open workers from two views of the same sessions.
+- **Recycling.**
+  The keeper exits cleanly after 4 hours, past 600 MB of memory, or when a newer drainer version is installed (it checks every 15 minutes), and the task starts a fresh one.
+  A running feed cycle finishes first, and dispatch passes keep running while it does.
+  Starts, feed cycles, failures and recycles are logged to `<runtime_dir>/keeper.log`.
+
+`--once` runs one feed cycle and then one dispatch pass, for a manual run; `--dry-run` reports what one cycle would do and touches no state.
+
+## What one feed cycle does
+
+`python run-poller.py --repo <project> --feed` (or `--once`, or `--dry-run`)
 
 1. **Read config** from `<project>/.claude/drainer.local.md`: enabled providers, `runtime_dir`.
    Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-cycle throttle in the whole loop (see step 5).
@@ -50,7 +72,8 @@ No AI re-implements the loop.
     (Contrast triage's own fail-safe for an item the model silently *skips* inside a working call: that still defaults to needs-you.
     The fail-closed hold is for the call itself being unavailable.)
 4c. **Verdict cache.**
-    An item the dispatch step holds (step 5) re-enumerates every cycle, so its triage and screen verdicts are persisted in `<runtime_dir>/judged-verdicts.json`, keyed by item id, and read back instead of re-judged.
+    An item already on the pending list whose listing fields are unchanged takes its stored verdicts from its entry, with no text fetch and no cache lookup, however long it has waited.
+    Every other item the dispatch step held re-enumerates each cycle, so its triage and screen verdicts are persisted in `<runtime_dir>/judged-verdicts.json`, keyed by item id, and read back instead of re-judged.
     A cached verdict is used only while the text the model saw (the adapter's triage text, subject, sender) is unchanged and the verdict is under 24 hours old; changed content or an expired verdict is judged afresh.
     Only verdicts a model actually returned are cached - an item whose call was unavailable, or whose triage the fail-safe defaulted, is judged again next cycle.
     A cached `flagged` screen verdict forces needs-you exactly as a fresh one does.
@@ -61,14 +84,14 @@ No AI re-implements the loop.
     The time the account can next serve a call is persisted in `<runtime_dir>/background-backoff.json` - just after the reset time the refusal names for a usage limit (an hour when it names none), half an hour for a lapsed login.
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
-5. **Dispatch** (deterministic):
+5. **Dispatch** (deterministic) - the feed cycle files fyi and junk items itself and writes needs-you and auto-handle items to the pending list; the dispatch loop's pass then works the list, dropping any item already recorded seen before it decides:
    - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one, and if a paused worker holds it, hold the item (see "One conversation, one worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
      The buffer is dynamic: each cycle opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
      The point is that whenever Russell turns his attention there is always something waiting for review, so he is never idle on the AI; while he is busy those waiting workers stay unresolved, so the buffer stays full and few new ones open.
-     With no room: leave the item **unrecorded** so a later cycle picks it up (throttle + fail-safe).
-     If the `claude agents --json` scan itself fails, dispatch fail-CLOSES this cycle (opens no new needs-you workers) rather than dispatching unbounded.
+     With no room: the item stays **unrecorded** on the pending list, and a later pass picks it up (throttle + fail-safe).
+     If the `claude agents --json` scan itself fails, the pass fail-CLOSES (opens no new needs-you workers) rather than dispatching unbounded.
    - **auto-handle** → capture + spawn a headless worker too (it needs a browser to act), but the worker runs the standing rule autonomously and clears the source right away, so it resolves fast and is dispatched unconditionally, never throttled by the worker buffer (though it still counts toward `max_concurrent`).
      It's recorded with its own `auto-handle` triage, which makes the worker's seed name `engine/auto-handle.md`; the worker runs that branch (act → CLEAR → queue a digest entry → close up) and never interrupts the user.
      The digest reports it under "Auto-handled."
@@ -94,7 +117,7 @@ The rule is a single observable condition:
 
 The success case needs no signal at all: a worker that finished archived the message, so the message is gone from the inbox and its item is excluded automatically.
 What is left is work nobody completed, and one condition covers every way that happens - the worker self-terminated, it died, or its archive call silently failed.
-Because the reconcile runs ahead of the enumerate, anything it re-queues is re-dispatched in the same cycle.
+Because the reconcile runs ahead of the enumerate, anything it re-queues is listed, judged and back on the pending list in the same cycle.
 
 Three guards keep it from re-queuing work that is fine:
 
@@ -128,12 +151,12 @@ The fix is not to detect sameness - that needs content judgment and is fragile.
 It is to **hold a second item from a correspondent out of dispatch while an earlier item from them is still open**, and let the worker's existing situational-check (it reads the whole thread across Inbox/Archive/Deleted Items before drafting) do the grouping once, in one worker, with full context.
 
 At dispatch, before spawning a worker for a needs-you item, the poller compares its **correspondent identity** against the correspondents that currently have an open item.
-If one matches, the item is left **unrecorded** - the exact "leave it for a later cycle" pattern the worker-buffer throttle uses - so it just waits in the source and re-evaluates next cycle.
+If one matches, the item is left **unrecorded** on the pending list - the same pattern the worker-buffer throttle uses - so it waits and re-evaluates on the next pass.
 
-"Currently has an open item" is recomputed **every cycle from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
-The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in this same cycle (so even two duplicates arriving in one cycle don't both spawn - the first claims the identity, the rest wait).
-If a worker dies without clearing, reconcile re-queues *its* item within one cycle, and on that same cycle the hold behind it also goes false - it is read off the same signal, not a separate flag.
-Worst case is one poll cycle's delay, never indefinite starvation.
+"Currently has an open item" is recomputed **every pass from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
+The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
+If a worker dies without clearing, the hold behind it goes false on the next pass, and reconcile re-queues *its* item within one feed cycle - both read the same liveness signal, not a separate flag.
+Worst case is one feed cycle's delay, never indefinite starvation.
 A live-session scan that fails yields no held-open set, so a cross-cycle hold **fails open** (dispatch proceeds); the same-cycle dedup still holds a burst.
 
 **Correspondent identity is per-provider, not always the envelope From address.**
@@ -148,14 +171,15 @@ Each card dispatches independently, and a card with an open worker is not dispat
 ## One conversation, one worker
 
 A new needs-you item in a conversation a live worker already holds goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
-When the conversation's worker closed paused, waiting on other work, the item waits unrecorded until that worker is resumed, and stops waiting once the pause is three days old.
+When the conversation's worker closed paused, waiting on other work, the item waits unrecorded on the pending list until that worker is resumed, and stops waiting once the pause is three days old.
 Each provider names the conversation (`conversation_key()`), and `run-poller.py` does the routing and the hand-over (`route_to_live_worker` and the functions it calls); the mechanics are documented there.
 A hand-over that fails launches a worker, so the worst case is a duplicate.
 Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).
 
 ## On demand: drain one Slack conversation now
 
-`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs the cycle's enumerate, triage, screen, and dispatch on one Slack DM or group DM, so an item drained on demand gets the same verdicts, routing, and worker a scheduled cycle gives it.
+`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs the cycle's enumerate, triage, screen, and dispatch on one Slack DM or group DM, so an item drained on demand gets the same verdicts, routing, and worker the keeper gives it.
+Its dispatch pass holds the same dispatch lock as the keeper's, so the two never open workers at once.
 A session about to send someone a new Slack message runs it first, per the `slack` skill's **Answer before a new message**.
 The flags and the `on-demand:` outcome lines are in the script's header.
 

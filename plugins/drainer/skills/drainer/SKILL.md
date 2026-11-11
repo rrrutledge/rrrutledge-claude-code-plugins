@@ -8,7 +8,7 @@ instructions: |-
   For each: read the underlying conversation → decide the ACTION (reply / do work / nudge / stop / nothing) → DO the doable part now (safe, reversible work proceeds; irreversible/outbound-to-others waits for the user's OK) → draft any reply in the user's voice **draft-only, never sent** → clear the item.
   Outlook / Teams / outreach are the **same loop over different sources**.
 
-  It runs as a **continuous keeper**: a poller (`scripts/run-poller.py`) runs a short cycle every few minutes and holds each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker, dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
+  It runs as a **continuous keeper**: one long-running process (`scripts/run-poller.py`) whose feed cycle finds and judges new items every 5 minutes and whose dispatch loop opens workers about once a minute, holding each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker, dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
   The loop is code; AI is used only to **triage** each cycle's new items and to run each **worker**.
 
   ### 1. Load per-machine settings FIRST
@@ -28,7 +28,7 @@ instructions: |-
   ### 3. Follow the engine specs (bundled next to this SKILL.md)
   Canonical and source-agnostic - don't restate them:
   - **`engine/triage.md`** - the one rubric: needs-you / fyi / junk (only three; junk → propose a source-stop in priority order: unsubscribe, then app notification settings, then an inbox rule).
-  - **`engine/poller-core.md`** - the continuous keeper's contract: what `scripts/run-poller.py` does each cycle (enumerate → triage → dispatch, never clear; `--dry-run` for a report) and where AI is used (batched triage + the worker).
+  - **`engine/poller-core.md`** - the continuous keeper's contract: the keeper, its feed cycle and its dispatch loop (enumerate → triage → pending list → dispatch, never clear; `--dry-run` for a report) and where AI is used (batched triage + the worker).
   - **`engine/worker-core.md`** - the lean per-item needs-you worker procedure (read brain → situational-check → do the work → draft in voice → learn from the send → advance the item).
     Situational sub-procedures load by trigger: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear), which worker-core names at the point each trigger fires.
   - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch (act → CLEAR → queue the digest → close up), named directly in the worker's seed so it loads without going through the needs-you flow.

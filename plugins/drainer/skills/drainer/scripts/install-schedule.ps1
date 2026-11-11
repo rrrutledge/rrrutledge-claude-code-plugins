@@ -1,4 +1,5 @@
-# install-schedule.ps1 - register (or remove) the ~5-min Scheduled Task that runs the keeper.
+# install-schedule.ps1 - register (or remove) the ~5-min Scheduled Task that starts the keeper and
+# restarts it whenever it has exited (it ignores a start while one is running).
 #
 # This is the ONLY PowerShell in the keeper, and you run it BY HAND once (not from a Claude session),
 # after the manual tryout is trusted. It registers a Windows Scheduled Task that runs the Python
@@ -55,8 +56,8 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
     -Principal $principal `
-    -Description "Drainer continuous keeper - one poller cycle every $IntervalMinutes min." `
+    -Description "Drainer continuous keeper - starts the keeper every $IntervalMinutes min if it is not running." `
     -Force | Out-Null
 
-Write-Host "Registered '$TaskName': python run-poller.py --repo $RepoDir every $IntervalMinutes min."
+Write-Host "Registered '$TaskName': starts the keeper (python run-poller.py --repo $RepoDir) every $IntervalMinutes min when it is not running."
 Write-Host "Remove with:  install-schedule.ps1 -RepoDir $RepoDir -Remove"
