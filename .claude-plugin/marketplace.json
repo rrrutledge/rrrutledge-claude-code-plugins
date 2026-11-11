@@ -83,7 +83,7 @@
     {
       "name": "canva",
       "source": "./plugins/canva",
-      "description": "Upload assets and manage folders in a Canva account via the Canva Connect API — no browser. Create a folder, upload an image/PDF as an asset (optionally straight into that folder), list a folder's contents, or move an item between folders. Its own OAuth 2.0 + PKCE integration, not a shared client."
+      "description": "Canva two ways. The Connect API (its own OAuth 2.0 + PKCE integration, not a shared client) creates folders, uploads an image/PDF as an asset, lists a folder, and moves items. Browser editing over CDP edits a design's pages: place images to exact px, move text boxes, retype a word, take full-resolution slide screenshots, and run Magic Expand in a scratch design."
     },
     {
       "name": "mail-filters",

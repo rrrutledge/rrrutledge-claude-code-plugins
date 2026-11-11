@@ -73,16 +73,18 @@ Innocent: a genuinely open decision, asked as one direct question and stopped th
 
 **Skill prose carries only the steps that need the running Claude session.**
 In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
-The prose keeps the steps that need judgment and the calls to harness tools a script can't make.
+A how-to doc or runbook for a repeatable procedure splits its steps by the same test: a script it points to holds the steps whose commands and branches can be written down in advance.
+The prose keeps the steps that need judgment, Russell's own action, and the calls to harness tools a script can't make.
+A step whose commands and branches can be written down in advance, and that the session has run with no script yet, gets written as a script in that same session.
 A script runs the same way on every invocation and spends no tokens doing it, so the skill's behavior stays fixed across runs.
 Once a step lives in a script, the skill names the call and the decisions the session makes from what it returns; how the script does its work lives in the script's header comment, its one canonical home.
 Test every sentence that describes a script the skill runs: would the session carry out this step just as correctly without the sentence, because the script does it whatever the session knows?
 If so, the sentence restates the script, and it goes.
 The skill loads into context on every invocation, so a sentence the session never acts on costs tokens each run and buys nothing.
 A sentence stays when the session acts on it - choosing an argument, deciding something from an output, or carrying a result to Russell.
-**Check:** a numbered step whose body is a CLI command with its flags; consecutive steps that each run a command and branch on its output ("if it reports X, run Y"); a wait or poll described in prose; a fixed command sequence the session runs on every invocation; a sentence describing what a script the skill runs does on its own - what it matches, filters, drops, computes, or falls back to, or an output field the session never acts on.
+**Check:** a numbered step whose body is a CLI command with its flags; consecutive steps that each run a command and branch on its output ("if it reports X, run Y"); a wait or poll described in prose; a fixed command sequence the session runs on every invocation; a sentence describing what a script the skill runs does on its own - what it matches, filters, drops, computes, or falls back to, or an output field the session never acts on; in a how-to doc or runbook, a run of numbered steps that are fixed commands, API calls, or template copies, with no script it points to.
 A restatement reads as plain explanation until it sits beside the script, so this check reads the scripts the skill runs alongside the prose.
-Innocent: one invocation of the skill's own script with its arguments; a reference list of a CLI's commands the session picks among by judgment; a command inside a step that otherwise needs judgment; a few words naming what a script produces, enough for the session to know what to run and where its output lands.
+Innocent: one invocation of the skill's own script with its arguments; a reference list of a CLI's commands the session picks among by judgment; a command inside a step that otherwise needs judgment; a few words naming what a script produces, enough for the session to know what to run and where its output lands; a doc step that needs judgment or Russell's own action.
 
 **One concept, one canonical place; everywhere else points to it.**
 A concept gets a single home that states it in full; other sections of the same document, and closely-linked docs, reference that home rather than restating it.

@@ -1,7 +1,7 @@
 {
   "name": "canva",
-  "version": "1.0.1",
-  "description": "Upload assets and manage folders in a Canva account via the Canva Connect API - no browser. OAuth 2.0 + PKCE against Canva's own developer app (not a shared client), with a token cache that auto-refreshes.",
+  "version": "1.1.0",
+  "description": "Canva two ways: the Connect API (OAuth 2.0 + PKCE against Canva's own developer app, token cache that auto-refreshes) for assets and folders, and browser editing over CDP for a design's pages - placing images, moving text, retyping words, slide screenshots, and Magic Expand.",
   "author": {
     "name": "Russell Rutledge"
   },
