@@ -65,6 +65,11 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 #   P1 manager, pay >= floor       → above neutral   the role Russell needs, whatever its title
 #   other P1 application card      → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card         → below neutral   worked once the neutral band is drained
+#   P3 application card            → held off the queue entirely (not enumerated, captured, or
+#                                    reconciled) while any P1/P2 application card is startable on the
+#                                    same board; it resurfaces on its own once none is. The hold is in
+#                                    _startable_cards and never touches a 👤 Contact card, an
+#                                    in-progress-list card, or a card with no P-label.
 # The four above-neutral pins live in _priority_band. A P2/P3 Director or well-paid manager keeps its
 # P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 # A P1 (top-fit) application stays AT neutral so a fresh strong-fit role is caught the same day as email;
@@ -448,7 +453,39 @@ class Provider(ProviderBase):
         still_in_inbox_ids (which needs only the ids, for the reconcile) apply an identical gate and can
         never drift: on an active, non-skip list; not wearing a ⛔ Blocked/skip label; not assigned to
         someone else; and startable now (no Start, or a Start that has arrived - a future Start defers).
+        On top of that gate, a P3 application card is held off while any P1/P2 application card is
+        startable on the same board (see _PRIORITY_BAND).
         The board fetches hit the Trello REST API; a bad token or network error raises to the caller."""
+        in_progress_lists = self.board_in_progress_lists.get(board.get("name", board["id"]), ())
+        cards = list(self._startable_unheld(board, now, my_id))
+        holding = any(self._holds_p3(c, ln.lower() in in_progress_lists) for c, ln, _ in cards)
+        for entry in cards:
+            if holding and self._is_held_p3(entry[0], entry[1].lower() in in_progress_lists):
+                continue
+            yield entry
+
+    @staticmethod
+    def _priority_tiers(card, in_progress):
+        """The P-tier numbers an application card wears; empty for a 👤 Contact card, a card on an
+        in-progress list, or a card with no P-label - none of which the P3 hold ever touches."""
+        if in_progress or Provider._is_contact_card(card):
+            return []
+        return [int(m.group(1)) for l in card.get("labels", [])
+                if (m := _PRIORITY_RE.match(l.get("name") or ""))]
+
+    @staticmethod
+    def _holds_p3(card, in_progress):
+        """True for a startable P1/P2 application card, which keeps P3 application cards off the queue."""
+        return any(t in (1, 2) for t in Provider._priority_tiers(card, in_progress))
+
+    @staticmethod
+    def _is_held_p3(card, in_progress):
+        """True for a P3 application card with no P1/P2 label, the kind the hold applies to."""
+        tiers = Provider._priority_tiers(card, in_progress)
+        return 3 in tiers and not any(t in (1, 2) for t in tiers)
+
+    def _startable_unheld(self, board, now, my_id):
+        """The startable-card gate before the P3 hold (see _startable_cards)."""
         bid = board["id"]
         lists = {l["id"]: l["name"] for l in self._utils.get_board_lists(bid, self.session)}
         for card in self._utils.get_board_cards(bid, self.session, fields="all"):
