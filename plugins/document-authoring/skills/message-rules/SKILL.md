@@ -521,6 +521,7 @@ The specifics that most often separate a message that reads as Russell's from on
 ### Emoji
 
 Use **at most one** emoji per message, and only where it fits naturally.
+**In Slack, every emoji below and in the registers after it is typed as its `:shortcode:` text**, the way he types it there.
 His palette:
 
 | Emoji | When to use |
