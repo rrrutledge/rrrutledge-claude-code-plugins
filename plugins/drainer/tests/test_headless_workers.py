@@ -143,7 +143,7 @@ check("over target -> floored at 0", poller.open_slots(7, 9, 0, cfg), 0)
 print("\nopen_slots is bounded by the max_concurrent headroom")
 check("near the cap bounds below the review buffer", poller.open_slots(0, 16, 0, cfg), 2)
 check("at the cap opens 0", poller.open_slots(0, 18, 0, cfg), 0)
-check("auto workers opened this cycle consume headroom", poller.open_slots(0, 15, 2, cfg), 1)
+check("auto workers opened this pass consume headroom", poller.open_slots(0, 15, 2, cfg), 1)
 
 print("\nopen_slots fails closed on an unreadable count")
 check("None waiting -> 0 (fail closed)", poller.open_slots(None, None, 0, cfg), 0)

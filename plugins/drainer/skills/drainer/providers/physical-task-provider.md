@@ -44,7 +44,7 @@ When several tasks due the same day are eligible at once, a long gap shouldn't g
 
 **Only one physical task is ever open at a time.**
 Russell can only be doing one physical-world thing at once, so even when several tasks are simultaneously eligible, the adapter's `correspondent` returns the same constant identity for every one of them - the poller's ordinary same-correspondent hold (built for "don't dispatch two items from the same person at once") then keeps every task but the first-picked out of dispatch until that one's worker session closes.
-A held task simply re-enumerates next cycle, same as one still waiting on its gap.
+A held task waits on the pending list for a later dispatch pass; one still waiting on its gap is not listed until the gap opens.
 
 Every task is estimated at about an hour, even one that might genuinely take two or three, since Russell can always make an hour of progress on it and doesn't need to wait for a rarer multi-hour gap.
 That's *why* `lookahead_hours` defaults short (see Config): the gap check never needs to see further ahead than the longest task plus its buffer.

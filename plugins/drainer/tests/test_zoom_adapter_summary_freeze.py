@@ -1,11 +1,11 @@
 """Tests for providers/zoom-adapter.py's summary-finality logic - the next_steps-presence signal that keeps
 a meeting's action items from being dropped when its recap is read before the action items land.
 
-The bug this guards against: the adapter used to freeze a summary as final as soon as it had any content
-and had been quiet for the cooldown, so a read that saw a recap with no next_steps yet cached the recap
-and never re-fetched - the action items, added later, were lost for good once the meeting aged out.
+The behavior guarded against: freezing a summary as final as soon as it has any content and has been
+quiet for the cooldown, so a read that sees a recap with no next_steps yet caches the recap and never
+re-fetches - the action items, added later, are lost for good once the meeting ages out.
 
-The fix keys on a concrete Zoom signal (verified against a month of real meetings): Zoom omits the
+The adapter instead keys on a concrete Zoom signal (verified against a month of real meetings): Zoom omits the
 `next_steps` key entirely while a summary is still generating and includes it - as a populated list - once
 generation finishes, never as a stray empty list. So the presence of `next_steps` is the "done" signal; a
 summary whose `next_steps` is absent is still generating and is re-fetched, not frozen.
@@ -144,7 +144,7 @@ def test_recap_before_next_steps_is_not_frozen():
 
     second = p.enumerate(100)
     action = [it for it in second if it.get("kind") == "action-item"]
-    check("cycle 2 surfaces all 6 owner action items once next_steps arrive (the bug is fixed)",
+    check("cycle 2 surfaces all 6 owner action items once next_steps arrive",
           len(action) == 6, kinds(second))
     check("cycle 2 emits the recap alongside them",
           any(it.get("kind") == "recap" for it in second), kinds(second))

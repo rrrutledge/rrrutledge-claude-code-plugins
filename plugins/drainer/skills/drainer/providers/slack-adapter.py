@@ -10,7 +10,7 @@ different transport. slack.js talks the Slack Web API with a personal xoxc token
 the environment (SLACK_BOT_TOKEN / SLACK_COOKIE_D / SLACK_TEAM_ID).
 
 **Self-heal on `invalid_auth` lives in slack.js itself, not here.** That xoxc/cookie pair rotates
-periodically (usually just the `d` session cookie, not the token); `slack.js`'s `call()` now retries
+periodically (usually just the `d` session cookie, not the token); `slack.js`'s `call()` retries
 ONCE on `invalid_auth` by re-deriving a fresh pair from the persistent, already-logged-in
 browser-chauffeur browser (the sibling `slack-token-refresh.js` - a plain, deterministic script, no AI
 involved) before giving up, and persists the fresh pair to the Windows registry so the next process

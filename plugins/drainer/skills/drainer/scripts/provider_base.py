@@ -98,12 +98,11 @@ class ProviderError(Exception):
 # (MainThread blocked in `communicate -> _communicate -> join` against an alive-but-idle, 0%-CPU child)
 # then recurred independently ~20 minutes later in run-poller.py's headless `claude -p` triage call - a
 # completely different code path, confirming this is a property of the pattern, not of node.exe.
-# Any one of these hangs blocks not just that cycle but every cycle after it: DrainerKeeper's
-# "don't start a new instance" policy refuses every 5-minute trigger while the previous run is still
-# "alive", so one wedged child silently freezes the entire drainer until someone notices and kills the
-# stuck process by hand.
+# A hung child stalls the feed cycle or dispatch pass that called it. The keeper kills a feed cycle at
+# `feed_timeout`, but a dispatch pass has no such kill, so bounding each child is what keeps dispatch
+# moving.
 #
-# `run_subprocess_bounded` is the fix, used everywhere in this codebase a subprocess call needs a
+# `run_subprocess_bounded` is used everywhere in this codebase a subprocess call needs a
 # timeout: it runs the child via `Popen` directly instead of `subprocess.run(timeout=...)`, so the
 # post-kill drain gets its own short, separately-bounded timeout. Total wall-clock time is always capped
 # at `timeout + drain_timeout`, no matter what the child does after being killed.
@@ -111,8 +110,7 @@ NODE_TIMEOUT_SECONDS = 90
 
 # How long to wait, after killing a timed-out child, for its stdout/stderr pipes to actually drain.
 # Deliberately separate from the caller's own timeout and deliberately short: it bounds the worst case at
-# that timeout + this, comfortably under DrainerKeeper's 5-minute trigger interval, no matter how long the
-# killed child takes to release its pipes.
+# that timeout + this, no matter how long the killed child takes to release its pipes.
 DRAIN_TIMEOUT_SECONDS = 10
 
 
@@ -671,7 +669,7 @@ def load_seen(runtime_dir, source):
 
     An id is recorded here the moment the poller acts on the item - dispatches a worker for a needs-you or
     auto-handle item, or queues an fyi/junk item for the digest. An item the poller held (a correspondent
-    still being worked, or the open-worker budget was full) is left UNrecorded so it re-enumerates next cycle,
+    still being worked, or the open-worker budget was full) is left UNrecorded and waits on the pending list for a later dispatch pass,
     so exactly the not-yet-started items are the ones absent from this map. `collect_new` in the poller
     reads it to drop already-seen items from a cycle; the digest reads it to count the not-yet-started
     backlog the same way, off persisted state rather than any live-process scan. Stdlib-only, so both the

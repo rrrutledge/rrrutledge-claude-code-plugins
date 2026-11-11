@@ -364,7 +364,7 @@ Stay in the session and make progress on it with him instead: draft an outline, 
 Don't create a card for this kind of work unless he's told you, in this session, that he wants to pick it up later rather than now - and even then, per the next section, that doesn't clear you to close the session.
 
 **A Trello card you create mid-session gets a future Start date - never today.**
-The poller holds no seen-state entry for a card it never dispatched, so a freshly-created card that's startable now (Start now-or-earlier, or no Start) is eligible for its own worker on the very next cycle - a second worker launched onto work this session is already doing.
+The poller holds no seen-state entry for a card it never dispatched, so a freshly-created card that's startable now (Start now-or-earlier, or no Start) is eligible for its own worker on the next feed cycle and dispatch pass - a second worker launched onto work this session is already doing.
 Set the card's Start out to when the work should genuinely next surface (the real follow-up date if you know it, otherwise tomorrow or later); it then stays out of the queue until this session has set that date for real or closed, and the poller picks it up on its own terms once the date arrives.
 This is the created card's correct starting date, not a claim bump on a card the poller already owns - a distinction that matters, since bumping a poller-dispatched card's date instead forges an id that escapes seen-state (see the trello provider's CAPTURE).
 

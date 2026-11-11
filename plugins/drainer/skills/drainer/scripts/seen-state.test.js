@@ -122,3 +122,26 @@ test('the reserved ledger key is never treated as a source', () => {
   assert.throws(() => requeue(dir, '_acks', 'x'), /reserved/);
   assert.throws(() => isSeen(dir, '_acks', 'x'), /reserved/);
 });
+
+test('writers running at once never lose each other\'s records', async () => {
+  const { spawn } = require('child_process');
+  const dir = tmpDir();
+  const n = 12;
+  await Promise.all(Array.from({ length: n }, (_, i) => new Promise((resolve, reject) => {
+    const p = spawn(process.execPath, [path.join(__dirname, 'seen-state.js'), 'record', dir, 'gmail', `id-${i}`, 'needs-you']);
+    p.on('exit', code => (code === 0 ? resolve() : reject(new Error(`writer ${i} exited ${code}`))));
+  })));
+  const seen = JSON.parse(fs.readFileSync(path.join(dir, 'seen.json'), 'utf8'));
+  assert.strictEqual(Object.keys(seen.gmail).length, n);
+  assert.strictEqual(fs.existsSync(path.join(dir, 'seen-state.lock')), false);
+});
+
+test('a lock left by a writer that died is taken over', () => {
+  const dir = tmpDir();
+  const lock = path.join(dir, 'seen-state.lock');
+  fs.writeFileSync(lock, '');
+  const old = new Date(Date.now() - 60000);
+  fs.utimesSync(lock, old, old);
+  record(dir, 'gmail', 'a', 'needs-you');
+  assert.strictEqual(isSeen(dir, 'gmail', 'a'), true);
+});

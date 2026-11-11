@@ -94,7 +94,7 @@ check("empty items returns empty verdicts and empty unavailable set", poller.tri
 
 
 # --- _triage_one's own response parsing: a malformed reply must raise TriageUnavailable, never
-# SystemExit - a SystemExit here is what used to kill the whole poller process on a bad reply ----
+# SystemExit - a SystemExit here would kill the whole poller process on a bad reply ----
 print("\n_triage_one response parsing")
 
 
