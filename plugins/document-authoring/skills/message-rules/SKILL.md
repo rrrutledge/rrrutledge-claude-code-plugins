@@ -364,6 +364,7 @@ The specifics that most often separate a message that reads as Russell's from on
   Use it when everything they said sounds good and any positive line would be over the top — most of all when they've plainly agreed to do something, where added words read as piling on.
   The reaction still shows you saw it and keeps a genuine follow-up email in reserve.
   On Gmail, use the emoji-reaction reply: a bare 👍, no body.
+  **Exception - the message asks Russell to act and a reaction alone would leave it unanswered:** type a casual bare acknowledgment instead ("Will take a look :eyes:"), since "I'm on it" is stock phrasing he doesn't use.
 - **Reassurance about a side detail the recipient only flagged in passing comes out** (the general rule is in `authoring-rules`).
   They mentioned it in passing; answering it in kind, or not at all, matches the weight they gave it.
 - **Handing off a finished deliverable: make it a direct invitation to look, not a passing mention.**
