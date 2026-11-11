@@ -34,6 +34,8 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
    **State only what the thread, the ask, or a source you actually read establishes.** When the draft would point to what an email or document says, open the source first.
    A routing choice or other logistic the ask left open follows `message-rules`' **When unsure**.
    **When the message reports on work you're doing yourself, finish that work first.** Draft the status update only once every action it describes is actually done, including a step only moments from finishing, since a draft written in parallel ends up describing something as upcoming that should already be done by the time the message goes out.
+   **Check that every time-bound statement will still hold when Russell sends.**
+   A staged draft can wait hours for him, so test the plan, offer, or deadline it names against the earliest plausible send time, and when the moment it was about may already have passed, say so in the hand-over.
 3. **Verify** — dispatch the `writing-review` skill on your actual draft text, marked as an outward message so the reviewer checks it against both `authoring-rules` and `message-rules`.
    This step is a cold, independent check, not a self-walk - for why a separate dispatched reviewer is required rather than a re-read of the rules, see `writing-review`.
    Revise against what it finds, then dispatch a **fresh** reviewer on the revised text; repeat until it returns clean, a finding stands that you genuinely disagree with, or you've run three rounds — see `writing-review` for the disagreement and convergence rules.
