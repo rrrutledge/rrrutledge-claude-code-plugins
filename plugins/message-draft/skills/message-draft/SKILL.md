@@ -17,6 +17,7 @@ Stage a **draft** and stop — a human reviews and sends. Pick a mode:
 **Staging is automatic.**
 In every mode, a message drafted for Russell is staged the moment it passes `writing-review`, before it is shown.
 The reply shows the staged text and where it lives, and the only question left is about sending.
+A draft carrying an attachment or inline image also puts each file in front of Russell in that reply, per `writing-flow`'s **Stage** step.
 
 **LinkedIn is never automated.** LinkedIn suspended Russell's account for automation in July 2026 —
 never drive browser-chauffeur/Playwright against linkedin.com for any reason. For a LinkedIn reply,

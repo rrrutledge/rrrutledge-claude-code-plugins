@@ -95,7 +95,8 @@
 //                 --inline takes image paths the same way but embeds them in the body via cid: references
 //                 (rendered after the body text), so they show inline instead of as a file list. Inline
 //                 images render at about half the message width by default; --inline-width=<css width>
-//                 overrides it. Both flags may be combined.)
+//                 overrides it. Both flags may be combined. --reply and --draft-new print one
+//                 `attachment: <absolute path>` line per --attach or --inline file after the draft-id.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts - Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
@@ -702,6 +703,13 @@ function attachments() {
   return all.length ? all : undefined;
 }
 
+// One `attachment: <absolute path>` line per file a staged draft carries (--attach and --inline alike),
+// so the session presenting the draft can send each file to Russ's device without re-deriving the list.
+function printAttachmentLines() {
+  const paths = new Set((attachments() || []).map(a => path.resolve(a.path)));
+  for (const p of paths) console.log(`attachment: ${p}`);
+}
+
 // Build the outgoing RFC822 MIME (a Buffer) with MailComposer - transport-independent; the Gmail API
 // takes it base64url-encoded as the draft/message `raw`. htmlToPlainText supplies the text alternative;
 // In-Reply-To/References thread a reply.
@@ -805,6 +813,7 @@ async function reply() {
   const note = dropped ? ` (replaced ${dropped} prior draft on this thread)` : '';
   console.log(`Draft reply staged in Drafts (re: "${clean(subject).slice(0, 60)}")${note}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
+  printAttachmentLines();
 }
 
 async function draftNew() {
@@ -816,6 +825,7 @@ async function draftNew() {
   const draftId = await createDraft(raw, null);
   console.log(`Draft staged in Drafts to ${args.to}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
+  printAttachmentLines();
 }
 
 async function sendDraft() {
