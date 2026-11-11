@@ -814,7 +814,7 @@ function readBody(verb) {
   return text;
 }
 
-const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, mentionsSelfElsewhere } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, outsideSelfDm } = require('./draft-body');
 
 // Each user a body mentions, by name. A body that mentions the signed-in user fails unless it goes to
 // their own self-DM: a reply never tags its own sender, and the usual source of that id is a file's
@@ -823,7 +823,7 @@ async function checkMentions(verb, text, channel) {
   const ids = mentionIds(text);
   if (!ids.length) return [];
   const me = (await call('auth.test')).user_id;
-  if (ids.includes(me) && mentionsSelfElsewhere(ids, me, channel, await convInfo(channel))) {
+  if (ids.includes(me) && outsideSelfDm(me, channel, await convInfo(channel))) {
     throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
       + 'A file permalink\'s /files/<id>/ is your own id, not the owner\'s; take the person\'s id from their '
       + 'message\'s fromId (--show/--history --json) or from --find-dm.');

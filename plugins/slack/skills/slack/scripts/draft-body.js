@@ -56,11 +56,11 @@ function userIdsIn(blocks) {
   return [...new Set(found)];
 }
 
-// Whether a body mentioning `ids` tags the signed-in user `me` somewhere other than their own self-DM.
-// `channel` may be the user's own id, which Slack accepts as their self-DM; `info` is the conversation's
-// conversations.info record.
-function mentionsSelfElsewhere(ids, me, channel, info) {
-  return ids.includes(me) && channel !== me && !(info.is_im && info.user === me);
+// Whether `channel` is somewhere other than the signed-in user `me`'s own self-DM, so a body tagging
+// them there tags the wrong person. `channel` may be the user's own id, which Slack accepts as their
+// self-DM; `info` is the conversation's conversations.info record.
+function outsideSelfDm(me, channel, info) {
+  return channel !== me && !(info.is_im && info.user === me);
 }
 
-module.exports = { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, mentionsSelfElsewhere };
+module.exports = { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, outsideSelfDm };

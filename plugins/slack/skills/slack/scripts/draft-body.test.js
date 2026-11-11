@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, mentionsSelfElsewhere } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds, userIdsIn, outsideSelfDm } = require('./draft-body');
 
 const section = (text) => richTextBlocks(text)[0].elements[0].elements;
 
@@ -37,13 +37,12 @@ test('mentionIds lists each mentioned user once, skipping channels and links', (
     ['U0123ABCD', 'W0999ZZZZ']);
 });
 
-test('mentionsSelfElsewhere blocks a self-tag outside the self-DM only', () => {
+test('outsideSelfDm is true everywhere but the user\'s own self-DM', () => {
   const me = 'U0ME00000';
-  assert.strictEqual(mentionsSelfElsewhere([me], me, 'C0123ABCD', {}), true);
-  assert.strictEqual(mentionsSelfElsewhere([me], me, 'D0123ABCD', { is_im: true, user: 'U0OTHER00' }), true);
-  assert.strictEqual(mentionsSelfElsewhere([me], me, 'D0123ABCD', { is_im: true, user: me }), false);
-  assert.strictEqual(mentionsSelfElsewhere([me], me, me, {}), false);
-  assert.strictEqual(mentionsSelfElsewhere(['U0OTHER00'], me, 'C0123ABCD', {}), false);
+  assert.strictEqual(outsideSelfDm(me, 'C0123ABCD', {}), true);
+  assert.strictEqual(outsideSelfDm(me, 'D0123ABCD', { is_im: true, user: 'U0OTHER00' }), true);
+  assert.strictEqual(outsideSelfDm(me, 'D0123ABCD', { is_im: true, user: me }), false);
+  assert.strictEqual(outsideSelfDm(me, me, {}), false);
 });
 
 test('userIdsIn counts user elements and skips raw tokens left in text', () => {
