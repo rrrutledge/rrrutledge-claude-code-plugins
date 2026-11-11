@@ -142,6 +142,8 @@ For a **relay** sender the From address does not identify who wrote - Securus/JP
 For a recognized relay the identity is instead the name parsed out of the notification (for Securus, the "Message from: &lt;NAME&gt;" line), namespaced so it can never collide with a real address; when the name can't be extracted the item is treated as having **no** identity (never held) rather than falling back to the shared address, so two different real people are never merged.
 The per-relay recognition and extraction live in `provider_base.RELAY_CORRESPONDENTS`; each captured email item persists its resolved `correspondent` in `items/<id>.json` so `open_correspondents` can read it back off a live session.
 New relays plug in by adding a registry entry.
+A **Trello card** is its own correspondent, keyed on the card id: two cards on one board are not the same person, and the default identity (the card's contact labels, or the board name when it has none) would have collapsed every unlabeled card on a board into one.
+Cards therefore never hold each other, while one card still cannot dispatch twice while its worker is open; the Trello adapter's capture persists the identity the same way the email adapters do.
 
 ## One conversation, one worker
 

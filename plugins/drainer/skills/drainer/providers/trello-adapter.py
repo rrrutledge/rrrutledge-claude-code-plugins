@@ -568,6 +568,15 @@ class Provider(ProviderBase):
         # regardless of how many worker slots were actually free.
         return items
 
+    def correspondent(self, item):
+        """Every card is its own identity, keyed on the card id.
+
+        The default identity keys on `from`, which is the card's contact labels or, when it has none
+        (most cards), the board name - so every unlabeled card on a board would share one identity and the
+        poller would hold all but one of them behind a single open worker. Two cards on a board are not the
+        same person. The card id still keeps one card from dispatching twice while its worker is open."""
+        return f"trello-card|{item['cardId']}"
+
     def stable_id(self, item):
         # The Start is PART OF the identity, not just a field: a card recurs every cycle (a nudge bumps
         # its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in seen.json
@@ -638,6 +647,7 @@ class Provider(ProviderBase):
             # worker's card keeps this id, stays in the set, and is re-queued.
             "messageId": iid,
             "kind": item.get("_kind"), "triageReason": item.get("_triageReason"),
+            "correspondent": item.get("_correspondent"),
             "cardId": item["cardId"], "board": item.get("board"),
             "list": item.get("list"), "name": item.get("name"),
             "start": item.get("start"),
