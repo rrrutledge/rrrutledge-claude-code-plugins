@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { richTextBlocks, rawTokensIn } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds } = require('./draft-body');
 
 const section = (text) => richTextBlocks(text)[0].elements[0].elements;
 
@@ -29,4 +29,10 @@ test('literal tokens left in text are reported', () => {
 
 test('ordinary words are not reported', () => {
   assert.deepStrictEqual(rawTokensIn(richTextBlocks('HELLO WORLD, see CONFERENCES soon')), []);
+});
+
+test('mentionIds lists each mentioned user once, skipping channels and links', () => {
+  assert.deepStrictEqual(
+    mentionIds('hi <@U0123ABCD> and <@W0999ZZZZ|pat>, see <#C0123ABCD> and <https://x.y|z>, thanks <@U0123ABCD>'),
+    ['U0123ABCD', 'W0999ZZZZ']);
 });

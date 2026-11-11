@@ -61,6 +61,9 @@
 //                 completeUploadExternal call posts the body and every file as a single message.
 //                 --broadcast (thread replies only, not with --file) ticks "Also send to <channel>":
 //                 chat.postMessage with reply_broadcast=true.
+//                 A body that mentions the signed-in user fails before anything posts, unless the
+//                 conversation is their own self-DM; a successful send prints a `Mentions:` line naming
+//                 each person the body tags (--create-draft runs the same check and prints the same line).
 //                 A plain-text send marks the conversation read up to the sent message. --keep-unread
 //                 instead leaves it as unread as it was: it reads the read cursors before and after the
 //                 post and puts back any the post moved. --json prints {channel, ts, permalink, cursor}.)
@@ -69,7 +72,8 @@
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
 //                 This is the server's own draft list, the one Russell's Slack apps sync from, so it is
 //                 where a staged draft's saved text is read back.
-//                 Each draft lists its attached files by name, via files.info)
+//                 Each draft lists its attached files by name, via files.info, and each person it
+//                 mentions by name)
 // Create draft:  node slack.js --create-draft --channel=<C> --body-file=<file> [--thread-ts=<tts> [--broadcast]] [--replace] [--file=<path>[,<path>...]]
 //                (drafts.create of the reviewed body as an unsent draft in that conversation - it reaches
 //                 no one, and shows under Drafts & sent in Russell's own Slack for him to review and send.
@@ -501,7 +505,7 @@ async function show() {
       ...(files.length ? { files } : {}) }, null, 2));
     return;
   }
-  console.log(`From: ${from}`);
+  console.log(`From: ${from}${m.user ? ` <@${m.user}>` : ''}`);
   console.log(`When: ${tsToIso(args.ts)}`);
   if (permalink) console.log(`Link: ${permalink}`);
   console.log(`\n${text || '(no text)'}`);
@@ -538,7 +542,7 @@ async function history() {
   if (!out.length) { console.log('No messages.'); return; }
   console.log(`${out.length} message(s), oldest first:`);
   for (const m of out) {
-    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from} (ts=${m.ts}` +
+    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from}${m.fromId ? ` <@${m.fromId}>` : ''} (ts=${m.ts}` +
       `${m.threadTs ? `, thread=${m.threadTs}` : ''}${m.replyCount ? `, replies=${m.replyCount}` : ''})`);
     console.log(m.text || '(no text)');
     for (const f of m.files || []) console.log(`[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
@@ -728,6 +732,7 @@ async function send() {
   if (args['keep-unread'] && filePaths.length) {
     throw new Error('--keep-unread applies to a plain-text send, not --file');
   }
+  const mentions = await checkMentions('--send', text, args.channel);
 
   if (filePaths.length) {
     const fileEntry = (await uploadFiles('--send', filePaths, args.channel, text, args['thread-ts'])).first;
@@ -742,6 +747,7 @@ async function send() {
     const permalink = fileEntry.permalink || '';
     const noun = filePaths.length === 1 ? 'file' : `${filePaths.length} files`;
     console.log(`Sent ${noun} to ${args.channel}.${permalink ? ` Link: ${permalink}` : ''}`);
+    if (mentions.length) console.log(mentionLine(mentions));
     return;
   }
 
@@ -784,6 +790,7 @@ async function send() {
     return;
   }
   console.log(`Sent to ${r.channel} at ts ${r.ts}.${permalink ? ` Link: ${permalink}` : ''}`);
+  if (mentions.length) console.log(mentionLine(mentions));
   if (cursor) {
     console.log(cursor.restored.length
       ? `Read cursor moved on send and was put back (${cursor.restored.join(', ')}).`
@@ -807,7 +814,27 @@ function readBody(verb) {
   return text;
 }
 
-const { richTextBlocks, rawTokensIn } = require('./draft-body');
+const { richTextBlocks, rawTokensIn, mentionIds } = require('./draft-body');
+
+// Each user a body mentions, by name. A body that mentions the signed-in user fails unless it goes to
+// their own self-DM: a reply never tags its own sender, and the usual source of that id is a file's
+// permalink, which Slack builds from the id of whoever is viewing the file, not its owner.
+async function checkMentions(verb, text, channel) {
+  const ids = mentionIds(text);
+  if (!ids.length) return [];
+  const me = (await call('auth.test')).user_id;
+  if (ids.includes(me)) {
+    const info = await convInfo(channel);
+    if (!(info.is_im && info.user === me)) {
+      throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
+        + 'A file permalink\'s /files/<id>/ is your own id, not the owner\'s; take the person\'s id from their '
+        + 'message\'s fromId (--show/--history --json) or from --find-dm.');
+    }
+  }
+  return Promise.all(ids.map(async id => ({ id, name: await userName(id) })));
+}
+
+const mentionLine = (mentions) => mentions.length ? `Mentions: ${mentions.map(m => `@${m.name}`).join(', ')}` : '';
 
 // The plain text of a draft's rich_text blocks, for listing.
 function draftText(blocks) {
@@ -841,13 +868,17 @@ async function listDrafts() {
       rawTokens: rawTokensIn(d.blocks),
       files: d.file_ids,
     }));
-  for (const d of out) d.files = await draftFiles(d.files);
+  for (const d of out) {
+    d.files = await draftFiles(d.files);
+    d.mentions = await Promise.all(mentionIds(d.text).map(async id => ({ id, name: await userName(id) })));
+  }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(channel ? `No active draft in ${channel}${threadTs ? ` thread ${threadTs}` : ''}.` : 'No active drafts.'); return; }
   for (const d of out) {
     const dest = d.destinations.map(x => x.channel + (x.threadTs ? ` thread:${x.threadTs}` : '') + (x.broadcast ? ' +channel' : '')).join(', ');
     console.log(`\n--- ${d.id}  |  ${dest}  |  updated ${d.updated.slice(0, 16)}`);
     console.log(d.text || '(no text)');
+    if (d.mentions.length) console.log(mentionLine(d.mentions));
     if (d.rawTokens.length) console.log(`!! RAW, not a real mention: ${d.rawTokens.join(', ')}`);
     for (const f of d.files) console.log(`[Attachment: ${f.name}${f.mimetype ? ` (${f.mimetype})` : ''}]`);
   }
@@ -917,6 +948,7 @@ async function createDraft() {
     destination.broadcast = true;
   }
   const filePaths = filePathsArg('--create-draft');
+  const mentions = await checkMentions('--create-draft', text, args.channel);
   const fileIds = filePaths.length ? (await uploadFiles('--create-draft', filePaths)).ids : [];
   const create = () => call('drafts.create', {
     client_msg_id: require('crypto').randomUUID(),
@@ -951,6 +983,7 @@ async function createDraft() {
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
+  if (mentions.length) console.log(mentionLine(mentions));
 }
 
 async function check() {

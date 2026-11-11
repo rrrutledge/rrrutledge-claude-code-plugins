@@ -194,7 +194,9 @@ drainer item — its `channel` + `ts` + optional `threadTs` + permalink), the me
    Preserve it: surface it verbatim for review, and stage over it with `--replace` only on an explicit OK.
    In an autonomous run with no one to review, leave it and flag the conversation instead.
 3. **Write the body as Slack mrkdwn** to the `.tmp` file the **Review gate** mints, with every link and mention as its mrkdwn token.
+   Take each mention's id from the `fromId` of a message that person wrote, or from `--find-dm`, by the **`slack`** skill's Send rules for mention ids.
 4. **Stage it.** `slack.js --create-draft --channel=<C> --body-file=<file>`, adding the thread, broadcast, replace, and file flags this draft needs.
+   Check that its `Mentions:` line names the people the body addresses.
    An auth failure that `slack.js`'s own refresh can't fix is the sign-in case in the done-criteria: Russell signs back in to Slack in the persistent browser, and nothing is staged until he does.
 5. **Voice gate.** Run the **Voice gate** above on the staged draft.
 

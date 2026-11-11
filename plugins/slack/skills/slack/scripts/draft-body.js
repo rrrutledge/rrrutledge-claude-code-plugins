@@ -38,4 +38,9 @@ function rawTokensIn(blocks) {
   return found;
 }
 
-module.exports = { richTextBlocks, rawTokensIn };
+// The distinct user ids a mrkdwn body mentions, in order of first appearance.
+function mentionIds(text) {
+  return [...new Set([...text.matchAll(MENTION_RE)].map(m => m[3]).filter(Boolean))];
+}
+
+module.exports = { richTextBlocks, rawTokensIn, mentionIds };
