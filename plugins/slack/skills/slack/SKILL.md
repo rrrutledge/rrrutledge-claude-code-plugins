@@ -72,7 +72,7 @@ Under `scripts/` (run with `node`):
     is `<url|anchor text>` and a mention is `<@U…>`. `--body-file` (never an inline body) is what lets the
     writing-review gate read and receipt the exact bytes that go out. See **Sending** below - this runs only
     on Russ's explicit per-message say-so.
-    **Mentions:** a person's mention id is the `<@U…>` that `--show` and `--history` print after the name of a message they wrote, or the user id `--find-dm` prints in parentheses after the name.
+    **Mentions:** a person's mention id is the `fromId` of a message they wrote - the `<@U…>` that `--show` and `--history` print after their name, and the `fromId` field in `--json` and `--list-unread` items - or the user id `--find-dm` prints in parentheses after the name.
     Add `--file=<path>` to attach local files, comma-separated for several (`--file=a.png,b.png`).
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts
     them all as a single message with the `--body-file` text as the caption.

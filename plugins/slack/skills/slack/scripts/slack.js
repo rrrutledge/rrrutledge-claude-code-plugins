@@ -541,7 +541,7 @@ async function history() {
   if (!out.length) { console.log('No messages.'); return; }
   console.log(`${out.length} message(s), oldest first:`);
   for (const m of out) {
-    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from}${m.fromId ? ` <@${m.fromId}>` : ''} (ts=${m.ts}` +
+    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from}${m.isMe ? ' (you)' : m.fromId ? ` <@${m.fromId}>` : ''} (ts=${m.ts}` +
       `${m.threadTs ? `, thread=${m.threadTs}` : ''}${m.replyCount ? `, replies=${m.replyCount}` : ''})`);
     console.log(m.text || '(no text)');
     for (const f of m.files || []) console.log(`[Attachment: ${f.name} (${f.mimetype})] ${f.permalink}`);
@@ -951,7 +951,7 @@ async function createDraft() {
       await deleteDraftById(saved);
       await deleteUploads(fileIds);
     }
-    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
+    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Take the person's id from a message they wrote (the <@U...> after their name in --show/--history), or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }
