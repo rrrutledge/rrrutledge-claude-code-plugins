@@ -204,7 +204,7 @@ const newer = (a, b) => parseFloat(a) > parseFloat(b || '0');
 const fileMeta = (files) => (files || []).map(f => ({
   name: f.name || f.title || '(unnamed)',
   mimetype: f.mimetype || f.filetype || '',
-  permalink: f.user ? (f.permalink || '').replace(/\/files\/[UW][A-Z0-9]+\//, `/files/${f.user}/`) : (f.permalink || ''),
+  permalink: f.user ? (f.permalink || '').replace(/\/files\/[UW][A-Z0-9]+\//, `/files/${f.user}/`) : f.permalink || '',
 }));
 
 // ---- name/info resolution (cached within one run) ----
@@ -495,16 +495,17 @@ async function show() {
   const from = await userName(m.user);
   const text = await messageText(m);
   const files = fileMeta(m.files);
+  const isMe = !!m.user && m.user === (await call('auth.test')).user_id;
   let permalink = '';
   try { permalink = (await call('chat.getPermalink', { channel: args.channel, message_ts: args.ts })).permalink || ''; }
   catch { /* permalink optional */ }
   if (args.json) {
     console.log(JSON.stringify({ channel: args.channel, ts: args.ts, threadTs: args['thread-ts'] || '',
-      from, fromId: m.user, received: tsToIso(args.ts), text, permalink,
+      from, fromId: m.user, isMe, received: tsToIso(args.ts), text, permalink,
       ...(files.length ? { files } : {}) }, null, 2));
     return;
   }
-  console.log(`From: ${from}${m.user ? ` <@${m.user}>` : ''}`);
+  console.log(`From: ${from}${isMe ? ' (you)' : m.user ? ` <@${m.user}>` : ''}`);
   console.log(`When: ${tsToIso(args.ts)}`);
   if (permalink) console.log(`Link: ${permalink}`);
   console.log(`\n${text || '(no text)'}`);
@@ -951,7 +952,7 @@ async function createDraft() {
       await deleteDraftById(saved);
       await deleteUploads(fileIds);
     }
-    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Take the person's id from a message they wrote (the <@U...> after their name in --show/--history), or fix the token.`);
+    throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Take the person's id from a message they wrote (the <@U...> after their name in --show/--history) or the user id --find-dm prints, or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
 }

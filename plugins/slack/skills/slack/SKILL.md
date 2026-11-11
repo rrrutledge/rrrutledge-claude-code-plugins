@@ -44,7 +44,7 @@ Under `scripts/` (run with `node`):
     Channel items: `subject` is `"@mention in #name"` when the unread messages mention you, with `from` the last person who mentioned you, else `"Unread in #name"`.
   - Show one: `node slack.js --show --channel=<C> --ts=<ts> [--thread-ts=<tts>] [--json]` — the message
     text plus a `chat.getPermalink` url. Pass `--thread-ts` to read a threaded reply. `--json` emits
-    `{channel,ts,threadTs,from,fromId,received,text,permalink}`.
+    `{channel,ts,threadTs,from,fromId,isMe,received,text,permalink}`, where `isMe` marks a message you posted.
   - Sent since: `node slack.js --sent-since=<YYYY-MM-DD> [--json]` - every message you posted on or
     after that day, oldest first, from `search.messages` `from:me`: channel, ts, threadTs, send time, and
     the raw mrkdwn text.
@@ -72,7 +72,7 @@ Under `scripts/` (run with `node`):
     is `<url|anchor text>` and a mention is `<@U…>`. `--body-file` (never an inline body) is what lets the
     writing-review gate read and receipt the exact bytes that go out. See **Sending** below - this runs only
     on Russ's explicit per-message say-so.
-    **Mentions:** a person's mention id is the `fromId` of a message they wrote - the `<@U…>` that `--show` and `--history` print after their name, and the `fromId` field in `--json` and `--list-unread` items - or the user id `--find-dm` prints in parentheses after the name.
+    **Mentions:** a person's mention id is the `fromId` of a message they wrote (printed as `<@U…>` after their name by `--show` and `--history`), or the user id `--find-dm` prints after their name.
     Add `--file=<path>` to attach local files, comma-separated for several (`--file=a.png,b.png`).
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts
     them all as a single message with the `--body-file` text as the caption.
