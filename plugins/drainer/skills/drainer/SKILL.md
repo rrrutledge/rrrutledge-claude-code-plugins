@@ -28,7 +28,7 @@ instructions: |-
   ### 3. Follow the engine specs (bundled next to this SKILL.md)
   Canonical and source-agnostic - don't restate them:
   - **`engine/triage.md`** - the one rubric: needs-you / fyi / junk (only three; junk → propose a source-stop in priority order: unsubscribe, then app notification settings, then an inbox rule).
-  - **`engine/poller-core.md`** - the continuous keeper's contract: the keeper, its feed cycle and its dispatch loop (enumerate → triage → pending list → dispatch, never clear; `--dry-run` for a report) and where AI is used (batched triage + the worker).
+  - **`engine/poller-core.md`** - the continuous keeper's contract: the keeper, its feed cycle and its dispatch loop (enumerate → triage → pending list → dispatch, never clear; `--dry-run` for a report) and where AI is used (per-item triage call(s) + the worker).
   - **`engine/worker-core.md`** - the lean per-item needs-you worker procedure (read brain → situational-check → do the work → draft in voice → learn from the send → advance the item).
     Situational sub-procedures load by trigger: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear), which worker-core names at the point each trigger fires.
   - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch (act → CLEAR → queue the digest → close up), named directly in the worker's seed so it loads without going through the needs-you flow.

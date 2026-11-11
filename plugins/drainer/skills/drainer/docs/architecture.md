@@ -37,7 +37,7 @@ The worker buffer, not a queue, bounds how many face the user at once.
 
 ## Fail-safe, never miss
 
-Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted cycle retries next time); workers are idempotent (a duplicate worker's situational-check resolves quietly).
+Every mechanism's worst case is *redundant work*, never a *dropped item*: seen-state is a separate id store (losing it re-processes, never hides); a seen-id is recorded only **after** dispatch succeeds (an aborted dispatch pass leaves the item on the pending list for the next pass); workers are idempotent (a duplicate worker's situational-check resolves quietly).
 Completion follows the same principle - it is **observed on the source**, not reported by the worker: an item still unhandled in its source with no live worker session on it is re-queued for a fresh worker, while an open, live worker session is left alone however long it's up, because it's either being worked or parked for the user.
 
 ## Config comes from merged main, not the checked-out branch

@@ -155,8 +155,8 @@ def test_startable_gate_start_is_the_only_date():
     future = now + timedelta(days=6)
 
     # A future Start defers, full stop - nothing else can pull the card into play early. This is what
-    # keeps a card deferred to "next Monday" from surfacing before then (the Fabrikam failure was a
-    # stale Due dragging a future-Start card in early, which no longer exists as a concept).
+    # keeps a card deferred to "next Monday" from surfacing before then (a stale Due never drags a
+    # future-Start card in early).
     check("future Start -> deferred (not startable)", Provider._startable(future, now) is False)
     check("past Start -> startable", Provider._startable(past, now) is True)
     check("Start exactly now -> startable", Provider._startable(now, now) is True)

@@ -60,7 +60,7 @@ def spawn(triage, config_repo, bg_id="abc123ef", agents=(), kind=None):
         try:
             poller.spawn_worker("item-x1", json_file, tmp, runtime, "sonnet", local_dir, config_repo,
                                 {"_source": "trello", "subject": "Jordan Avery"})
-        except Exception as e:  # the regression under test: any exception here aborts the whole poll cycle
+        except Exception as e:  # the regression under test: any exception here aborts the whole dispatch pass
             error = e
         prompt_file = os.path.join(runtime, "seeds", "item-x1.prompt.txt")
         prompt = open(prompt_file, encoding="utf-8").read() if os.path.exists(prompt_file) else ""

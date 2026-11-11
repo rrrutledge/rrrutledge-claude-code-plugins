@@ -35,8 +35,9 @@ local_dir: drainer-local
 # worktree, so it stays put and never re-enumerates when the config root moves to the worktree.
 runtime_dir: .tmp/drainer
 
-# Actual poll cadence is the DrainerKeeper scheduled task's own repeat interval, not a config
-# value here - the poller has no internal cadence knob.
+# The keeper sets its own cadence (a feed cycle about every 5 minutes, a dispatch pass about once a
+# minute; scripts/keeper.py), not a config value here. The DrainerKeeper task only restarts a keeper
+# that exited.
 
 # The continuous-keeper (run-poller.py) has no per-cycle work cap: every cycle enumerates everything
 # eligible from every source. The worker buffer - tuned via the DRAINER_TARGET_REVIEWABLE (default 5)
@@ -52,7 +53,7 @@ runtime_dir: .tmp/drainer
 # needed, current models already report a 1M context window.
 worker_model: sonnet              # simple items (quick replies, trivial actions)
 worker_model_complex: opus        # complex items (multi-step work, code, delicate messages)
-triage_model: sonnet              # the per-cycle batched triage call (runs through `claude -p`, so an alias works)
+triage_model: sonnet              # the per-item triage call(s) (runs through `claude -p`, so an alias works)
 
 # EOD digest (run-digest.py) - the once-a-day interactive slow loop.
 digest_model: opus              # the digest session (summarize fyi, group junk)

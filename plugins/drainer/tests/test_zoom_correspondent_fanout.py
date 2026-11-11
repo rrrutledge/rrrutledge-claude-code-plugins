@@ -8,7 +8,7 @@ and, in a busy needs-you queue, starves the rest indefinitely.
 
 The override returns None for every zoom item, so each fanned-out action item competes for a tab slot on
 its own. This test drives the real adapter's `correspondent()` and the poller's `held_for_correspondent`
-to prove the whole meeting's items dispatch in one cycle instead of one per cycle.
+to prove the whole meeting's items dispatch in one pass instead of one per pass.
 
 No network or Zoom credentials. Run directly:
     python plugins/drainer/tests/test_zoom_correspondent_fanout.py
@@ -86,8 +86,8 @@ def test_every_candidate_has_no_correspondent():
     check("the recap's correspondent is None too", p.correspondent(recaps[0]) is None)
 
 
-def test_whole_meeting_dispatches_in_one_cycle():
-    print("test: with None correspondents, a whole meeting's action items dispatch in one cycle")
+def test_whole_meeting_dispatches_in_one_pass():
+    print("test: with None correspondents, a whole meeting's action items dispatch in one pass")
     p = make_provider()
     actions = [it for it in meeting_items(p) if it.get("kind") == "action-item"]
 
@@ -103,10 +103,10 @@ def test_whole_meeting_dispatches_in_one_cycle():
         dispatched += 1
         if corr:
             active.add(corr)
-    check("all 10 dispatch in the same cycle (none held behind another)", dispatched == 10, dispatched)
+    check("all 10 dispatch in the same pass (none held behind another)", dispatched == 10, dispatched)
 
     # Contrast: the shared meeting-topic identity the DEFAULT correspondent would have produced collapses
-    # the same 10 to a single dispatch per cycle - the starvation this override removes.
+    # the same 10 to a single dispatch per pass - the starvation this override removes.
     shared = "2026 innersource summit planning"
     active = set()
     collapsed = 0
@@ -115,7 +115,7 @@ def test_whole_meeting_dispatches_in_one_cycle():
             continue
         collapsed += 1
         active.add(shared)
-    check("a shared identity would have collapsed them to one per cycle", collapsed == 1, collapsed)
+    check("a shared identity would have collapsed them to one per pass", collapsed == 1, collapsed)
 
 
 def test_stable_ids_stay_distinct():
@@ -128,7 +128,7 @@ def test_stable_ids_stay_distinct():
 
 if __name__ == "__main__":
     test_every_candidate_has_no_correspondent()
-    test_whole_meeting_dispatches_in_one_cycle()
+    test_whole_meeting_dispatches_in_one_pass()
     test_stable_ids_stay_distinct()
     print()
     if failures:

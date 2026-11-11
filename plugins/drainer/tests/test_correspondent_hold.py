@@ -1,6 +1,6 @@
 """Tests for the dispatch hold-by-correspondent throttle: the correspondent identity each provider
-resolves (direct sender vs relay), the live-session set that holds a second item open, and the in-cycle
-dedup discipline that keeps two duplicates arriving in one cycle from both spawning.
+resolves (direct sender vs relay), the live-session set that holds a second item open, and the same-pass
+dedup discipline that keeps two duplicates arriving in one pass from both spawning.
 
 Run directly:
     python plugins/drainer/tests/test_correspondent_hold.py
@@ -123,10 +123,10 @@ rt = workspace([("item-a", GUID, "relay|securus|sam rivera")])
 check("live session -> its correspondent is held-open",
       poller.open_correspondents(rt, {GUID}), {"relay|securus|sam rivera"})
 
-print("\nopen_correspondents: a DEAD worker (guid no longer live) releases the hold within one cycle")
+print("\nopen_correspondents: a DEAD worker (guid no longer live) releases the hold on the next pass")
 check("guid not in the live set -> not held-open (the crashed-worker fail-safe)",
       poller.open_correspondents(rt, {"99999999-0000-0000-0000-000000000000"}), set())
-check("no live scan (None) -> empty, so a cross-cycle hold fails open",
+check("no live scan (None) -> empty, so a hold across passes fails open",
       poller.open_correspondents(rt, None), set())
 
 print("\nopen_correspondents against the real live scan: a full-guid receipt and a legacy short-id one")
@@ -149,10 +149,10 @@ finally:
 check("full-guid and short-id receipts both held; the pid-less session released",
       poller.open_correspondents(rt2, live), {"jane@example.com", "relay|securus|sam rivera"})
 
-print("\nin-cycle dedup: two duplicates in ONE cycle -> first dispatches, the rest wait")
+print("\nsame-pass dedup: two duplicates in ONE pass -> first dispatches, the rest wait")
 # Replays the needs-loop discipline from main: check held_for_correspondent, and register the
 # correspondent only on dispatch. Two items sharing a key must not both spawn.
-active = set()  # nothing open from a prior cycle
+active = set()  # nothing open from a prior pass
 decisions = []
 for corr in ["relay|securus|sam rivera", "relay|securus|sam rivera", "jane@example.com"]:
     if poller.held_for_correspondent(corr, active):
@@ -164,8 +164,8 @@ for corr in ["relay|securus|sam rivera", "relay|securus|sam rivera", "jane@examp
 check("first of a pair dispatches, the duplicate waits, an unrelated sender dispatches",
       decisions, ["dispatch", "hold", "dispatch"])
 
-print("\nin-cycle dedup: a needs-you item waits behind an already-open correspondent from a prior cycle")
-active = {"relay|securus|sam rivera"}  # a worker from an earlier cycle still open
+print("\nsame-pass dedup: a needs-you item waits behind an already-open correspondent from a prior pass")
+active = {"relay|securus|sam rivera"}  # a worker from an earlier pass still open
 check("its duplicate is held", poller.held_for_correspondent("relay|securus|sam rivera", active), True)
 check("a None identity is never held", poller.held_for_correspondent(None, active), False)
 

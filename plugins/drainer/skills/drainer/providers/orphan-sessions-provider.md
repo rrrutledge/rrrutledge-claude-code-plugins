@@ -16,7 +16,7 @@ The resumed session carries the full history under a new session id, and the lau
 A retired background session is woken in place instead (see `spawn_bg` in session-mgr's `bg_session.py`).
 Orphans take needs-you worker slots like any other item, so a backlog of them comes back a few at a time as the waiting pile drops below `target_reviewable` rather than all at once.
 An orphan that ended within the last week goes ahead of every other source; an older one waits behind every other needs-you item (`order_needs` in `run-poller.py`).
-A resume that returns no session id stays unrecorded and is tried again next cycle.
+A resume that returns no session id stays unrecorded and pending, and the next dispatch pass tries again.
 The resumed session keeps the orphan's original name, read back from the orphan's transcript (its last custom title, else its AI-generated title), so several resumed sessions stay distinguishable and a second crash still reads the same name; a session with no recorded name is titled `Resume: <directory>`.
 Russell continues in his own resumed conversation from there - there is nothing for a worker to read, act on, or clear, because the item is Russell's own interrupted work.
 Because of this, the sections below that a normal provider's worker would use are N/A rather than omitted (per `../engine/provider.md`'s "MUST define" contract) - the sections still exist so it's clear each was considered.

@@ -11,7 +11,7 @@ engine/screen.md, so a classification call can't crowd out the guardrail), and t
 session (the actual reply/work, draft-only). A new item in a conversation a live worker already holds is
 handed to that worker instead of getting its own; a single-tool `claude -p` call only carries that note,
 since a script can't post to a session's inbox itself. An item's triage and screen verdicts are cached, so an item
-the dispatch step holds across cycles is judged once; and when the background account is out of usage a
+that waits on the pending list is judged once; and when the background account is out of usage a
 circuit breaker skips the AI step until the account can serve calls again. Triage also records whether a
 person or a machine wrote each item (`sender`); the once-a-day acknowledgement sweep (ack_sweep.py) reads
 it from the verdict cache.
@@ -1474,7 +1474,7 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
             _mark_launcher_resume(resume_launcher, _worker_title(iid, json_file), bg_id)
         return True
     print(f"spawn_worker {iid}: headless `claude --bg` launch returned no id; "
-          "left unrecorded to retry next cycle.")
+          "left unrecorded and pending for the next pass.")
     return False
 
 
@@ -1526,7 +1526,7 @@ def spawn_resume(session_id, cwd, repo):
     title = _session_title(own or f"Resume: {base}", f"resume:{session_id[:8]}")
     if not spawn_bg(None, None, cwd or repo, title, resume=session_id):
         print(f"spawn_resume {session_id}: headless `claude --bg --resume` launch returned no id; "
-              "left unrecorded to retry next cycle.")
+              "left unrecorded and pending for the next pass.")
         return False
     return True
 
@@ -1622,7 +1622,7 @@ def _worker_items(runtime_dir, ids):
     """(receipt id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt is in
     `ids`. A receipt names the session as launched; a session resumed since continues under a newer
     guid (session_resolver), so the receipt is read as that one. Bounded by the number of session
-    files, the same per-cycle work reconcile already does."""
+    files, the same work reconcile does each cycle."""
     if not ids:
         return
     resolve = session_resolver()

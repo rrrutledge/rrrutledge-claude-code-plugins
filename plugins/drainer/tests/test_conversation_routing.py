@@ -1,5 +1,5 @@
 """Tests for one-conversation-one-live-worker routing: each provider's conversation key, the live-holder
-scan, the route decision (forward / same-cycle hold / dispatch), the session address lookup, the
+scan, the route decision (forward / same-pass hold / dispatch), the session address lookup, the
 delivery check on the SendMessage call, the hand-over's records, and the live-session list a new
 worker's seed carries.
 
@@ -124,7 +124,7 @@ finally:
 check("open_correspondents still reads the same scan",
       poller.open_correspondents(rt, {"guid-live", "guid-live2"}), {"georg", "x@y.z"})
 
-print("\nconversation_route: forward to a live holder, hold behind a same-cycle launch or a paused holder")
+print("\nconversation_route: forward to a live holder, hold behind a same-pass launch or a paused holder")
 check("live holder -> forward", poller.conversation_route(KEY, {KEY: ("g", "live")}, set()), "forward")
 check("paused holder -> held for it", poller.conversation_route(KEY, {KEY: ("g", "paused")}, set()), "paused")
 check("claimed by a recent launch -> hold", poller.conversation_route(KEY, {}, {KEY}), "hold")
@@ -134,7 +134,7 @@ check("a screen-flagged item gets its own worker",
       poller.conversation_route(KEY, {KEY: ("g", "live")}, set(), True), None)
 check("a screen-flagged item is not held behind a paused holder",
       poller.conversation_route(KEY, {KEY: ("g", "paused")}, set(), True), None)
-check("a screen-flagged item is not held behind a same-cycle launch",
+check("a screen-flagged item is not held behind a same-pass launch",
       poller.conversation_route(KEY, {}, {KEY}, True), None)
 
 print("\npaused_ids: each paused session's guid and short id, so a receipt in either form matches")
@@ -241,7 +241,7 @@ try:
     ok, recorded, cleared, receipt, rec, _ = hand_over(False)
     check("not handed over", ok, False)
     check("nothing recorded, cleared, or receipted", (recorded, cleared, receipt), ([], [], None))
-    check("the failed holder is noted so a later cycle doesn't re-send", rec.get("forwardFailedTo"), "guid-live")
+    check("the failed holder is noted so a later pass doesn't re-send", rec.get("forwardFailedTo"), "guid-live")
     ok, recorded, _, _, _, sent = hand_over(True, address=None)
     check("no address -> not handed over, nothing sent", (ok, recorded, sent), (False, [], []))
 finally:

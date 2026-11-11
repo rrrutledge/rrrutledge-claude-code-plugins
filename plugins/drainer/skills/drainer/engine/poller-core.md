@@ -19,7 +19,7 @@ AI is invoked for exactly three things, plus one judgment-free delivery call (it
    Same cache pattern (first alone, rest concurrent) on the background account.
    On a flag the item loses all autonomy (forced to needs-you, never auto-handled or digested); an item it can't screen is held out of dispatch (fail-closed), so nothing is acted on unscreened.
    Junk is the one bucket the screen skips: it never resolves a pointer and never acts without the user's own review at digest time, so there's nothing there for the screen to protect against, and triage's own `kind: phishing` marking already carries the deceptive ones to the report-phishing digest action - flagging them again here would only force a duplicate, unnecessary escalation on content that's already correctly triaged. needs-you, auto-handle, and fyi (which *does* resolve a pointer autonomously, see `engine/digest-core.md` step 2) all still get screened.
-   See the screen's dispatch handling in the cycle below.
+   See the screen's handling in dispatch step 5 below.
 3. **The per-item worker session** - each needs-you (or auto-handle) item opens a headless worker running `engine/worker-core.md` (the actual reply/work, draft-only; auto-handle runs the standing rule and self-clears without surfacing to the user).
    The worker re-applies the screen (`engine/screen.md`) to any content it resolves that the screen pass never saw (a pointer's real body).
 4. **The delivery call for a routed item** - when a new item belongs to a conversation a live worker already holds, one `claude -p` call carries a code-built note to that worker.
@@ -60,7 +60,7 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 3. **Per provider - enumerate everything eligible:** call the provider's enumerate (for outlook-graph, `mail.js --list-inbox --json --top=<ENUMERATE_PAGE_SIZE>` - read+unread, newest-first, no time window).
    There is no per-cycle work cap: every cycle asks every source for everything it currently has to offer (`ENUMERATE_PAGE_SIZE`, a generous constant in `run-poller.py`, bounds only how many rows one API call requests - a technical page size, not a throttle; a backlog bigger than that one page just carries into the next cycle).
    Compute each item's stable id and drop any already in seen-state (`scripts/seen-state.js`).
-   Whatever remains all becomes triage/dispatch input this cycle; the worker buffer in step 5 is what actually limits how much of it gets worked on at once.
+   Whatever remains is judged this cycle and, if it needs a worker, lands on the pending list; the worker buffer in step 5 is what actually limits how much of it gets worked on at once.
 4. **Triage** each new item with its own `claude -p` call → bucket (needs-you / auto-handle / fyi / junk) + kind + complexity (simple / complex) + sender (person / automated, the real-person test in `engine/triage.md`).
    Every call this cycle shares one prompt prefix - `engine/triage.md`, the local `context.md`, and each enabled provider's AUTO-HANDLE section (so the model can recognize a standing-rule item; the rules live in the provider docs, surfaced here at triage time) - with only the one item's payload varying per call, so the model spends its full attention on that item instead of a whole cycle's batch at once.
 4b. **Screen** each new item - except one step 4 already bucketed junk - with its own separate `claude -p` call (`engine/screen.md` + `context.md`) → `{flagged, reason}`.
@@ -71,7 +71,7 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
     The fail-closed hold is for the call itself being unavailable.)
 4c. **Verdict cache.**
     An item already on the pending list whose listing fields are unchanged takes its stored verdicts from its entry, with no text fetch and no cache lookup, however long it has waited.
-    Every other item the dispatch step held re-enumerates each cycle, so its triage and screen verdicts are persisted in `<runtime_dir>/judged-verdicts.json`, keyed by item id, and read back instead of re-judged.
+    Every other item that comes back to judging (its listing changed, or it left the list while its source failed to list) re-enumerates each cycle, so its triage and screen verdicts are persisted in `<runtime_dir>/judged-verdicts.json`, keyed by item id, and read back instead of re-judged.
     A cached verdict is used only while the text the model saw (the adapter's triage text, subject, sender) is unchanged and the verdict is under 24 hours old; changed content or an expired verdict is judged afresh.
     Only verdicts a model actually returned are cached - an item whose call was unavailable, or whose triage the fail-safe defaulted, is judged again next cycle.
     A cached `flagged` screen verdict forces needs-you exactly as a fresh one does.
@@ -177,7 +177,7 @@ Same work arriving by another source shares no key; the launch-time duplicate ch
 
 ## On demand: drain one Slack conversation now
 
-`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs the cycle's enumerate, triage, screen, and dispatch on one Slack DM or group DM, so an item drained on demand gets the same verdicts, routing, and worker the keeper gives it.
+`python run-poller.py --repo <project> --channel=<C> [--now] [--resume-me]` runs enumerate, triage, and screen on one Slack DM or group DM, then a dispatch pass over its items, so an item drained on demand gets the same verdicts, routing, and worker the keeper gives it.
 Its dispatch pass holds the same dispatch lock as the keeper's, so the two never open workers at once.
 A session about to send someone a new Slack message runs it first, per the `slack` skill's **Answer before a new message**.
 The flags and the `on-demand:` outcome lines are in the script's header.
@@ -185,7 +185,7 @@ The flags and the `on-demand:` outcome lines are in the script's header.
 ## Fail-safe (why "process twice" is fine, "miss once" never happens)
 
 - Seen-state is a separate id store, not the read/unread flag - losing it re-processes (safe).
-- A seen-id is recorded only **after** dispatch succeeds - an aborted cycle loses no item.
+- A seen-id is recorded only **after** dispatch succeeds - an aborted pass loses no item.
 - Workers are idempotent: a duplicate worker's situational-check resolves quietly.
   No overlap lock.
 - Completion is observed on the source, never reported: an item is done because its source object is handled, so a worker that dies, is closed, or fails its own archive call re-queues rather than vanishing.
