@@ -77,11 +77,17 @@ def put(runtime_dir, item):
 
 
 def remove(runtime_dir, source, iid):
-    try:
-        os.remove(_path(runtime_dir, source, iid))
-        return True
-    except FileNotFoundError:
-        return False
+    # A delete fails on Windows while another process is reading the file, as a replace does (_replace).
+    for attempt in range(5):
+        try:
+            os.remove(_path(runtime_dir, source, iid))
+            return True
+        except FileNotFoundError:
+            return False
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def load_all(runtime_dir):
@@ -101,9 +107,8 @@ def load_all(runtime_dir):
 
 def prune(runtime_dir, source, still_pending_ids, entries):
     """Drop every one of `entries` (load_all's list) of `source` whose id is not in `still_pending_ids`,
-    the ids that source listed as new (unseen) this cycle. Called only after that source listed
-    successfully, so an entry goes once its item has been dispatched, has left the source (archived or
-    handled by hand), or was re-judged as needing no worker. Returns the count removed."""
+    the ids that source listed as new (unseen) this cycle - empty when it failed to list. Returns the
+    count removed."""
     removed = 0
     for e in entries:
         if e["_source"] == source and e["_id"] not in still_pending_ids:

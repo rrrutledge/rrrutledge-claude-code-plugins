@@ -189,6 +189,16 @@ check("the follow-up waits on the next pass", (launched, ids(pending.load_all(rt
 later = poller.datetime.now(poller.timezone.utc) + poller.LAUNCH_HOLD
 check("the claim lapses after LAUNCH_HOLD", poller.load_launch_holds(rt, later)["corrs"], {})
 
+print("\ndispatch_pass: workers launched by an earlier pass count against max_concurrent until the scan lists them")
+rt, cfg = setup([item("a", received="2026-11-11T05:00Z"), item("b", received="2026-11-11T04:00Z"),
+                 item("c", received="2026-11-11T03:00Z")])
+cfg["max_concurrent"] = 3  # the scan lists 1 session, so 2 slots are left
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
+check("the first pass fills the 2 slots", launched, ["a", "b"])
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
+check("the next pass, with a and b still unlisted, opens nothing", (launched, ids(pending.load_all(rt))),
+      (["a", "b"], ["c"]))
+
 print("\nsave_feed_health keeps the scan fields a dispatch pass wrote meanwhile")
 rt = tempfile.mkdtemp(prefix="health-")
 poller.save_health(rt, {poller.POLLER_KEY: {"tab_scan_consecutive_failures": 2, "last_run_ts": "old"},

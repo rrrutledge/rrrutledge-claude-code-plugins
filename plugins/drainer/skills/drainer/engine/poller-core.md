@@ -1,7 +1,7 @@
 # drainer poller-core - the continuous keeper's contract
 
 The drainer runs as a **continuous keeper**: one long-running process that holds each source at **zero un-started actionable items**.
-Its feed cycle finds and judges new items every 5 minutes, and its dispatch loop opens workers for them about once a minute (see "The keeper" below).
+Its feed cycle finds and judges new items, and its dispatch loop opens workers for them (see "The keeper" below).
 Both are deterministic algorithms, so they are implemented as **scripts** - `scripts/run-poller.py`, `scripts/keeper.py`, `scripts/pending.py` - not prose an AI re-derives each run.
 This doc is the *contract*: what the script does and where AI is (and isn't) used.
 The full rationale is in `docs/superpowers/specs/2026-06-17-drainer-continuous-keeper-redesign.md`.
@@ -33,21 +33,19 @@ No AI re-implements the loop.
 ## The keeper
 
 `python run-poller.py --repo <project>` is the form the `DrainerKeeper` scheduled task runs, and it starts the keeper (`scripts/keeper.py`).
-The task starts it every 5 minutes and ignores a start while one is running, so the task is the keeper's watchdog: a keeper that died or recycled is back within 5 minutes.
+The task restarts it on its schedule (`scripts/install-schedule.ps1`) and ignores a start while one is running, so the task is the keeper's watchdog: a keeper that died or recycled is back by the next start.
 The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a second start from any path exits at once.
 
 - **The feed thread** runs `run-poller.py --repo <project> --feed` as a child process: the cycle below, through judging and the fyi/junk handling, ending with every needs-you and auto-handle item written to the pending list.
-  Cycles start on a fixed spacing and an overrun delays the next one rather than dropping it; a hung cycle is killed with every process it started (the timings live in `scripts/keeper.py`).
+  Feed cycles never skip: an overrun delays the next one (the spacing and the hung-cycle handling live in `scripts/keeper.py`).
 - **The pending list** (`scripts/pending.py`) holds one file per item under `<runtime_dir>/pending/`, the item with its verdicts, until a worker opens for it.
   The feed writes and prunes entries (`feed_pending` in `run-poller.py` holds the rule), so a source whose listing failed dispatches nothing until it lists cleanly again.
-- **The dispatch loop** (the keeper's main thread) runs one dispatch pass (step 5) over the whole pending list about once a minute, and at once whenever a feed cycle finishes.
+- **The dispatch loop** (the keeper's main thread) runs one dispatch pass (step 5) over the whole pending list on a short interval, and at once whenever a feed cycle finishes.
   A dispatch pass is the only code that opens item workers, and an on-demand `--channel` run dispatches through the same pass.
   An item that opens a worker, or is handed to a live one, is recorded seen and leaves the list; a held item stays on it for the next pass.
   Every pass holds the dispatch lock (`<runtime_dir>/dispatch.lock`), so two passes never open workers from two views of the same sessions.
 - **Recycling.**
-  The keeper exits cleanly on age, on memory, or once a newer drainer version is installed, and the task starts a fresh one (the thresholds live in `scripts/keeper.py`, the version check in `run-poller.py`).
-  A running feed cycle finishes first, and dispatch passes keep running while it does.
-  Starts, feed cycles, failures and recycles are logged to `<runtime_dir>/keeper.log`.
+  The keeper exits cleanly on age, on memory, or once a newer drainer version is installed, and the task starts a fresh one; it logs what it does to `<runtime_dir>/keeper.log` (the thresholds and the clean-exit steps live in `scripts/keeper.py`, the version check in `run-poller.py`).
 
 `--once` runs one feed cycle and then one dispatch pass, for a manual run; `--dry-run` reports what one cycle would do and touches no state.
 
@@ -154,6 +152,7 @@ At dispatch, before spawning a worker for a needs-you item, the poller compares 
 If one matches, the item is left **unrecorded** on the pending list - the same pattern the worker-buffer throttle uses - so it waits and re-evaluates on the next pass.
 
 "Currently has an open item" is recomputed **every pass from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
+The one stored record is short-lived: a worker launched within the last few minutes holds its correspondent and its conversation by the dispatcher's own launch record (`launch-holds.json`, `LAUNCH_HOLD` in `run-poller.py`) until the session scan lists it, and its slot counts against `max_concurrent` the same way.
 The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
 If a worker dies without clearing, the hold behind it goes false on the next pass, and reconcile re-queues *its* item within one feed cycle - both read the same liveness signal, not a separate flag.
 Worst case is one feed cycle's delay, never indefinite starvation.

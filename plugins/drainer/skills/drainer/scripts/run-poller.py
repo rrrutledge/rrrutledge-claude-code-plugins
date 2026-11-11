@@ -67,6 +67,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -124,10 +125,19 @@ def write_json_atomic(path, data):
     """Write JSON via a temp file + replace, so a reader never sees a half-written state. The Python
     mirror of seen-state.js's writeJsonAtomic, shared by the health and reconcile state files."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp"
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"  # the feed and the keeper may write at once
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
-    os.replace(tmp, path)
+    # On Windows a replace fails while another process has the target open for a read, which is over in
+    # milliseconds, so a few short retries cover it.
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 # ---------------------------------------------------------------------------- provider health (observability)
@@ -1779,7 +1789,7 @@ def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     os.makedirs(seeds, exist_ok=True)
     with open(os.path.join(seeds, f"{iid}.prompt.txt.session"), "w", encoding="utf-8") as f:
         f.write(holder)
-    seen_state("record", runtime_dir, it["_source"], iid, it["_bucket"])
+    _seen_record(runtime_dir, it["_source"], iid, it["_bucket"])
     return True
 
 
@@ -2270,7 +2280,7 @@ def main():
             it["_bucket"], it["_kind"] = "needs-you", "work"
             it["_complexity"] = "simple"
             pre_triaged.append(it)
-        elif reuse_pending_verdicts(cfg["runtime_dir"], it):
+        elif reuse_pending_verdicts(cfg["runtime_dir"], it, drop_changed=not args.dry_run):
             pre_triaged.append(it)  # judged in an earlier cycle and still waiting for a slot
         else:
             ai_triage.append(it)
@@ -2496,18 +2506,22 @@ def dispatch_lock(runtime_dir, timeout=DISPATCH_LOCK_WAIT):
         lock.release()
 
 
-def reuse_pending_verdicts(runtime_dir, it):
+def reuse_pending_verdicts(runtime_dir, it, drop_changed=True):
     """Give an item the verdicts it already holds on the pending list, when its listing is unchanged.
 
     A held item is judged once: the next cycle that finds it again copies its stored verdict fields
     (the `_` keys the triage, the screen and the Slack overrides set) back onto it instead of fetching its
-    text again and asking the cache. True when the item was filled in this way."""
+    text again and asking the cache. True when the item was filled in this way. An item whose listing
+    changed is judged again, and with `drop_changed` its entry leaves the list at once, so no dispatch
+    pass opens a worker on the old verdicts while the new ones are being made."""
     entry = pending.get(runtime_dir, it["_source"], it["_id"])
     if not entry or entry.get("_bucket") not in ("needs-you", "auto-handle"):
         return False
     listing = {k: v for k, v in it.items() if not k.startswith("_")}
     stored = {k: v for k, v in entry.items() if not k.startswith("_")}
     if json.loads(json.dumps(listing, default=str)) != stored:
+        if drop_changed:
+            pending.remove(runtime_dir, it["_source"], it["_id"])
         return False  # the source changed the item (a longer unread span, an edited card): judge it again
     for k, v in entry.items():
         if k.startswith("_") and k not in ("_id", "_source", "_pendingSince"):
@@ -2530,13 +2544,14 @@ def feed_pending(runtime_dir, offered, keep, drop):
           f"{removed} entr(ies) removed.")
 
 
-def run_dispatch(cfg, prov, repo, config_repo):
-    """One dispatch pass over the whole pending list, under the dispatch lock."""
+def run_dispatch(cfg, prov, repo, config_repo, items=None):
+    """One dispatch pass over `items` (the whole pending list when omitted), under the dispatch lock."""
     with dispatch_lock(cfg["runtime_dir"]) as locked:
         if not locked:
             print("dispatch: another pass holds the dispatch lock; skipped.")
             return
-        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]))
+        dispatch_pass(cfg, prov, repo, config_repo,
+                      pending.load_all(cfg["runtime_dir"]) if items is None else items)
 
 
 # How long a launched worker keeps holding its conversation and its correspondent by the dispatcher's own
@@ -2548,15 +2563,18 @@ LAUNCH_HOLDS_FILE = "launch-holds.json"
 
 
 def load_launch_holds(runtime_dir, now):
-    """`{"convs": {key: when}, "corrs": {identity: when}}` for the claims made within LAUNCH_HOLD of `now`."""
+    """`{"convs": {key: when}, "corrs": {identity: when}, "launches": {item id: when}}` for the claims and
+    worker launches made within LAUNCH_HOLD of `now`."""
     try:
         with open(os.path.join(runtime_dir, LAUNCH_HOLDS_FILE), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         data = {}
-    holds = {"convs": {}, "corrs": {}}
+    if not isinstance(data, dict):
+        data = {}
+    holds = {"convs": {}, "corrs": {}, "launches": {}}
     for kind in holds:
-        for k, when in (data.get(kind) or {}).items() if isinstance(data, dict) else ():
+        for k, when in (data.get(kind) or {}).items():
             try:
                 if now - datetime.fromisoformat(when) < LAUNCH_HOLD:
                     holds[kind][k] = when
@@ -2572,7 +2590,8 @@ def _seen_record(runtime_dir, source, iid, label):
         res = seen_state("record", runtime_dir, source, iid, label)
         if getattr(res, "returncode", 0) == 0:
             return True
-        time.sleep(2 * (attempt + 1))
+        if attempt < 2:
+            time.sleep(2 * (attempt + 1))
     print(f"{iid}: could not record it seen after 3 tries, so a later cycle may open a second worker for it "
           f"({(getattr(res, 'stderr', '') or '').strip()[:200]}).")
     return False
@@ -2622,6 +2641,11 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     # fail closed: open no new needs-you workers this pass) ---
     wcounts = worker_counts(agents)
     waiting, total = wcounts or (None, None)
+    if total is not None:
+        # A worker an earlier pass launched that the scan doesn't list yet still holds a slot, so the cap
+        # counts it until the scan catches up.
+        total += sum(1 for iid in holds["launches"]
+                     if (_session_guid(runtime_dir, iid)[0] or "") not in (live or set()))
     alert = False
     if not channel:  # scan health and its diagnostic are the scheduled keeper's
         with health_lock(runtime_dir):
@@ -2732,6 +2756,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
         if spawn_worker(iid, json_file, repo, runtime_dir, model, cfg["local_dir"], config_repo, it,
                         peers=peers, resume_launcher=launcher_id):
             on_demand.append(f"launched auto-handle worker for {iid}")
+            claim("launches", iid)
             if peers is not None:
                 peers.append(launched_peer(_worker_title(iid, json_file)))
         elif channel:
@@ -2806,6 +2831,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
                 continue  # left unrecorded and pending, so the next pass picks it up again
             if spawned:
                 on_demand.append(f"launched worker for {iid}")
+                claim("launches", iid)
                 if not it.get("_screen") and peers is not None:  # a flagged item's subject-built title stays out of other seeds
                     peers.append(launched_peer(_worker_title(iid, json_file)))
                 if "conversationKey" in stamp:
@@ -2867,19 +2893,23 @@ def _newer_version_check():
 
 def serve(source_repo):
     """The scheduled form: run the keeper (keeper.py) until it recycles. Config is re-read each pass, so a
-    buffer knob change applies within a minute. The providers load once per keeper, and load again on a
-    pass whose pending list holds an item from a source that isn't loaded (one whose adapter failed to
-    load when the keeper started)."""
+    buffer knob change applies within a minute. The providers load once per keeper, and load once more
+    when the pending list first holds an item from a source that isn't loaded (one whose adapter failed
+    to load when the keeper started)."""
     config_repo = ensure_main_worktree(source_repo)
     cfg = read_config(config_repo, runtime_root=source_repo)
     runtime_dir = cfg["runtime_dir"]
     prov = {p.name: p for p in load_providers(cfg, {})}
+    retried = set()
 
     def dispatch():
         cfg = read_config(config_repo, runtime_root=source_repo)
-        if {e["_source"] for e in pending.load_all(runtime_dir)} - set(prov):
+        items = pending.load_all(runtime_dir)
+        missing = {e["_source"] for e in items} - set(prov) - retried
+        if missing:
+            retried.update(missing)
             prov.update({p.name: p for p in load_providers(cfg, {})})
-        run_dispatch(cfg, prov, source_repo, config_repo)
+        run_dispatch(cfg, prov, source_repo, config_repo, items)
 
     feed_cmd = [sys.executable, os.path.abspath(__file__), "--repo", source_repo, "--feed"]
     reason = keeper.run(runtime_dir, dispatch, feed_cmd, should_recycle=_newer_version_check())
