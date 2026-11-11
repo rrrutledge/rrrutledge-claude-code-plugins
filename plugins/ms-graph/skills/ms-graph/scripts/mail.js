@@ -440,20 +440,26 @@ async function listDrafts(client) {
   }
 }
 
-// Reusable: normalize an --attach value (path, comma-separated string, or array) into Graph
-// fileAttachment objects.
+// The file paths in an --attach value (path, comma-separated string, or array).
 function attachPaths(attach) {
   return Array.isArray(attach)
     ? attach
     : (attach ? String(attach).split(',').map(s => s.trim()).filter(Boolean) : []);
 }
 
+// Reusable: turn an --attach value into Graph fileAttachment objects.
 function buildAttachments(attach) {
   return attachPaths(attach).map(p => ({
     '@odata.type': '#microsoft.graph.fileAttachment',
     name: path.basename(p),
     contentBytes: fs.readFileSync(p).toString('base64'),
   }));
+}
+
+// One `attachment: <absolute path>` line per --attach file a staged draft carries, so the session
+// presenting the draft can send each file to Russell's device without re-deriving the list.
+function printAttachmentLines(attach) {
+  for (const p of new Set(attachPaths(attach).map(p => path.resolve(p)))) console.log(`attachment: ${p}`);
 }
 
 async function reply(client) {
@@ -472,12 +478,6 @@ async function reply(client) {
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
   console.log(`draft-id: ${draft.id}`);
   printAttachmentLines(args.attach);
-}
-
-// One `attachment: <absolute path>` line per --attach file a staged draft carries, so the session
-// presenting the draft can send each file to Russell's device without re-deriving the list.
-function printAttachmentLines(attach) {
-  for (const p of attachPaths(attach)) console.log(`attachment: ${path.resolve(p)}`);
 }
 
 async function thread(client) {

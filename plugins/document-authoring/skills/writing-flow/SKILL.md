@@ -32,8 +32,9 @@ The middle step is the one that gets dropped under pressure, so carry all three 
   **A draft that carries a file shows Russell the file in that same reply.**
   When the staged draft carries any attachment or inline image, the reply that presents it also sends each of those files with the `SendUserFile` tool, so he judges what the recipient will see from whatever device he reads the session on.
   The Gmail, personal Outlook, and Slack stage commands print one `attachment: <absolute path>` line per file they staged; on any other staging path, the files are the ones the session attached.
-  The tool renders images, PDFs, HTML, and SVG inline, so one `SendUserFile` call carries every file of those types.
+  The tool renders images, PDFs, HTML, and SVG inline, and those files go as they are.
   A Word document, slide deck, or other file a phone can't render goes as a PDF or PNG export of it, and the draft keeps the original file.
+  One `SendUserFile` call carries the whole set.
   `SendUserFile` is a deferred tool, so load it with `ToolSearch("select:SendUserFile")` before the first call.
   It sends files from the local disk, and the session offers it while Russell can reach the session from another device; a session without it lists each file's absolute path beside the draft.
   Then **Learn**: after he sends, record how his sent version differs from your draft, and a learning session folds any lesson back into the rules (the process for doing so is `document-authoring`'s `learn-from-send.md`).

@@ -952,7 +952,7 @@ async function createDraft() {
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Resolve the id with --resolve-name and write the plain name, or fix the token.`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
-  for (const p of filePaths) console.log(`attachment: ${require('path').resolve(p)}`);
+  for (const p of new Set(filePaths.map(p => require('path').resolve(p)))) console.log(`attachment: ${p}`);
 }
 
 async function check() {

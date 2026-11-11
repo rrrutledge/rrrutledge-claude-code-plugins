@@ -706,7 +706,8 @@ function attachments() {
 // One `attachment: <absolute path>` line per file a staged draft carries (--attach and --inline alike),
 // so the session presenting the draft can send each file to Russ's device without re-deriving the list.
 function printAttachmentLines() {
-  for (const a of attachments() || []) console.log(`attachment: ${path.resolve(a.path)}`);
+  const paths = new Set((attachments() || []).map(a => path.resolve(a.path)));
+  for (const p of paths) console.log(`attachment: ${p}`);
 }
 
 // Build the outgoing RFC822 MIME (a Buffer) with MailComposer - transport-independent; the Gmail API
