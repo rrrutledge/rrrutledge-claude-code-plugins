@@ -66,7 +66,7 @@
 //                 each person the body tags (--create-draft runs the same check and prints the same line).
 //                 A plain-text send marks the conversation read up to the sent message. --keep-unread
 //                 instead leaves it as unread as it was: it reads the read cursors before and after the
-//                 post and puts back any the post moved. --json prints {channel, ts, permalink, cursor}.)
+//                 post and puts back any the post moved. --json prints {channel, ts, permalink, mentions, cursor}.)
 // List drafts:   node slack.js --list-drafts [--channel=<C>] [--thread-ts=<tts>] [--json]
 //                (drafts.list, paginated, keeping only active drafts - not sent, not deleted - and, with
 //                 --channel, only those addressed to that conversation (plus --thread-ts for one thread).
@@ -826,7 +826,7 @@ async function checkMentions(verb, text, channel) {
   if (ids.includes(me) && outsideSelfDm(me, channel, await convInfo(channel))) {
     throw new Error(`${verb}: the body mentions you (<@${me}>), not the person you are writing to. `
       + 'A file permalink\'s /files/<id>/ is your own id, not the owner\'s; take the person\'s id from their '
-      + 'message\'s fromId (--show/--history --json) or from --find-dm.');
+      + 'message (the <@U...> after the author\'s name in --show/--history) or the user id --find-dm prints.');
   }
   return namedMentions(ids);
 }

@@ -72,7 +72,7 @@ Under `scripts/` (run with `node`):
     is `<url|anchor text>` and a mention is `<@U…>`. `--body-file` (never an inline body) is what lets the
     writing-review gate read and receipt the exact bytes that go out. See **Sending** below - this runs only
     on Russ's explicit per-message say-so.
-    **Mentions:** a person's mention id is the `fromId` of a message they wrote (`--show` and `--history` print it after the author's name as `<@U…>`), or the id `--find-dm` returns.
+    **Mentions:** a person's mention id is the `fromId` of a message they wrote (`--show` and `--history` print it after the author's name as `<@U…>`), or the user id `--find-dm` prints in parentheses after the name.
     A send or stage prints a `Mentions:` line naming each person the body tags; confirm it names the person you are writing to.
     Add `--file=<path>` to attach local files, comma-separated for several (`--file=a.png,b.png`).
     It uploads each file via `files.getUploadURLExternal`, then one `files.completeUploadExternal` call posts
