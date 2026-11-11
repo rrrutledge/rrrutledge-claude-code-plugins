@@ -82,7 +82,8 @@
 //                 one draft per conversation and one per thread, so a second create fails with
 //                 attached_draft_exists unless --replace deletes the existing draft first.
 //                 --file attaches local files: each is uploaded with no channel, so it is shared nowhere,
-//                 and the draft carries the file ids until Russell sends it)
+//                 and the draft carries the file ids until Russell sends it. Prints one
+//                 `attachment: <absolute path>` line per attached file after the saved line)
 // Delete draft:  node slack.js --delete-draft=<draft id>
 //                (drafts.delete of one unsent draft, found via --list-drafts; it never reaches anyone)
 // Find DM:       node slack.js --find-dm=<name substring> [--json]
@@ -956,6 +957,7 @@ async function createDraft() {
     throw new Error(`--create-draft: the saved draft still shows raw ${raw.join(', ')} instead of a real mention; it was deleted. Fix the token with the person's own id (see the slack skill's Mentions rule under Send).`);
   }
   console.log(`Draft ${id} saved in ${args.channel}${destination.thread_ts ? ` thread ${destination.thread_ts}` : ''}${destination.broadcast ? ' (also sent to channel)' : ''}. Not sent.`);
+  for (const p of new Set(filePaths.map(p => require('path').resolve(p)))) console.log(`attachment: ${p}`);
 }
 
 async function check() {

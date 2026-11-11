@@ -103,6 +103,7 @@ Under `scripts/` (run with `node`):
     Add `--file=<path>` to attach local files to the draft, comma-separated for several.
     The files stay private to Russ until he sends the draft.
     The draft shows the files under **Drafts & sent** and in the conversation's composer.
+    The reply presenting the draft sends those files to Russell, per `document-authoring:writing-flow`'s **Stage** step.
   - Delete a draft: `node slack.js --delete-draft=<draft id>` - removes one unsent draft found via `--list-drafts`.
     It reaches no one.
   - Open a DM by user ID: `node slack.js --open-dm=<user ID> [--json]` - `conversations.open` on a Slack
