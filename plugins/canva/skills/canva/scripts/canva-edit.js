@@ -89,14 +89,11 @@ async function cmdReplaceWord() {
   const nth = +arg('nth', 0);
   await E.withDesign(arg('design'), 'cvword', async (tab) => {
     await E.reloadToPage(tab, n);
-    const before = await E.replaceWord(tab, word, nth, repl);
+    const { expected } = await E.replaceWord(tab, word, nth, repl);
     await E.reloadToPage(tab, n);
-    const after = (await E.findWord(tab, word)).length;
-    const inRepl = [...repl.matchAll(new RegExp('(?<![\\p{L}\\p{N}])' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}])', 'gu'))].length;
-    const lines = (await E.textRuns(tab)).map(t => t.t);
-    console.log('page text after reload:', lines.join(' / '));
-    const want = before - 1 + inRepl;
-    if (after !== want || !lines.some(t => t.includes(repl))) errors.push(`after reload "${word}" appears ${after} times (expected ${want}) and "${repl}" ${lines.some(t => t.includes(repl)) ? 'is' : 'is not'} on the page`);
+    const ok = await tab.evaluate((e) => document.body.innerText.includes(e), expected);
+    console.log('page text after reload:', (await E.textRuns(tab)).map(t => t.t).join(' / '));
+    if (!ok) errors.push(`after reload the page does not read "${expected}"`);
     if (arg('out')) { fs.mkdirSync(arg('out'), { recursive: true }); await E.presentShot(tab, path.join(arg('out'), `p${String(n).padStart(2, '0')}-text.png`)); }
   });
 }
@@ -143,7 +140,7 @@ async function finishSwap(tab, n, old, placed, slot) {
     if (me.i === slot) break;
     if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${slot}`);
     await E.selectLayer(tab, me);
-    await E.moveSelected(tab, me.i < slot ? 'Backward' : 'Forward', Math.abs(slot - me.i));
+    if (!(await E.moveSelected(tab, me, me.i < slot ? 'Backward' : 'Forward', Math.abs(slot - me.i)))) break;
   }
 }
 
@@ -187,6 +184,20 @@ async function cmdApply() {
   });
 }
 
+// The Magic Expand result tiles in the side panel, top to bottom then left to right, with their image sources.
+const resultTiles = (tab) => tab.evaluate(() => {
+  const ims = [...document.querySelectorAll('img')].filter(i => { const r = i.getBoundingClientRect(); return r.x > 80 && r.x < 520 && r.y > 150 && r.y < 900 && r.width > 90 && r.width < 220 && r.height > 90; })
+    .map(i => { const r = i.getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), src: i.src.slice(0, 160), done: i.complete && i.naturalWidth > 0 }; });
+  const seen = new Set();
+  return ims.filter(p => { const key = Math.round(p.x / 40) + ',' + Math.round(p.y / 40); if (seen.has(key)) return false; seen.add(key); return true; }).sort((a, b) => a.y - b.y || a.x - b.x);
+});
+
+// Four result tiles, all loaded and holding steady.
+async function resultsReady(tab, before = '') {
+  await E.until(async () => { const t = await resultTiles(tab); return t.length >= 4 && t.every(x => x.done) && t.map(x => x.src).join('|') !== before; }, { timeout: 150000, what: 'the Magic Expand results' });
+  return E.waitStable(() => resultTiles(tab), { quietMs: 1500 });
+}
+
 // Magic Expand runs only in a scratch design: it is a generative edit, and the scratch design keeps it out of the real one.
 async function cmdExpand() {
   const out = arg('out');
@@ -209,32 +220,29 @@ async function cmdExpand() {
       await tab.setViewportSize({ width: 1600, height: 1000 });
       await tab.goto(`https://www.canva.com/design?create=true&width=${w + left + right}&height=${h + top + bottom}&units=px`, { timeout: 90000 });
       await tab.waitForURL(/\/design\/[A-Za-z0-9_-]+\//, { timeout: 90000 });
-      await E.wait(tab, 7000);
       st[name] = E.designId(tab.url());
       fs.writeFileSync(stateFile, JSON.stringify(st, null, 1));
       L(name, 'scratch design', tab.url());
-      await tab.getByText('Uploads', { exact: true }).first().click({ timeout: 20000 });
-      await E.wait(tab, 2500);
+      await tab.getByText('Uploads', { exact: true }).first().click({ timeout: 60000 });
       const pick = await E.uploadFile(tab, file);
       await tab.mouse.click(pick.x, pick.y);
-      await E.wait(tab, 3000);
+      await E.until(() => E.isImageSelected(tab), { what: 'the photo to be added and selected' });
       let pos = tab.getByRole('button', { name: 'Position', exact: true });
-      if (!(await pos.count())) { await tab.getByRole('button', { name: /More/ }).last().click().catch(() => {}); await E.wait(tab, 800); pos = tab.getByText('Position', { exact: true }); }
-      await pos.first().click({ timeout: 10000 }).catch(() => pos.first().click({ force: true, timeout: 10000 }));
+      if (!(await pos.count())) {
+        await tab.getByRole('button', { name: /More/ }).last().click();
+        pos = tab.getByText('Position', { exact: true });
+      }
+      await pos.first().click({ timeout: 10000 });
       await E.placeSelected(tab, { w, x: left, y: top });
       await shot(tab, 'placed');
       await tab.getByRole('button', { name: 'Edit', exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 2500);
       await tab.getByText('See all', { exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 2000);
       await tab.getByText('Magic Expand', { exact: true }).first().click({ timeout: 15000 });
-      await E.wait(tab, 2500);
       await tab.getByText('Whole Page', { exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 2000);
       await tab.getByRole('button', { name: 'Expand', exact: true }).last().click({ timeout: 10000 });
       L(name, 'expanding');
       await tab.getByText('Generate new results', { exact: true }).first().waitFor({ timeout: 150000 });
-      await E.wait(tab, 6000);
+      await resultsReady(tab);
       await shot(tab, 'results');
       L(name, 'results ready:', path.join(out, `${name}-results.png`));
       return;
@@ -243,22 +251,16 @@ async function cmdExpand() {
     await tab.bringToFront();
     if (arg('pick') != null) {
       const k = +arg('pick');
-      const tiles = await tab.evaluate(() => {
-        const ims = [...document.querySelectorAll('img, button')].filter(i => { const r = i.getBoundingClientRect(); return r.x > 80 && r.x < 520 && r.y > 150 && r.y < 700 && r.width > 90 && r.width < 220 && r.height > 90; }).map(i => { const r = i.getBoundingClientRect(); return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)]; });
-        const seen = new Set();
-        return ims.filter(p => { const key = Math.round(p[0] / 40) + ',' + Math.round(p[1] / 40); if (seen.has(key)) return false; seen.add(key); return true; }).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-      });
+      const tiles = await resultTiles(tab);
       if (!tiles[k]) throw new Error(`no result tile ${k} (found ${tiles.length})`);
-      await tab.mouse.click(tiles[k][0], tiles[k][1]);
-      await E.wait(tab, 4000);
+      await tab.mouse.click(tiles[k].x, tiles[k].y);
+      const done = tab.getByRole('button', { name: 'Done', exact: true }).last();
+      await done.click({ timeout: 10000 });
+      await done.waitFor({ state: 'hidden', timeout: 30000 });
       await shot(tab, 'picked');
-      await tab.getByRole('button', { name: 'Done', exact: true }).last().click({ timeout: 10000 });
-      await E.wait(tab, 3000);
       await tab.keyboard.press('Escape');
       await tab.getByText('File', { exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 1500);
       await tab.getByText('Download', { exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 3000);
       const [dl] = await Promise.all([
         tab.waitForEvent('download', { timeout: 120000 }),
         tab.getByRole('button', { name: 'Download', exact: true }).last().click({ timeout: 10000 }),
@@ -267,8 +269,9 @@ async function cmdExpand() {
       await dl.saveAs(f);
       L(name, 'downloaded', f);
     } else if (has('more')) {
+      const before = (await resultTiles(tab)).map(x => x.src).join('|');
       await tab.getByText('Generate new results', { exact: true }).first().click({ timeout: 10000 });
-      await E.wait(tab, 40000);
+      await resultsReady(tab, before);
       await shot(tab, 'results2');
       L(name, 'more results:', path.join(out, `${name}-results2.png`));
     } else if (has('close')) {

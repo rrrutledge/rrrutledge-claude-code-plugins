@@ -1,9 +1,11 @@
 // Shared Playwright helpers for editing a Canva design in the browser.
-// Every selector and wait here is one that held up across the ISC Summit deck rounds
-// (40-page "Up next" speaker deck, Nov 2026); references/browser-editing.md explains why each exists.
+// references/browser-editing.md covers the browser setup and the calls these leave to the caller.
 //
 // Units: the Arrange panel's px inputs are the design's own units (a 1920x1080 slide reads 1920x1080),
 // so a placement plan written in design px needs no conversion.
+//
+// Waits: every wait is for a condition (a panel showing, a value reading back, a layer count changing),
+// polled at 250 ms by until() or waitStable(); none is a fixed delay.
 
 const path = require('path');
 const fs = require('fs');
@@ -20,11 +22,39 @@ function argValue(flag, dflt) {
   return arg ? arg.slice(prefix.length) : dflt;
 }
 
-const cdpPort = () => argValue('cdp-port', '9230');
-const wait = (tab, ms) => tab.waitForTimeout(ms);
+const cdpPort = () => argValue('cdp-port', '9222');
 const near = (a, b, t) => Math.abs(a - b) <= t;
 const sameBox = (p, q, t = 1.5) => !!(p && q && near(p.w, q.w, t) && near(p.h, q.h, t) && near(p.x, q.x, t) && near(p.y, q.y, t));
 const pngDims = (f) => { const b = fs.readFileSync(f); return [b.readUInt32BE(16), b.readUInt32BE(20)]; };
+const POLL_MS = 250;
+const tick = () => new Promise(r => setTimeout(r, POLL_MS));
+
+// Polls cond() until it returns a truthy value and returns that value; throws what on timeout.
+async function until(cond, { timeout = 10000, what = 'condition' } = {}) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    const v = await cond();
+    if (v) return v;
+    if (Date.now() > end) throw new Error(`timed out after ${timeout} ms waiting for ${what}`);
+    await tick();
+  }
+}
+
+// Like until(), but returns null instead of throwing: for a change that may legitimately not happen.
+const maybe = (cond, opts) => until(cond, opts).catch(() => null);
+
+// Polls read() until it returns the same serialized value for quietMs, then returns it.
+async function waitStable(read, { quietMs = 1000, timeout = 20000 } = {}) {
+  const end = Date.now() + timeout;
+  let last = JSON.stringify(await read());
+  let since = Date.now();
+  while (Date.now() < end) {
+    await tick();
+    const cur = JSON.stringify(await read());
+    if (cur !== last) { last = cur; since = Date.now(); } else if (Date.now() - since >= quietMs) return JSON.parse(cur);
+  }
+  return JSON.parse(last);
+}
 
 const CONNECT_TIMEOUT_MS = 30000;
 
@@ -41,12 +71,12 @@ async function connectBrowser(port = cdpPort()) {
 
 const getJson = (u) => new Promise((res, rej) => http.get(u, r => { let s = ''; r.on('data', d => s += d); r.on('end', () => { try { res(JSON.parse(s)); } catch (e) { rej(e); } }); }).on('error', rej));
 
-// Wakes a frozen renderer without Playwright: shrink each page's window 20 px and restore it over
-// the browser-level CDP socket. Restoring to the read width can leave the window ~1 px wider per run.
+// Wakes a frozen renderer without Playwright: shrink each window holding a Canva design 20 px and restore it
+// over the browser-level CDP socket. Restoring to the read width can leave the window ~1 px wider per run.
 async function nudge(port = cdpPort()) {
   const { ws: WebSocket } = require(path.join(NM, 'playwright-core', 'lib', 'utilsBundle'));
   const v = await getJson(`http://127.0.0.1:${port}/json/version`);
-  const pages = (await getJson(`http://127.0.0.1:${port}/json/list`)).filter(t => t.type === 'page');
+  const pages = (await getJson(`http://127.0.0.1:${port}/json/list`)).filter(t => t.type === 'page' && /canva\.com/.test(t.url));
   const sock = new WebSocket(v.webSocketDebuggerUrl);
   let n = 0; const pend = {};
   const send = (method, params = {}) => new Promise(r => { pend[++n] = r; sock.send(JSON.stringify({ id: n, method, params })); });
@@ -56,13 +86,16 @@ async function nudge(port = cdpPort()) {
   for (const p of pages) {
     const w = await send('Browser.getWindowForTarget', { targetId: p.id });
     if (!w.result || seen.has(w.result.windowId)) continue;
-    seen.add(w.result.windowId);
+    const id = w.result.windowId;
+    seen.add(id);
     const b = w.result.bounds;
-    if (b.windowState !== 'normal') await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { windowState: 'normal' } });
-    await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { width: b.width - 20 } });
-    await new Promise(r => setTimeout(r, 800));
-    await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { width: b.width } });
-    if (b.windowState !== 'normal') await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { windowState: b.windowState } });
+    const width = async () => (await send('Browser.getWindowBounds', { windowId: id })).result.bounds.width;
+    if (b.windowState !== 'normal') await send('Browser.setWindowBounds', { windowId: id, bounds: { windowState: 'normal' } });
+    const w0 = await width();
+    await send('Browser.setWindowBounds', { windowId: id, bounds: { width: w0 - 20 } });
+    await maybe(async () => (await width()) === w0 - 20, { timeout: 3000 });
+    await send('Browser.setWindowBounds', { windowId: id, bounds: { width: w0 } });
+    if (b.windowState !== 'normal') await send('Browser.setWindowBounds', { windowId: id, bounds: { windowState: b.windowState } });
   }
   for (const p of pages.filter(p => /canva\.com\/design/.test(p.url))) await send('Target.activateTarget', { targetId: p.id });
   sock.close();
@@ -79,10 +112,30 @@ function taggedUrl(url, tag) {
   return u.toString();
 }
 
+// The editing canvas of a 1920x1080 design: the most common on-screen 16:9 div wider than 600 px.
+// s converts screen px to design px. Returns null while the canvas isn't on screen.
+async function findPageRect(tab) {
+  return tab.evaluate(() => {
+    const c = [...document.querySelectorAll('div')].map(e => e.getBoundingClientRect()).filter(r => r.width > 600 && Math.abs(r.width / r.height - 16 / 9) < 0.02 && r.x > 70 && r.y > 60);
+    const key = (r) => [Math.round(r.x), Math.round(r.y), Math.round(r.width)].join(',');
+    const cnt = {}; c.forEach(r => { cnt[key(r)] = (cnt[key(r)] || 0) + 1; });
+    c.sort((a, b) => cnt[key(b)] - cnt[key(a)]);
+    const r = c[0];
+    return r ? { x: r.x, y: r.y, w: r.width, h: r.height, s: r.width / 1920 } : null;
+  });
+}
+
+async function pageRect(tab) {
+  const r = await findPageRect(tab);
+  if (!r) throw new Error('no 16:9 page canvas on screen: the design is still loading, zoomed out of view, or not a 1920x1080 design');
+  return r;
+}
+
+// Loaded means the canvas is on screen and stays put for a second.
 async function ready(tab) {
   await tab.bringToFront().catch(() => {});
-  await tab.locator('[data-role="timeline-scene"]').first().waitFor({ state: 'attached', timeout: 120000 });
-  await wait(tab, 1500);
+  await until(() => findPageRect(tab), { timeout: 120000, what: 'the design canvas' });
+  await waitStable(() => findPageRect(tab), { quietMs: 1000 });
 }
 
 // Connects, finds or opens this script's tagged tab on the design, keeps the renderer awake, runs fn.
@@ -107,89 +160,81 @@ async function withDesign(url, tag, fn) {
 }
 
 const pageLoc = (tab, n) => tab.locator(`[data-role="timeline-scene"][aria-label="Page ${n}"]`);
-
 const shownPages = (tab) => tab.locator('[data-role="timeline-scene"]').evaluateAll(els => els.map(e => +(e.getAttribute('aria-label') || '').slice(5)).filter(Boolean));
+const currentPage = (tab) => tab.evaluate(() => { const m = document.body.innerText.match(/\b(\d+)\s*\/\s*(\d+)\b/); return m ? { n: +m[1], of: +m[2] } : null; });
 
-// The strip renders only a window of thumbnails, so keep clicking the last one shown until no higher page appears.
-async function pageCount(tab) {
-  let max = 0;
-  for (let k = 0; k < 100; k++) {
-    const nums = await shownPages(tab);
-    const top = nums.length ? Math.max(...nums) : 0;
-    if (top <= max) return max;
-    max = top;
-    await pageLoc(tab, max).scrollIntoViewIfNeeded();
-    await pageLoc(tab, max).click();
-    await wait(tab, 600);
-  }
-  return max;
+// The page strip only shows in the Pages view; turn it on when it's off.
+async function showPageStrip(tab) {
+  if ((await shownPages(tab)).length) return;
+  await tab.getByRole('button', { name: /^Pages/ }).first().click();
+  await until(async () => (await shownPages(tab)).length, { what: 'the page strip' });
 }
 
-// The page strip renders a window of thumbnails; step toward the target until its thumb exists.
+// The footer's "N / M" counter gives the page count without scrolling the strip.
+async function pageCount(tab) {
+  const c = await until(() => currentPage(tab), { what: 'the page counter' });
+  return c.of;
+}
+
+// The strip renders a window of thumbnails; step toward the target until its thumb exists, then click it
+// and wait for the footer counter to read it.
 async function gotoPage(tab, n) {
+  await showPageStrip(tab);
   for (let k = 0; k < 60 && !(await pageLoc(tab, n).count()); k++) {
     const nums = await shownPages(tab);
-    if (!nums.length) { await wait(tab, 1000); continue; }
-    const pick =n > Math.max(...nums) ? Math.max(...nums) : Math.min(...nums);
+    const pick = n > Math.max(...nums) ? Math.max(...nums) : Math.min(...nums);
     await pageLoc(tab, pick).scrollIntoViewIfNeeded();
     await pageLoc(tab, pick).click();
-    await wait(tab, 400);
+    await maybe(async () => JSON.stringify(await shownPages(tab)) !== JSON.stringify(nums), { timeout: 3000 });
   }
   await pageLoc(tab, n).scrollIntoViewIfNeeded();
   await pageLoc(tab, n).click();
-  await tab.waitForFunction((n) => document.querySelector(`[aria-roledescription="Presentation"][aria-label="Page ${n}"]`), n, { timeout: 15000 }).catch(() => {});
-  await wait(tab, 1200);
+  await until(async () => (await currentPage(tab) || {}).n === n, { what: `page ${n} to be current` });
+  await waitStable(() => findPageRect(tab), { quietMs: 700 });
 }
 
-// The editing canvas of a 1920x1080 design: the most common on-screen 16:9 div wider than 600 px.
-// s converts screen px to design px.
-async function pageRect(tab) {
-  const r = await tab.evaluate(() => {
-    const c = [...document.querySelectorAll('div')].map(e => e.getBoundingClientRect()).filter(r => r.width > 600 && Math.abs(r.width / r.height - 16 / 9) < 0.02 && r.x > 70 && r.y > 60);
-    const key = (r) => [Math.round(r.x), Math.round(r.y), Math.round(r.width)].join(',');
-    const cnt = {}; c.forEach(r => { cnt[key(r)] = (cnt[key(r)] || 0) + 1; });
-    c.sort((a, b) => cnt[key(b)] - cnt[key(a)]);
-    const r = c[0];
-    return r ? { x: r.x, y: r.y, w: r.width, h: r.height, s: r.width / 1920 } : null;
-  });
-  if (!r) throw new Error('no 16:9 page canvas on screen: the design is still loading, zoomed out of view, or not a 1920x1080 design');
-  return r;
-}
+const positionButton = (tab) => tab.getByRole('button', { name: 'Position', exact: true });
 
-// (1490, 165) is empty grey canvas at withDesign's 1528x1400 viewport; a click there clears any selection.
+// (1490, 165) is empty grey canvas at withDesign's 1528x1400 viewport; a click there clears any selection,
+// which the toolbar's Position button disappearing confirms.
 async function deselect(tab) {
   await tab.keyboard.press('Escape');
   await tab.keyboard.press('Escape');
   await tab.mouse.click(1490, 165);
-  await wait(tab, 400);
+  await maybe(async () => !(await positionButton(tab).count()), { timeout: 3000 });
 }
+
+// Each side-panel tab shows when its own content does.
+const TAB_SHOWN = {
+  Arrange: (tab) => tab.getByText('Advanced', { exact: true }).first().isVisible(),
+  Layers: async (tab) => (await layerRows(tab)).length > 0,
+};
 
 async function showTab(tab, name) {
   const loc = tab.getByText(name, { exact: true }).first();
   try { await loc.click({ timeout: 8000 }); } catch { await loc.click({ force: true, timeout: 8000 }); }
-  await wait(tab, 350);
+  await until(() => TAB_SHOWN[name](tab).catch(() => false), { what: `the ${name} tab` });
 }
 
 // The Position panel (Arrange + Layers tabs) only opens with something selected: select the top-left corner
 // of the page, falling back to a point on the right, then press Position.
 async function openPositionPanel(tab) {
   if (await tab.getByText('Arrange', { exact: true }).first().isVisible().catch(() => false)) return;
-  let pos = tab.getByRole('button', { name: 'Position', exact: true });
   for (const [fx, fy] of [[0.12, 0.06], [0.83, 0.31]]) {
-    if (await pos.count()) break;
+    if (await positionButton(tab).count()) break;
     await deselect(tab);
     const p = await pageRect(tab);
     await tab.mouse.click(p.x + p.w * fx, p.y + p.h * fy);
-    await wait(tab, 600);
+    await maybe(async () => (await positionButton(tab).count()) > 0, { timeout: 3000 });
   }
-  await pos.first().click();
+  await positionButton(tab).first().click();
   await tab.getByText('Arrange', { exact: true }).first().waitFor({ timeout: 10000 });
 }
 
 // Layer rows are the 280-360 px wide, 40-70 px tall buttons whose left edge sits at x 80-100 in the side panel.
 // Each read tags them data-cvrow=<index> so a click targets exactly the row that was read.
-async function rowButtons(tab) {
-  const read = () => tab.evaluate(() => {
+function layerRows(tab) {
+  return tab.evaluate(() => {
     const bs = [...document.querySelectorAll('button')].filter(b => {
       const r = b.getBoundingClientRect();
       return r.x > 80 && r.x < 100 && r.width > 280 && r.width < 360 && r.height > 40 && r.height < 70 && r.y > 200 && r.bottom < window.innerHeight - 30;
@@ -198,9 +243,10 @@ async function rowButtons(tab) {
     bs.forEach((b, i) => b.setAttribute('data-cvrow', String(i)));
     return bs.map(b => ({ label: (b.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 70) }));
   });
-  for (let k = 0; k < 25; k++) { const r = await read(); if (r.some(x => x.label === 'Background')) return r; await wait(tab, 250); }
-  return read();
 }
+
+// The full list ends with the Background row.
+const rowButtons = (tab) => until(async () => { const r = await layerRows(tab); return r.some(x => x.label === 'Background') && r; }, { what: 'the Layers list' });
 
 async function scrollLayersTop(tab) {
   await tab.evaluate(() => {
@@ -208,21 +254,30 @@ async function scrollLayersTop(tab) {
     let p = b && b.parentElement; while (p && p.scrollHeight <= p.clientHeight + 2) p = p.parentElement;
     if (p) p.scrollTop = 0;
   });
-  await wait(tab, 400);
 }
 
 const pxInputs = (tab) => tab.locator('input').evaluateAll(els => els.map((e, i) => [i, e.value]).filter(([, v]) => /px$|°$/.test(v)));
 
 async function readArrange(tab) {
   await showTab(tab, 'Arrange');
-  await tab.getByText('Advanced', { exact: true }).first().waitFor({ timeout: 8000 });
-  await wait(tab, 200);
-  const v = (await pxInputs(tab)).map(([, s]) => parseFloat(s));
+  const v = (await until(async () => { const p = await pxInputs(tab); return p.length >= 4 && p; }, { what: 'the Arrange values' })).map(([, s]) => parseFloat(s));
   return { w: v[0], h: v[1], x: v[2], y: v[3] };
 }
 
 // An image (not a frame or text) is selected when the toolbar offers the Eraser.
 const isImageSelected = async (tab) => (await tab.getByRole('button', { name: 'Eraser', exact: true }).count()) > 0;
+
+// The editor's top toolbar, which redraws for whatever is selected (image tools, text tools, nothing).
+const toolbar = (tab) => tab.evaluate(() => [...document.querySelectorAll('button')].filter(b => { const r = b.getBoundingClientRect(); return r.y > 56 && r.y < 130 && r.x > 440 && r.height > 0; }).map(b => b.getAttribute('aria-label') || b.innerText.trim()).join('|'));
+
+// Clicking a layer row selects that layer. The row itself carries no selected state, so wait for the toolbar to
+// redraw (it may not, when the previous layer was the same kind) and hold steady.
+async function clickRow(tab, i) {
+  const before = await toolbar(tab);
+  await tab.locator(`[data-cvrow="${i}"]`).click();
+  await maybe(async () => (await toolbar(tab)) !== before, { timeout: 2000 });
+  await waitStable(() => toolbar(tab), { quietMs: 400 });
+}
 
 // Every layer on the current page, front to back, with its box in design px.
 // Rows are clicked one at a time because the Arrange values only show for the selected layer.
@@ -232,18 +287,25 @@ async function layers(tab) {
   await showTab(tab, 'Layers');
   await scrollLayersTop(tab);
   const rows = await rowButtons(tab);
-  if (!rows.some(r => r.label === 'Background')) throw new Error('Layers list did not show the Background row: ' + rows.map(r => r.label).join('|'));
   const out = [];
+  let prev = null;
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].label === 'Background') { out.push({ i, label: 'Background', img: false, box: null }); continue; }
     await showTab(tab, 'Layers');
     const now = await rowButtons(tab);
     if (!now[i] || now[i].label !== rows[i].label) throw new Error('Layers list changed while reading it');
-    await tab.locator(`[data-cvrow="${i}"]`).click();
-    await wait(tab, 700);
-    out.push({ i, label: rows[i].label, img: await isImageSelected(tab), box: await readArrange(tab).catch(() => null) });
+    await clickRow(tab, i);
+    const box = await readSelectedBox(tab, prev);
+    out.push({ i, label: rows[i].label, img: await isImageSelected(tab), box });
+    prev = box;
   }
   return out;
+}
+
+// Reads the selected layer's box once the Arrange values have moved off the previous layer's box and settled.
+async function readSelectedBox(tab, prev) {
+  if (prev) await maybe(async () => !sameBox(await readArrange(tab), prev, 0.01), { timeout: 2000 });
+  return waitStable(() => readArrange(tab), { quietMs: 300 }).catch(() => null);
 }
 
 async function selectLayer(tab, row) {
@@ -251,16 +313,13 @@ async function selectLayer(tab, row) {
   await showTab(tab, 'Layers');
   const rws = await rowButtons(tab);
   if (!rws[row.i] || rws[row.i].label !== row.label) throw new Error(`layer ${row.i} is no longer "${row.label}"`);
-  await tab.locator(`[data-cvrow="${row.i}"]`).click();
-  await wait(tab, 700);
-  const box = await readArrange(tab);
-  if (row.box && !sameBox(box, row.box, 0.5)) throw new Error(`layer ${row.i} moved since it was read`);
+  await clickRow(tab, row.i);
+  const box = row.box ? await until(async () => { const b = await readArrange(tab); return sameBox(b, row.box, 0.5) && b; }, { timeout: 4000, what: `layer ${row.i}'s box` }).catch(() => { throw new Error(`layer ${row.i} moved since it was read`); }) : await readArrange(tab);
   return box;
 }
 
 async function setRatioLock(tab, want) {
   await showTab(tab, 'Arrange');
-  await tab.getByText('Advanced', { exact: true }).first().waitFor({ timeout: 8000 });
   const st = await tab.evaluate(() => {
     const lab = [...document.querySelectorAll('label, span, p')].find(l => l.innerText && l.innerText.trim() === 'Ratio');
     if (!lab) return 'nolabel';
@@ -273,25 +332,25 @@ async function setRatioLock(tab, want) {
   if (st !== 'true' && st !== 'false') throw new Error('Ratio lock control not found: ' + st);
   if (st !== String(want)) {
     await tab.locator('[data-cvratio="1"]').click();
-    await wait(tab, 400);
-    if ((await tab.locator('[data-cvratio="1"]').getAttribute('aria-pressed')) !== String(want)) throw new Error('Ratio lock did not switch');
+    await until(async () => (await tab.locator('[data-cvratio="1"]').getAttribute('aria-pressed')) === String(want), { what: 'the ratio lock to switch' });
   }
 }
 
-// Types into the selected layer's W/H/X/Y inputs. With the ratio locked, set h alone first, then x and y.
+// Types into the selected layer's W/H/X/Y inputs, waiting for each value to read back.
+// With the ratio locked, set h alone first, then x and y.
 async function setArrange(tab, vals) {
   await showTab(tab, 'Arrange');
-  await tab.getByText('Advanced', { exact: true }).first().waitFor({ timeout: 8000 });
   const order = ['w', 'h', 'x', 'y'];
   for (const k of order) {
     if (vals[k] == null) continue;
+    const want = Math.round(vals[k]);
     const idx = (await pxInputs(tab)).map(([i]) => i);
     const el = tab.locator('input').nth(idx[order.indexOf(k)]);
     await el.click();
     await tab.keyboard.press('Control+A');
-    await tab.keyboard.type(String(Math.round(vals[k])));
+    await tab.keyboard.type(String(want));
     await tab.keyboard.press('Enter');
-    await wait(tab, 500);
+    await maybe(async () => near(parseFloat((await pxInputs(tab))[order.indexOf(k)][1]), want, 1), { timeout: 3000 });
   }
   return readArrange(tab);
 }
@@ -320,26 +379,19 @@ async function uploadThumbs(tab) {
 }
 
 // Uploads a PNG through the open Uploads panel and returns its thumbnail once Canva has processed it:
-// a new first thumb, served from Canva (not a blob: preview), with the file's aspect ratio, stable for 2 s.
+// a new first thumb, served from Canva (not a blob: preview), with the file's aspect ratio, holding steady.
 async function uploadFile(tab, file) {
   const [fw, fh] = pngDims(file);
   const ar = fw / fh;
   await tab.locator('input[type=file]').first().waitFor({ state: 'attached', timeout: 15000 });
-  let prev = '';
-  for (let k = 0; k < 20; k++) { await wait(tab, 700); const cur = (await uploadThumbs(tab)).map(t => t.src + t.nw).join('|'); if (cur && cur === prev) break; prev = cur; }
-  const t0 = await uploadThumbs(tab);
-  const before = t0.length ? t0[0].src : '';
+  const t0 = await waitStable(async () => (await uploadThumbs(tab)).map(t => t.src + t.nw), { quietMs: 1000 });
+  const before = t0.length ? t0[0] : '';
   await tab.locator('input[type=file]').first().setInputFiles(file.replace(/\\/g, '/'));
-  for (let k = 0; k < 120; k++) {
-    await wait(tab, 1000);
-    const f = (await uploadThumbs(tab))[0];
-    if (f && f.src !== before && f.nw > 0 && !/^blob:/.test(f.src) && near(f.nw / f.nh, ar, ar * 0.015)) {
-      await wait(tab, 2000);
-      const again = (await uploadThumbs(tab))[0];
-      if (again && again.src === f.src) return again;
-    }
-  }
-  throw new Error('uploaded thumbnail never appeared for ' + path.basename(file));
+  const isNew = async () => { const f = (await uploadThumbs(tab))[0]; return f && f.src + f.nw !== before && f.nw > 0 && !/^blob:/.test(f.src) && near(f.nw / f.nh, ar, ar * 0.015) && f; };
+  await until(isNew, { timeout: 120000, what: 'the uploaded thumbnail' });
+  const settled = await waitStable(async () => { const f = await isNew(); return f ? f.src : null; }, { quietMs: 1500 });
+  if (!settled) throw new Error('uploaded thumbnail did not settle for ' + path.basename(file));
+  return isNew();
 }
 
 // Adds the file to the current page as a new, selected, front-most image and returns its box.
@@ -349,49 +401,65 @@ async function addImage(tab, file) {
   if (!(await tab.getByText('Upload files', { exact: true }).first().isVisible().catch(() => false))) await tab.getByText('Uploads', { exact: true }).first().click();
   const pick = await uploadFile(tab, file);
   await tab.mouse.click(pick.x, pick.y);
-  await wait(tab, 2500);
-  if (!(await isImageSelected(tab))) throw new Error('clicking the upload did not add a selected image');
+  await until(() => isImageSelected(tab), { what: 'the added image to be selected' });
   await openPositionPanel(tab);
-  const p = await readArrange(tab);
+  const p = await waitStable(() => readArrange(tab), { quietMs: 500 });
   if (!near(p.w / p.h, fw / fh, 0.02 * fw / fh)) throw new Error(`placed image aspect ${p.w / p.h} differs from the file's ${fw / fh}`);
   return p;
 }
 
-// A Frame element ignores the Delete key; delete it through its layer row's context menu. Anything else takes Delete.
+// Deletes a layer and waits for the Layers list to lose a row.
+// A Frame element ignores the Delete key, so it goes through its row's context menu; anything else takes Delete.
 async function deleteLayer(tab, row) {
   await selectLayer(tab, row);
-  if (row.label !== 'Frame element') { await tab.keyboard.press('Delete'); await wait(tab, 1200); return; }
   await showTab(tab, 'Layers');
-  await rowButtons(tab);
+  const n0 = (await rowButtons(tab)).length;
+  const gone = () => until(async () => { await openPositionPanel(tab); await showTab(tab, 'Layers'); return (await rowButtons(tab)).length === n0 - 1; }, { what: 'the deleted layer to leave the Layers list' });
+  if (row.label !== 'Frame element') {
+    await clickRow(tab, row.i);
+    await tab.keyboard.press('Delete');
+    return gone();
+  }
   const rb = await tab.locator(`[data-cvrow="${row.i}"]`).boundingBox();
   await tab.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
-  await wait(tab, 400);
-  const ok = await tab.evaluate((y) => {
+  const menu = await until(() => tab.evaluate((y) => {
     document.querySelectorAll('[data-cvmenu]').forEach(e => e.removeAttribute('data-cvmenu'));
     const b = [...document.querySelectorAll('button[aria-label="Open context menu for layer element"]')].find(b => { const q = b.getBoundingClientRect(); return q.y >= y - 2 && q.y <= y + 60; });
     if (b) b.setAttribute('data-cvmenu', '1');
     return !!b;
-  }, rb.y);
-  if (!ok) throw new Error('no layer context menu button');
+  }, rb.y), { timeout: 5000, what: 'the layer context menu button' });
+  if (!menu) throw new Error('no layer context menu button');
   await tab.locator('[data-cvmenu="1"]').click({ force: true });
-  await wait(tab, 800);
   const del = tab.getByRole('menuitem', { name: /^Delete/ });
-  if (!(await del.count())) { await tab.keyboard.press('Escape'); throw new Error('no Delete menu item'); }
+  await del.first().waitFor({ timeout: 5000 });
   await del.first().click();
-  await wait(tab, 1500);
+  return gone();
 }
 
-async function moveSelected(tab, direction, times = 1) {
-  await showTab(tab, 'Arrange');
-  for (let k = 0; k < times; k++) { await tab.getByText(direction, { exact: true }).first().click(); await wait(tab, 1000); }
+// Moves the selected layer one step per press with Arrange's Forward or Backward, waiting for its row to move.
+// Canva only steps past layers the selection overlaps, and disables the button when there are none left that
+// way; the stacking then makes no visible difference, so this returns false and stops.
+async function moveSelected(tab, row, direction, times = 1) {
+  let i = row.i;
+  for (let k = 0; k < times; k++) {
+    await showTab(tab, 'Arrange');
+    const btn = tab.getByRole('button', { name: direction, exact: true }).first();
+    if (!(await maybe(() => btn.isEnabled(), { timeout: 2000 }))) return false;
+    await btn.click();
+    const want = direction === 'Backward' ? i + 1 : i - 1;
+    await showTab(tab, 'Layers');
+    await until(async () => (await rowButtons(tab))[want]?.label === row.label, { timeout: 5000, what: `the layer to move ${direction.toLowerCase()}` });
+    i = want;
+    await clickRow(tab, i);
+  }
+  return true;
 }
 
 // Waits out "Saving..." so a reload never drops the last edit.
 async function waitSaved(tab) {
   await deselect(tab);
-  await wait(tab, 3000);
-  await tab.waitForFunction(() => !/Saving/i.test(document.body.innerText), null, { timeout: 60000 }).catch(() => {});
-  await wait(tab, 1500);
+  await maybe(() => tab.evaluate(() => /Saving/i.test(document.body.innerText)), { timeout: 2000 });
+  await until(() => tab.evaluate(() => !/Saving/i.test(document.body.innerText)), { timeout: 60000, what: 'Canva to finish saving' });
 }
 
 // Saves, reloads, and returns to page n: the only trustworthy check that an edit stuck.
@@ -400,34 +468,52 @@ async function reloadToPage(tab, n) {
   for (let k = 0; k < 2; k++) {
     await tab.reload({ waitUntil: 'domcontentloaded', timeout: 90000 });
     await ready(tab);
-    await wait(tab, 3000);
     try { await gotoPage(tab, n); return; } catch (e) { if (k) throw e; }
   }
 }
 
-// Full-resolution screenshot of the current page through Present full screen at a 1920x1080 viewport,
-// with the pointer parked in a corner so the presenter controls fade.
+// Whether a page counter ("N / M") is showing on screen: on screen, hit-testable, and not faded out.
+// In Present mode only the presenter bar's counter can show; the editor's sits under the presentation.
+const counterShowing = (tab) => tab.evaluate(() => [...document.querySelectorAll('body *')].filter(e => e.children.length === 0 && /^\s*\d+\s*\/\s*\d+\s*$/.test(e.textContent)).some(e => {
+  const r = e.getBoundingClientRect();
+  if (!r.height || r.top >= innerHeight || r.bottom <= 0) return false;
+  const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+  if (!hit || !(hit === e || e.contains(hit) || hit.contains(e))) return false;
+  let o = 1;
+  for (let p = e; p; p = p.parentElement) o *= +getComputedStyle(p).opacity;
+  return o > 0.05;
+}));
+
+// Full-resolution screenshot of the current page through Present full screen at a 1920x1080 viewport, with the
+// pointer parked in a corner. It waits for the presented slide to fill the screen, its images to finish loading,
+// and the presenter controls to fade.
 async function presentShot(tab, file) {
   const vp = tab.viewportSize();
   await deselect(tab);
   const closeBtn = tab.getByRole('button', { name: 'Close', exact: true });
   if (await closeBtn.count()) await closeBtn.first().click().catch(() => {});
-  await wait(tab, 600);
-  await deselect(tab);
   await tab.setViewportSize({ width: 1920, height: 1080 });
-  await wait(tab, 800);
   await tab.locator('button[aria-label="Present full screen"]').first().click();
-  await wait(tab, 1000);
-  await tab.mouse.move(1919, 2);
-  await wait(tab, 5000);
+  await until(() => tab.evaluate(() => {
+    const b = document.querySelector('button[aria-label="Present full screen"]');
+    const r = b && b.getBoundingClientRect();
+    const hit = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return !b || !hit || !(b === hit || b.contains(hit));
+  }), { what: 'Present mode to cover the editor' });
+  await until(() => counterShowing(tab), { what: 'the presenter controls' });
+  await until(() => tab.evaluate(() => [...document.images].every(i => i.complete)), { what: 'the slide images' });
+  // The controls hide only after a pointer move inside the presentation followed by stillness.
+  await tab.mouse.move(960, 540);
+  await tab.mouse.move(1919, 2, { steps: 5 });
+  await until(async () => !(await counterShowing(tab)), { timeout: 20000, what: 'the presenter controls to fade' });
   await tab.screenshot({ path: file });
   await tab.keyboard.press('Escape');
-  await wait(tab, 1500);
   if (vp) await tab.setViewportSize(vp);
-  await wait(tab, 800);
+  await ready(tab);
 }
 
-// Visible text runs on the current page (design px), from the DOM rather than OCR.
+// Visible text runs on the current page (design px), from the DOM rather than OCR. Button labels floating over
+// the canvas (Canva's "Ask Canva") are editor chrome, not page text.
 async function textRuns(tab) {
   const pr = await pageRect(tab);
   return tab.evaluate((pr) => {
@@ -436,7 +522,7 @@ async function textRuns(tab) {
     let nd;
     while ((nd = walker.nextNode())) {
       const t = nd.textContent.trim();
-      if (!t) continue;
+      if (!t || nd.parentElement.closest('button')) continue;
       const rg = document.createRange(); rg.selectNodeContents(nd);
       for (const r of rg.getClientRects()) {
         if (r.width < 2 || r.height < 8) continue;
@@ -466,7 +552,7 @@ async function findWord(tab, word) {
         if (r.width < 5 || r.x < pr.x || r.y < pr.y || r.right > pr.x + pr.w || r.bottom > pr.y + pr.h) continue;
         const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
         if (!hit || !(hit.contains(nd.parentElement) || nd.parentElement.contains(hit))) continue;
-        res.push({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+        res.push({ x: r.x + r.width / 2, y: r.y + r.height / 2, text: nd.textContent, at: i });
       }
     }
     res.sort((a, b) => a.y - b.y || a.x - b.x);
@@ -474,9 +560,12 @@ async function findWord(tab, word) {
   }, { pr, word });
 }
 
+const selection = (tab) => tab.evaluate(() => String(window.getSelection()));
+
 // Retypes one word in place, keeping its text style: click selects the text element, a double-click selects
-// the word, and typing starts only once the browser selection reads exactly that word (typing with nothing
-// selected would insert a stray "Your paragraph text" box). The word must be a single word.
+// the word (plus any trailing space, which Shift+Left trims back off), and typing starts only once the browser
+// selection reads exactly that word (typing with nothing selected would insert a stray "Your paragraph text" box).
+// The word must be a single word. Returns the occurrence count and the line the edited text should read.
 async function replaceWord(tab, word, nth, replacement) {
   await deselect(tab);
   const close = tab.getByRole('button', { name: 'Close', exact: true });
@@ -484,24 +573,25 @@ async function replaceWord(tab, word, nth, replacement) {
   let hits = await findWord(tab, word);
   if (!hits[nth]) throw new Error(`"${word}" occurrence ${nth} not on the page (found ${hits.length})`);
   const count = hits.length;
+  const { text, at } = hits[nth];
+  const expected = (text.slice(0, at) + replacement + text.slice(at + word.length)).trim();
   await tab.mouse.click(hits[nth].x, hits[nth].y);
-  await wait(tab, 700);
+  await until(async () => (await positionButton(tab).count()) > 0, { what: 'the text element to be selected' });
   let sel = '';
-  for (let k = 0; k < 2 && sel.trim() !== word; k++) {
+  for (let k = 0; k < 2 && sel !== word; k++) {
     hits = await findWord(tab, word);
     if (!hits[nth]) { await tab.keyboard.press('Escape'); throw new Error(`"${word}" occurrence ${nth} vanished after selecting its text`); }
     await tab.mouse.dblclick(hits[nth].x, hits[nth].y);
-    await wait(tab, 700);
-    sel = await tab.evaluate(() => String(window.getSelection()));
+    sel = (await maybe(async () => { const s = await selection(tab); return s.trim() === word && s; }, { timeout: 3000 })) || await selection(tab);
+    for (let t = sel.length - sel.trimEnd().length; t > 0 && sel.trim() === word; t--) await tab.keyboard.press('Shift+ArrowLeft');
+    if (sel.trim() === word) sel = await until(async () => { const s = await selection(tab); return s === word && s; }, { timeout: 3000, what: 'the selection to be exactly the word' }).catch(() => sel);
   }
-  if (sel.trim() !== word) { await tab.keyboard.press('Escape'); throw new Error(`selection is "${sel}", not "${word}"`); }
-  if ((await findWord(tab, word)).length !== count) throw new Error('text changed before typing');
+  if (sel !== word) { await tab.keyboard.press('Escape'); throw new Error(`selection is "${sel}", not "${word}"`); }
   await tab.keyboard.type(replacement);
-  await wait(tab, 800);
+  await until(() => tab.evaluate((e) => document.body.innerText.includes(e), expected), { what: 'the edited line' });
   await tab.keyboard.press('Escape');
-  await wait(tab, 800);
   await deselect(tab);
-  return count;
+  return { count, expected };
 }
 
 function progress(file) {
@@ -513,8 +603,8 @@ function progress(file) {
 }
 
 module.exports = {
-  openTab, closeTab, argValue, cdpPort, wait, near, sameBox, pngDims, connectBrowser, nudge, designId, withDesign, ready,
-  pageCount, gotoPage, pageRect, deselect, showTab, openPositionPanel, readArrange, isImageSelected, layers,
-  selectLayer, setRatioLock, setArrange, placeSelected, uploadFile, addImage, deleteLayer,
+  openTab, closeTab, argValue, cdpPort, until, maybe, waitStable, near, sameBox, pngDims, connectBrowser, nudge,
+  designId, withDesign, ready, pageCount, gotoPage, pageRect, deselect, showTab, openPositionPanel, readArrange,
+  isImageSelected, layers, selectLayer, setRatioLock, setArrange, placeSelected, uploadFile, addImage, deleteLayer,
   moveSelected, waitSaved, reloadToPage, presentShot, textRuns, findWord, replaceWord, progress,
 };

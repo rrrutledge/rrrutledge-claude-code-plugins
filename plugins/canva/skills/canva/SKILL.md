@@ -11,7 +11,7 @@ Two halves, each with its own script:
   The rest of this file covers it.
 - **Browser editing** (`scripts/canva-edit.js`): edits a design's pages.
   **Before any edit to a design, read [references/browser-editing.md](references/browser-editing.md).**
-  It covers the dedicated browser the editing needs, waking a frozen editor, batching and checking each edit, Magic Expand, and the editor's traps.
+  It covers which browser to run in, waking a frozen editor, batching and checking each edit, Magic Expand, and the editor's traps.
   Run `canva-edit.js` through browser-chauffeur; its header lists every command and the `--apply` plan format.
 
 ## Connect API

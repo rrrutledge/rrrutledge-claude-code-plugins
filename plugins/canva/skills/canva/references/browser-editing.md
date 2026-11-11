@@ -6,19 +6,20 @@ This file covers what the scripts leave to you: the browser, how to batch the wo
 
 ## The browser
 
-Give Canva its own Edge, with its own profile on its own CDP port, so no other session's tabs compete for its renderer and stall the editor mid-edit:
+Run `canva-edit.js` through browser-chauffeur like any browser script: Phase 0 brings up its browser and passes `--cdp-port`, which defaults to the chauffeur's 9222.
+Each command opens its own tab and closes only that tab.
+
+**An idle Canva renderer freezes, and a frozen renderer hangs `connectOverCDP`.**
+Run `node canva-edit.js --nudge --cdp-port=<port>` before every batch.
+
+When the editor still stalls mid-edit because other sessions' tabs in the shared browser compete for its renderer, give the job its own Edge on its own port and pass that port instead:
 
 ```bash
 python <browser-chauffeur>/templates/chauffeur.py --fresh --port 9230 --profile-dir "C:\Users\<you>\.claude\browser-chauffeur\profile-canva-<job>" --url https://www.canva.com/
 ```
 
-- **The login persists per profile:** the next launch with the same `--profile-dir` is already signed in.
-  The first launch needs the user to log in to Canva in that window.
-- **Leave the login tab open**, since closing a browser's last tab exits it.
-- **Pass the port to every command:** `--cdp-port=9230`.
-
-**An idle Canva renderer freezes, and a frozen renderer hangs `connectOverCDP`.**
-Run `node canva-edit.js --nudge --cdp-port=9230` before every batch.
+The profile directory keeps the Canva login for the next launch with the same `--profile-dir`; the first launch needs the user to log in in that window.
+Leave that login tab open, since closing a browser's last tab exits it.
 
 ## How to run edits
 
