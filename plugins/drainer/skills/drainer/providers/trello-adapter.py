@@ -457,10 +457,11 @@ class Provider(ProviderBase):
         startable on the same board (see _PRIORITY_BAND).
         The board fetches hit the Trello REST API; a bad token or network error raises to the caller."""
         in_progress_lists = self.board_in_progress_lists.get(board.get("name", board["id"]), ())
-        cards = list(self._startable_unheld(board, now, my_id))
-        holding = any(self._holds_p3(c, ln.lower() in in_progress_lists) for c, ln, _ in cards)
-        for entry in cards:
-            if holding and self._is_held_p3(entry[0], entry[1].lower() in in_progress_lists):
+        entries = [(e, set(self._priority_tiers(e[0], e[1].lower() in in_progress_lists)))
+                   for e in self._startable_unheld(board, now, my_id)]
+        holding = any(tiers & {1, 2} for _, tiers in entries)
+        for entry, tiers in entries:
+            if holding and 3 in tiers and not tiers & {1, 2}:
                 continue
             yield entry
 
@@ -472,17 +473,6 @@ class Provider(ProviderBase):
             return []
         return [int(m.group(1)) for l in card.get("labels", [])
                 if (m := _PRIORITY_RE.match(l.get("name") or ""))]
-
-    @staticmethod
-    def _holds_p3(card, in_progress):
-        """True for a startable P1/P2 application card, which keeps P3 application cards off the queue."""
-        return any(t in (1, 2) for t in Provider._priority_tiers(card, in_progress))
-
-    @staticmethod
-    def _is_held_p3(card, in_progress):
-        """True for a P3 application card with no P1/P2 label, the kind the hold applies to."""
-        tiers = Provider._priority_tiers(card, in_progress)
-        return 3 in tiers and not any(t in (1, 2) for t in tiers)
 
     def _startable_unheld(self, board, now, my_id):
         """The startable-card gate before the P3 hold (see _startable_cards)."""
