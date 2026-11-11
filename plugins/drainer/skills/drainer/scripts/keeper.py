@@ -8,7 +8,7 @@ also holds a single-instance lock, so a second start from any other path exits a
 
 Two threads:
   - the dispatch loop (the main thread) runs `dispatch()` every `dispatch_interval` seconds, and at once
-    whenever a feed cycle finishes, so new items wait seconds for a slot instead of a whole cycle;
+    whenever a feed cycle finishes, so new items wait seconds for a slot;
   - the feed thread runs the feed command as a subprocess, starting each cycle `feed_interval` seconds
     after the previous one started, or straight away when one ran longer than that, so an overrun never
     makes the next cycle skip. A cycle that runs past `feed_timeout` is killed and the next one starts.
@@ -126,7 +126,7 @@ def kill_tree(proc):
     plain kill on Windows would leave running."""
     try:
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                       stderr=subprocess.DEVNULL, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired):
         pass
     proc.kill()
@@ -152,7 +152,7 @@ def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=
             t0 = clock()
             try:
                 proc = popen(feed_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                             creationflags=subprocess.CREATE_NO_WINDOW)
                 try:
                     code = proc.wait(timeout=feed_timeout)
                     log(f"feed cycle exited {code} after {clock() - t0:.0f}s")
@@ -177,7 +177,7 @@ def run(runtime_dir, dispatch, feed_cmd, *, dispatch_interval=60, feed_interval=
     feeder = threading.Thread(target=feed_loop, name="drainer-feed", daemon=True)
     feeder.start()
     try:
-        while True:
+        while not reason:  # a recycle the feed thread decided (a new version installed) runs no further pass
             try:
                 dispatch()
             except Exception as e:  # one bad pass is logged and the next one runs on schedule

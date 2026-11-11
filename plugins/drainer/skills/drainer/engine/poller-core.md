@@ -37,15 +37,15 @@ The task starts it every 5 minutes and ignores a start while one is running, so 
 The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a second start from any path exits at once.
 
 - **The feed thread** runs `run-poller.py --repo <project> --feed` as a child process: the cycle below, through judging and the fyi/junk handling, ending with every needs-you and auto-handle item written to the pending list.
-  Each cycle starts 5 minutes after the previous one started, or at once when that one ran longer; a cycle still running after 30 minutes is killed and the next one starts.
+  Cycles start on a fixed spacing and an overrun delays the next one rather than dropping it; a hung cycle is killed with every process it started (the timings live in `scripts/keeper.py`).
 - **The pending list** (`scripts/pending.py`) holds one file per item under `<runtime_dir>/pending/`, the item with its verdicts, until a worker opens for it.
-  The feed writes and prunes entries: an entry goes once a source that listed cleanly no longer offers its item as new, or once its item is re-judged as needing no worker.
+  The feed writes and prunes entries (`feed_pending` in `run-poller.py` holds the rule), so a source whose listing failed dispatches nothing until it lists cleanly again.
 - **The dispatch loop** (the keeper's main thread) runs one dispatch pass (step 5) over the whole pending list about once a minute, and at once whenever a feed cycle finishes.
-  It is the only code that opens item workers.
+  A dispatch pass is the only code that opens item workers, and an on-demand `--channel` run dispatches through the same pass.
   An item that opens a worker, or is handed to a live one, is recorded seen and leaves the list; a held item stays on it for the next pass.
-  Every pass, and an on-demand `--channel` run, holds the dispatch lock (`<runtime_dir>/dispatch.lock`), so two passes never open workers from two views of the same sessions.
+  Every pass holds the dispatch lock (`<runtime_dir>/dispatch.lock`), so two passes never open workers from two views of the same sessions.
 - **Recycling.**
-  The keeper exits cleanly after 4 hours, past 600 MB of memory, or when a newer drainer version is installed (it checks every 15 minutes), and the task starts a fresh one.
+  The keeper exits cleanly on age, on memory, or once a newer drainer version is installed, and the task starts a fresh one (the thresholds live in `scripts/keeper.py`, the version check in `run-poller.py`).
   A running feed cycle finishes first, and dispatch passes keep running while it does.
   Starts, feed cycles, failures and recycles are logged to `<runtime_dir>/keeper.log`.
 

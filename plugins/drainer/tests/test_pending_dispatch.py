@@ -83,14 +83,16 @@ check("an item not on the list is judged",
       poller.reuse_pending_verdicts(rt, {"id": "zz", "_id": "zz", "_source": "gmail"}), False)
 
 # ---------------------------------------------------------------------------- feed_pending
-print("\nfeed_pending: store needs-you and auto-handle, drop no-worker items, prune what a source stopped offering")
+print("\nfeed_pending: store needs-you and auto-handle, drop no-worker items, prune what no clean listing offers")
 rt = tempfile.mkdtemp(prefix="pending-")
 pending.put(rt, item("gone"))          # dispatched or archived since: gmail no longer offers it
 pending.put(rt, item("now-fyi"))       # re-judged fyi this cycle
-pending.put(rt, item("t1", source="trello"))  # trello's listing failed this cycle: kept as is
-poller.feed_pending(rt, {"gmail": {"new", "auto", "now-fyi"}},
+pending.put(rt, item("t1", source="trello"))  # trello's listing failed this cycle
+pending.put(rt, item("s1", source="slack"))   # slack listed cleanly and still offers it
+poller.feed_pending(rt, {"gmail": {"new", "auto", "now-fyi"}, "slack": {"s1"}},
                     [item("new"), item("auto", bucket="auto-handle")], [item("now-fyi", bucket="fyi")])
-check("the new items are stored; the rest pruned", ids(pending.load_all(rt)), ["auto", "new", "t1"])
+check("the new items and slack's stay; the rest go, the failed source's included",
+      ids(pending.load_all(rt)), ["auto", "new", "s1"])
 
 # ---------------------------------------------------------------------------- dispatch_pass
 print("\ndispatch_pass: opens workers up to the free slots and leaves the rest pending")
@@ -175,18 +177,17 @@ check("nothing opens", launched, [])
 check("the entry stays", ids(pending.load_all(rt)), ["z"])
 
 print("\ndispatch_pass: a launch keeps holding its correspondent on later passes for LAUNCH_HOLD")
-recent = {"convs": {}, "corrs": {}}
 rt, cfg = setup([item("a", who="addie")])
-poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
 check("the first item opens", launched, ["a"])
-check("its correspondent is remembered", sorted(recent["corrs"]), ["addie"])
-# The session scan doesn't list the new worker yet, so only the remembered claim can hold the follow-up.
+holds = poller.load_launch_holds(rt, poller.datetime.now(poller.timezone.utc))
+check("its correspondent is in the shared record", sorted(holds["corrs"]), ["addie"])
+# The session scan doesn't list the new worker yet, so only the recorded claim can hold the follow-up.
 pending.put(rt, item("b", who="addie"))
-poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
+poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt))
 check("the follow-up waits on the next pass", (launched, ids(pending.load_all(rt))), (["a"], ["b"]))
-recent["corrs"]["addie"] -= poller.LAUNCH_HOLD
-poller.dispatch_pass(cfg, prov, rt, rt, pending.load_all(rt), recent=recent)
-check("once the hold lapses it opens", launched, ["a", "b"])
+later = poller.datetime.now(poller.timezone.utc) + poller.LAUNCH_HOLD
+check("the claim lapses after LAUNCH_HOLD", poller.load_launch_holds(rt, later)["corrs"], {})
 
 print("\nsave_feed_health keeps the scan fields a dispatch pass wrote meanwhile")
 rt = tempfile.mkdtemp(prefix="health-")

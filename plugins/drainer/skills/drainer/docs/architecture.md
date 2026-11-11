@@ -26,7 +26,7 @@ The drainer runs as a **continuous keeper**: one long-running process that holds
 
 ## The poller is code; AI is judgment
 
-The loop - enumerate everything eligible → drop already-seen → dispatch against the worker buffer → record - is a deterministic algorithm, so it lives in a script (`scripts/run-poller.py`): cheaper and more reliable than asking an AI to follow it each cycle.
+The keeper's feed cycle and dispatch loop (`engine/poller-core.md`, "The keeper") are deterministic algorithms, so they live in scripts (`scripts/run-poller.py`, `keeper.py`, `pending.py`): cheaper and more reliable than asking an AI to follow them on every run.
 There is no per-cycle work cap upstream of that: every source is asked for everything it currently has.
 AI is used for exactly three things in the poller: **one triage call per new item** (the bucket judgment, plus whether a person or a machine wrote it), **one security-screen call per new item triage didn't already bucket junk** (the input guardrail, a separate pass so it can't be crowded out), and **the per-item worker session** (the actual reply/work, draft-only), plus one judgment-free delivery call that carries a routed item to the live worker already on its conversation (`engine/poller-core.md`).
 The once-a-day acknowledgement sweep is code reading that triage verdict from the verdict cache; the acks themselves are drafted in the end-of-day ack review session.
@@ -48,13 +48,13 @@ Without this, config was read from whatever branch a human session left checked 
 
 Two things stay anchored to the **real** repo, on purpose:
 
-- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
+- **Runtime state** (`seen.json` with its `_acks` ledger, `ack-due.json`, `provider-health.json`, `judged-verdicts.json`, `background-backoff.json`, `digest-queue.json`, `seeds/`, `items/`, `pending/`) - `runtime_dir` resolves against `runtime_root` (the real repo), so switching config to the worktree never migrates state or triggers a re-enumeration burst.
 - **Worker/digest cwd** - worker sessions run in the real repo, keeping its machine-local, gitignored `.claude/settings.local.json` (permission auto-approvals, MCP enablement).
   A worker that must commit branches into its own worktree (per the `git-workflow` skill), so it never disturbs the config worktree.
   Repo-tracked config a worker needs (above all `initiatives/<slug>.md`) is read from the config repo, whose path the worker seed carries.
 
 Resetting the config worktree every cycle is safe because nothing writes to it in place.
-It is **fail-safe**: on any git error - offline, no `origin`, or a refresh race between the ~5-min poller and the daily digest - `ensure_main_worktree` returns the real repo, so the drainer still runs (against possibly stale config) rather than not at all.
+It is **fail-safe**: on any git error - offline, no `origin`, or a refresh race between the keeper and the daily digest - `ensure_main_worktree` returns the real repo, so the drainer still runs (against possibly stale config) rather than not at all.
 
 ## Two layers: the plugin vs. what each machine injects
 

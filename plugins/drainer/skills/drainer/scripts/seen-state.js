@@ -52,18 +52,28 @@ function writeJsonAtomic(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, file);
+  // On Windows the rename fails while a reader has the target open; that read is over in milliseconds.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (e) {
+      if (e.code !== 'EPERM' && e.code !== 'EBUSY' && e.code !== 'EACCES') throw e;
+      if (attempt >= 20) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
 }
 
-// Every write is a whole-file read-modify-write, and the drainer's feed cycle and dispatch loop now run
-// at the same time, so two writers could each read the old file and one would drop the other's change - a
+// Every write is a whole-file read-modify-write, and the drainer's feed cycle and dispatch loop run at
+// the same time, so two writers could each read the old file and one would drop the other's change - a
 // lost "dispatched" mark would open a second worker for the item. Each write therefore holds an exclusive
 // lock file for its few milliseconds. A lock older than LOCK_STALE_MS belongs to a writer that died
-// mid-write and is taken over; a writer that can't get the lock within LOCK_WAIT_MS fails, as any other
-// failed write does, and the caller retries next cycle.
+// mid-write and is taken over, and a waiter outlasts that, so a dead writer's lock costs the next writer
+// a wait, never a failed write.
 const LOCK_FILE = 'seen-state.lock';
-const LOCK_WAIT_MS = 10000;
 const LOCK_STALE_MS = 30000;
+const LOCK_WAIT_MS = 45000;
 
 function withLock(runtimeDir, fn) {
   fs.mkdirSync(runtimeDir, { recursive: true });

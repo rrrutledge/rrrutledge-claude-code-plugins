@@ -2,7 +2,7 @@
 
 Discovery (the poller's feed cycle) writes each needs-you and auto-handle item here once it has its triage
 and screen verdicts. The dispatch loop reads the list, opens workers for the top items as slots free up, and
-removes an item the moment it is recorded seen. Nothing else opens a worker, so an item is never worked twice.
+removes an item the moment it is recorded seen.
 
 One file per item, under `<runtime_dir>/pending/`, so the feed and the dispatch loop never rewrite each
 other's entries: the feed replaces one item's file, the dispatcher deletes one, and neither reads and

@@ -2517,55 +2517,80 @@ def reuse_pending_verdicts(runtime_dir, it):
 
 def feed_pending(runtime_dir, offered, keep, drop):
     """Bring the pending list in line with this cycle: store every needs-you and auto-handle item, drop
-    the ones this cycle judged as needing no worker, and drop every entry a cleanly-listed source no
-    longer offers as new (dispatched, archived, or handled by hand). A source whose listing failed this
-    cycle keeps its entries untouched."""
+    the ones this cycle judged as needing no worker, and keep an entry only while a source that listed
+    cleanly this cycle still offers its item as new. So an entry goes once its item is dispatched,
+    archived, or handled by hand, and a source that failed to list or is no longer enabled dispatches
+    nothing until a clean listing puts its items back."""
     added = sum(pending.put(runtime_dir, it) for it in keep)
     removed = sum(pending.remove(runtime_dir, it["_source"], it["_id"]) for it in drop)
     entries = pending.load_all(runtime_dir)
-    for source, ids in offered.items():
-        removed += pending.prune(runtime_dir, source, ids, entries)
+    for source in {e["_source"] for e in entries}:
+        removed += pending.prune(runtime_dir, source, offered.get(source, set()), entries)
     print(f"pending list: {len(keep)} item(s) waiting for a worker ({added} new or changed), "
           f"{removed} entr(ies) removed.")
 
 
-def run_dispatch(cfg, prov, repo, config_repo, recent=None):
+def run_dispatch(cfg, prov, repo, config_repo):
     """One dispatch pass over the whole pending list, under the dispatch lock."""
     with dispatch_lock(cfg["runtime_dir"]) as locked:
         if not locked:
             print("dispatch: another pass holds the dispatch lock; skipped.")
             return
-        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]), recent=recent)
+        dispatch_pass(cfg, prov, repo, config_repo, pending.load_all(cfg["runtime_dir"]))
 
 
-# How long a worker this process launched keeps holding its conversation and its correspondent, by this
-# process's own record rather than the session scan: a worker a minute old may not be listed or reachable
-# yet, so without this the next pass would launch a second worker for the same conversation or person.
+# How long a launched worker keeps holding its conversation and its correspondent by the dispatcher's own
+# record rather than the session scan: a worker a minute old may not be listed or reachable yet, so
+# without this the next pass would launch a second worker for the same conversation or person. The record
+# lives in LAUNCH_HOLDS_FILE so the keeper's passes and an on-demand run share it.
 LAUNCH_HOLD = timedelta(minutes=5)
+LAUNCH_HOLDS_FILE = "launch-holds.json"
 
 
-def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, launcher_id=None, on_demand=None,
-                  recent=None):
+def load_launch_holds(runtime_dir, now):
+    """`{"convs": {key: when}, "corrs": {identity: when}}` for the claims made within LAUNCH_HOLD of `now`."""
+    try:
+        with open(os.path.join(runtime_dir, LAUNCH_HOLDS_FILE), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    holds = {"convs": {}, "corrs": {}}
+    for kind in holds:
+        for k, when in (data.get(kind) or {}).items() if isinstance(data, dict) else ():
+            try:
+                if now - datetime.fromisoformat(when) < LAUNCH_HOLD:
+                    holds[kind][k] = when
+            except (TypeError, ValueError):
+                continue
+    return holds
+
+
+def _seen_record(runtime_dir, source, iid, label):
+    """Record an item seen, retrying a failed write: a worker is already open on it, and a lost record
+    would let the next feed cycle find it again and open a second one. True once the record is written."""
+    for attempt in range(3):
+        res = seen_state("record", runtime_dir, source, iid, label)
+        if getattr(res, "returncode", 0) == 0:
+            return True
+        time.sleep(2 * (attempt + 1))
+    print(f"{iid}: could not record it seen after 3 tries, so a later cycle may open a second worker for it "
+          f"({(getattr(res, 'stderr', '') or '').strip()[:200]}).")
+    return False
+
+
+def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, launcher_id=None, on_demand=None):
     """Open workers for the top judged items, up to the free slots. The only code that opens item workers.
 
-    Reads the machine's sessions once, drops any item already recorded seen from the pending list, then
+    Drops any item already recorded seen from the pending list, then reads the machine's sessions once and
     dispatches auto-handle items unconditionally and needs-you items in order_needs order while slots
     remain, with the correspondent hold and the conversation routing applied to each item.
     An item that opens a worker, or is handed to a live one, is recorded seen and leaves the pending list;
     a held item stays on it for the next pass. An item whose source isn't loaded this pass waits for a pass
-    that has it. `recent` is the keeper's record of the conversations and correspondents its launches
-    claimed, as `{"convs": {key: when}, "corrs": {identity: when}}`, kept across passes for LAUNCH_HOLD.
-    `channel`, `now`, `launcher_id` and `on_demand` carry an on-demand --channel run's flags and outcome
-    lines."""
+    that has it. `channel`, `now`, `launcher_id` and `on_demand` carry an on-demand --channel run's flags
+    and outcome lines."""
     runtime_dir = cfg["runtime_dir"]
     on_demand = [] if on_demand is None else on_demand
-    recent = {"convs": {}, "corrs": {}} if recent is None else recent
     started = datetime.now(timezone.utc)
-    for claims in recent.values():
-        for k in [k for k, when in claims.items() if started - when >= LAUNCH_HOLD]:
-            del claims[k]
-    agents = _claude_agents()
-    live = live_session_ids(agents)
 
     # The dispatch lock makes this pass the only writer of needs-you and auto-handle seen records while it
     # runs, so one read of the seen record up front is the still-pending check for the whole pass.
@@ -2580,23 +2605,38 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
             pending.remove(runtime_dir, it["_source"], it["_id"])
             continue
         fresh.append(it)
+    if not fresh:
+        return 0
+
+    holds = load_launch_holds(runtime_dir, started)
+
+    def claim(kind, key):
+        """Add one launch's claim to the shared record at once, so a pass that fails part way keeps it."""
+        holds[kind][key] = started.isoformat()
+        write_json_atomic(os.path.join(runtime_dir, LAUNCH_HOLDS_FILE), holds)
+
+    agents = _claude_agents()
+    live = live_session_ids(agents)
 
     # --- worker buffer counts, driving the dynamic-concurrency dispatch rule below (None -> scan failed,
     # fail closed: open no new needs-you workers this pass) ---
     wcounts = worker_counts(agents)
     waiting, total = wcounts or (None, None)
+    alert = False
     if not channel:  # scan health and its diagnostic are the scheduled keeper's
         with health_lock(runtime_dir):
             health = load_health(runtime_dir)
             if wcounts is None:
                 fails = _record_scan_failure(health)
                 if fails >= SCAN_FAILURE_ALERT_THRESHOLD and _scan_failure_alert_due(health):
-                    _spawn_scan_diagnostic(repo, runtime_dir, cfg["worker_model"])
+                    alert = True
                     health[POLLER_KEY]["last_scan_failure_alert_ts"] = datetime.now(timezone.utc).isoformat()
                 save_health(runtime_dir, health)
             elif health.get(POLLER_KEY, {}).get("tab_scan_consecutive_failures"):
                 _record_scan_ok(health)
                 save_health(runtime_dir, health)
+    if alert:  # launched after the health lock is released, since a launch can take a while
+        _spawn_scan_diagnostic(repo, runtime_dir, cfg["worker_model"])
 
     # Ordered by order_needs: recent and older orphan-sessions bracket every other source, which runs by
     # band_rank (priority, level, referral - the queue policy defined once in provider_base) then
@@ -2621,14 +2661,13 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     # duplicates in the SAME pass don't both spawn - the first claims the identity and the rest wait.
     # Recomputed each pass from live sessions, never a stored flag, so a dead worker frees it within one
     # pass (see open_correspondents).
-    active_correspondents = open_correspondents(runtime_dir, live) | set(recent["corrs"])
-    seeded_correspondents = set(active_correspondents)
+    active_correspondents = open_correspondents(runtime_dir, live) | set(holds["corrs"])
     # One conversation, one worker: a new item whose conversation a live worker already holds is handed
     # to that worker instead of getting its own, one whose worker closed paused waits for it to be
     # resumed, and a conversation that got a new worker within LAUNCH_HOLD holds its later items until
     # that worker can receive them.
     open_convs = open_conversations(runtime_dir, live, paused_ids(agents))
-    claimed_convs = set(recent["convs"])
+    claimed_convs = set(holds["convs"])
     # On demand, a worker on a thread in the DM holds the DM's new top-level item too, so the on-demand
     # line names that worker and the launching session can wait on it.
     thread_holder = None
@@ -2644,8 +2683,8 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     forwarded, held_conv, held_paused = 0, 0, 0
 
     def recorded(it, triage_label):
-        seen_state("record", runtime_dir, it["_source"], it["_id"], triage_label)
-        pending.remove(runtime_dir, it["_source"], it["_id"])
+        _seen_record(runtime_dir, it["_source"], it["_id"], triage_label)
+        pending.remove(runtime_dir, it["_source"], it["_id"])  # its worker is open either way
 
     def routed(it, provider, key):
         """Apply conversation_route to one item: True when the item is held or handed to its
@@ -2701,6 +2740,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
         recorded(it, "auto-handle")
         if it["_correspondent"]:
             active_correspondents.add(it["_correspondent"])
+            claim("corrs", it["_correspondent"])
         auto_dispatched += 1
     # This pass's needs-you budget: top the waiting pile up toward target_reviewable, capped by the
     # max_concurrent headroom left after the auto workers just opened. Decremented per dispatch below;
@@ -2770,6 +2810,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
                     peers.append(launched_peer(_worker_title(iid, json_file)))
                 if "conversationKey" in stamp:
                     claimed_convs.add(key)
+                    claim("convs", key)
         recorded(it, "needs-you")
         # Archive the one-message source NOW that a worker is open on it and the item is recorded seen, so
         # the open session is the tracker and the inbox holds only untriaged mail. Done last, and only on
@@ -2780,6 +2821,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
             spawn_archived += 1
         if corr:
             active_correspondents.add(corr)
+            claim("corrs", corr)
         slots -= 1
         dispatched += 1
 
@@ -2792,10 +2834,6 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
           f"{held_conv} behind a worker launched this pass on the same conversation, "
           f"{held_paused} behind a paused worker on their conversation) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
-    for key in claimed_convs - set(recent["convs"]):
-        recent["convs"][key] = started
-    for corr in active_correspondents - seeded_correspondents:
-        recent["corrs"][corr] = started
     return dispatched + auto_dispatched
 
 
@@ -2828,18 +2866,20 @@ def _newer_version_check():
 
 
 def serve(source_repo):
-    """The scheduled form: run the keeper (keeper.py) until it recycles. Its dispatch loop runs a dispatch
-    pass over the pending list about once a minute, and its feed thread runs this script's --feed cycle
-    every 5 minutes. Config is re-read each pass, so a buffer knob change applies within a minute; the
-    providers load once per keeper, so a provider change applies when the keeper recycles."""
+    """The scheduled form: run the keeper (keeper.py) until it recycles. Config is re-read each pass, so a
+    buffer knob change applies within a minute. The providers load once per keeper, and load again on a
+    pass whose pending list holds an item from a source that isn't loaded (one whose adapter failed to
+    load when the keeper started)."""
     config_repo = ensure_main_worktree(source_repo)
     cfg = read_config(config_repo, runtime_root=source_repo)
     runtime_dir = cfg["runtime_dir"]
     prov = {p.name: p for p in load_providers(cfg, {})}
-    recent = {"convs": {}, "corrs": {}}
 
     def dispatch():
-        run_dispatch(read_config(config_repo, runtime_root=source_repo), prov, source_repo, config_repo, recent)
+        cfg = read_config(config_repo, runtime_root=source_repo)
+        if {e["_source"] for e in pending.load_all(runtime_dir)} - set(prov):
+            prov.update({p.name: p for p in load_providers(cfg, {})})
+        run_dispatch(cfg, prov, source_repo, config_repo)
 
     feed_cmd = [sys.executable, os.path.abspath(__file__), "--repo", source_repo, "--feed"]
     reason = keeper.run(runtime_dir, dispatch, feed_cmd, should_recycle=_newer_version_check())
