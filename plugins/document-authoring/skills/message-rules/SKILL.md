@@ -123,6 +123,7 @@ Don't present a menu of options or stack a numbered list of questions.
   This holds even when the other party's own account or theory already points to one clean answer.
   Acknowledge what they found and say it'll be looked into.
   **The same goes for reporting a fix: until the affected person has seen it work, a test on Russell's side leaves "fixed" open, so hedge it ("I think it's fixed") and ask them to retry.**
+- **When relaying a third party's position to someone else, claim only the level of commitment they actually voiced, so pick the verb that matches their words.**
 
 ---
 
