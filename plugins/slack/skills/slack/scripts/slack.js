@@ -495,7 +495,8 @@ async function show() {
   const from = await userName(m.user);
   const text = await messageText(m);
   const files = fileMeta(m.files);
-  const isMe = !!m.user && m.user === (await call('auth.test')).user_id;
+  let isMe = false;
+  try { isMe = !!m.user && m.user === (await call('auth.test')).user_id; } catch { /* the marker is optional */ }
   let permalink = '';
   try { permalink = (await call('chat.getPermalink', { channel: args.channel, message_ts: args.ts })).permalink || ''; }
   catch { /* permalink optional */ }
