@@ -36,7 +36,7 @@
 //                 sent time, isDraft. Read-only; the drainer's acknowledgement sweep reads it to see
 //                 whether Russell already wrote on the thread.)
 // Draft a reply: node mail.js --reply --message-id=<id> --body-file=reply.md [--attach=file1.pdf,file2.png]
-//                (creates a DRAFT reply-all in the thread; never sends; its last line is
+//                (creates a DRAFT reply-all in the thread; never sends; prints
 //                 `draft-id: <id>`, the full id --send-draft takes. --body-file is Markdown -
 //                 blank-line paragraphs, lists, **bold**, and links all render as HTML; raw HTML
 //                 passes through. --attach adds file attachments, same syntax as --draft-new.)
@@ -45,7 +45,8 @@
 //                (creates a fresh DRAFT to specific recipients; never sends. --body-file is Markdown
 //                 (same as --reply). --attach adds file attachments; --replace first deletes any
 //                 existing drafts with the same subject so re-runs don't pile up duplicates; --text
-//                 sends the body-file as literal plain text instead of rendering the Markdown.)
+//                 sends the body-file as literal plain text instead of rendering the Markdown.
+//                 --reply and --draft-new print one `attachment: <absolute path>` line per --attach file.)
 // Send to self:  node mail.js --send-self --subject="..." --body-file=note.txt
 //                (sends a plain-text mail to your own inbox; handy for phone copy-paste)
 // Send a draft:  node mail.js --send-draft --message-id=<draftId>
@@ -441,11 +442,14 @@ async function listDrafts(client) {
 
 // Reusable: normalize an --attach value (path, comma-separated string, or array) into Graph
 // fileAttachment objects.
-function buildAttachments(attach) {
-  const attachPaths = Array.isArray(attach)
+function attachPaths(attach) {
+  return Array.isArray(attach)
     ? attach
     : (attach ? String(attach).split(',').map(s => s.trim()).filter(Boolean) : []);
-  return attachPaths.map(p => ({
+}
+
+function buildAttachments(attach) {
+  return attachPaths(attach).map(p => ({
     '@odata.type': '#microsoft.graph.fileAttachment',
     name: path.basename(p),
     contentBytes: fs.readFileSync(p).toString('base64'),
@@ -467,6 +471,13 @@ async function reply(client) {
   const extra = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
   console.log(`draft-id: ${draft.id}`);
+  printAttachmentLines(args.attach);
+}
+
+// One `attachment: <absolute path>` line per --attach file a staged draft carries, so the session
+// presenting the draft can send each file to Russell's device without re-deriving the list.
+function printAttachmentLines(attach) {
+  for (const p of attachPaths(attach)) console.log(`attachment: ${path.resolve(p)}`);
 }
 
 async function thread(client) {
@@ -558,6 +569,7 @@ async function draftNew(client) {
   });
   const extra = args.attach ? ' with attachment' : '';
   console.log(`Draft created to ${args.to} (id ${draft.id.slice(0, 20)}...)${extra}. Review in Outlook Drafts; never sent.`);
+  printAttachmentLines(args.attach);
 }
 
 async function sendDraft(client) {

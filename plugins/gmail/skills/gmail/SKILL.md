@@ -149,8 +149,7 @@ Under `scripts/` (run with `node`):
     (`--reply` and `--draft-new` each print a `draft-id:` line - the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
     thread, so a thread never carries more than one draft.
-    The reply presenting a draft with `--attach` or `--inline` files sends those files to Russ, per
-    `document-authoring:writing-flow`'s **Stage** step.)
+    The reply presenting a draft with `--attach` or `--inline` files sends those files to Russ, per `document-authoring:writing-flow`'s **Stage** step.)
   - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
     (sends that one draft and removes it from Drafts; Gmail files the copy in Sent). See **Sending**
     below - this runs only on Russ's explicit per-message say-so.

@@ -58,6 +58,7 @@ All under `scripts/`:
   - Thread: `node mail.js --thread=<conversationId> [--json]` (every message in the conversation across all folders, oldest first, with `fromMe`, the send time, and `isDraft`; read by the drainer's acknowledgement sweep)
   - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.html`
   - Draft new to recipients (never sends): `node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.html [--cc=c@z] [--attach=file1.pdf,file2.png] [--replace] [--text]` (`--attach` adds file attachments; `--replace` deletes any existing drafts with the same subject first, so re-runs don't pile up duplicates; `--text` treats the body-file as plain text instead of HTML)
+    The reply presenting a draft with `--attach` files sends those files to Russell, per `document-authoring:writing-flow`'s **Stage** step.
   - Send to self: `node mail.js --send-self --subject="..." --body-file=note.txt`
   - Send a staged draft: `node mail.js --send-draft --message-id=<draftId>` (promotes a draft from `--reply`/`--draft-new` to a real send via Graph's own send action, transmitting exactly what's saved in Drafts; the only path that emits real mail - use only on Russ's explicit per-message instruction after he's reviewed this exact draft)
   - Delete one (reversible): `node mail.js --delete=<messageId>` (moves to Deleted Items, never a permanent purge)
