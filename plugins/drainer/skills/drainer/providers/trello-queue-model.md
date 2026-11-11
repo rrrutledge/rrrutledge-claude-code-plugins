@@ -35,7 +35,7 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
 
 ## ENUMERATE
 Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), and are **startable** - Start now-or-earlier, or no Start at all.
-A future Start is the only thing that holds a card back.
+A future Start holds a card back, and so does the `P3` hold described under the priority label below.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
 Rank is `(priority band, level band, referral band, date)`, all descending - level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
@@ -47,8 +47,8 @@ A **P1 Director-or-above card** (desc level `Director/VP-level`) is pinned there
 A **P1 people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
 A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay (a `P3` one is also subject to the hold on `P3` application cards below).
 A people manager with no posted pay, or pay under the floor, is not pinned: it keeps its P-tier band and sits at the neutral level, interleaved with email by date (see the level band below).
-An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it (a `P3` card is also subject to the hold described next).
-A `P3` application card is held off the queue entirely while a `P1` or `P2` application card is startable on the same board; the exemptions are listed in the comment above `_PRIORITY_BAND`.
+An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
+A `P3` application card can be held off the queue entirely; the comment above `_PRIORITY_BAND` defines when and for which cards.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
