@@ -98,6 +98,8 @@ Never send, and never prompt Russell directly - hand a gate back to me.
   a new top-level message in the main conversation over starting a Slack Thread reply, so it's visible
   to everyone without opening a side panel. Reserve actual Slack Threads for busier channels, where
   keeping the main feed clean matters more than single-glance visibility.
+  **Several asks, one thread each:** when the reply answers several distinct asks at once, thread each answer under the message that made that ask, in a channel or a group DM alike.
+  A reply to a single ask keeps the carve-out above.
 
 ## Load-bearing invariants for the Teams composer (violating these has typed into the WRONG place)
 

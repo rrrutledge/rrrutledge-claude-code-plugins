@@ -139,6 +139,7 @@ Learning from the send applies: after the user sends, run the document-authoring
 
 - **Reply in the same conversation** (a DM, group DM, the channel where the user was mentioned, or the thread): target that conversation's `--channel` and `--thread-ts`.
   For a channel/thread mention, reply in-channel / in-thread rather than starting a DM, unless the content is clearly better handled privately.
+- **Several ask groups in one span:** pass the ts of the message that made each ask as `slack.js --create-draft --thread-ts=<that ts>`; the `message-draft` skill's "Several asks, one thread each" rule says when this applies.
 
 ## REACTION-PROPOSAL
 A reaction goes through send-confidence like a written draft, so the model learns, from Russell's answers, which reactions can go out without him.
