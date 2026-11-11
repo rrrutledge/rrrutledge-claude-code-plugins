@@ -33,7 +33,7 @@ async function connectBrowser(port = cdpPort()) {
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(
       `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${port}. ` +
-      `An idle Canva renderer freezes and hangs the connect: run canva-nudge.js --cdp-port=${port}, then retry.`)), CONNECT_TIMEOUT_MS);
+      `An idle Canva renderer freezes and hangs the connect: run canva-edit.js --nudge --cdp-port=${port}, then retry.`)), CONNECT_TIMEOUT_MS);
   });
   try { return await Promise.race([chromium.connectOverCDP(`http://127.0.0.1:${port}`), timeout]); }
   finally { clearTimeout(timer); }
@@ -62,6 +62,7 @@ async function nudge(port = cdpPort()) {
     await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { width: b.width - 20 } });
     await new Promise(r => setTimeout(r, 800));
     await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { width: b.width } });
+    if (b.windowState !== 'normal') await send('Browser.setWindowBounds', { windowId: w.result.windowId, bounds: { windowState: b.windowState } });
   }
   for (const p of pages.filter(p => /canva\.com\/design/.test(p.url))) await send('Target.activateTarget', { targetId: p.id });
   sock.close();
@@ -85,37 +86,49 @@ async function ready(tab) {
 }
 
 // Connects, finds or opens this script's tagged tab on the design, keeps the renderer awake, runs fn.
-// The tab closes afterward unless keep is set (closeTab never closes the last tab).
-async function withDesign(url, tag, fn, { keep = false, viewport = { width: 1528, height: 1400 } } = {}) {
+// The tab closes afterward (closeTab never closes the last tab).
+async function withDesign(url, tag, fn) {
   const browser = await connectBrowser();
   const context = browser.contexts().find(c => c.pages().some(p => /^https?:/.test(p.url()))) || browser.contexts()[0];
   const mine = taggedUrl(url, tag);
   let tab = context.pages().find(p => p.url().includes(designId(url)) && p.url().includes(`${tag}=1`));
   try {
     if (!tab) { tab = await openTab(context); await tab.goto(mine, { waitUntil: 'domcontentloaded', timeout: 90000 }); }
-    await tab.setViewportSize(viewport);
+    await tab.setViewportSize({ width: 1528, height: 1400 });
     const cdp = await context.newCDPSession(tab);
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     await cdp.send('Page.setWebLifecycleState', { state: 'active' }).catch(() => {});
     await ready(tab);
-    return await fn(tab, context);
+    return await fn(tab);
   } finally {
-    if (tab && !keep) await closeTab(tab).catch(() => {});
+    if (tab) await closeTab(tab).catch(() => {});
     await browser.close().catch(() => {});
   }
 }
 
 const pageLoc = (tab, n) => tab.locator(`[data-role="timeline-scene"][aria-label="Page ${n}"]`);
 
+const shownPages = (tab) => tab.locator('[data-role="timeline-scene"]').evaluateAll(els => els.map(e => +(e.getAttribute('aria-label') || '').slice(5)).filter(Boolean));
+
+// The strip renders only a window of thumbnails, so keep clicking the last one shown until no higher page appears.
 async function pageCount(tab) {
-  const nums = await tab.locator('[data-role="timeline-scene"]').evaluateAll(els => els.map(e => +(e.getAttribute('aria-label') || '').slice(5)).filter(Boolean));
-  return nums.length ? Math.max(...nums) : 0;
+  let max = 0;
+  for (let k = 0; k < 100; k++) {
+    const nums = await shownPages(tab);
+    const top = nums.length ? Math.max(...nums) : 0;
+    if (top <= max) return max;
+    max = top;
+    await pageLoc(tab, max).scrollIntoViewIfNeeded();
+    await pageLoc(tab, max).click();
+    await wait(tab, 600);
+  }
+  return max;
 }
 
 // The page strip renders a window of thumbnails; step toward the target until its thumb exists.
 async function gotoPage(tab, n) {
   for (let k = 0; k < 60 && !(await pageLoc(tab, n).count()); k++) {
-    const nums = await tab.locator('[data-role="timeline-scene"]').evaluateAll(els => els.map(e => +(e.getAttribute('aria-label') || '').slice(5)).filter(Boolean));
+    const nums = await shownPages(tab);
     const pick = n > Math.max(...nums) ? Math.max(...nums) : Math.min(...nums);
     await pageLoc(tab, pick).scrollIntoViewIfNeeded();
     await pageLoc(tab, pick).click();
@@ -209,6 +222,7 @@ const isImageSelected = async (tab) => (await tab.getByRole('button', { name: 'E
 
 // Every layer on the current page, front to back, with its box in design px.
 // Rows are clicked one at a time because the Arrange values only show for the selected layer.
+// Only rows visible in the panel are read: a page with more layers than fit fails on the missing Background row.
 async function layers(tab) {
   await openPositionPanel(tab);
   await showTab(tab, 'Layers');
@@ -423,10 +437,10 @@ async function presentShot(tab, file) {
   await wait(tab, 800);
 }
 
-// Visible text runs on the current page inside box (design px), from the DOM rather than OCR.
-async function textRuns(tab, box = { x: 0, y: 0, w: 1920, h: 1080 }) {
+// Visible text runs on the current page (design px), from the DOM rather than OCR.
+async function textRuns(tab) {
   const pr = await pageRect(tab);
-  return tab.evaluate(({ pr, box }) => {
+  return tab.evaluate((pr) => {
     const res = [];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let nd;
@@ -437,27 +451,31 @@ async function textRuns(tab, box = { x: 0, y: 0, w: 1920, h: 1080 }) {
       for (const r of rg.getClientRects()) {
         if (r.width < 2 || r.height < 8) continue;
         if (r.x < pr.x || r.y < pr.y || r.right > pr.x + pr.w || r.bottom > pr.y + pr.h) continue;
-        const x = (r.x - pr.x) / pr.s, y = (r.y - pr.y) / pr.s, w = r.width / pr.s, h = r.height / pr.s;
-        if (x < box.x - 20 || x > box.x + box.w + 20 || y < box.y - 20 || y > box.y + box.h + 20) continue;
-        res.push({ t: t.slice(0, 80), x, y, w, h });
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (!hit || !(hit.contains(nd.parentElement) || nd.parentElement.contains(hit))) continue;
+        res.push({ t: t.slice(0, 80), x: (r.x - pr.x) / pr.s, y: (r.y - pr.y) / pr.s, w: r.width / pr.s, h: r.height / pr.s });
       }
     }
     return res;
-  }, { pr, box });
+  }, pr);
 }
 
-// Centres (screen px) of each on-page occurrence of word, top to bottom, one per line.
+// Centres (screen px) of each on-page whole-word occurrence of word, top to bottom.
 async function findWord(tab, word) {
   const pr = await pageRect(tab);
   return tab.evaluate(({ pr, word }) => {
     const res = [];
+    const re = new RegExp('(?<![\\p{L}\\p{N}])' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}])', 'gu');
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let nd;
     while ((nd = w.nextNode())) {
-      for (let i = nd.textContent.indexOf(word); i >= 0; i = nd.textContent.indexOf(word, i + 1)) {
+      for (const m of nd.textContent.matchAll(re)) {
+        const i = m.index;
         const rg = document.createRange(); rg.setStart(nd, i); rg.setEnd(nd, i + word.length);
         const r = rg.getBoundingClientRect();
         if (r.width < 5 || r.x < pr.x || r.y < pr.y || r.right > pr.x + pr.w || r.bottom > pr.y + pr.h) continue;
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (!hit || !(hit.contains(nd.parentElement) || nd.parentElement.contains(hit))) continue;
         res.push({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
       }
     }

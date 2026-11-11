@@ -127,11 +127,11 @@ async function applyItem(tab, n, item, L) {
   const olds = after.filter(r => E.sameBox(r.box, old.box, 1) && !E.sameBox(r.box, placed, 3));
   if (olds.length !== 1) throw new Error(`p${n}: old layer not uniquely found after adding the new image (${olds.length})`);
   await E.deleteLayer(tab, olds[0]);
-  for (let t = 0; t < 3; t++) {
-    const rows2 = await E.layers(tab);
-    const me = rows2.find(r => E.sameBox(r.box, placed, 1.5));
+  for (let t = 0; ; t++) {
+    const me = (await E.layers(tab)).find(r => E.sameBox(r.box, placed, 1.5));
     if (!me) throw new Error(`p${n}: new image lost after deleting the old one`);
     if (me.i === old.i) break;
+    if (t === 3) throw new Error(`p${n}: new image is layer ${me.i}, could not move it to the old slot ${old.i}`);
     await E.selectLayer(tab, me);
     await E.moveSelected(tab, me.i < old.i ? 'Backward' : 'Forward', Math.abs(old.i - me.i));
   }
@@ -289,7 +289,7 @@ async function cmdExpand() {
     else if (has('replace-word')) await cmdReplaceWord();
     else if (has('apply')) await cmdApply();
     else if (has('expand')) await cmdExpand();
-    else errors.push('no command: pass --nudge, --layers, --shots, --measure, --apply or --expand');
+    else errors.push('no command: pass --nudge, --layers, --shots, --measure, --replace-word, --apply or --expand');
   } catch (e) { errors.push(e.message); }
   finish();
 })();
