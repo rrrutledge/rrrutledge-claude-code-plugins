@@ -70,10 +70,10 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    Distill the underlying **rule**, not the transcript.
    It almost always belongs in `message-rules` (the message artifact rubric); a rule about *how you compose* rather than what lands belongs in `document-authoring`'s drafting loop instead.
    **Run the overlap search from `writing-flow`'s Draft step before writing a word of new text - this is the step most often skipped, and skipping it is what produces a duplicate bullet.**
-   Here it covers the entire `message-rules` `SKILL.md`: grep it for the concept (register keywords, the behavior, near-synonyms), across **every** section and **every** persona block, not just the one persona the message you're learning from happens to match.
+   Here it covers the entire `message-rules` `SKILL.md`, **every** section and **every** persona block, with register keywords among the search terms.
    The closest existing bullet is very often sitting in a sibling persona.
    Search `authoring-rules` too when the instinct is medium-independent.
-   Fold the rule into whatever bullet that search turns up - expand its scope, sharpen its language, generalize it to a cross-persona Core-voice bullet if the instinct is universal, or add a sub-case - rather than adding a new one.
+   Folding into a bullet here means expanding its scope, sharpening its language, adding a sub-case, or generalizing it to a cross-persona Core-voice bullet when the instinct is universal.
    A generic existing bullet that technically covers the edit still leaves the specific pattern unnamed enough to go unapplied, so fold in or sharpen a bullet even when a broader rule already brushes against the same case.
    Add a new top-level bullet **only** once that whole-file search has genuinely come up empty.
    **State the rule crisply as a single imperative bullet: a bold lead phrase plus one sentence, no before/after quote.**
