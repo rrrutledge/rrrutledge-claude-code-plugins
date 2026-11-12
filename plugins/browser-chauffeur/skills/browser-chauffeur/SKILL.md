@@ -139,7 +139,7 @@ const { openTab, findTab, closeTab } = (() => {
 python plugins/browser-chauffeur/skills/browser-chauffeur/templates/chauffeur.py
 ```
 
-Adjust the path to wherever your skill is mounted. This manages port selection and profile automatically. If a persistent browser is already running, it prints the existing connection info and exits immediately. If not, it launches a new one with a persistent profile at `~/.claude/browser-chauffeur/profile/`. The state is stored globally at `~/.claude/browser-chauffeur/state.json` so all Claude instances can discover and reuse the same browser.
+Adjust the path to wherever your skill is mounted.
 
 **Automatic tab sweep.** When reusing an existing browser, this script keeps the tab count low. Reclaiming is driven by idleness; ownership just lets it clean up promptly. Three layers: (1) **owner reap** - a tab whose owning Claude session has ended is closed right away. Each tab is tied to the session that opened it (its `CLAUDE_PID`), not the short-lived script (a session fires many scripts), so a tab stays alive as long as its session runs and is cleaned up when that session ends. (2) **Idle age-out** - any tab idle longer than the TTL (default 12h, override with `BROWSER_CHAUFFEUR_TAB_TTL`) is closed, regardless of owner, catching genuinely abandoned tabs. (3) **Count cap** - if more than `MAX_TABS` (default 15, override with `BROWSER_CHAUFFEUR_MAX_TABS`) remain, close the least-recently-active until back under it. Activity is tracked automatically - a tab created or reused via `openTab`/`findTab`, or one whose URL/title the sweep sees change between runs, counts as recently active, so an in-use tab is never the one closed. It never closes the browser's last page. Layers 2–3 also cover tabs opened without the `openTab` helper (which have no owner to reap). This keeps `connectOverCDP` fast and reliable and stops the browser accumulating enough tabs to crash (see **Resilient Connection**). It's automatic - you don't invoke it directly.
 
@@ -605,7 +605,8 @@ Fix without asking: a violation is always wrong.
 
 ## Key Rules
 
-These are the rules the session applies while it drives; every rule about a script's code lives in `script-quality-standards.md`.
+These are the rules the session applies while it drives.
+The rules for a script's code live in `script-quality-standards.md`, which also points to the three this file holds: getting a tab (Phase 1), closing it (Phase 3), and resolving packages (Prerequisite Check).
 
 **Verifying a change:** Re-read page state after every save or submit; a form can silently fail to save.
 A create, update, or delete counts as verified on either of two pieces of evidence:

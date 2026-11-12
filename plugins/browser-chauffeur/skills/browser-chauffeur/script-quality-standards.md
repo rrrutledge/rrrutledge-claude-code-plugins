@@ -1,6 +1,6 @@
 # Script Quality Standards
 
-Every rule about what a browser automation script's code contains lives here.
+The rules for what a browser automation script's code contains live here, apart from getting and closing tabs and resolving packages, which SKILL.md holds (**Tabs and Packages** below points to each).
 Write each script to these rules, and check it against them before it runs (SKILL.md Phase 5).
 `templates/script-template.js` is a complete script that satisfies all of them.
 

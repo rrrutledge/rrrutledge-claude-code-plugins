@@ -4,7 +4,7 @@
 
 ### Changed
 - **Each rule has one home.**
-  `script-quality-standards.md` holds every rule about a script's code, `SKILL.md` the rules the session applies while it drives, and `anti-patterns.md` the symptom-indexed fixes that point at those rules.
+  `script-quality-standards.md` holds the rules about a script's code (pointing to `SKILL.md` for tabs and package resolution), `SKILL.md` the rules the session applies while it drives, and `anti-patterns.md` the symptom-indexed fixes that point at those rules.
 - **Mutations verify on app confirmation or reload.**
   A create, update, or delete counts as verified on the app's own success message or on the changed state after a fresh load.
   A DOM change alone no longer counts; a batch with no per-item confirmation gets one fresh load at the end of the run.
