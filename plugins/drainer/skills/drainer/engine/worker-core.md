@@ -199,6 +199,7 @@ Once you've cleared under this section, step 6 is a no-op for this item - nothin
 
 ## 2e. A browser gate only Russell can clear: report HELP_NEEDED, not a silent stall
 If any browser-chauffeur work this session drives - resolving a pointer (§2b), doing the item's work (step 3), staging a draft (step 4), or a provider's browser-driven CLEAR - hits a gate only Russell can clear (login, CAPTCHA, MFA-to-phone, an in-page action needing a human), do NOT follow browser-chauffeur's live `AskUserQuestion` step or wait on a subagent's `HELP_NEEDED`: a drainer worker runs unattended, so nobody would answer and the item would stall.
+A sign-in code emailed to a mailbox the pod can read is not such a gate: fetch it and enter it yourself, and park only the step that is truly Russell's (see **`engine/browser-gate.md`**).
 Instead park the gate and keep this session open, per **`engine/browser-gate.md`**.
 
 ## 3. Do the action (you do the work WITH the user)

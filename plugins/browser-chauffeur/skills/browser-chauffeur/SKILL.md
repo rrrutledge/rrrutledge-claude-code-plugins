@@ -69,7 +69,9 @@ A browser subagent ends by returning one of two structured results, and it never
   Return the reason, the URL and a stable tab locator (the `findTab` predicate, so the same tab is re-findable), exactly what the user must do, and how far the run got.
   Leave the tab open on the correct page.
 
-The subagent handles an email-delivered MFA code itself: it fetches the code from the connected mailbox and continues, exactly as **User Intervention** below prescribes.
+`HELP_NEEDED` is for a code that goes somewhere unreachable (SMS, authenticator app, phone call); a code emailed to a mailbox listed under **Readable mailboxes** is fetched, never escalated.
+The subagent fetches an email-delivered code itself and continues, exactly as **User Intervention** below prescribes.
+A multi-step sign-in (emailed code, then password) is cleared one step at a time: clear every step you can, then report only the step that is truly the user's, naming it precisely (for example "the password prompt after the emailed code"), never the whole sign-in.
 
 ### The help-channel
 
@@ -95,6 +97,8 @@ Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute
 Return one of two results:
   DONE - outcome, any values quoted from the page, a final screenshot path, and (if the endpoint is irreversible) the flow staged up to but NOT pressing the Send/Submit/Pay/Confirm button, with a screenshot of that staged state.
   HELP_NEEDED - reason (login / CAPTCHA / MFA-to-phone / in-page action that can't be done headless), the URL, a findTab predicate that re-finds the tab, what the user must do, and how far you got. Leave the tab open on the correct page.
+A sign-in code emailed to a mailbox you can read is not a gate: fetch the newest one (ms-graph `mail.js --search` then `--show` for personal Outlook and the family mailbox; the gmail skill for ISC Gmail) and enter it at once, since codes expire in minutes.
+For a multi-step sign-in, clear each step you can and report HELP_NEEDED only for the step that is truly the user's (a password, a phone code), naming that step.
 Never press an irreversible button, and never prompt the user directly - hand the gate or the staged step back to me.
 ```
 
@@ -460,7 +464,17 @@ When a site's MFA step sends a one-time code to an email address you have read a
 3. Enter the code and submit, the same way you'd fill any other field.
 4. If the mailbox search comes up empty after a reasonable wait, or the code is rejected, retry the search once (delivery lag) before falling back to `AskUserQuestion` - don't spin indefinitely.
 
+Codes expire in minutes, so fetch the newest one right after the site sends it and enter it immediately.
+
 Only escalate an MFA prompt when the code goes somewhere you can't reach (SMS, an authenticator app, a phone call) - see the bullet above.
+When the sign-in has several steps (emailed code, then password), the code step is yours and the password is the user's: finish the code step, then escalate only the password, naming it.
+
+#### Readable mailboxes
+
+- **Personal Outlook and the family mailbox** - the `ms-graph` skill: `mail.js --search="from:<sender>"` to find the newest message, then `mail.js --show` on it to read the code.
+- **ISC Gmail (and the other Gmail accounts)** - the `gmail` skill's `gmail.js`: list or search the inbox, then show the message.
+
+A code addressed anywhere else (a work mailbox with no skill here, a phone) is the unreachable case.
 
 ### Required `AskUserQuestion` pattern
 
