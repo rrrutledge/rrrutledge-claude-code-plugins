@@ -13,7 +13,7 @@
 // Example - confirm a deleted event is gone after a fresh load:
 //
 //   await page.reload();
-//   await page.getByRole('grid').waitFor();   // the list has rendered, so absence means gone
+//   await page.getByRole('grid').first().waitFor();   // the list has rendered, so absence means gone
 //   const gone = await verifyAfterMutation(page, async () => {
 //     const events = await page.getByRole('button', { name: /Budget review/ }).count();
 //     return events === 0;

@@ -95,7 +95,7 @@ Human gates are already natural seams, since the run pauses there anyway.
 Invoke the browser-chauffeur skill and run this one browser task inside your own context: <task>.
 Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute, verify, recover.
 End by returning DONE or HELP_NEEDED, carrying what the skill's "The return contract" section lists for each.
-Stop at the final irreversible button, and hand every gate that needs the user back to me as HELP_NEEDED.
+Fetch emailed sign-in codes yourself, stop at the final irreversible button, and hand every gate that needs the user back to me as HELP_NEEDED.
 ```
 
 ### When to run inline instead
@@ -268,7 +268,8 @@ Before touching anything:
    `findTab` is owner-scoped so it can only ever return your own tab.
    Save the page object reference and reuse it throughout the script.
 
-   **Tabs a click spawns are owned automatically.** A tab your tab opens itself is registered under your session (`HELPERS.md` **openTab**); to *drive* it, capture it with `const popup = await page.waitForEvent('popup')` around the click.
+   **Tabs a click spawns are owned automatically.**
+   A tab your tab opens itself is registered under your session (`HELPERS.md` `openTab(context, url)`); to *drive* it, capture it with `const popup = await page.waitForEvent('popup')` around the click.
 
 3. Navigate to the target page or state (if not already there)
 4. Read page state with `myTab.evaluate(() => document.body.innerText)`, or enumerate `myTab.frames()` if the body is unexpectedly short (see **Iframe detection** below)

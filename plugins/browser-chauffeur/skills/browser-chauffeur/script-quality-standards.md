@@ -53,11 +53,13 @@ Select by `role`, label (`getByLabel`, `aria-label`), and visible text.
 CSS classes an app generates or names for its own styling change across deployments and tenants, so they never appear in a selector.
 A component library's published static class names are stable API and count as semantic: Fluent UI's `fui-*` classes are the case this skill relies on (`anti-patterns.md` Anti-Pattern 7).
 
-**Strict mode.** A locator matching more than one element throws.
+**Strict mode.**
+A locator matching more than one element throws.
 When a wrapper `div` and its `button` share a label or text, select the button by role: `getByRole('button', { name: '...' })` (`anti-patterns.md` Anti-Pattern 1).
 Use `.first()` only when you've confirmed the matches are genuinely equivalent.
 
-**Broaden to the HTML tag when role finds nothing.** Older or semantic UIs use real `li`, `a`, and `span` elements as action targets with no `role` attribute, and role-based selectors skip them.
+**Broaden to the HTML tag when role finds nothing.**
+Older or semantic UIs use real `li`, `a`, and `span` elements as action targets with no `role` attribute, and role-based selectors skip them.
 When `getByRole` or `[role="..."]` returns nothing for an element you can see, select by the underlying tag; `anti-patterns.md` Anti-Pattern 5 has the snippet that finds the true tag.
 
 ## ✅ REQUIRED: Actions Through the Locator API
@@ -66,7 +68,8 @@ Perform every action that should trigger a server call or framework event throug
 Use `page.evaluate` to *read* DOM state.
 A native `element.click()` inside `evaluate` bypasses framework synthetic event handlers (React, Fluent UI): the UI may update while no API call fires, and the change vanishes on refresh (`anti-patterns.md` Anti-Pattern 2).
 
-**The one exception: an out-of-process iframe.** The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
+**The one exception: an out-of-process iframe.**
+The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
 
 ## ✅ REQUIRED: Visibility Checks, Not Presence
 
@@ -121,6 +124,7 @@ run().catch(e => { console.error(e.message); process.exit(1); });
 A bare `(async () => { ... })()` IIFE with no top-level `.catch()` fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()`-plus-`.catch()` shape above, or attach `.catch(e => { console.error(e.message); process.exit(1); })` to the IIFE's own promise.
 
 The helpers' process guard is a backstop behind this rule, not a substitute for it (`HELPERS.md` **Process guard**).
+A script that legitimately runs past the guard's watchdog window (a long media wait) calls `cancelScriptWatchdog()` from the helpers.
 
 ## ✅ REQUIRED: Helper Calls and Logging
 
