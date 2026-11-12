@@ -126,17 +126,21 @@ It names the return contract's two results and points at the skill's sections fo
 
 The stale `teams-message` example at `:43` becomes `message-draft`, the skill that superseded it.
 
-### For Russell to call
+### Settled by Russell
 
 **Decision 1 - when a mutation counts as verified.**
 `:625` requires a fresh page load before reporting any create, update, or delete as successful.
 `:585` verifies in-page with `verifyAfterMutation`, whose own example (a deleted calendar event no longer shows) never reloads.
-For a batch script that deletes fifty events, a reload per item is slow; with no reload, an optimistic UI update that never reached the server passes.
 
-Recommendation: verify each item in-page with `verifyAfterMutation`, then do one fresh load at the end of the run and re-check the whole batch before reporting success.
-A single-item mutation gets that same one fresh load.
+A create, update, or delete counts as verified on either of two pieces of evidence:
+- **The app confirms it.** The app shows its own success message for that action: a confirmation dialog, a toast, or success text.
+- **It survives a fresh load.** After a reload, or navigating away and back, the page shows the changed state.
 
-## Refactor, once approved
+A DOM change alone (an element gone, a row added) proves only that the page re-rendered, so it verifies nothing by itself.
+`verifyAfterMutation` stays the way to wait for either piece of evidence to render.
+A batch whose app shows no confirmation per item gets one fresh load at the end of the run, and the whole batch is re-checked there before success is reported.
+
+## Refactor
 
 1. Branch `browser-chauffeur-single-source` from `main`.
 2. Move each rule to its home, replace every other mention with a pointer, and apply the settled contradictions and decision 1.
