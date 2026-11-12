@@ -77,6 +77,10 @@ BLOCKED_CLAUDE_DIRS = [
         'target': '~/.claude/browser-chauffeur/',
     },
     {
+        'pattern': re.compile(r'\.claude[/\\]jobs[/\\]', re.IGNORECASE),
+        'target': '~/.claude/jobs/',
+    },
+    {
         # Shared with enforce.py's detect_plugin_cache_reference(), which scans whole raw
         # Bash command strings for this same pattern, not just Write/Edit paths.
         'pattern': PLUGIN_CACHE_PATTERN,

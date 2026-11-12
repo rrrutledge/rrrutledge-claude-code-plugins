@@ -389,6 +389,10 @@ CASES = [
     {"id": "write_browser_chauffeur_nested", "tool": "Write",
      "file_path": "{HOME}/.claude/browser-chauffeur/node_modules/browser-chauffeur-helpers/index.js",
      "expect": "BLOCK"},
+    # ~/.claude/jobs/<id>/tmp/ is a background job's runtime dir; Claude Code always re-prompts
+    # there, even for a .tmp/ path inside it, so it is redirected like drainer/plugin-cache.
+    {"id": "write_claude_jobs_tmp", "tool": "Write",
+     "file_path": "{HOME}/.claude/jobs/7c53ac71/tmp/.tmp/reply-antje.md", "expect": "BLOCK"},
 
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},
