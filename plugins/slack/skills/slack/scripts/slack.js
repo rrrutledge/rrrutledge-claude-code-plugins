@@ -95,6 +95,10 @@
 //                (conversations.open for a Slack user ID directly, for when you already have the ID and
 //                 --find-dm's name-substring search would be the wrong tool — e.g. resolving 47 known
 //                 member IDs from a roster rather than searching by name one at a time)
+// Find channel:  node slack.js --find-channel=<name fragment> [--json]
+//                (users.conversations, paginated: every public channel, private channel, and group DM you
+//                 belong to whose name contains the fragment, with its id and whether it is private.
+//                 Read-only; the channel-name counterpart to --find-dm)
 // Find by domain: node slack.js --find-by-domain=<email domain> [--json]
 //                (users.list filtered on profile.email ending in @<domain> — surfaces an existing
 //                 member who already works at a company, a warm path into a cold outreach target
@@ -1019,6 +1023,29 @@ async function resolveName() {
   console.log(name);
 }
 
+// Channels Russell is a member of whose name contains a fragment: public and private channels and group
+// DMs, from users.conversations (member-only by design), paginated. Read-only.
+async function findChannel() {
+  const query = String(args['find-channel'] === true ? '' : args['find-channel']).toLowerCase();
+  if (!query) throw new Error('--find-channel requires a name fragment, e.g. --find-channel=treasurer');
+  const out = [];
+  let cursor = '';
+  do {
+    const r = await call('users.conversations', {
+      types: 'public_channel,private_channel,mpim', exclude_archived: 'true', limit: '200', cursor,
+    });
+    for (const c of r.channels || []) {
+      const name = c.name || '';
+      if (!name.toLowerCase().includes(query)) continue;
+      out.push({ id: c.id, name, private: !!c.is_private || !!c.is_mpim, groupDm: !!c.is_mpim });
+    }
+    cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
+  } while (cursor);
+  if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
+  if (!out.length) { console.log(`No channel you belong to matches "${query}".`); return; }
+  for (const c of out) console.log(`${c.id}  ${c.groupDm ? 'mpdm:' : '#'}${c.name}  (${c.groupDm ? 'group DM' : c.private ? 'private' : 'public'})`);
+}
+
 async function findByDomain() {
   const domain = String(args['find-by-domain'] || '').toLowerCase().replace(/^@/, '');
   if (!domain) throw new Error('--find-by-domain requires an email domain, e.g. --find-by-domain=opentext.com');
@@ -1058,7 +1085,8 @@ async function findByDomain() {
   if (args['delete-draft']) return await deleteDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
+  if (args['find-channel']) return await findChannel();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
-  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-by-domain, or --resolve-name');
+  throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-channel, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

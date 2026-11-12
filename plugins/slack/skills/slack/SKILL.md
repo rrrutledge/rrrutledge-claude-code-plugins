@@ -110,6 +110,9 @@ Under `scripts/` (run with `node`):
     user ID you already have, printing the DM channel id.
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
   - Resolve an id to a name: `node slack.js --resolve-name=<user, DM, channel, or group DM id> [--json]` - prints the person's name (a DM gives the other member), or the channel's name, and the id itself when Slack has nothing more.
+  - Find a channel by name: `node slack.js --find-channel=<name fragment> [--json]` - lists every public channel, private channel, and group DM you belong to whose name contains the fragment, each with its id, its name, and whether it is private.
+    It is the channel counterpart to `--find-dm`.
+    When several match, read each one's `--history` to pick the right one.
 
 ## How it works (Web API endpoints)
 
@@ -134,6 +137,7 @@ Under `scripts/` (run with `node`):
 - `files.delete` - remove the files a `--create-draft --file` run uploaded when that draft then fails to save.
 - `conversations.open` - open or find the existing 1:1 DM for a known user ID (`--open-dm`; also used
   internally by `--find-dm` once it's matched a name to a user).
+- `users.conversations` - the channels and group DMs you belong to, paginated, matched by name (`--find-channel`).
 - `conversations.mark` / `subscriptions.thread.mark` — advance the conversation / thread read cursor (CLEAR).
 
 ## Answer before a new message
@@ -182,8 +186,8 @@ When you author the body, before printing it:
 
 When Russ says to send:
 
-1. Resolve the target: a DM channel via `--find-dm` (by name) or `--open-dm` (by user ID), or the
-   `channel` (+ `thread-ts`) from the captured item.
+1. Resolve the target: a DM channel via `--find-dm` (by name) or `--open-dm` (by user ID), a channel or
+   group DM via `--find-channel` (by name), or the `channel` (+ `thread-ts`) from the captured item.
 2. Run `--send` as described under Send above, and report the permalink.
 
 These constraints keep send safe:
