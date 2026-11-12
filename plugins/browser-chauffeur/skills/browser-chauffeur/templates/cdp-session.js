@@ -90,13 +90,13 @@ async function evalIn(session, contextId, expression) {
 // Execution contexts arrive as Runtime.executionContextCreated events after
 // Runtime.enable; a nested frame still loading reports its context later. Poll
 // the collected list until one matches, so the wait ends as soon as it exists.
-async function waitForContext(ctxs, predicate, { timeoutMs = 5000, intervalMs = 200 } = {}) {
-  const deadline = Date.now() + timeoutMs;
+async function waitForContext(ctxs, predicate) {
+  const deadline = Date.now() + 5000;
   for (;;) {
     const ctx = ctxs.find(predicate);
     if (ctx) return ctx.id;
-    if (Date.now() >= deadline) throw new Error(`No execution context matched within ${timeoutMs}ms`);
-    await new Promise(r => setTimeout(r, intervalMs));
+    if (Date.now() >= deadline) throw new Error('No execution context matched within 5000ms');
+    await new Promise(r => setTimeout(r, 200));
   }
 }
 

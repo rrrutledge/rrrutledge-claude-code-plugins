@@ -84,8 +84,7 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 Scripts receive `--cdp-port=<port>` from Claude, validated during Phase 0.
 Phase 0 also owns browser launch and the login check, so a script carries no browser detection or login validation of its own.
 
-Connect with the hardened `connectBrowser()` from `script-template.js`.
-It races `chromium.connectOverCDP('http://localhost:<port>')` against a 30s timeout, because the connect can hang forever when the persistent profile is overloaded or has a wedged renderer (SKILL.md **Resilient Connection**).
+Connect with the hardened `connectBrowser()` from `script-template.js` (SKILL.md **Resilient Connection** gives the reason).
 
 ## ✅ REQUIRED: Navigation
 

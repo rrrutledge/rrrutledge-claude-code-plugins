@@ -109,7 +109,7 @@ What setup installs, and how the helpers shim resolves the active plugin version
 
 Adjust `plugins/browser-chauffeur/...` to the actual path where the skill is mounted if needed.
 
-**Every ad-hoc script goes in the project's `.tmp/` - never in `~/.claude/browser-chauffeur/` itself.** That shared directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share. Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find. **Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
+**Every ad-hoc script goes in the project's `.tmp/`.** That shared directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share. Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find. **Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
 
 ```js
 const { chromium } = (() => {
@@ -169,17 +169,15 @@ SCREENSHOT: .tmp/snapshot-target-<timestamp>.png
 FINAL_URL: <where the browser actually landed>
 ```
 
-**The script makes no decision - you do.** Always:
+**The script makes no decision - you do, from the screenshot alone**, at the start of a flow and mid-flow alike.
+Text matching, DOM selectors, and URL heuristics can't reliably tell a login wall, an SSO transit page, an MFA challenge, and a slow-hydrating SPA apart across providers; a screenshot read by the session can, with no patterns to maintain.
+`HELPERS.md` **Login detection** has the snippet a script uses to screenshot a mid-flow check. Always:
 
 1. **Read the screenshot** with the Read tool.
 2. **Decide visually**:
    - **Logged in** - app shell visible, real content, no login form or sign-up wall → record the CDP port and proceed with the next script.
    - **Not logged in** - a login form is visible, a wall like "Sign up to see this board" / "Sign in to access X", or the `FINAL_URL` is on an auth provider (e.g. `*.okta.com`, `login.microsoftonline.com`, `accounts.google.com`, `id.atlassian.com`) → ask the user to sign in, per **User Intervention**. The page is left open. Re-run `snapshot-target.js` once they confirm. Once they sign in, the persistent profile preserves the session for all future tasks.
    - **Ambiguous** (loading spinner, blank page) - re-run `snapshot-target.js` once more; if still ambiguous, ask the user to confirm, per **User Intervention**.
-
-**Decide login state from the screenshot alone**, read with the Read tool, at the start of a flow and mid-flow alike.
-Text matching, DOM selectors, and URL heuristics can't reliably tell a login wall, an SSO transit page, an MFA challenge, and a slow-hydrating SPA apart across providers; a screenshot read by the session can, with no patterns to maintain.
-`HELPERS.md` **Login detection** has the snippet a script uses to screenshot a mid-flow check.
 
 **For slow-hydrating SPAs** where the screenshot-stability loop times out before the app is ready, re-run with `--target-anchor=<css-selector>` pointing at a known app-shell element. Example:
 
@@ -235,7 +233,7 @@ Before touching anything:
    pages.forEach((p, i) => console.log(`  Tab ${i}: ${p.url()}`));
    ```
    
-2. **Getting a tab** - get and save your tab reference, targeting the specific tab you need by URL pattern, never by position:
+2. **Getting a tab** - get and save your tab reference, targeting the specific tab you need by URL pattern:
    ```javascript
    const { findTab, openTab } = require('browser-chauffeur-helpers'); // resolve via the try/catch pattern in Prerequisite Check / templates/script-template.js
 
@@ -254,9 +252,7 @@ Before touching anything:
 
    // Save this reference - it stays valid even if other tabs open/close
    ```
-   **Why:** Tab positions shift as tabs are created/closed. Other Claude sessions may be working in parallel - possibly on the very same URL. Targeting by index is unreliable, and a bare `context.pages().find(...)` would hand you whichever session's tab matched first, so you could navigate another session's tab out from under it. **Get a tab only two ways: `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own** - never a bare `pages().find(...)`. `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; `findTab` is owner-scoped so it can only ever return your own tab. Save the page object reference and reuse it throughout the script.
-
-   **Never open a tab with `context.newPage()` or by calling `page.goto()` on a fresh page you created yourself** - an unregistered tab escapes the orphan sweep entirely, so it lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count. `openTab` is the only sanctioned way to create a tab.
+   **Why:** Tab positions shift as tabs are created/closed. Other Claude sessions may be working in parallel - possibly on the very same URL. Targeting by index is unreliable, and a bare `context.pages().find(...)` would hand you whichever session's tab matched first, so you could navigate another session's tab out from under it. **Get a tab with `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own.** `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab created any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count. `findTab` is owner-scoped so it can only ever return your own tab. Save the page object reference and reuse it throughout the script.
 
    **Tabs a click spawns are owned automatically.** A tab your tab opens itself is registered under your session (`HELPERS.md` **openTab**); to *drive* it, capture it with `const popup = await page.waitForEvent('popup')` around the click.
 
@@ -315,7 +311,7 @@ const title  = await evalIn(session, ctxId, 'document.title');
 
 **How to click in the iframe - use `Runtime.evaluate`** (`anti-patterns.md` Anti-Patterns 6 and 9 show why coordinates and the Tab key fail there).
 This DOM `.click()` is the one exception to actions through the locator API (`script-quality-standards.md` **Actions Through the Locator API**).
-Popup and dialog buttons in SCORM authoring tools (Articulate, iSpring, Lectora) often have `id=""`, where `getElementById('')` returns `null` and the click silently does nothing, so match those by visible text or `aria-label`.
+Popup and dialog buttons often have `id=""`, where `getElementById('')` returns `null` and the click silently does nothing, so match those by visible text or `aria-label`.
 
 ```javascript
 // ✅ By known ID (only when the id is non-empty)
@@ -580,9 +576,9 @@ Fix without asking: a violation is always wrong.
 
 **Stale State Cleanup** - Before the main loop in any multi-step batch script, call `cleanupStaleState(page)` from `browser-chauffeur-helpers`. If a previous run aborted mid-flow (e.g., a Save click timed out), the editor may still be open with dirty changes. The next run then hits a "Discard changes?" dialog that intercepts pointer events and silently blocks all subsequent clicks. This helper detects visible `[role="dialog"]`, `[role="alertdialog"]`, and `[role="menu"]` elements, clicks safe-close buttons in priority order (`Cancel` → `Discard` → `OK` → `Close`), falls back to Escape, and loops until no popup remains.
 
-**Overlay Dismissal** - A fresh browser profile will show first-run overlays - Edge sync prompts ("We are now syncing your browsing data"), cookie consent banners, "What's new" modals. These block the real UI and cause element waits to time out. See `templates/overlay-dismissal.js` for the `dismissOverlays(page)` helper. Call it immediately after navigating to the target app, **before** waiting for app-specific elements.
+**Overlay Dismissal** - A fresh browser profile will show first-run overlays - Edge sync prompts ("We are now syncing your browsing data"), cookie consent banners, "What's new" modals. These block the real UI and cause element waits to time out. The `dismissOverlays(page)` helper in `templates/overlay-dismissal.js` clears them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
 
-**Screenshot on Failure** - Scripts save screenshots to `.tmp/diag-*.png` on failure so the recovery loop can read them. See `templates/screenshot-on-failure.js` for the `screenshotOnFailure(context, label)` helper. Use it in catch blocks, so each failed attempt produces a screenshot for debugging.
+**Screenshot on Failure** - Scripts save screenshots to `.tmp/diag-*.png` on failure so the recovery loop can read them. The `screenshotOnFailure(context, label)` helper in `templates/screenshot-on-failure.js` saves them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
 
 **Virtualized Grid Scrolling** - To render off-screen rows in a virtualized grid/list (Vaadin Grid, react-window, ag-grid, and similar - they mount only visible rows and recycle DOM nodes as you scroll), call the component's own scroll-to API directly via `page.evaluate()`: `grid.scrollToIndex(n)` for Vaadin Grid, or the analogous method on whichever virtualization library the page uses. Verify the target content actually appears in `document.body.innerText` afterward before moving on. Scroll, locate the row's control, and click it with a locator all in the same script run - a virtualized grid's scroll position and recycled row contents can shift between runs, so measuring a position in one script and clicking it in the next can land on a different row than intended. When the resulting action is destructive or hard to undo, read back its confirmation dialog (or resulting state) to confirm it names the item you meant before proceeding.
 
@@ -604,8 +600,7 @@ A create, update, or delete counts as verified on either of two pieces of eviden
 - **It survives a fresh load** - after a reload, or navigating away and back, the page shows the changed state.
 
 A DOM change alone (an element gone, a row added) proves only that the page re-rendered: the UI may update optimistically while the API call silently fails or never fires, so it verifies nothing by itself.
-Wait for either piece of evidence with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids (Outlook calendar, Teams, SharePoint lists) re-render asynchronously after the server responds.
-It checks the predicate up to `retries` times (default 3), first letting the network go idle (waiting up to `settleMs`, default 1.5s) and the next render flush; return `true` from the predicate once the evidence is on the page.
+Wait for either piece of evidence with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids re-render asynchronously after the server responds; return `true` from the predicate once the evidence is on the page.
 A batch whose app shows no confirmation per item gets one fresh load at the end of the run, and the whole batch is re-checked there before success is reported.
 
 **Variant UIs:** The same application can render completely different DOM on different tenants or account types. When a selector fails in a new context, re-read there and find the equivalent element - never assume one tenant's selectors work on another.
