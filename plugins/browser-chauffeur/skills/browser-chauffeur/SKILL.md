@@ -38,7 +38,11 @@ Every task uses the same flow: ensure a persistent Edge or Chrome browser is run
 
 **One-off or exploratory tasks** - Browser-chauffeur executes the task directly. It generates an ad-hoc script in `.tmp/`, runs it, watches for errors, and recovers autonomously. The script is disposable - it lives in `.tmp/` and is not committed anywhere.
 
-**Recurring automation** - Create an instruction-driven spec: a SKILL.md file that documents the business rules, invariants, selectors (as last-known-good hints), and safety rails. Each time the skill is invoked, browser-chauffeur generates a fresh ad-hoc script in `.tmp/` from those instructions. This is more resilient than a committed script because selectors that drift get fixed in the spec, not by patching a brittle committed file. See `message-draft`'s `teams` mode as an example. **Commit the spec (SKILL.md); the scripts it generates stay in `.tmp/`.**
+**Recurring automation** - Create an instruction-driven spec: a SKILL.md file that documents the business rules, invariants, selectors (as last-known-good hints), and safety rails.
+Each time the skill is invoked, browser-chauffeur generates a fresh ad-hoc script in `.tmp/` from those instructions.
+This is more resilient than a committed script because selectors that drift get fixed in the spec, not by patching a brittle committed file.
+See `message-draft`'s `teams` mode as an example.
+**Commit the spec (SKILL.md); the scripts it generates stay in `.tmp/`.**
 
 ## Running in a subagent (keep the driving turns out of the main thread)
 
@@ -91,6 +95,7 @@ Human gates are already natural seams, since the run pauses there anyway.
 Invoke the browser-chauffeur skill and run this one browser task inside your own context: <task>.
 Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute, verify, recover.
 End by returning DONE or HELP_NEEDED, carrying what the skill's "The return contract" section lists for each.
+Stop at the final irreversible button, and hand every gate that needs the user back to me as HELP_NEEDED.
 ```
 
 ### When to run inline instead
@@ -214,11 +219,14 @@ This ensures the AI is always watching the road, not just handing off directions
 
 Two layers keep this reliable:
 
-1. **Root cause - keep the tab count low.** Every tab a script opens is registered to its session (Phase 1, **Getting a tab**), and the Phase 0 **Automatic tab sweep** reclaims the rest. So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
+1. **Root cause - keep the tab count low.** Every tab a script opens is registered to its session (Phase 1, **Getting a tab**), and the Phase 0 **Automatic tab sweep** reclaims the rest.
+   So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
 
 2. **Backstop - fail fast.** Scripts connect through the hardened `connectBrowser()` (`script-quality-standards.md` **Browser Connection**), so a still-wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
 
-**If the connect times out anyway:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once. If it still times out, the overload is from tabs the sweep won't touch - an active session's tabs or the user's own. Leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.
+**If the connect times out anyway:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once.
+If it still times out, the overload is from tabs the sweep won't touch - an active session's tabs or the user's own.
+Leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.
 
 ---
 
@@ -252,7 +260,13 @@ Before touching anything:
 
    // Save this reference - it stays valid even if other tabs open/close
    ```
-   **Why:** Tab positions shift as tabs are created/closed. Other Claude sessions may be working in parallel - possibly on the very same URL. Targeting by index is unreliable, and a bare `context.pages().find(...)` would hand you whichever session's tab matched first, so you could navigate another session's tab out from under it. **Get a tab with `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own.** `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab created any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count. `findTab` is owner-scoped so it can only ever return your own tab. Save the page object reference and reuse it throughout the script.
+   **Why:** Tab positions shift as tabs are created/closed.
+   Other Claude sessions may be working in parallel - possibly on the very same URL.
+   Targeting by index is unreliable, and a bare `context.pages().find(...)` would hand you whichever session's tab matched first, so you could navigate another session's tab out from under it.
+   **Get a tab with `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own.**
+   `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab created any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count.
+   `findTab` is owner-scoped so it can only ever return your own tab.
+   Save the page object reference and reuse it throughout the script.
 
    **Tabs a click spawns are owned automatically.** A tab your tab opens itself is registered under your session (`HELPERS.md` **openTab**); to *drive* it, capture it with `const popup = await page.waitForEvent('popup')` around the click.
 
@@ -287,7 +301,8 @@ When `frameLocator(...).locator(...)` times out at 30s on a page with nested ifr
 **How to attach directly:**
 
 ```javascript
-const { CDPSession, httpJson, evalIn, waitForContext } = require('./templates/cdp-session');
+// Absolute path: this skill's base directory, which loads with the skill, + /templates/cdp-session
+const { CDPSession, httpJson, evalIn, waitForContext } = require('<skill base directory>/templates/cdp-session');
 
 // 1. List all CDP targets - look for type=iframe
 const targets = await httpJson(`http://localhost:${cdpPort}/json`);
@@ -324,8 +339,6 @@ await evalIn(session, ctxId, `
   .click()
 `);
 ```
-
-See **Anti-Patterns → OS Coordinates Don't Reach Cross-Origin Iframe Content** and **Tab Key Is Unreliable Across Cross-Origin Iframe Boundaries** for the failure modes this replaces.
 
 ---
 
@@ -600,7 +613,8 @@ A create, update, or delete counts as verified on either of two pieces of eviden
 - **It survives a fresh load** - after a reload, or navigating away and back, the page shows the changed state.
 
 A DOM change alone (an element gone, a row added) proves only that the page re-rendered: the UI may update optimistically while the API call silently fails or never fires, so it verifies nothing by itself.
-Wait for either piece of evidence with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids re-render asynchronously after the server responds; return `true` from the predicate once the evidence is on the page.
+Wait for the app's confirmation with `locator.waitFor()` on its text.
+After a fresh load, first wait for an element that proves the list or page has rendered, so an absence check can't pass on an empty page; then check the changed state with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids re-render asynchronously, returning `true` from the predicate once the change shows.
 A batch whose app shows no confirmation per item gets one fresh load at the end of the run, and the whole batch is re-checked there before success is reported.
 
 **Variant UIs:** The same application can render completely different DOM on different tenants or account types. When a selector fails in a new context, re-read there and find the equivalent element - never assume one tenant's selectors work on another.

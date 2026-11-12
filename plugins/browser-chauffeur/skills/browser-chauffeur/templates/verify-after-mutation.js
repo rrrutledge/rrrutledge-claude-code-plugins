@@ -1,6 +1,6 @@
-// Post-mutation verification - waits for the evidence that a create, update, or
-// delete succeeded to render: the app's own success message, or the changed state
-// after a fresh load (SKILL.md Key Rules, "Verifying a change").
+// Post-mutation verification - checks the changed state of a create, update, or
+// delete once the page has re-rendered, typically after a fresh load (SKILL.md
+// Key Rules, "Verifying a change").
 // `networkidle` fires when the network goes quiet, but virtualized SPA grids (Outlook
 // calendar, Teams, SharePoint lists) re-render asynchronously after a server response.
 // Checking DOM state immediately after networkidle produces false negatives: the mutated
@@ -13,6 +13,7 @@
 // Example - confirm a deleted event is gone after a fresh load:
 //
 //   await page.reload();
+//   await page.getByRole('grid').waitFor();   // the list has rendered, so absence means gone
 //   const gone = await verifyAfterMutation(page, async () => {
 //     const events = await page.getByRole('button', { name: /Budget review/ }).count();
 //     return events === 0;

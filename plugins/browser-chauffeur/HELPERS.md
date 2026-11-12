@@ -41,21 +41,27 @@ Takes a diagnostic screenshot when automation fails. Useful in catch blocks.
 
 ### `openTab(context, url)`
 
-Opens a new tab, registers it in the shared tab registry under the current Claude session, and navigates to `url` if provided. It is how every script creates a tab (SKILL.md Phase 1, **Getting a tab**). It also attaches a page-scoped `popup` listener, so any tab this page later spawns itself (`target="_blank"`, `window.open`, ctrl-click) is registered under the same session automatically - capture it with `await page.waitForEvent('popup')` around the click if you need to drive it.
+Opens a new tab, registers it in the shared tab registry under the current Claude session, and navigates to `url` if provided.
+It is how every script creates a tab (SKILL.md Phase 1, **Getting a tab**).
+It also attaches a page-scoped `popup` listener, so any tab this page later spawns itself (`target="_blank"`, `window.open`, ctrl-click) is registered under the same session automatically - capture it with `await page.waitForEvent('popup')` around the click if you need to drive it.
 
 - **Parameters**: `context` - Playwright browser context; `url` - optional URL to navigate to
 - **Returns**: Promise<Page>
 
 ### `closeTab(page)`
 
-Closes a tab opened with `openTab` and unregisters it. Parks on `about:blank` instead of closing when it's the browser's last tab, so it never exits the persistent browser. Which tabs to pass it, and when: SKILL.md Phase 3, **Tab cleanup**.
+Closes a tab opened with `openTab` and unregisters it.
+Parks on `about:blank` instead of closing when it's the browser's last tab, so it never exits the persistent browser.
+Which tabs to pass it, and when: SKILL.md Phase 3, **Tab cleanup**.
 
 - **Parameters**: `page` - a Playwright page returned by `openTab`
 - **Returns**: Promise<void>
 
 ### `findTab(context, predicate)`
 
-Reuses **your own session's** tab that matches the predicate, and marks it active so a tab you keep returning to holds its place in the eviction order and isn't reaped as idle. It only ever returns a tab this session opened; a tab another Claude session opened, or one the user opened by hand, is never returned even when it matches the predicate - so two sessions on the same URL never grab each other's tab. When you own no matching tab it returns `null`, and you open your own with `openTab`.
+Reuses **your own session's** tab that matches the predicate, and marks it active so a tab you keep returning to holds its place in the eviction order and isn't reaped as idle.
+It only ever returns a tab this session opened; a tab another Claude session opened, or one the user opened by hand, is never returned even when it matches the predicate - so two sessions on the same URL never grab each other's tab.
+When you own no matching tab it returns `null`, and you open your own with `openTab`.
 
 - **Parameters**: `context` - Playwright browser context; `predicate` - `(page) => boolean`
 - **Returns**: Promise<Page | null> - your own matching tab (the most-recently-active if you own several), or `null` (then open one with `openTab`)
