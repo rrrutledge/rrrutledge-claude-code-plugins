@@ -92,11 +92,14 @@ It leaves a small skill free to be one file, and it gives the reviewer in change
 ### 4. Backlog: one refactor each for the skills that already contradict themselves
 
 The new review reports only on what a change adds, so existing duplicates stay until someone moves them.
-After this PR lands, run one refactor per skill, each in its own session and PR, on the pattern PR 589 used (inventory, home per rule, one-copy grep at the end):
+After this PR lands, refactor one skill at a time, simplest first, on the pattern PR 589 used (inventory, home per rule, one-copy grep at the end):
 
-1. drainer, 5 contradictions.
-2. browser-chauffeur, 5 contradictions.
-3. blog-post (personal-ai-pod), 1 contradiction.
+1. blog-post (personal-ai-pod): one file, ~6 duplicated rules, 1 contradiction.
+2. browser-chauffeur: ~80 KB across a few files, ~20 duplicated rules, 5 contradictions.
+3. drainer: ~320 KB across engine, providers, and docs, ~15 duplicated rules, 5 contradictions.
+
+Each refactor starts after the previous one's PR merges.
+Its last step folds whatever it learned about the target shape into `authoring-rules` (or into this plan, when the lesson is about the refactor process), so the next skill starts from the sharper shape.
 
 isc-ed-report needs none.
 After the backlog clears, changes 1 and 2 catch new duplicates at the edit, so a periodic audit would spend tokens again on skills the review already covers.
@@ -107,7 +110,7 @@ After the backlog clears, changes 1 and 2 catch new duplicates at the edit, so a
 2. Edit `writing-flow/SKILL.md`, `writing-review/SKILL.md`, `writing-review/reviewer-prompt.md`, `authoring-rules/SKILL.md`, and `document-authoring/learn-from-send.md` per changes 1-3.
 3. Bump `document-authoring`'s minor version, since the review behavior changes.
 4. Run `writing-flow`: cold `writing-review` on every changed file, mint, `gh pr create`, and hand over the `/changes` link.
-5. After it merges, hand off the three backlog refactors as separate sessions.
+5. After it merges, hand off the blog-post refactor; each later refactor launches once the one before it merges, in the order in change 4.
 
 ## Decision for Russell
 
