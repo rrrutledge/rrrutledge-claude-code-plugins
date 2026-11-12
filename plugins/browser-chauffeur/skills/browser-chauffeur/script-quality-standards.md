@@ -49,7 +49,7 @@ Re-checking a condition after an action, without repeating the action, is a wait
 
 ## ✅ REQUIRED: Semantic Selectors
 
-Select by `role`, `aria-label`, and visible text.
+Select by `role`, label (`getByLabel`, `aria-label`), and visible text.
 CSS classes an app generates or names for its own styling change across deployments and tenants, so they never appear in a selector.
 A component library's published static class names are stable API and count as semantic: Fluent UI's `fui-*` classes are the case this skill relies on (`anti-patterns.md` Anti-Pattern 7).
 
@@ -128,4 +128,5 @@ The helpers' process guard is a backstop behind this rule, not a substitute for 
 - `console.log` after each major step for progress tracking.
 - `dismissOverlays(page)` after navigation, before any app-specific wait (SKILL.md Common Patterns, **Overlay Dismissal**).
 - `screenshotOnFailure(context, label)` in catch blocks (SKILL.md Common Patterns, **Screenshot on Failure**).
-- A `page.frames()` check when `body.innerText` is unexpectedly short, and `page.route()` for request interception (SKILL.md Phase 1, **Iframe detection**).
+- A `page.frames()` check when `body.innerText` is unexpectedly short (SKILL.md Phase 1, **Iframe detection**).
+- `page.route()` for request interception, on the page object; frames have no `route()` method, so interception for content inside a frame is set on its page too.

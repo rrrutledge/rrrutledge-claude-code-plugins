@@ -4,7 +4,7 @@ Shared utilities for browser automation scripts.
 
 ## Setup
 
-No manual setup needed. Run the browser-chauffeur setup script once (SKILL.md calls this automatically as part of the prerequisite check):
+No manual setup needed. SKILL.md's **Prerequisite Check** runs the setup script:
 
 ```bash
 node plugins/browser-chauffeur/skills/browser-chauffeur/templates/setup.js
@@ -81,7 +81,7 @@ Requiring `browser-chauffeur-helpers` installs a process guard that keeps a hung
 - **Watchdog** - force-exits a script that is still alive after a wall-clock timeout (default 30 minutes, override with `BROWSER_CHAUFFEUR_SCRIPT_TIMEOUT_MS`). Generous by design so a legitimately long single script isn't cut off; the timer is unref'd, so it never delays a script that finishes cleanly. A script that must run even longer calls `cancelScriptWatchdog()`.
 - **Unhandled rejection** - a script whose top-level promise rejects with no `.catch()` (a bare IIFE) is exited promptly with the error printed, rather than left hanging behind the socket.
 
-The guard is the safety net, not the plan: a well-formed script still exits promptly through its own `finally { await browser.close(); }` and `run().catch(e => { console.error(e.message); process.exit(1); })` - see **Guaranteed Process Exit** in `script-quality-standards.md`.
+The guard is the safety net: a well-formed script still exits promptly on its own, per **Guaranteed Process Exit** in `skills/browser-chauffeur/script-quality-standards.md`.
 
 ### Where tab state lives
 

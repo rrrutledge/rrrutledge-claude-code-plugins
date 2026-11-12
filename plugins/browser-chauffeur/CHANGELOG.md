@@ -3,11 +3,16 @@
 ## [1.18.0] - 2026-11-12
 
 ### Changed
-- **Each rule has one home.** `script-quality-standards.md` holds every rule about a script's code, `SKILL.md` the rules the session applies while it drives, and `anti-patterns.md` the symptom-indexed fixes that point at those rules.
-- **A create, update, or delete counts as verified on the app's own success message or on the changed state after a fresh load.** A DOM change alone no longer counts; a batch with no per-item confirmation gets one fresh load at the end of the run.
+- **Each rule has one home.**
+  `script-quality-standards.md` holds every rule about a script's code, `SKILL.md` the rules the session applies while it drives, and `anti-patterns.md` the symptom-indexed fixes that point at those rules.
+- **Mutations verify on app confirmation or reload.**
+  A create, update, or delete counts as verified on the app's own success message or on the changed state after a fresh load.
+  A DOM change alone no longer counts; a batch with no per-item confirmation gets one fresh load at the end of the run.
 - **Escalation names its two routes:** `AskUserQuestion` inline, `HELP_NEEDED` from a subagent.
-- **A profile reset is the user's call.** The connect-timeout error now says to re-run `chauffeur.py` and retry once.
-- **`cdp-session.js` exports `waitForContext`**, a short poll that replaces the fixed 1.5s wait for an iframe's execution contexts.
+- **A profile reset is the user's call.**
+  The connect-timeout error now says to re-run `chauffeur.py` and retry once.
+- **`cdp-session.js` exports `waitForContext`.**
+  It is a short poll that replaces the fixed 1.5s wait for an iframe's execution contexts.
 
 ## [1.16.0] - 2026-09-23
 

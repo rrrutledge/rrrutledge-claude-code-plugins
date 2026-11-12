@@ -134,7 +134,7 @@ const { openTab, findTab, closeTab } = (() => {
 python plugins/browser-chauffeur/skills/browser-chauffeur/templates/chauffeur.py
 ```
 
-Adjust the path to wherever your skill is mounted. This launches Edge when it is installed (better Windows SSO integration) and Chrome only when Edge is absent, so every task drives the same one browser. It manages port selection and profile automatically. If a persistent browser is already running, it prints the existing connection info and exits immediately. If not, it launches a new one with a persistent profile at `~/.claude/browser-chauffeur/profile/`. The state is stored globally at `~/.claude/browser-chauffeur/state.json` so all Claude instances can discover and reuse the same browser.
+Adjust the path to wherever your skill is mounted. This manages port selection and profile automatically. If a persistent browser is already running, it prints the existing connection info and exits immediately. If not, it launches a new one with a persistent profile at `~/.claude/browser-chauffeur/profile/`. The state is stored globally at `~/.claude/browser-chauffeur/state.json` so all Claude instances can discover and reuse the same browser.
 
 **Automatic tab sweep.** When reusing an existing browser, this script keeps the tab count low. Reclaiming is driven by idleness; ownership just lets it clean up promptly. Three layers: (1) **owner reap** - a tab whose owning Claude session has ended is closed right away. Each tab is tied to the session that opened it (its `CLAUDE_PID`), not the short-lived script (a session fires many scripts), so a tab stays alive as long as its session runs and is cleaned up when that session ends. (2) **Idle age-out** - any tab idle longer than the TTL (default 12h, override with `BROWSER_CHAUFFEUR_TAB_TTL`) is closed, regardless of owner, catching genuinely abandoned tabs. (3) **Count cap** - if more than `MAX_TABS` (default 15, override with `BROWSER_CHAUFFEUR_MAX_TABS`) remain, close the least-recently-active until back under it. Activity is tracked automatically - a tab created or reused via `openTab`/`findTab`, or one whose URL/title the sweep sees change between runs, counts as recently active, so an in-use tab is never the one closed. It never closes the browser's last page. Layers 2–3 also cover tabs opened without the `openTab` helper (which have no owner to reap). This keeps `connectOverCDP` fast and reliable and stops the browser accumulating enough tabs to crash (see **Resilient Connection**). It's automatic - you don't invoke it directly.
 
@@ -280,7 +280,7 @@ for (const f of frames) {
 }
 ```
 
-Find the frame with the real content and target all locators at that frame object instead of the page. Note: `frame.route()` does not exist - routing only works on the page object.
+Find the frame with the real content and target all locators at that frame object instead of the page. Request interception stays on the page (`script-quality-standards.md` **Helper Calls and Logging**).
 
 ### Out-of-process iframes (cross-origin, site isolation)
 
@@ -313,7 +313,7 @@ const title  = await evalIn(session, ctxId, 'document.title');
 
 `playwright-core/lib/utilsBundle` exports the `ws` package, so no extra `npm install` is needed.
 
-**How to click in the iframe - always use `Runtime.evaluate`, never OS coordinates or the Tab key.**
+**How to click in the iframe - use `Runtime.evaluate`** (`anti-patterns.md` Anti-Patterns 6 and 9 show why coordinates and the Tab key fail there).
 This DOM `.click()` is the one exception to actions through the locator API (`script-quality-standards.md` **Actions Through the Locator API**).
 Popup and dialog buttons in SCORM authoring tools (Articulate, iSpring, Lectora) often have `id=""`, where `getElementById('')` returns `null` and the click silently does nothing, so match those by visible text or `aria-label`.
 
@@ -523,9 +523,8 @@ Read the full output and categorize:
 When errors are detected, **you are the debugger**. Do not show the user an error and ask what to do. Diagnose, fix, and re-run. Don't ask user permission - enter the loop.
 
 1. **Read the diagnostic screenshot** - scripts save screenshots to `.tmp/diag-*.png` on failure. Use the Read tool to view the image. This tells you what the browser was actually showing: an overlay, a login page, a CAPTCHA, a changed UI, or something else entirely. Take additional screenshots of the failure page if needed.
-   Diagnose from what the screenshot shows, not from the error text, and the same for a silent failure: a click that threw nothing but changed nothing.
+   Diagnose from what the screenshot shows, and the same for a silent failure: a click that threw nothing but changed nothing.
    Before writing new diagnostic code, Read every screenshot already taken during the failed step; a saved screenshot shows you nothing until you open it.
-   The screenshots are for you, not for the user.
 
 2. **Diagnose the cause** from what you see:
    - **CAPTCHA, login page, or MFA prompt whose code goes somewhere unreachable** (an emailed code is fetched, see **Email-delivered MFA codes**) → requires human action. Escalate immediately per **User Intervention**.
