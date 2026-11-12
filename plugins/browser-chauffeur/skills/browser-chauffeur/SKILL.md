@@ -69,8 +69,7 @@ A browser subagent ends by returning one of two structured results, and it never
   Return the reason, the URL and a stable tab locator (the `findTab` predicate, so the same tab is re-findable), exactly what the user must do, and how far the run got.
   Leave the tab open on the correct page.
 
-A code emailed to a mailbox under **Readable mailboxes** is not a `HELP_NEEDED` case.
-The subagent fetches it itself and continues, and clears a multi-step sign-in one step at a time, exactly as **Email-delivered MFA codes** below prescribes.
+A code emailed to a mailbox under **Readable mailboxes** is fetched, not returned as `HELP_NEEDED` (see **Email-delivered MFA codes**).
 
 ### The help-channel
 
@@ -96,7 +95,7 @@ Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute
 Return one of two results:
   DONE - outcome, any values quoted from the page, a final screenshot path, and (if the endpoint is irreversible) the flow staged up to but NOT pressing the Send/Submit/Pay/Confirm button, with a screenshot of that staged state.
   HELP_NEEDED - reason (login / CAPTCHA / MFA-to-phone / in-page action that can't be done headless), the URL, a findTab predicate that re-finds the tab, what the user must do, and how far you got. Leave the tab open on the correct page.
-A sign-in code emailed to a mailbox under "Readable mailboxes" in the browser-chauffeur skill is not a gate: fetch and enter it yourself, and report HELP_NEEDED only for the step that is truly the user's, naming that step.
+Fetch emailed sign-in codes per the skill's **Email-delivered MFA codes** section; report HELP_NEEDED only for the step that is truly the user's, naming it.
 Never press an irreversible button, and never prompt the user directly - hand the gate or the staged step back to me.
 ```
 
@@ -458,7 +457,8 @@ Sometimes the browser hits a blocker that only a human can resolve. These all fa
 When a site's MFA step sends a one-time code to a mailbox listed under **Readable mailboxes** below, this is **not** a user-intervention case - complete it yourself:
 
 1. Note the destination the page names ("We just sent a code to `user@example.com`") and the field waiting for it.
-2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts. Codes expire in minutes, so search right after the site sends it.
+2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts.
+   Codes expire in minutes, so search right after the site sends it.
 3. Enter the code and submit immediately, the same way you'd fill any other field.
 4. If the mailbox search comes up empty after a reasonable wait, or the code is rejected, retry the search once (delivery lag) before falling back to `AskUserQuestion` - don't spin indefinitely.
 
