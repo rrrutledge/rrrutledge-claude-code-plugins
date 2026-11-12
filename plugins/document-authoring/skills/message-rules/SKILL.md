@@ -285,6 +285,7 @@ A single clear sentence ending in a question is usually the whole message — re
   "Want to bring it then?" re-asks something they already answered; "are you available to bring it then?" asks the one thing still genuinely open.
 - **Inviting someone to a call that already exists, or confirming you added someone to it: name that call and ask whether they can join, or state the add and stop.**
   The call is already on their calendar, so the message restates no date, time, or timezone conversion (including why a time someone proposed matches the call's slot) and promises no new invite.
+  **The same holds when they have already accepted the invite:** a reply answering a separate question carries only that answer, since an accepted invite is theirs to open.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
 
