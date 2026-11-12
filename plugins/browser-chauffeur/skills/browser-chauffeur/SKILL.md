@@ -75,7 +75,7 @@ A code emailed to a mailbox under **Readable mailboxes** is fetched, not returne
 
 On `HELP_NEEDED`, the orchestrator (the live thread with the user) surfaces the request through `AskUserQuestion`, the same visible, blocking prompt this skill already uses, naming the site, the gate, and that the browser window is open on the right tab.
 The user acts directly in the persistent browser.
-When they confirm, the orchestrator continues the subagent via SendMessage; the subagent re-finds its tab with the `findTab` predicate it returned, re-orients with a fresh read to confirm it is past the gate, and resumes from Phase 2.
+When they confirm, the orchestrator continues the subagent via SendMessage; the subagent re-finds its tab with the `findTab` predicate it returned, re-orients with a fresh read to confirm it is past the gate (a tab sitting on the next sign-in step, such as an emailed-code prompt, is not past it; see **After the user resolves the blocker**), and resumes from Phase 2.
 If the subagent cannot be continued, the orchestrator spawns a fresh continuation subagent seeded with "the login is done; resume the flow at step N on the tab matching <predicate>", and the persistent tab makes either path work.
 
 **The subagent stages up to the final button and hands the staged state back; it never presses Send/Submit/Pay/Confirm.**
@@ -498,6 +498,10 @@ When running a batch script that may encounter these blockers mid-run:
 ### After the user resolves the blocker
 
 - Leave the browser open - the user needs the same session
+- Re-find the tab the user worked in (the `findTab` predicate you returned, or its URL) and read its current state before doing anything else; open no new tab until that tab is ruled out.
+  A new tab starts a fresh page that may show signed-out even though the user's tab is mid-sign-in.
+- Judge the state of that tab: past the gate, or on the next step of the sign-in.
+  A user who signs in often lands on an emailed-code prompt and reports "I signed in" without noticing; treat that prompt as the next step to clear per **Email-delivered MFA codes**, then continue the flow in the same tab.
 - Re-run or continue the script - the browser session should now be past the blocker
 - If the same blocker reappears, escalate again with `AskUserQuestion` - don't silently retry
 

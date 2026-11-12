@@ -31,5 +31,5 @@ Park the gate where Russell already looks, the worker's own open session and tab
 
 Russell resumes this the same way he'd continue any open session.
 He finds this session waiting in his worker tabs, clears the gate, and tells it so.
-From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate, and continue the flow from where you stopped.
+From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate (browser-chauffeur's **After the user resolves the blocker** covers a tab left on the next sign-in step), and continue the flow from where you stopped.
 Then finish normally: complete the remaining work, draft any reply, clear the item per worker-core §6, and close up per §6's closing rules once your part and his are both done.
