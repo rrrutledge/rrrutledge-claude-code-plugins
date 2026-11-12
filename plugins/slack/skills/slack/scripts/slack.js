@@ -1026,8 +1026,8 @@ async function resolveName() {
 // Channels Russell is a member of whose name contains a fragment: public and private channels and group
 // DMs, from users.conversations (member-only by design), paginated. Read-only.
 async function findChannel() {
-  const given = args['find-channel'] === true ? '' : String(args['find-channel']);
-  const query = given.toLowerCase().replace(/^#/, '');
+  const given = args['find-channel'] === true ? '' : args['find-channel'];
+  const query = given.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
   if (!query) throw new Error('--find-channel requires a name fragment, e.g. --find-channel=treasurer');
   const out = [];
   let cursor = '';
@@ -1044,10 +1044,7 @@ async function findChannel() {
   } while (cursor);
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   if (!out.length) { console.log(`No channel you belong to matches "${given}".`); return; }
-  for (const c of out) {
-    const label = await convDisplayName(c.id, { name: c.name, is_mpim: c.groupDm });
-    console.log(`${c.id}  ${label}  (${c.groupDm ? 'group DM' : c.private ? 'private' : 'public'})`);
-  }
+  for (const c of out) console.log(`${c.id}  ${c.groupDm ? c.name : `#${c.name}`}  (${c.groupDm ? 'group DM' : c.private ? 'private' : 'public'})`);
 }
 
 async function findByDomain() {
