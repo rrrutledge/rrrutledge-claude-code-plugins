@@ -47,6 +47,7 @@ A rendered preview hides which words carry a link, so spell out the URL next to 
 - **A document** — link its title to the document itself.
 - **A meeting or call you're offering to set up** — anchor the offer to Russell's booking page (https://calendly.com/russell-rutledge) so the recipient can self-book, rather than a bare "we could set up a call", and name the second path too: they can pick a slot there, or just send Russell a direct meeting invite for a time that already shows as free on his calendar.
   **A recipient with an ongoing working relationship with Russell already knows how to reach him, so the offer carries no booking link or invite path.**
+  **When accepting a call the recipient offered and the time matters to you, give the booking page link and omit the direct-invite option above** - they already proposed the call, so the booking page is the only thing missing (an indifferent time hands the invite back, per **Brevity**).
   For anyone else, include the link the first time a call is proposed on a thread; drop it on later nudges per "Don't re-paste".
   **A meeting that others besides Russell must attend asks the recipient to propose times:** name everyone attending and ask the recipient to propose times from their availability, since the booking page shows only Russell's.
 - **Exception - a colleague with full, established context on the specific person, document, or event referenced** (they run it, coordinate it, or work with it directly - for a person, this is the recipient's own coworker, and applies to the profile-link case above): name the concrete detail in plain text and skip the link. They already know it inside and out, so citing it over-formalizes what's otherwise a plain internal exchange.
@@ -286,7 +287,6 @@ A single clear sentence ending in a question is usually the whole message — re
   The call is already on their calendar, so the message restates no date, time, or timezone conversion (including why a time someone proposed matches the call's slot) and promises no new invite.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
-
 ### Holding the voice
 
 The specifics that most often separate a message that reads as Russell's from one that reads as generic AI prose.
