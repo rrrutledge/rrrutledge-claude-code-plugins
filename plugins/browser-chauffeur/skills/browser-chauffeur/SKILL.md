@@ -69,13 +69,13 @@ A browser subagent ends by returning one of two structured results, and it never
   Return the reason, the URL and a stable tab locator (the `findTab` predicate, so the same tab is re-findable), exactly what the user must do, and how far the run got.
   Leave the tab open on the correct page.
 
-The subagent handles an email-delivered MFA code itself: it fetches the code from the connected mailbox and continues, exactly as **User Intervention** below prescribes.
+A code emailed to a mailbox under **Readable mailboxes** is fetched, not returned as `HELP_NEEDED` (see **Email-delivered MFA codes**).
 
 ### The help-channel
 
 On `HELP_NEEDED`, the orchestrator (the live thread with the user) surfaces the request through `AskUserQuestion`, the same visible, blocking prompt this skill already uses, naming the site, the gate, and that the browser window is open on the right tab.
 The user acts directly in the persistent browser.
-When they confirm, the orchestrator continues the subagent via SendMessage; the subagent re-finds its tab with the `findTab` predicate it returned, re-orients with a fresh read to confirm it is past the gate, and resumes from Phase 2.
+When they confirm, the orchestrator continues the subagent via SendMessage; the subagent re-finds its tab with the `findTab` predicate it returned, re-orients with a fresh read to confirm it is past the gate (a tab sitting on the next sign-in step, such as an emailed-code prompt, is not past it; see **After the user resolves the blocker**), and resumes from Phase 2.
 If the subagent cannot be continued, the orchestrator spawns a fresh continuation subagent seeded with "the login is done; resume the flow at step N on the tab matching <predicate>", and the persistent tab makes either path work.
 
 **The subagent stages up to the final button and hands the staged state back; it never presses Send/Submit/Pay/Confirm.**
@@ -95,6 +95,7 @@ Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute
 Return one of two results:
   DONE - outcome, any values quoted from the page, a final screenshot path, and (if the endpoint is irreversible) the flow staged up to but NOT pressing the Send/Submit/Pay/Confirm button, with a screenshot of that staged state.
   HELP_NEEDED - reason (login / CAPTCHA / MFA-to-phone / in-page action that can't be done headless), the URL, a findTab predicate that re-finds the tab, what the user must do, and how far you got. Leave the tab open on the correct page.
+Fetch emailed sign-in codes per the skill's **Email-delivered MFA codes** section; report HELP_NEEDED only for the step that is truly the user's, naming it.
 Never press an irreversible button, and never prompt the user directly - hand the gate or the staged step back to me.
 ```
 
@@ -453,14 +454,24 @@ Sometimes the browser hits a blocker that only a human can resolve. These all fa
 
 ### Email-delivered MFA codes - fetch them yourself, don't escalate
 
-When a site's MFA step sends a one-time code to an email address you have read access to (a connected Gmail/Outlook/IMAP mailbox), this is **not** a user-intervention case - complete it yourself:
+When a site's MFA step sends a one-time code to a mailbox you can read (see **Readable mailboxes** below), this is **not** a user-intervention case - complete it yourself:
 
 1. Note the destination the page names ("We just sent a code to `user@example.com`") and the field waiting for it.
 2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts.
-3. Enter the code and submit, the same way you'd fill any other field.
+   Codes expire in minutes, so search right after the site sends it.
+3. Enter the code and submit immediately, the same way you'd fill any other field.
 4. If the mailbox search comes up empty after a reasonable wait, or the code is rejected, retry the search once (delivery lag) before falling back to `AskUserQuestion` - don't spin indefinitely.
 
-Only escalate an MFA prompt when the code goes somewhere you can't reach (SMS, an authenticator app, a phone call) - see the bullet above.
+A sign-in with several steps (emailed code, then password) is cleared one step at a time.
+Finish every step you can, then escalate only the step that is truly the user's, naming it precisely (for example, the password prompt after the emailed code).
+
+#### Readable mailboxes
+
+A mailbox is readable when a skill or tool available in this session can search and show its messages (a mail-reading skill, an email MCP connector, an IMAP/Graph/Gmail API client).
+The user's own instructions (their global or project `CLAUDE.md`, or the project's context files) name which mailboxes exist and how to read each; check them before deciding a code is unreachable.
+Search the destination mailbox the page names and read the newest matching message.
+
+A code sent anywhere else (SMS, an authenticator app, a phone call, a mailbox with no way to read it from this session) is the unreachable case and escalates.
 
 ### Required `AskUserQuestion` pattern
 
@@ -487,6 +498,10 @@ When running a batch script that may encounter these blockers mid-run:
 ### After the user resolves the blocker
 
 - Leave the browser open - the user needs the same session
+- Re-find the tab the user worked in (the `findTab` predicate you returned, or its URL) and read its current state before doing anything else; open no new tab until that tab is ruled out.
+  A new tab starts a fresh page that may show signed-out even though the user's tab is mid-sign-in.
+- Judge the state of that tab: past the gate, or on the next step of the sign-in.
+  A user who signs in often lands on an emailed-code prompt and reports "I signed in" without noticing; treat that prompt as the next step to clear per **Email-delivered MFA codes**, then continue the flow in the same tab.
 - Re-run or continue the script - the browser session should now be past the blocker
 - If the same blocker reappears, escalate again with `AskUserQuestion` - don't silently retry
 
@@ -501,7 +516,7 @@ When a script completes - **regardless of exit code** - analyze the output and r
 Read the full output and categorize:
 
 - **Explicit success** - `Verification passed`, `✅`, `All checks passed` AND no error patterns → proceed to reporting.
-- **Human action required** (see **User Intervention**) - diagnostic screenshot shows a CAPTCHA, login page, or MFA prompt; or output contains `CAPTCHA DETECTED` or similar → use `AskUserQuestion` immediately. Do NOT retry autonomously.
+- **Human action required** (see **User Intervention**) - diagnostic screenshot shows a CAPTCHA, login page, or MFA prompt whose code goes somewhere unreachable (see **Email-delivered MFA codes**); or output contains `CAPTCHA DETECTED` or similar → use `AskUserQuestion` immediately. Do NOT retry autonomously.
 - **Explicit failure** - `Verification FAILED`, `VERIFY FAIL:`; error counts (`5 errors`, `3 collision(s)`, `12 errors remain`); error keywords (`Error:`, `still present`, `not found`, `timeout`, `could not`); or items reported as "still present" or "not moved/deleted" → trigger autonomous recovery (Step 2).
 - **Ambiguous (missing verification)** - no "Verification passed" or "Verification FAILED" in output, but has completion indicators (`Done`, `Summary:`, task-specific output) → likely an older script without verification. If output looks clean (no errors/exceptions), treat as success. If output contains exceptions or is suspiciously short (< 50 chars), investigate.
 - **Crashed/incomplete** - exception stack trace in output, output ends mid-step (no completion message), or very short output with no summary → trigger autonomous recovery (Step 2).
@@ -513,7 +528,7 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
 1. **Read the diagnostic screenshot** - scripts save screenshots to `.tmp/diag-*.png` on failure. Use the Read tool to view the image. This tells you what the browser was actually showing: an overlay, a login page, a CAPTCHA, a changed UI, or something else entirely. Take additional screenshots of the failure page if needed.
 
 2. **Diagnose the cause** from what you see:
-   - **CAPTCHA, login page, or MFA prompt** → requires human action. Follow **User Intervention** - use `AskUserQuestion` immediately. For login pages, you may also try the other browser (Edge/Chrome fallback) first, but if that also shows a login page, escalate.
+   - **CAPTCHA, login page, or MFA prompt whose code goes somewhere unreachable** (an emailed code is fetched, see **Email-delivered MFA codes**) → requires human action. Follow **User Intervention** - use `AskUserQuestion` immediately. For login pages, you may also try the other browser (Edge/Chrome fallback) first, but if that also shows a login page, escalate.
    - **Overlay or modal blocking the UI** → add dismissal logic to the script (see **Overlay Dismissal**), re-run.
    - **UI changed** (different label, restructured DOM, new element) → inspect the current page state to find the new selector, update the script, re-run.
    - **New required step** (e.g., a consent prompt, a "What's new" tour) → add handling for it, re-run.

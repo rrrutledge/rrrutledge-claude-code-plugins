@@ -1,11 +1,12 @@
 # drainer browser gate - report HELP_NEEDED, not a silent stall
 
-Read this when browser-chauffeur work in this session hits a gate only Russell can clear.
+Read this when browser-chauffeur work in this session hits a sign-in or other possible gate.
 `<skill>` means this drainer skill's root folder, the same absolute path your seed prompt gave you for `worker-core.md`.
 
 Any browser-chauffeur work this session drives - resolving a pointer's real content (`engine/pointers.md`), doing the item's work (worker-core step 3), staging a draft via message-draft (worker-core step 4), or a provider's browser-driven CLEAR - can hit a gate browser-chauffeur's own contract already defines (see browser-chauffeur's SKILL.md, **User Intervention** and **Running in a subagent → The return contract**).
 
-Report that gate as `HELP_NEEDED` in this session's own open tab instead of following browser-chauffeur's `AskUserQuestion` step or waiting on a `HELP_NEEDED` result from a subagent you spawned (message-draft's teams mode runs one, per worker-core step 4).
+Before reporting, apply browser-chauffeur's **Email-delivered MFA codes** and **Readable mailboxes**.
+Report as `HELP_NEEDED` only what remains, naming the step precisely in `reason` (including a fetch that still failed after its one retry), in this session's own open tab instead of following browser-chauffeur's `AskUserQuestion` step or waiting on a `HELP_NEEDED` result from a subagent you spawned (message-draft's teams mode runs one, per worker-core step 4).
 Both of those assume someone is watching this session live to answer.
 A drainer worker runs unattended, so nobody sees the prompt, the session parks on a question nobody will ever answer, and the item sits stuck with no signal Russell can find.
 That's the stall this file closes.
@@ -30,5 +31,5 @@ Park the gate where Russell already looks, the worker's own open session and tab
 
 Russell resumes this the same way he'd continue any open session.
 He finds this session waiting in his worker tabs, clears the gate, and tells it so.
-From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate, and continue the flow from where you stopped.
+From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate (browser-chauffeur's **After the user resolves the blocker** covers a tab left on the next sign-in step), and continue the flow from where you stopped.
 Then finish normally: complete the remaining work, draft any reply, clear the item per worker-core §6, and close up per §6's closing rules once your part and his are both done.
