@@ -1026,7 +1026,8 @@ async function resolveName() {
 // Channels Russell is a member of whose name contains a fragment: public and private channels and group
 // DMs, from users.conversations (member-only by design), paginated. Read-only.
 async function findChannel() {
-  const query = String(args['find-channel'] === true ? '' : args['find-channel']).toLowerCase();
+  const given = args['find-channel'] === true ? '' : String(args['find-channel']);
+  const query = given.toLowerCase().replace(/^#/, '');
   if (!query) throw new Error('--find-channel requires a name fragment, e.g. --find-channel=treasurer');
   const out = [];
   let cursor = '';
@@ -1035,15 +1036,18 @@ async function findChannel() {
       types: 'public_channel,private_channel,mpim', exclude_archived: 'true', limit: '200', cursor,
     });
     for (const c of r.channels || []) {
-      const name = c.name || '';
-      if (!name.toLowerCase().includes(query)) continue;
-      out.push({ id: c.id, name, private: !!c.is_private || !!c.is_mpim, groupDm: !!c.is_mpim });
+      if ((c.name || '').toLowerCase().includes(query)) {
+        out.push({ id: c.id, name: c.name, private: !!c.is_private || !!c.is_mpim, groupDm: !!c.is_mpim });
+      }
     }
     cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
   } while (cursor);
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
-  if (!out.length) { console.log(`No channel you belong to matches "${query}".`); return; }
-  for (const c of out) console.log(`${c.id}  ${c.groupDm ? 'mpdm:' : '#'}${c.name}  (${c.groupDm ? 'group DM' : c.private ? 'private' : 'public'})`);
+  if (!out.length) { console.log(`No channel you belong to matches "${given}".`); return; }
+  for (const c of out) {
+    const label = await convDisplayName(c.id, { name: c.name, is_mpim: c.groupDm });
+    console.log(`${c.id}  ${label}  (${c.groupDm ? 'group DM' : c.private ? 'private' : 'public'})`);
+  }
 }
 
 async function findByDomain() {
@@ -1085,7 +1089,7 @@ async function findByDomain() {
   if (args['delete-draft']) return await deleteDraft();
   if (args['find-dm']) return await findDm();
   if (args['open-dm']) return await openDm();
-  if (args['find-channel']) return await findChannel();
+  if ('find-channel' in args) return await findChannel();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
   throw new Error('Specify --check, --list-unread, --show, --history, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-channel, --find-by-domain, or --resolve-name');
