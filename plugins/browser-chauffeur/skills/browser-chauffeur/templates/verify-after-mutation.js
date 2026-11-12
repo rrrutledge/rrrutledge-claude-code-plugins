@@ -10,15 +10,14 @@
 //
 //   const { verifyAfterMutation } = require('browser-chauffeur-helpers');
 //
-// Example - confirm a deleted event is gone after a fresh load:
+// Example - confirm a renamed event shows its new name after a fresh load
+// (a presence check: in a virtualized grid an unmounted row is absent too, so
+// an absence check alone can't prove a delete):
 //
 //   await page.reload();
-//   await page.getByRole('grid').first().waitFor();   // the list has rendered, so absence means gone
-//   const gone = await verifyAfterMutation(page, async () => {
-//     const events = await page.getByRole('button', { name: /Budget review/ }).count();
-//     return events === 0;
-//   });
-//   if (!gone) throw new Error('Verify FAILED: event still present after delete');
+//   const renamed = await verifyAfterMutation(page, async () =>
+//     page.getByRole('button', { name: /Budget review \(Q3\)/ }).first().isVisible());
+//   if (!renamed) throw new Error('Verify FAILED: new name not shown after reload');
 //
 // Options:
 //   settleMs (default 1500) - max ms to wait for networkidle before each check

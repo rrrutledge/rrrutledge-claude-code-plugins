@@ -114,7 +114,9 @@ What setup installs, and how the helpers shim resolves the active plugin version
 
 Adjust `plugins/browser-chauffeur/...` to the actual path where the skill is mounted if needed.
 
-**Every ad-hoc script goes in the project's `.tmp/`.** That shared directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share. Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find. **Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
+**Every ad-hoc script goes in the project's `.tmp/`.**
+The shared `~/.claude/browser-chauffeur/` directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share.
+Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find. **Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
 
 ```js
 const { chromium } = (() => {
@@ -302,7 +304,8 @@ When `frameLocator(...).locator(...)` times out at 30s on a page with nested ifr
 **How to attach directly:**
 
 ```javascript
-// Absolute path: this skill's base directory, which loads with the skill, + /templates/cdp-session
+// Absolute path: this skill's base directory, which loads with the skill, + /templates/cdp-session,
+// written with forward slashes (a backslash in a JS string literal is an escape)
 const { CDPSession, httpJson, evalIn, waitForContext } = require('<skill base directory>/templates/cdp-session');
 
 // 1. List all CDP targets - look for type=iframe
@@ -350,14 +353,17 @@ For each step in the desired flow:
 1. **Interact** - use the saved tab reference from Phase 1 with Playwright locators (`myTab.getByRole(...)`, `frame.locator('[aria-label="..."]')`). The page object stays valid even if other tabs open/close. If the tab itself was closed, Playwright will throw an error automatically.
 
 2. **Screenshot after dropdown/menu clicks** - **CRITICAL:** After clicking any button that should reveal a dropdown menu, context menu, or modal dialog:
-   - Wait for the menu, dialog, or listbox to become visible (a condition wait, per `script-quality-standards.md` **Fixed Delays**)
+   - Wait on a condition for the new UI to appear: a visible menu, dialog, listbox, or popover, polled with a deadline when no locator fits yet (`script-quality-standards.md` **Fixed Delays**); when the deadline passes, take the screenshot anyway, since it shows what did render
    - Take a screenshot with `myTab.screenshot({ path: '.tmp/diag-after-click.png' })`
    - Read the screenshot with the Read tool to SEE what menu items are actually visible
    - Query the DOM for menu items AFTER you've visually confirmed the menu is open
 
    **Why:** DOM queries alone can miss visual menus. The screenshot shows you exactly what the user would see, including menu items, their text, and layout. This prevents blindly clicking buttons and querying for items that may not be rendered yet or may be in unexpected locations.
 
-3. **Verify** - re-read page state immediately after. Confirm the expected change happened: new element appeared, field value set, URL changed, success message shown. A create, update, or delete is verified only by the evidence in Key Rules, **Verifying a change**. If the page state after verification is unexpected (CAPTCHA, login page, error page, or an unrecognized screen), treat it as a blocker - if it requires human action (CAPTCHA, login), follow the **User Intervention** section; otherwise apply Phase 4 recovery.
+3. **Verify** - re-read page state immediately after.
+   Confirm the expected change happened: new element appeared, field value set, URL changed, success message shown.
+   A create, update, or delete is verified only by the evidence in Key Rules, **Verifying a change**.
+   If the page state after verification is unexpected (CAPTCHA, login page, error page, or an unrecognized screen), treat it as a blocker - if it requires human action (CAPTCHA, login), follow the **User Intervention** section; otherwise apply Phase 4 recovery.
 
 4. **If blocked** - re-read page state immediately to diagnose. Common blockers:
    - Modal or overlay in front of the target → dismiss it first (see **Overlay Dismissal**), then retry
@@ -396,7 +402,7 @@ Some SPAs (Articulate Rise, OpenSesame, content platforms) load page sections as
    - User needs to review/approve something
    - User asked you to "open" something for them
    - Tab was already open when you started (you found it, didn't create it)
-   - The run ended in a failure that needs the user (Phase 4 escalation) - leave the tab on the failure state so they can see and act on it
+   - The run ended in a failure that needs the user (Phase 4 escalation) - the script's `finally` closed its own tab, so open the failure page with `openTab` and leave it for them to see and act on
 
    **Closing all your session's tabs at the end (level-1 self-cleanup).** `closeTab` handles the tab one script opened. When a whole **session** is finished with the browser - every task done and the user no longer needs any staged tab open - close everything it opened in one call:
    ```bash
@@ -616,7 +622,7 @@ A create, update, or delete counts as verified on either of two pieces of eviden
 
 A DOM change alone (an element gone, a row added) proves only that the page re-rendered: the UI may update optimistically while the API call silently fails or never fires, so it verifies nothing by itself.
 Wait for the app's confirmation with `locator.waitFor()` on its text.
-After a fresh load, first wait for an element that proves the list or page has rendered, so an absence check can't pass on an empty page; then check the changed state with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids re-render asynchronously, returning `true` from the predicate once the change shows.
+After a fresh load, first wait for an element that proves the list or page has rendered, so an absence check can't pass on an empty page, and in a virtualized grid bring the item's position into view (its scroll-to API, or the app's search) before checking that a deleted item is absent; then check the changed state with `verifyAfterMutation(page, predicate, { settleMs, retries })` from `browser-chauffeur-helpers`, since virtualized grids re-render asynchronously, returning `true` from the predicate once the change shows.
 A batch whose app shows no confirmation per item gets one fresh load at the end of the run, and the whole batch is re-checked there before success is reported.
 
 **Variant UIs:** The same application can render completely different DOM on different tenants or account types. When a selector fails in a new context, re-read there and find the equivalent element - never assume one tenant's selectors work on another.

@@ -27,7 +27,7 @@ Dismisses common overlay dialogs (cookie banners, "What's new" modals, etc.) tha
 
 - **Parameters**: `page` - Playwright page object
 - **Returns**: Promise<void>
-- **When to call**: SKILL.md Common Patterns, **Overlay Dismissal**
+- **When to call**: `skills/browser-chauffeur/script-quality-standards.md` **Helper Calls and Logging**
 
 ### `screenshotOnFailure(context, label)`
 
