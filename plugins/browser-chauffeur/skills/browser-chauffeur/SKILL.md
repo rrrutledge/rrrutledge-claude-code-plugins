@@ -454,7 +454,7 @@ Sometimes the browser hits a blocker that only a human can resolve. These all fa
 
 ### Email-delivered MFA codes - fetch them yourself, don't escalate
 
-When a site's MFA step sends a one-time code to a mailbox listed under **Readable mailboxes** below, this is **not** a user-intervention case - complete it yourself:
+When a site's MFA step sends a one-time code to a mailbox you can read (see **Readable mailboxes** below), this is **not** a user-intervention case - complete it yourself:
 
 1. Note the destination the page names ("We just sent a code to `user@example.com`") and the field waiting for it.
 2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts.
@@ -467,11 +467,11 @@ Finish every step you can, then escalate only the step that is truly the user's,
 
 #### Readable mailboxes
 
-- **Personal Outlook and the family mailbox** - the `ms-graph` skill: `mail.js --search="from:<sender>"` to find the newest message, then `mail.js --show` on it to read the code.
-- **ISC Gmail and the personal Gmail accounts** - the `gmail` skill's `gmail.js` (`--account=<name>` picks the account): list or search the inbox, then show the message.
-- **Work Outlook** - the `ms-rest` skill's REST API.
+A mailbox is readable when a skill or tool available in this session can search and show its messages (a mail-reading skill, an email MCP connector, an IMAP/Graph/Gmail API client).
+The user's own instructions (their global or project `CLAUDE.md`, or the project's context files) name which mailboxes exist and how to read each; check them before deciding a code is unreachable.
+Search the destination mailbox the page names and read the newest matching message.
 
-A code sent anywhere else (SMS, an authenticator app, a phone call) is the unreachable case and escalates.
+A code sent anywhere else (SMS, an authenticator app, a phone call, a mailbox with no way to read it from this session) is the unreachable case and escalates.
 
 ### Required `AskUserQuestion` pattern
 
