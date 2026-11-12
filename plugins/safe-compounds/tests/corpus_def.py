@@ -393,6 +393,8 @@ CASES = [
     # there, even for a .tmp/ path inside it, so it is redirected like drainer/plugin-cache.
     {"id": "write_claude_jobs_tmp", "tool": "Write",
      "file_path": "{HOME}/.claude/jobs/7c53ac71/tmp/.tmp/reply-antje.md", "expect": "BLOCK"},
+    {"id": "edit_claude_jobs_tmp", "tool": "Edit",
+     "file_path": "{HOME}/.claude/jobs/7c53ac71/tmp/notes.md", "expect": "BLOCK"},
 
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},
