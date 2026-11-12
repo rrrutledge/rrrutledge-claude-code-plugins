@@ -15,6 +15,10 @@ The middle step is the one that gets dropped under pressure, so carry all three 
    Compose against the rules for what you're writing.
    The shared rubric for anything that ships is `authoring-rules`; an outward message also takes the register, warmth, persona, link, and ask rules in `message-rules`.
    Load the rubric before writing the first line, a one-line edit to an existing doc included, so the rules are in context at the moment each sentence forms.
+   Before adding or changing a rule or step in a skill, run the overlap search: search the skill's folder and every file it names for the concept, under its keywords and near-synonyms.
+   Fold the change into the home that search finds.
+   A rule that several steps apply and that has no home yet gets one, a section or file the steps link to.
+   When the change alters a rule, edit every other mention the search turned up to point at the home.
    After a removal, re-read every touched file and every doc that names the removed thing against the removal test in `authoring-rules`' present-tense rule.
 
 2. **Review.**
