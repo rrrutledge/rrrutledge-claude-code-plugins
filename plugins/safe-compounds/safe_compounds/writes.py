@@ -93,7 +93,7 @@ JOBS_DIR_ENTRY = {
     'target': '~/.claude/jobs/',
     'alternative': (
         'The whole jobs tree is off-limits, even a .tmp/ folder inside it. Write the file to '
-        '.tmp/ in the current directory (or the session scratchpad dir) instead.'
+        '.tmp/ in your own working repo instead, outside ~/.claude.'
     ),
 }
 
