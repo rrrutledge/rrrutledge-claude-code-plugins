@@ -1,6 +1,8 @@
 # Script Quality Standards
 
-**All browser automation scripts must comply with these requirements.** Reference this file when writing AND when validating scripts (Phase 5 in SKILL.md). See `templates/script-template.js` for a complete reference script that satisfies all of these.
+Every rule about what a browser automation script's code contains lives here.
+Write each script to these rules, and check it against them before it runs (SKILL.md Phase 5).
+`templates/script-template.js` is a complete script that satisfies all of them.
 
 ## ❌ BANNED: Fixed Delays
 
@@ -15,15 +17,16 @@ await new Promise(r => setTimeout(r, 1000));
 **Always use element/condition-based waits:**
 ```javascript
 await locator.waitFor({ state: 'visible', timeout: 5000 });
+await page.waitForURL(/\/done/);
 await page.waitForLoadState('networkidle');
 await page.waitForFunction(() => document.readyState === 'complete');
 ```
 
-**Exception:** Short poll loops (≤300ms interval) with a deadline when no waitable locator exists.
+**Exception:** a short poll (≤300ms interval) with a deadline, exiting as soon as its condition is met, when no waitable locator exists.
 
-## ❌ BANNED: Retry Loops in Scripts
+## ❌ BANNED: Retrying an Action
 
-**Never add retry logic inside a script:**
+**Never repeat an action inside a script to paper over its failure:**
 ```javascript
 // ❌ WRONG - script retrying its own failures
 for (let attempt = 1; attempt <= 3; attempt++) {
@@ -42,9 +45,51 @@ await deleteBtn.waitFor({ state: 'visible', timeout: 5000 });
 await deleteBtn.click();
 ```
 
-## ✅ REQUIRED: Get tabs via `openTab` / `findTab`
+Re-checking a condition after an action, without repeating the action, is a wait rather than a retry; `verifyAfterMutation` (SKILL.md Key Rules, **Verifying a change**) is that kind of wait.
 
-Create every tab with `openTab(context, url)`, and reuse **your own session's** tab with `findTab(context, predicate)` - never bare `context.newPage()` or `context.pages().find(...)`. `openTab` registers the tab against its owning session so the sweep can reclaim it; an unregistered tab has no owner and is only cleaned up once it goes idle or the count cap is hit. `findTab` is owner-scoped: it returns only a tab this session opened (`null` otherwise, so you `openTab` a fresh one), so parallel sessions on the same URL never grab each other's tab - a bare `pages().find(...)` would. Close tabs you created with `closeTab` in a `finally`; never pass a tab you only *found* to `closeTab`. **SKILL.md Phase 1 has the full rationale** - this is the one place it's spelled out.
+## ✅ REQUIRED: Semantic Selectors
+
+Select by `role`, `aria-label`, and visible text.
+CSS classes an app generates or names for its own styling change across deployments and tenants, so they never appear in a selector.
+A component library's published static class names are stable API and count as semantic: Fluent UI's `fui-*` classes are the case this skill relies on (`anti-patterns.md` Anti-Pattern 7).
+
+**Strict mode.** A locator matching more than one element throws.
+When a wrapper `div` and its `button` share a label or text, select the button by role: `getByRole('button', { name: '...' })` (`anti-patterns.md` Anti-Pattern 1).
+Use `.first()` only when you've confirmed the matches are genuinely equivalent.
+
+**Broaden to the HTML tag when role finds nothing.** Older or semantic UIs use real `li`, `a`, and `span` elements as action targets with no `role` attribute, and role-based selectors skip them.
+When `getByRole` or `[role="..."]` returns nothing for an element you can see, select by the underlying tag; `anti-patterns.md` Anti-Pattern 5 has the snippet that finds the true tag.
+
+## ✅ REQUIRED: Actions Through the Locator API
+
+Perform every action that should trigger a server call or framework event through Playwright's locator API: `locator.click()`, `locator.fill()`, `locator.dispatchEvent('click')`.
+Use `page.evaluate` to *read* DOM state.
+A native `element.click()` inside `evaluate` bypasses framework synthetic event handlers (React, Fluent UI): the UI may update while no API call fires, and the change vanishes on refresh (`anti-patterns.md` Anti-Pattern 2).
+
+**The one exception: an out-of-process iframe.** The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
+
+## ✅ REQUIRED: Visibility Checks, Not Presence
+
+When checking whether an element is *shown* (a dialog, menu, backdrop, tooltip), filter by computed visibility (`display`, `visibility`, `offsetParent`).
+Many frameworks keep dialog DOM mounted and toggle `display: none` to hide closed steps, so a bare `querySelector(...) !== null` returns true for an element the user can't see (`anti-patterns.md` Anti-Pattern 4).
+
+## ✅ REQUIRED: Tabs and Packages
+
+- Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**).
+- Close the tabs the script opened with `closeTab` in a `finally` (SKILL.md Phase 3, **Tab cleanup**).
+- Resolve `playwright-core` and `browser-chauffeur-helpers` with the try/catch fallback (SKILL.md **Prerequisite Check**).
+
+## ✅ REQUIRED: Browser Connection
+
+Scripts receive `--cdp-port=<port>` from Claude, validated during Phase 0.
+Phase 0 also owns browser launch and the login check, so a script carries no browser detection or login validation of its own.
+
+Connect with the hardened `connectBrowser()` from `script-template.js`.
+It races `chromium.connectOverCDP('http://localhost:<port>')` against a 30s timeout, because the connect can hang forever when the persistent profile is overloaded or has a wedged renderer (SKILL.md **Resilient Connection**).
+
+## ✅ REQUIRED: Navigation
+
+Scripts must navigate to their target URL themselves - don't assume the browser is already there. Since Phase 0 already validated that the target loads, navigating again is just a reload and keeps the script self-contained.
 
 ## ✅ REQUIRED: Verification Code
 
@@ -61,19 +106,8 @@ if (failCount === 0) {
 }
 ```
 
-This enables Phase 4 autonomous recovery.
-
-## ✅ REQUIRED: Semantic Selectors
-
-Use `aria-label`, `role`, visible text - **never CSS class selectors** (they change across deployments).
-
-## ✅ REQUIRED: Browser Connection
-
-Scripts receive `--cdp-port=<port>` from Claude. Connect with the hardened `connectBrowser()` helper from `script-template.js`, which wraps `chromium.connectOverCDP('http://localhost:<port>')` in a 30s `Promise.race` timeout - **never call `connectOverCDP` bare**, or the script can hang forever when the persistent profile is overloaded or has a wedged renderer (see SKILL.md "Resilient Connection"). No browser detection logic in scripts. They do **not** contain browser detection, login validation, or the Edge/Chrome fallback - that is handled by Claude interactively during Phase 0 before any script runs.
-
-## ✅ REQUIRED: Navigation
-
-Scripts must navigate to their target URL themselves - don't assume the browser is already there. Since Phase 0 already validated that the target loads, navigating again is just a reload and keeps the script self-contained.
+Phase 4 reads these lines to decide whether a run succeeded.
+What counts as evidence that a mutation succeeded is SKILL.md Key Rules, **Verifying a change**.
 
 ## ✅ REQUIRED: Guaranteed Process Exit
 
@@ -87,12 +121,11 @@ run().catch(e => { console.error(e.message); process.exit(1); });
 
 A bare `(async () => { ... })()` IIFE with no top-level `.catch()` fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()`-plus-`.catch()` shape above, or attach `.catch(e => { console.error(e.message); process.exit(1); })` to the IIFE's own promise.
 
-**Backstop (automatic, no action needed):** requiring `browser-chauffeur-helpers` installs a process guard - an unhandled-rejection handler that force-exits, and a wall-clock watchdog (default 30 min, override with `BROWSER_CHAUFFEUR_SCRIPT_TIMEOUT_MS`) that force-exits a genuinely hung script. This catches a script that skips the pattern above, but it's the safety net, not the plan: a correct script still exits promptly through its own `finally`. A script that legitimately runs past the watchdog window (a long media wait) calls `cancelScriptWatchdog()` from the helpers.
+The helpers' process guard is a backstop behind this rule, not a substitute for it (`HELPERS.md` **Process guard**).
 
-## Additional Requirements
+## ✅ REQUIRED: Helper Calls and Logging
 
-- `console.log` after each major step for progress tracking
-- Check `page.frames()` when `body.innerText` is unexpectedly short
-- Use `page.route()` for request interception (not `frame.route()` - it doesn't exist)
-- Include `dismissOverlays(page)` after navigation (see Common Patterns in SKILL.md)
-- Save a diagnostic screenshot in catch blocks (see Common Patterns in SKILL.md)
+- `console.log` after each major step for progress tracking.
+- `dismissOverlays(page)` after navigation, before any app-specific wait (SKILL.md Common Patterns, **Overlay Dismissal**).
+- `screenshotOnFailure(context, label)` in catch blocks (SKILL.md Common Patterns, **Screenshot on Failure**).
+- A `page.frames()` check when `body.innerText` is unexpectedly short, and `page.route()` for request interception (SKILL.md Phase 1, **Iframe detection**).

@@ -1,4 +1,6 @@
-// Post-mutation verification - use after any create, update, or delete action on a SPA.
+// Post-mutation verification - waits for the evidence that a create, update, or
+// delete succeeded to render: the app's own success message, or the changed state
+// after a fresh load (SKILL.md Key Rules, "Verifying a change").
 // `networkidle` fires when the network goes quiet, but virtualized SPA grids (Outlook
 // calendar, Teams, SharePoint lists) re-render asynchronously after a server response.
 // Checking DOM state immediately after networkidle produces false negatives: the mutated
@@ -8,11 +10,12 @@
 //
 //   const { verifyAfterMutation } = require('browser-chauffeur-helpers');
 //
-// Example - confirm a deleted event no longer appears:
+// Example - confirm a deleted event is gone after a fresh load:
 //
+//   await page.reload();
 //   const gone = await verifyAfterMutation(page, async () => {
-//     const events = await page.locator('.calendar-event').allTextContents();
-//     return !events.some(t => t.includes('Budget review'));
+//     const events = await page.getByRole('button', { name: /Budget review/ }).count();
+//     return events === 0;
 //   });
 //   if (!gone) throw new Error('Verify FAILED: event still present after delete');
 //

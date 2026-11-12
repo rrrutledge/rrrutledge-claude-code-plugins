@@ -6,7 +6,7 @@
  * isolation gives it a separate target with its own webSocketDebuggerUrl.
  *
  * Usage:
- *   const { CDPSession, httpJson, evalIn } = require('./cdp-session');
+ *   const { CDPSession, httpJson, evalIn, waitForContext } = require('./cdp-session');
  *   const targets = await httpJson(`http://localhost:${cdpPort}/json`);
  *   const iframe  = targets.find(t => t.type === 'iframe' && t.url.includes('your-domain'));
  *   const session = new CDPSession(iframe.webSocketDebuggerUrl);
@@ -14,8 +14,7 @@
  *   const ctxs = [];
  *   session.on(m => { if (m.method === 'Runtime.executionContextCreated') ctxs.push(m.params.context); });
  *   await session.send('Runtime.enable');
- *   await new Promise(r => setTimeout(r, 1500)); // let existing contexts arrive
- *   const ctxId = ctxs.find(c => c.origin.includes('your-domain'))?.id;
+ *   const ctxId = await waitForContext(ctxs, c => c.origin.includes('your-domain'));
  *   const title  = await evalIn(session, ctxId, 'document.title');
  *   session.close();
  *
@@ -88,4 +87,17 @@ async function evalIn(session, contextId, expression) {
   return r.result.value;
 }
 
-module.exports = { CDPSession, httpJson, evalIn };
+// Execution contexts arrive as Runtime.executionContextCreated events after
+// Runtime.enable; a nested frame still loading reports its context later. Poll
+// the collected list until one matches, so the wait ends as soon as it exists.
+async function waitForContext(ctxs, predicate, { timeoutMs = 5000, intervalMs = 200 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ctx = ctxs.find(predicate);
+    if (ctx) return ctx.id;
+    if (Date.now() >= deadline) throw new Error(`No execution context matched within ${timeoutMs}ms`);
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+}
+
+module.exports = { CDPSession, httpJson, evalIn, waitForContext };
