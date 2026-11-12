@@ -69,9 +69,8 @@ A browser subagent ends by returning one of two structured results, and it never
   Return the reason, the URL and a stable tab locator (the `findTab` predicate, so the same tab is re-findable), exactly what the user must do, and how far the run got.
   Leave the tab open on the correct page.
 
-`HELP_NEEDED` is for a code that goes somewhere unreachable (SMS, authenticator app, phone call); a code emailed to a mailbox listed under **Readable mailboxes** is fetched, never escalated.
-The subagent fetches an email-delivered code itself and continues, exactly as **User Intervention** below prescribes.
-A multi-step sign-in (emailed code, then password) is cleared one step at a time: clear every step you can, then report only the step that is truly the user's, naming it precisely (for example "the password prompt after the emailed code"), never the whole sign-in.
+A code emailed to a mailbox under **Readable mailboxes** is not a `HELP_NEEDED` case.
+The subagent fetches it itself and continues, and clears a multi-step sign-in one step at a time, exactly as **Email-delivered MFA codes** below prescribes.
 
 ### The help-channel
 
@@ -97,8 +96,7 @@ Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute
 Return one of two results:
   DONE - outcome, any values quoted from the page, a final screenshot path, and (if the endpoint is irreversible) the flow staged up to but NOT pressing the Send/Submit/Pay/Confirm button, with a screenshot of that staged state.
   HELP_NEEDED - reason (login / CAPTCHA / MFA-to-phone / in-page action that can't be done headless), the URL, a findTab predicate that re-finds the tab, what the user must do, and how far you got. Leave the tab open on the correct page.
-A sign-in code emailed to a mailbox you can read is not a gate: fetch the newest one (ms-graph `mail.js --search` then `--show` for personal Outlook and the family mailbox; the gmail skill for ISC Gmail) and enter it at once, since codes expire in minutes.
-For a multi-step sign-in, clear each step you can and report HELP_NEEDED only for the step that is truly the user's (a password, a phone code), naming that step.
+A sign-in code emailed to a mailbox under "Readable mailboxes" in the browser-chauffeur skill is not a gate: fetch and enter it yourself, and report HELP_NEEDED only for the step that is truly the user's, naming that step.
 Never press an irreversible button, and never prompt the user directly - hand the gate or the staged step back to me.
 ```
 
@@ -457,24 +455,23 @@ Sometimes the browser hits a blocker that only a human can resolve. These all fa
 
 ### Email-delivered MFA codes - fetch them yourself, don't escalate
 
-When a site's MFA step sends a one-time code to an email address you have read access to (a connected Gmail/Outlook/IMAP mailbox), this is **not** a user-intervention case - complete it yourself:
+When a site's MFA step sends a one-time code to a mailbox listed under **Readable mailboxes** below, this is **not** a user-intervention case - complete it yourself:
 
 1. Note the destination the page names ("We just sent a code to `user@example.com`") and the field waiting for it.
-2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts.
-3. Enter the code and submit, the same way you'd fill any other field.
+2. Search that mailbox for the just-sent code - sender/subject naming the site or "verification"/"authorization code"/"one-time passcode" is usually enough; sort by most recent, since the same sender may have older codes from prior attempts. Codes expire in minutes, so search right after the site sends it.
+3. Enter the code and submit immediately, the same way you'd fill any other field.
 4. If the mailbox search comes up empty after a reasonable wait, or the code is rejected, retry the search once (delivery lag) before falling back to `AskUserQuestion` - don't spin indefinitely.
 
-Codes expire in minutes, so fetch the newest one right after the site sends it and enter it immediately.
-
-Only escalate an MFA prompt when the code goes somewhere you can't reach (SMS, an authenticator app, a phone call) - see the bullet above.
-When the sign-in has several steps (emailed code, then password), the code step is yours and the password is the user's: finish the code step, then escalate only the password, naming it.
+A sign-in with several steps (emailed code, then password) is cleared one step at a time.
+Finish every step you can, then escalate only the step that is truly the user's, naming it precisely (for example, the password prompt after the emailed code).
 
 #### Readable mailboxes
 
 - **Personal Outlook and the family mailbox** - the `ms-graph` skill: `mail.js --search="from:<sender>"` to find the newest message, then `mail.js --show` on it to read the code.
-- **ISC Gmail (and the other Gmail accounts)** - the `gmail` skill's `gmail.js`: list or search the inbox, then show the message.
+- **ISC Gmail and the personal Gmail accounts** - the `gmail` skill's `gmail.js` (`--account=<name>` picks the account): list or search the inbox, then show the message.
+- **Work Outlook** - the `ms-rest` skill's REST API.
 
-A code addressed anywhere else (a work mailbox with no skill here, a phone) is the unreachable case.
+A code sent anywhere else (SMS, an authenticator app, a phone call) is the unreachable case and escalates.
 
 ### Required `AskUserQuestion` pattern
 
@@ -515,7 +512,7 @@ When a script completes - **regardless of exit code** - analyze the output and r
 Read the full output and categorize:
 
 - **Explicit success** - `Verification passed`, `✅`, `All checks passed` AND no error patterns → proceed to reporting.
-- **Human action required** (see **User Intervention**) - diagnostic screenshot shows a CAPTCHA, login page, or MFA prompt; or output contains `CAPTCHA DETECTED` or similar → use `AskUserQuestion` immediately. Do NOT retry autonomously.
+- **Human action required** (see **User Intervention**) - diagnostic screenshot shows a CAPTCHA, login page, or MFA prompt whose code goes somewhere unreachable (see **Email-delivered MFA codes**); or output contains `CAPTCHA DETECTED` or similar → use `AskUserQuestion` immediately. Do NOT retry autonomously.
 - **Explicit failure** - `Verification FAILED`, `VERIFY FAIL:`; error counts (`5 errors`, `3 collision(s)`, `12 errors remain`); error keywords (`Error:`, `still present`, `not found`, `timeout`, `could not`); or items reported as "still present" or "not moved/deleted" → trigger autonomous recovery (Step 2).
 - **Ambiguous (missing verification)** - no "Verification passed" or "Verification FAILED" in output, but has completion indicators (`Done`, `Summary:`, task-specific output) → likely an older script without verification. If output looks clean (no errors/exceptions), treat as success. If output contains exceptions or is suspiciously short (< 50 chars), investigate.
 - **Crashed/incomplete** - exception stack trace in output, output ends mid-step (no completion message), or very short output with no summary → trigger autonomous recovery (Step 2).
@@ -527,7 +524,7 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
 1. **Read the diagnostic screenshot** - scripts save screenshots to `.tmp/diag-*.png` on failure. Use the Read tool to view the image. This tells you what the browser was actually showing: an overlay, a login page, a CAPTCHA, a changed UI, or something else entirely. Take additional screenshots of the failure page if needed.
 
 2. **Diagnose the cause** from what you see:
-   - **CAPTCHA, login page, or MFA prompt** → requires human action. Follow **User Intervention** - use `AskUserQuestion` immediately. For login pages, you may also try the other browser (Edge/Chrome fallback) first, but if that also shows a login page, escalate.
+   - **CAPTCHA, login page, or MFA prompt whose code goes somewhere unreachable** (an emailed code is fetched, see **Email-delivered MFA codes**) → requires human action. Follow **User Intervention** - use `AskUserQuestion` immediately. For login pages, you may also try the other browser (Edge/Chrome fallback) first, but if that also shows a login page, escalate.
    - **Overlay or modal blocking the UI** → add dismissal logic to the script (see **Overlay Dismissal**), re-run.
    - **UI changed** (different label, restructured DOM, new element) → inspect the current page state to find the new selector, update the script, re-run.
    - **New required step** (e.g., a consent prompt, a "What's new" tour) → add handling for it, re-run.

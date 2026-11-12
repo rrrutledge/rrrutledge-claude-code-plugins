@@ -5,9 +5,8 @@ Read this when browser-chauffeur work in this session hits a gate only Russell c
 
 Any browser-chauffeur work this session drives - resolving a pointer's real content (`engine/pointers.md`), doing the item's work (worker-core step 3), staging a draft via message-draft (worker-core step 4), or a provider's browser-driven CLEAR - can hit a gate browser-chauffeur's own contract already defines (see browser-chauffeur's SKILL.md, **User Intervention** and **Running in a subagent → The return contract**).
 
-First check the gate is really Russell's.
-A sign-in code emailed to a mailbox the pod can read (see browser-chauffeur's **Readable mailboxes**) is not a gate: fetch the newest code yourself and enter it at once.
-On a multi-step sign-in (emailed code, then password), clear every step you can and park only the step that is truly Russell's, naming it precisely in `reason`.
+Before parking, apply browser-chauffeur's **Email-delivered MFA codes** and **Readable mailboxes**.
+Park only what remains after that, naming the step precisely in `reason`, including a fetch that still failed after its one retry.
 
 Report a gate that remains as `HELP_NEEDED` in this session's own open tab instead of following browser-chauffeur's `AskUserQuestion` step or waiting on a `HELP_NEEDED` result from a subagent you spawned (message-draft's teams mode runs one, per worker-core step 4).
 Both of those assume someone is watching this session live to answer.
