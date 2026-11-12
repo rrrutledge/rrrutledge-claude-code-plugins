@@ -37,6 +37,9 @@ Subagent (general-purpose):
     When the text under review is a diff, open and read the whole current
     file for each file the diff touches, and skim any doc it closely links to.
     The diff alone won't show what the change does to the rest of the document.
+    When [SKILL_FILES] is given, search every file in it for each rule the
+    diff adds or changes, under its keywords and near-synonyms, and read each
+    file that mentions it.
     Apply the rubric's "One concept, one canonical place" rule, including the
     direction it names for when the canonical spot itself changes.
     Report a violation even though fixing it means touching text outside the
@@ -103,5 +106,6 @@ Subagent (general-purpose):
 - `[MESSAGE_RULES_PATH]` - only when reviewing an outward message: absolute path to `message-rules/SKILL.md`
 - `[ASPECTS_PATH]` - only when reviewing an outward message: absolute path to `send-confidence/uncertainty-aspects.md`
 - `[TEXT_OR_DIFF_PATH]` - REQUIRED: the file or diff under review
+- `[SKILL_FILES]` - only when reviewing skill prose: absolute paths to every markdown file in the skill's folder and every file the skill names outside it
 - `[SCRIPT_PATHS]` - only when reviewing skill prose: absolute paths to the scripts the skill runs
 - `[MODEL]` - the reviewer model
