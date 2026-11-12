@@ -94,12 +94,10 @@ Never send, and never prompt Russell directly - hand a gate back to me.
   exists, draft a reply on it rather than a new email; only compose new when there's genuinely no
   thread to reply to.
   **Slack carve-out:** Slack's Thread feature sidebars a reply away from the main conversation view,
-  unlike a Teams reply or an email reply, which stay inline. In a small DM or group DM, prefer posting
-  a new top-level message in the main conversation over starting a Slack Thread reply, so it's visible
-  to everyone without opening a side panel. Reserve actual Slack Threads for busier channels, where
-  keeping the main feed clean matters more than single-glance visibility.
-  **Several asks, one thread each:** when the reply answers several distinct asks at once, thread each answer under the message that made that ask, in a channel or a group DM alike.
-  A reply to a single ask keeps the carve-out above.
+  unlike a Teams reply or an email reply, which stay inline.
+  Post the reply as the next top-level message in the conversation when it answers the most recent message, or the train of thought that ends in it, so everyone sees it without opening a side panel.
+  Thread the reply under the message it answers when that message is not the latest, because a top-level message would read as an answer to whatever was posted last.
+  This holds in a channel, a DM, and a group DM alike.
 
 ## Load-bearing invariants for the Teams composer (violating these has typed into the WRONG place)
 
