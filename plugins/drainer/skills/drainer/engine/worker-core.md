@@ -123,6 +123,7 @@ The item stands for the **whole unread span**, not the single message it is keye
 Topic is what decides it, and the timestamps in the span are a useful tiebreaker: messages seconds or minutes apart lean toward one train of thought, while a gap of hours or days (you just hadn't drained in a while) leans toward separate asks.
 You may end with one group or several - that grouping is your call, made from reading the span.
 Then handle **each group as its own unit**, exactly as you would a standalone message or email: do the work, draft any reply.
+On a Slack source, the Slack provider's DRAFT-MODE holds how each group's reply is targeted.
 The item is done only when **every** group is completed, staged as a draft/PR, or explicitly tracked on a follow-up card (per the host `context.md`), and your reply covers all of them.
 An ask you leave for "a later item that'll come around" never comes around: the next section explains why clearing the item drops it for good.
 
