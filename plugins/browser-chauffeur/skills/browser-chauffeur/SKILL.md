@@ -95,7 +95,7 @@ Human gates are already natural seams, since the run pauses there anyway.
 Invoke the browser-chauffeur skill and run this one browser task inside your own context: <task>.
 Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute, verify, recover.
 End by returning DONE or HELP_NEEDED, carrying what the skill's "The return contract" section lists for each.
-Fetch emailed sign-in codes yourself, stop at the final irreversible button, and hand every gate that needs the user back to me as HELP_NEEDED.
+Handle emailed sign-in codes per the skill's "Email-delivered MFA codes" section, stop at the final irreversible button, and hand every gate that needs the user back to me as HELP_NEEDED.
 ```
 
 ### When to run inline instead
@@ -116,7 +116,8 @@ Adjust `plugins/browser-chauffeur/...` to the actual path where the skill is mou
 
 **Every ad-hoc script goes in the project's `.tmp/`.**
 The shared `~/.claude/browser-chauffeur/` directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share.
-Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find. **Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
+Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find.
+**Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
 
 ```js
 const { chromium } = (() => {
@@ -564,7 +565,7 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
 
 **Only report to user when:**
 - ✅ **100% success achieved** → "Fixed N issues: [brief summary]. Verification now passing."
-- ❌ **Exhausted all recovery options** → **Leave the browser open at the failure state** (Phase 3, **Tab cleanup**) and tell the user to look at the browser window - the visible page often makes the issue obvious at a glance, faster than any diagnostic summary. Then show your diagnostics, explain what you tried and what you found, and ask for help.
+- ❌ **Exhausted all recovery options** → **Open the failure state with `openTab` and leave it visible** (Phase 3, **Tab cleanup**) and tell the user to look at the browser window - the visible page often makes the issue obvious at a glance, faster than any diagnostic summary. Then show your diagnostics, explain what you tried and what you found, and ask for help.
 
 **Rule:** Never tell the user "the script failed." Always read the diagnostic screenshot, diagnose, fix, and retry at least once before involving the user.
 

@@ -123,8 +123,7 @@ run().catch(e => { console.error(e.message); process.exit(1); });
 
 A bare `(async () => { ... })()` IIFE with no top-level `.catch()` fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()`-plus-`.catch()` shape above, or attach `.catch(e => { console.error(e.message); process.exit(1); })` to the IIFE's own promise.
 
-The helpers' process guard is a backstop behind this rule, not a substitute for it (`HELPERS.md` **Process guard**).
-A script that legitimately runs past the guard's watchdog window (a long media wait) calls `cancelScriptWatchdog()` from the helpers.
+The helpers' process guard is a backstop behind this rule, not a substitute for it; `HELPERS.md` **Process guard** covers it, including how a long-running script extends its watchdog window.
 
 ## ✅ REQUIRED: Helper Calls and Logging
 
