@@ -287,6 +287,7 @@ A single clear sentence ending in a question is usually the whole message — re
   The call is already on their calendar, so the message restates no date, time, or timezone conversion (including why a time someone proposed matches the call's slot) and promises no new invite.
 - **Accepting someone else's offer to schedule, when the exact time genuinely doesn't matter to you: hand the invite back to them instead of naming a slot.**
   State plainly that you have no commitments that day and ask them to send an invite for whatever works on their end - reserve proposing a specific time for when the time actually matters (it's adjacent to something else, or you have a real preference); indifference is what licenses handing it back, not merely having the day open.
+
 ### Holding the voice
 
 The specifics that most often separate a message that reads as Russell's from one that reads as generic AI prose.
