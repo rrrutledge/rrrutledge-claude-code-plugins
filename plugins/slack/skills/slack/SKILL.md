@@ -111,7 +111,7 @@ Under `scripts/` (run with `node`):
     Use this over `--find-dm` when you're resolving a batch of known member IDs rather than searching by name.
   - Resolve an id to a name: `node slack.js --resolve-name=<user, DM, channel, or group DM id> [--json]` - prints the person's name (a DM gives the other member), or the channel's name, and the id itself when Slack has nothing more.
   - Find a channel by name: `node slack.js --find-channel=<name fragment> [--json]` - lists every public channel, private channel, and group DM you belong to whose name contains the fragment, each with its id, its name, and whether it is private.
-    A group DM's name is Slack's `mpdm-<handle>--<handle>-1` slug, so find one by a member's Slack handle.
+    A group DM's name is Slack's `mpdm-<username>--<username>-1` slug, so find one by a single member's Slack username.
     When several match, read each one's `--history` to pick the right one.
 
 ## How it works (Web API endpoints)

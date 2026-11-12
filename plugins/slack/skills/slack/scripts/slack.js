@@ -1027,7 +1027,7 @@ async function resolveName() {
 // DMs, from users.conversations (member-only by design), paginated. Read-only.
 async function findChannel() {
   const given = args['find-channel'] === true ? '' : args['find-channel'];
-  const query = given.trim().toLowerCase().replace(/^#/, '').replace(/\s+/g, '-');
+  const query = given.trim().toLowerCase().replace(/^[#@]/, '').replace(/\s+/g, '-');
   if (!query) throw new Error('--find-channel requires a name fragment, e.g. --find-channel=treasurer');
   const out = [];
   let cursor = '';
@@ -1037,7 +1037,7 @@ async function findChannel() {
     });
     for (const c of r.channels || []) {
       if ((c.name || '').toLowerCase().includes(query)) {
-        out.push({ id: c.id, name: c.name, private: !!c.is_private || !!c.is_mpim, groupDm: !!c.is_mpim });
+        out.push({ id: c.id, name: c.name, private: !!c.is_private, groupDm: !!c.is_mpim });
       }
     }
     cursor = (r.response_metadata && r.response_metadata.next_cursor) || '';
