@@ -13,7 +13,7 @@ import re
 
 from . import ai
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd
+from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd, is_within_claude_jobs_dir
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -89,6 +89,15 @@ BLOCKED_CLAUDE_DIRS = [
 ]
 
 
+JOBS_DIR_ENTRY = {
+    'target': '~/.claude/jobs/',
+    'alternative': (
+        'The whole jobs tree is off-limits, even a .tmp/ folder inside it. Write the file to '
+        '.tmp/ in your own working repo instead, outside ~/.claude.'
+    ),
+}
+
+
 def _blocked_dir_reason(file_path, entry):
     base = os.path.basename(file_path.replace('\\', '/'))
     alternative = entry.get('alternative', DEFAULT_BLOCKED_DIR_ALTERNATIVE)
@@ -104,6 +113,11 @@ def decide_write_edit(file_path):
     for entry in BLOCKED_CLAUDE_DIRS:
         if entry['pattern'].search(file_path):
             return 'block', _blocked_dir_reason(file_path, entry)
+
+    # Same segment matcher the Bash side uses (enforce.detect_claude_jobs_write), so both
+    # tools treat ~/.claude/jobs identically; a path ending in .tmp/ inside it is still blocked.
+    if is_within_claude_jobs_dir(file_path):
+        return 'block', _blocked_dir_reason(file_path, JOBS_DIR_ENTRY)
 
     cwd = os.environ.get('CLAUDE_CWD', os.getcwd()).replace('\\', '/')
     if not cwd.endswith('/'):
