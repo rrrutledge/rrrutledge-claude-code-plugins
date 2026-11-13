@@ -7,7 +7,7 @@ Read this when the item you are working turns out to be a **pointer** - a stub t
 This is the shared **open-the-pointer mechanic** every stage uses - a worker resolves needs-you pointers here, the digest resolves fyi ones the same way.
 A pointer is NOT the content, only a stub.
 **Open and read the underlying content yourself before doing anything else**, with the right tool for that surface: a plain fetch when the page is static, and **browser-chauffeur when the page renders client-side**.
-A client-rendered page - a Smore, Finalsite, or Mailchimp newsletter, and most hosted "view in browser" bulletins - returns only a wrapper/marketing shell to a plain fetch, and that empty shell is the signal to render it: fall back to browser-chauffeur, load the real URL, and read the rendered body.
+A client-rendered page - a Smore, Finalsite, or Mailchimp newsletter, and most hosted "view in browser" bulletins - returns only a wrapper/marketing shell to a plain fetch, and that empty shell is the signal to render it: fall back to browser-chauffeur, load the real URL, and read the rendered body, driving the render in a browser-chauffeur subagent so the page stays out of this session's context.
 The content is there behind the render, so an empty plain fetch is never grounds to restate the pointer and move on.
 
 A newsletter whose real content is a **hosted PDF or a body-referenced attachment** (a Finalsite "Attachments: X.pdf" line whose file is a hosted/reference attachment, not a true inline one) is the same kind of pointer: retrieve that file and read it.
@@ -48,4 +48,4 @@ The poller's screen pass judged only the captured body, not what a pointer resol
 Then, for every other pointer, **triage what you find with `triage.md`** (the same rubric the poller uses, in this engine/ folder), exactly as if that content had arrived as email:
 - **needs-you** → proceed through the worker-core steps where you left off, staging any reply per worker-core's "Sending".
 - **fyi / junk** → do NOT bug the user.
-  Close per worker-core's "Close silently", re-tagging `triage` to the bucket you found and leaving the source notification for the daily digest to clear (junk also gets a source-stop proposal there).
+  The daily digest just summarizes it in place (`engine/digest-core.md` step 2); a worker closes per worker-core's "Close silently", re-tagging `triage` to the bucket you found and leaving the source notification for the daily digest to clear (junk also gets a source-stop proposal there).

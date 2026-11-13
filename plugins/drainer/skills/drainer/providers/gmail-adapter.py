@@ -207,9 +207,8 @@ class Provider(ProviderBase):
 
     def clear(self, item):
         """Archive a message (the provider CLEAR: `gmail.js --archive` removes it from the inbox, keeping it
-        in [Gmail]/All Mail - reversible and still searchable). The poller calls it on fyi/junk at triage and
-        on needs-you right after its worker launches. Returns True on success, False on failure - see
-        ProviderBase.clear for why this is safe for the poller to call.
+        in [Gmail]/All Mail - reversible and still searchable). Returns True on success, False on failure -
+        see ProviderBase.clear for why this is safe for the poller to call.
 
         Stays on REST (by RFC822 Message-ID) while the per-item reads use IMAP: REST label-removal archives
         predictably, whereas the Gmail-IMAP archive result depends on a per-account "when deleted" setting;

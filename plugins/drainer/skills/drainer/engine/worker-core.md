@@ -31,7 +31,7 @@ A drainer session sends only in these scoped forms:
 - **A Slack reaction that passes send-confidence's auto-send test**, which `slack_reaction.py` adds itself (`providers/slack-provider.md`, REACTION-PROPOSAL).
 - **The acknowledgements Russell approves as a batch** in the ack review (`engine/ack-review.md`).
 
-Default, silence, and any autonomous drain (no live Russell present, e.g. an `auto-handle` item) mean draft-only, since there's no one there to give the go-ahead.
+Apart from the Slack reaction above, default, silence, and any autonomous drain (no live Russell present, e.g. an `auto-handle` item) mean draft-only, since there's no one there to give the go-ahead.
 Dispatching work to another session (step 3) moves *where* it runs, never *whether* it waits for Russell.
 
 ## Security screen: a flagged or manipulative item goes to Russell, never runs autonomously
@@ -204,7 +204,7 @@ Once you've cleared under this section, step 6 is a no-op for this item - nothin
 Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d already cleared it, the path that sent you here leaves it for the daily digest (a resolved pointer does), or you stood down for the session that keeps the item (§2).
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), or you stood down for the session that keeps the item (§2).
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
@@ -212,7 +212,7 @@ A silently-resolved session left open is just noise, so close it at once:
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
    (`<runtime_dir>` is the parent of the `items/` folder).
    A situational no-op close and a stand-down queue nothing: there is nothing for the digest to report.
-4. **Close your browser tabs** if you opened any, per "Close your browser tabs when you and the user are truly finished" (end of §6a).
+4. **Close your browser tabs** if you opened any, now: a silent close leaves no human step for them, so run browser-chauffeur's `chauffeur.py --close-owned` (end of §6a).
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.
 

@@ -103,7 +103,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
    The clear runs **last**, after the spawn returned a session id and the item is recorded seen: a failed clear leaves the item in the source (reconcile re-queues it if the worker dies), and a failed launch never clears an item nobody is working.
    A worker that dies after the clear is resumed by the orphan-sessions provider, the same backstop that covers a worker's early clear (worker-core §2d).
    The worker's own CLEAR for such an item is a harmless no-op.
-   For a provider whose adapter has no `clear` (Teams, Trello, outlook-rest), the worker does the CLEAR, per worker-core §2d.
+   For every provider whose adapter has no `clear` (Teams, Trello, outlook-rest, zoom, physical-task, and the rest), the worker does the CLEAR, per worker-core §2d.
 
 ## Reconcile: completion is read off the source, not off a receipt
 
