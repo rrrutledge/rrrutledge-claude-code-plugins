@@ -7,7 +7,7 @@ Your seed prompt names this file directly when the item is auto-handle, so you r
 An `auto-handle` item is executing a **standing rule** Russell decided in advance - do the action without presenting or waiting, then record it for the digest:
 
 1. **Read the shared brain (worker-core step 0)** and your item's data, then **situational-check (worker-core step 2)** - confirm the action is still pending and the rule still applies (e.g. the button is still there, not already approved).
-   If it's already handled, skip the action and go straight to step 3 below.
+   If it's already handled, skip the action: do only step 3's CLEAR, then continue with step 4.
 2. **Confirm the rule matches.**
    Re-read your source's **AUTO-HANDLE** section in `providers/<source>-provider.md` and verify this item meets the named condition exactly.
    If anything is off - the item looks like a near-miss the rule explicitly excludes, or you're not sure - **do NOT act autonomously**: treat it as needs-you instead (present to Russell and wait, per the normal flow in worker-core).

@@ -54,7 +54,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 
 1. **Read config** from `<project>/.claude/drainer.local.md`: enabled providers, `runtime_dir`.
    Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-pass throttle in the whole loop (see step 5).
-2. **Reconcile** (`reconcile_unhandled()`) - re-queue any email item whose source object is still unhandled with no live worker session on it, so it re-enumerates below.
+2. **Reconcile** (`reconcile_unhandled()`) - re-queue any item whose source object is still unhandled with no live worker session on it, for the sources that can report that, so it re-enumerates below.
    See the section after this list for the rule and its guards.
 3. **Per provider - enumerate everything eligible:** call the provider's enumerate (for outlook-graph, `mail.js --list-inbox --json --top=<ENUMERATE_PAGE_SIZE>` - read+unread, newest-first, no time window).
    There is no per-cycle work cap: every cycle asks every source for everything it currently has to offer (`ENUMERATE_PAGE_SIZE`, a generous constant in `run-poller.py`, bounds only how many rows one API call requests - a technical page size, not a throttle; a backlog bigger than that one page just carries into the next cycle).
@@ -103,7 +103,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
    The clear runs **last**, after the spawn returned a session id and the item is recorded seen: a failed clear leaves the item in the source (reconcile re-queues it if the worker dies), and a failed launch never clears an item nobody is working.
    A worker that dies after the clear is resumed by the orphan-sessions provider, the same backstop that covers a worker's early clear (worker-core §2d).
    The worker's own CLEAR for such an item is a harmless no-op.
-   For every provider whose adapter has no `clear` (Teams, Trello, outlook-rest, zoom, physical-task, and the rest), the worker does the CLEAR, per worker-core §2d.
+   For a provider whose adapter has no `clear`, the worker does the CLEAR, per worker-core §2d.
 
 ## Reconcile: completion is read off the source, not off a receipt
 

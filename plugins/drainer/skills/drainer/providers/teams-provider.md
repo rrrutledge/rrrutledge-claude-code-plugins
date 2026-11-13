@@ -110,7 +110,7 @@ Before clicking the conversation, check for messages newer than `firstUnreadMess
 
 Skip step 4 if no newer messages were found - the clear was clean.
 
-If the underlying WORK isn't finished (you only drafted a reply), do NOT clear - leave the conversation unread and write a "paused" note instead.
+If the underlying WORK isn't finished (a reply is drafted but the work it reports isn't done, so §2d's bar isn't met), do NOT clear - leave the conversation unread and write a "paused" note instead.
 When to clear follows worker-core §2d: a Teams item's full scope (how many distinct asks the unread messages hold, per MULTI-MESSAGE THREADS above) isn't knowable until they're all read, and marking read is all-or-nothing across the whole conversation.
 
 The poller marks a Teams fyi/junk item read at triage through a batch worker running this same CLEAR (`../engine/poller-core.md` step 5); a needs-you item's worker runs it itself.
