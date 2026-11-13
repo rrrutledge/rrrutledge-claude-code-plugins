@@ -1,13 +1,7 @@
-// Browser automation script template. Scripts receive a validated CDP port
-// from browser-chauffeur Phase 0 via --cdp-port. They do NOT contain browser
-// detection, fallback, or target-load validation - that is handled by Claude
-// interactively during Phase 0 before any script runs.
-//
-// Each script opens its own tab with openTab (never bare newPage - openTab
-// registers the tab so the launcher's sweep can reclaim it), works in it, and
-// closes it with closeTab when done. The browser is persistent - it stays
-// running across tasks so logins survive. closeTab guards against closing the
-// last tab (which would exit the browser and lose all sessions).
+// Browser automation script template: a complete script that satisfies every
+// rule in ../script-quality-standards.md. It takes the CDP port Phase 0
+// validated via --cdp-port, opens its own tab with openTab, and closes it with
+// closeTab when done (SKILL.md Phase 1 and Phase 3 hold the tab rules).
 
 const { chromium } = (() => {
   try { return require('playwright-core'); }
@@ -47,7 +41,7 @@ async function connectBrowser() {
       () => reject(new Error(
         `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}. ` +
         `The persistent profile likely has too many open tabs or a wedged renderer. ` +
-        `Reset the profile with cleanup-browser.py --reset (then re-launch and log in again), or retry.`
+        `Re-run chauffeur.py to sweep orphaned tabs, then retry once; if it still times out, ask the user before any reset.`
       )),
       CONNECT_TIMEOUT_MS,
     );
