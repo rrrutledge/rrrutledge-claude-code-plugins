@@ -33,7 +33,7 @@ Never surface a raw auth error to the user.
 Use `mcp__claude_ai_Gmail__search_threads` with `subject:"<subject>"` (no `in:` filter) - this covers All Mail in both directions.
 Read newest-first.
 CLEAR archives to All Mail (not Trash), so any reply the contact sent after capture is always findable here.
-Also run `node gmail.js --list-drafts` to check for an existing draft before staging a new one.
+Its draft-list command (email-base SITUATIONAL-CHECK step 3) is `node gmail.js --list-drafts`.
 
 ## CAPTURE
 See `email-base.md` for the shared two-file shape.

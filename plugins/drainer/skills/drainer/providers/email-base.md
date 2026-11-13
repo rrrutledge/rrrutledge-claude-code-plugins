@@ -26,7 +26,7 @@ The captured item is the inbound message at capture time; the conversation may h
    Cover both directions - messages FROM the contact AND the user's own sent replies.
    Paginate fully; don't stop at the first page.
 2. **Apply worker-core §2's done test** to what the thread shows: the user already replied (an acknowledgement doesn't count, per "An acknowledgement is not a reply").
-3. **Check for an existing draft** using your provider's draft-list command, to avoid staging a duplicate if a prior session already started one.
+3. **Check for an existing draft** (worker-core step 4) with your provider's draft-list command.
 
 ---
 
@@ -69,7 +69,8 @@ Pick the mode by who the message goes to:
 - **Reply-all on the thread** (responding to inbound mail): use your provider's `--reply` command.
   Always reply-all (not plain reply) to preserve every original To+CC recipient.
   Include the quoted original below the new text.
-  Pass the `messageId` of the message worker-core §2 says to thread off (the newest real message, even one the user sent).- **Fresh 1:1 (or small-group) note** (e.g. an outreach nudge to a single contact - do NOT reply-all a group thread to single someone out): use your provider's `--draft-new` / create-draft command with explicit To/Subject/CC.
+  Pass the `messageId` of the message worker-core §2 says to thread off (the newest real message, even one the user sent).
+- **Fresh 1:1 (or small-group) note** (e.g. an outreach nudge to a single contact - do NOT reply-all a group thread to single someone out): use your provider's `--draft-new` / create-draft command with explicit To/Subject/CC.
 
 ---
 

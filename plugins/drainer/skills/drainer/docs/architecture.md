@@ -22,7 +22,7 @@ The drainer runs as one long-running process, the **poller**, that holds each so
 - **fyi / junk →** queued for the daily digest's once-a-day review.
 - **A person waiting 48 business hours →** the daily digest's acknowledgement sweep lists the conversation, and an end-of-day review session sends a short ack on the user's approval while the item keeps its place in the queue (`engine/ack-review.md`).
 
-Who clears an item, and when, is `engine/poller-core.md` step 6 for the poller and `engine/worker-core.md` §2d for the worker.
+Who clears an item, and when, is `engine/poller-core.md` steps 5-6 for the poller and `engine/worker-core.md` §2d for the worker.
 
 ## The poller is code; AI is judgment
 
