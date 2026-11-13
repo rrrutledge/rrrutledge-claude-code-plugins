@@ -4,7 +4,7 @@ Shared utilities for browser automation scripts.
 
 ## Setup
 
-No manual setup needed. Run the browser-chauffeur setup script once (SKILL.md calls this automatically as part of the prerequisite check):
+No manual setup needed. SKILL.md's **Prerequisite Check** runs the setup script:
 
 ```bash
 node plugins/browser-chauffeur/skills/browser-chauffeur/templates/setup.js
@@ -16,42 +16,8 @@ The shim looks up the active plugin version each time it is required - from the 
 
 ## Usage
 
-```javascript
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-const { dismissOverlays, screenshotOnFailure, openTab, closeTab } = (() => {
-  try { return require('browser-chauffeur-helpers'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
-})();
-
-async function run() {
-  const browser = await chromium.connectOverCDP('http://localhost:9222');
-  const context = browser.contexts()[0];
-  // Always open with openTab, never bare newPage - it registers the tab so the
-  // launcher's sweep can reclaim it if this script crashes.
-  const page = await openTab(context, 'https://example.com');
-
-  try {
-    await dismissOverlays(page);
-    
-    // Your automation logic here
-    
-  } catch (e) {
-    await screenshotOnFailure(context, 'example-error');
-    throw e;
-  } finally {
-    await closeTab(page);           // close (or park, if last tab) + unregister
-    await browser.close().catch(() => {});
-  }
-}
-
-// Guaranteed exit: close the process when the work ends, and on a rejection too -
-// the live CDP socket keeps the event loop alive, so a script that only logs its
-// error (run().catch(console.error)) lingers as an orphan. Always exit(1).
-run().catch(e => { console.error(e.message); process.exit(1); });
-```
+Start every script from `skills/browser-chauffeur/templates/script-template.js`.
+It resolves `playwright-core` and the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
 
 ## Available Helpers
 
@@ -61,7 +27,7 @@ Dismisses common overlay dialogs (cookie banners, "What's new" modals, etc.) tha
 
 - **Parameters**: `page` - Playwright page object
 - **Returns**: Promise<void>
-- **Best Practice**: Call after navigation, before waiting for app-specific elements
+- **When to call**: `skills/browser-chauffeur/script-quality-standards.md` **Helper Calls and Logging**
 
 ### `screenshotOnFailure(context, label)`
 
@@ -75,21 +41,27 @@ Takes a diagnostic screenshot when automation fails. Useful in catch blocks.
 
 ### `openTab(context, url)`
 
-Opens a new tab, registers it in the shared tab registry (owned by the current Claude session, so the launcher's sweep keeps it alive while the session's window is open and reclaims it when that window closes), and navigates to `url` if provided. **Use this for every tab you create - never bare `context.newPage()`.** An unregistered tab escapes the orphan sweep and leaks until the age/count backstop reaps it or the browser crashes. It also attaches a page-scoped `popup` listener, so any tab this page later spawns itself (`target="_blank"`, `window.open`, ctrl-click) is registered under the same session automatically - capture it with `await page.waitForEvent('popup')` around the click if you need to drive it.
+Opens a new tab, registers it in the shared tab registry under the current Claude session, and navigates to `url` if provided.
+It is how every script creates a tab (SKILL.md Phase 1, **Getting a tab**).
+It also attaches a page-scoped `popup` listener, so any tab this page later spawns itself (`target="_blank"`, `window.open`, ctrl-click) is registered under the same session automatically - capture it with `await page.waitForEvent('popup')` around the click if you need to drive it.
 
 - **Parameters**: `context` - Playwright browser context; `url` - optional URL to navigate to
 - **Returns**: Promise<Page>
 
 ### `closeTab(page)`
 
-Closes a tab opened with `openTab` and unregisters it. Parks on `about:blank` instead of closing when it's the browser's last tab, so it never exits the persistent browser. Call it in a `finally` block. Only pass tabs you created - never a tab you found.
+Closes a tab opened with `openTab` and unregisters it.
+Parks on `about:blank` instead of closing when it's the browser's last tab, so it never exits the persistent browser.
+Which tabs to pass it, and when: SKILL.md Phase 3, **Tab cleanup**.
 
 - **Parameters**: `page` - a Playwright page returned by `openTab`
 - **Returns**: Promise<void>
 
 ### `findTab(context, predicate)`
 
-Reuses **your own session's** tab that matches the predicate, and marks it active so a tab you keep returning to holds its place in the eviction order and isn't reaped as idle. It only ever returns a tab this session opened; a tab another Claude session opened, or one the user opened by hand, is never returned even when it matches the predicate - so two sessions on the same URL never grab each other's tab. When you own no matching tab it returns `null`, and you open your own with `openTab`. **Get a tab only via `openTab` (a new one) or `findTab` (one you already own) - never a bare `context.pages().find(...)`, which would hand you another session's tab.**
+Reuses **your own session's** tab that matches the predicate, and marks it active so a tab you keep returning to holds its place in the eviction order and isn't reaped as idle.
+It only ever returns a tab this session opened; a tab another Claude session opened, or one the user opened by hand, is never returned even when it matches the predicate - so two sessions on the same URL never grab each other's tab.
+When you own no matching tab it returns `null`, and you open your own with `openTab`.
 
 - **Parameters**: `context` - Playwright browser context; `predicate` - `(page) => boolean`
 - **Returns**: Promise<Page | null> - your own matching tab (the most-recently-active if you own several), or `null` (then open one with `openTab`)
@@ -115,7 +87,7 @@ Requiring `browser-chauffeur-helpers` installs a process guard that keeps a hung
 - **Watchdog** - force-exits a script that is still alive after a wall-clock timeout (default 30 minutes, override with `BROWSER_CHAUFFEUR_SCRIPT_TIMEOUT_MS`). Generous by design so a legitimately long single script isn't cut off; the timer is unref'd, so it never delays a script that finishes cleanly. A script that must run even longer calls `cancelScriptWatchdog()`.
 - **Unhandled rejection** - a script whose top-level promise rejects with no `.catch()` (a bare IIFE) is exited promptly with the error printed, rather than left hanging behind the socket.
 
-The guard is the safety net, not the plan: a well-formed script still exits promptly through its own `finally { await browser.close(); }` and `run().catch(e => { console.error(e.message); process.exit(1); })` - see **Guaranteed Process Exit** in `script-quality-standards.md`.
+The guard is the safety net: a well-formed script still exits promptly on its own, per **Guaranteed Process Exit** in `skills/browser-chauffeur/script-quality-standards.md`.
 
 ### Where tab state lives
 
@@ -127,13 +99,8 @@ Splitting the state per tab is what lets concurrent sessions record tabs without
 
 ### Login detection
 
-**Do not try to detect login state with scripts. Detect it with the LLM via screenshot inspection.**
-
-Text and DOM heuristics cannot reliably distinguish login walls, SSO transit pages, MFA challenges, and slow-hydrating SPAs across the variety of providers and UIs you'll encounter. A screenshot read by the LLM gets it right with zero pattern maintenance.
-
-**Start-of-flow:** use `snapshot-target.js` - it navigates, waits for URL/network/DOM to settle, and saves a screenshot. The chauffeur reads it and decides.
-
-**Mid-flow (e.g. suspect the session expired):** screenshot the page and print the path. The recovery loop reads it.
+The session decides login state by reading a screenshot (SKILL.md Phase 0, **Step 2 - Snapshot the target**).
+For a mid-flow check (the session may have expired), a script screenshots the page and prints the path for the recovery loop to read:
 
 ```javascript
 const path = `.tmp/session-check-${Date.now()}.png`;
