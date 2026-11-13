@@ -104,6 +104,26 @@ Its last step folds whatever it learned about the target shape into `authoring-r
 isc-ed-report needs none.
 After the backlog clears, changes 1 and 2 catch new duplicates at the edit, so a periodic audit would spend tokens again on skills the review already covers.
 
+### What the drainer refactor taught the process
+
+The drainer refactor ([PR 1476](https://github.com/rrrutledge/rrrutledge-claude-code-plugins/pull/1476)) closed the backlog; its rubric lesson went to `authoring-rules` in [PR 1477](https://github.com/rrrutledge/rrrutledge-claude-code-plugins/pull/1477).
+These are the process lessons:
+
+- **The first survey undercounts.**
+  This plan's skim found ~15 duplicated rules and 5 contradictions in drainer; the full survey of every file the skill reads found about 40 and 12.
+  Size a refactor from the full survey, not the skim.
+- **Map which session loads which file before the first review round.**
+  drainer's worker, daily digest, and triage calls each load different files, and the correctness pass caught pointers a reader could never follow, such as the digest pointed into `worker-core.md`.
+  Hand every reviewer that map along with SKILL_FILES, and survey the prompt strings scripts write for those sessions as prose.
+- **The writing review and the correctness pass can pull opposite ways.**
+  The writing review cut a rule restated beside its pointer; the correctness pass restored it because one reader never loads the home.
+  Which session reads the file decides between them.
+- **Rewriting a whole file can flip its line endings.**
+  With `core.autocrlf=true`, a file written fresh as LF over a CRLF original diffs as a full rewrite.
+  Compare against `git -c core.autocrlf=false archive origin/main`, and restage only the changed files with `git -c core.autocrlf=false add --renormalize`.
+- **Write the new homes first, then split the edit.**
+  Once "Sending" and "Close silently" existed in `worker-core.md`, a parallel session could repoint the provider files and script headers against them while this session did the engine, and the two halves agreed.
+
 ## Implementation, once approved
 
 1. Branch `skill-single-source` from `main`.
