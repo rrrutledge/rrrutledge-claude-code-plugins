@@ -1,55 +1,29 @@
 ---
 skill: drainer
-description: Drain human-touch queues to zero - Outlook, Teams, Trello outreach - with one shared loop. For each item: read the thread, do the action it implies (open a PR, file a ticket, run a check, update a system), draft any reply in the user's voice (draft-only, never sent), then clear the item. Use to drain the work inbox / Teams / outreach to zero. Per-machine settings come from .claude/drainer.local.md.
+description: Drain human-touch queues to zero - email, Teams, Slack, Trello outreach - with one shared loop. For each item: read the thread, do the action it implies (open a PR, file a ticket, run a check, update a system), draft any reply in the user's voice (draft-only by default, sent only on Russell's explicit per-message OK), then clear the item. Use to drain the inbox / Teams / Slack / outreach to zero. Per-machine settings come from .claude/drainer.local.md.
 instructions: |-
   ## Drainer
 
-  A **drainer** processes a queue of human-touch items.
-  For each: read the underlying conversation → decide the ACTION (reply / do work / nudge / stop / nothing) → DO the doable part now (safe, reversible work proceeds; irreversible/outbound-to-others waits for the user's OK) → draft any reply in the user's voice **draft-only, never sent** → clear the item.
-  Outlook / Teams / outreach are the **same loop over different sources**.
-
-  It runs as a **continuous keeper**: one long-running process (`scripts/run-poller.py`) that holds each source at **zero un-started actionable items** - needs-you items immediately open a headless `claude --bg` worker, dispatched to keep a dynamic buffer of workers waiting for review (`target_reviewable`, capped at `max_concurrent`), fyi/junk queue for a once-a-day digest, and the poller itself never clears.
-  The loop is code; AI is used only to **triage** each cycle's new items and to run each **worker**.
+  A **drainer** holds a queue of human-touch items at zero: for each one it reads the conversation, does the action the item implies, drafts any reply, and clears the item.
+  `docs/architecture.md` describes the model and why it is built this way; this file is the map to where each part lives.
 
   ### 1. Load per-machine settings FIRST
-  Read **`.claude/drainer.local.md`** in the current project (YAML frontmatter): which `providers` are active, per-provider config (e.g. Trello board ids), the harvest interval, and `local_dir` (a folder holding `context.md`).
+  Read **`.claude/drainer.local.md`** in the current project (YAML frontmatter): which `providers` are active, per-provider config (e.g. Trello board ids), and `local_dir` (a folder holding `context.md`).
   If it's missing, copy `templates/drainer.local.example.md` to `.claude/drainer.local.md` and help the user fill it in.
 
   Then read `context.md` (from `local_dir`) and the active providers.
 
-  ### 2. Providers
-  Providers live in **`providers/`** next to this SKILL.md - enable the ones you want in `drainer.local.md`:
-  - `providers/outlook-provider.md` - enterprise Outlook on the web (browser).
-  - `providers/outlook-graph-provider.md` - personal Outlook.com via the Microsoft Graph API (the `ms-graph` skill; no browser).
-  - `providers/teams-provider.md` - Microsoft Teams on the web (browser).
-  - `providers/trello-provider.md` - outreach boards (uses the `trello-outreach` skill).
-    To add a new source, write a provider - see `docs/writing-a-provider.md`.
-
-  ### 3. Follow the engine specs (bundled next to this SKILL.md)
-  Canonical and source-agnostic - don't restate them:
-  - **`engine/triage.md`** - the one rubric: needs-you / fyi / junk (only three; junk → propose a source-stop in priority order: unsubscribe, then app notification settings, then an inbox rule).
-  - **`engine/poller-core.md`** - the continuous keeper's contract: the keeper, its feed cycle and its dispatch loop (enumerate → triage → pending list → dispatch, never clear; `--dry-run` for a report) and where AI is used (per-item triage call(s) + the worker).
-  - **`engine/worker-core.md`** - the lean per-item needs-you worker procedure (read brain → situational-check → do the work → draft in voice → learn from the send → advance the item).
-    Situational sub-procedures load by trigger: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear), which worker-core names at the point each trigger fires.
-  - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch (act → CLEAR → queue the digest → close up), named directly in the worker's seed so it loads without going through the needs-you flow.
-  - **`engine/digest-core.md`** - the slow loop: the once-a-day, interactive EOD digest (`scripts/run-digest.py`) that empties the fyi/junk queue, clearing nothing without Russell's review.
-  - **`engine/ack-review.md`** - the end-of-day acknowledgement batch: a separate session the digest's daily task launches when its once-a-day sweep finds a real person waiting 48 business hours, which sends a short ack only on Russell's approval of the batch.
-  - **`engine/provider.md`** - the interface a provider implements.
-
-  ### 4. Hard rules (always)
-  - **Draft-only outbound.
-    Never send, never post, never press Enter to send.**
-    Create drafts immediately (reversible); the user edits and sends.
-    Only sending, posting, a permanent purge, or destructive system changes wait for explicit OK.
-  - **Delete/archive freely without asking** - reversible; narrate each with a one-line reason.
-  - **Drafting goes through the `message-draft` skill** (it applies `document-authoring` voice).
-    After each send, run the document-authoring skill's Learn step (`learn-from-send.md`).
-  - **Waiting on someone else → a tracker card** only when *you* initiated and the ball is back in their court (via the `trello-outreach` skill).
-    If they initiated and you've replied, you're done.
-  - **Lead with context** in every worker; items that need nothing right now resolve quietly.
-
-  Sibling skills used: `message-draft`, `document-authoring`, `trello-outreach`, and `browser-chauffeur` for the browser providers.
-
-  ### Docs
-  `docs/architecture.md` (the model), `docs/extending.md` (settings + adding sources), `docs/writing-a-provider.md` (provider contract with the shipped providers as worked examples).
+  ### 2. Where each part lives
+  Each file below is the one home for what it names; this list states none of their rules.
+  - **`engine/poller-core.md`** - the poller: where AI is used, its feed cycle and dispatch pass, when it clears an item, reconcile, and the fail-safes.
+  - **`engine/triage.md`** - the one rubric: the four buckets, plus `sender` and `chaser`.
+  - **`engine/screen.md`** - the security screen every non-junk item passes, and what a flag does.
+  - **`engine/worker-core.md`** - the per-item worker's needs-you flow, including when anything is sent ("Sending") and how an item resolves without Russell ("Close silently").
+    It names the situational files at the point each one applies: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear).
+  - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch and the disposition values, named directly in the worker's seed.
+  - **`engine/digest-core.md`** - the daily digest that empties the fyi/junk queue with Russell's review (`scripts/run-digest.py`).
+  - **`engine/ack-review.md`** - the end-of-day acknowledgement batch for a person left waiting 48 business hours.
+  - **`engine/provider.md`** - the contract a provider implements.
+  - **`providers/`** - one adapter and one prose file per source; `providers/email-base.md` holds the rules every email provider shares.
+  - **`docs/extending.md`** - per-machine settings, triggers, credentials, and setting up a new machine; **`docs/writing-a-provider.md`** - adding a source.
 ---

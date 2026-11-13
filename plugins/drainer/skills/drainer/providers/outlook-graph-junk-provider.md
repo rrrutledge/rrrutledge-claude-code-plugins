@@ -3,7 +3,7 @@
 A provider for a **personal** Outlook.com mailbox's **Junk Email folder**, read entirely through the **Microsoft Graph API** via the **`ms-graph`** skill's `mail.js`.
 The poller enumerates Junk, triages and security-screens each item, and un-junks misfiled mail (anything that's actually `fyi`, `auto-handle`, or `needs-you`) into the Inbox.
 It never launches a worker for a Junk item: once the message is back in the Inbox, the `outlook-graph` provider enumerates it as an ordinary new message and its normal worker/digest flow takes over, so one email is never worked from two providers at once.
-Genuinely junk mail found in Junk, and anything the security screen flagged, is silently recorded as seen and left in Junk (matches Russell's framing: "already in the right spot").
+Genuinely junk mail found in Junk is silently recorded as seen and left in Junk (matches Russell's framing: "already in the right spot"), and so is anything the security screen flagged, the one scoped exception in `../engine/screen.md` "What a flag does".
 
 Implements `../engine/provider.md`; classify by `../engine/triage.md`. id prefix: `outlook-graph-junk-`; body file: `<id>.email.md`.
 

@@ -1,7 +1,7 @@
-# drainer digest-core - the once-a-day EOD digest procedure (interactive, reviewed)
+# drainer digest-core - the daily digest procedure (interactive, reviewed)
 
-The fast loop (`engine/poller-core.md`) archives each fyi/junk item at triage and queues it for this digest.
-The digest is the **slow loop**: once a day it empties that queue **with Russell in the loop**.
+The poller queues each fyi/junk item for this digest at triage (`engine/poller-core.md` step 5).
+The daily digest empties that queue once a day **with Russell in the loop**.
 It is the opposite of the poller in one way that governs everything below: **it is interactive and disposes of nothing without Russell's review.**
 
 You do not act on unfinished needs-you items here - the poller's own reconcile catches them every cycle, by re-queuing any item whose source object is still unhandled with no live worker on it, so a crashed or closed worker's item is back in the drain within minutes rather than waiting for you.
@@ -13,7 +13,7 @@ Everything you read and clear is under `runtime_dir`.
 
 ## 0. Provider health - surface any stuck source FIRST (the headless poller can't)
 
-The fast-loop poller runs headless (no console - its output is discarded), so a provider whose credential expired fails **silently** every cycle and would never reach Russell.
+The poller runs headless (no console - its output is discarded), so a provider whose credential expired fails **silently** every cycle unless a diagnostic session catches it (`engine/poller-core.md`, "Where AI is used", item 5).
 This daily digest is the guaranteed-visible channel that closes that gap.
 Before anything else:
 
@@ -105,14 +105,12 @@ Order by what's most worth knowing first.
 
 **Resolve pointers automatically, and never pause to ask.**
 An fyi item can be a **pointer** (a stub whose real content is behind a link - see `triage.md`): a school newsletter Smore link, a hosted "view in browser" bulletin, or a newsletter whose real content is a hosted PDF or a body-referenced attachment (a Finalsite "Attachments: X.pdf" line whose file is a hosted/reference attachment, not a true inline one).
-Open and read the real content per the resolve-a-pointer step in `worker-core.md` § 2b - the same mechanic a worker uses for needs-you, here at digest time for fyi, which also covers retrieving the hosted PDF or attachment when that is where the story lives, plus the browser-chauffeur fallback for a plain fetch that returns only a JS-rendered shell and how to extract what you find.
+Open and read the real content per `engine/pointers.md`, the same mechanic a worker uses for needs-you, here at digest time for fyi.
 Resolving a pointer only reads the content Russell would have read himself, so it is part of *gathering* this item's summary, not an action that disposes of anything: do it on your own the moment you meet a pointer, exactly as you read any captured body.
 Step 4's review gate governs CLEAR (disposal) alone, never this read - so resolving never waits for a go-ahead, and offering to resolve instead of just doing it is the one failure this section closes.
-**A plain fetch that comes back as only a JavaScript or marketing shell is itself the trigger to render it now**: a near-empty body from a client-rendered host (Smore `smore.com`, Finalsite, Mailchimp, or any hosted "view in browser" bulletin) means the story is behind the render, so fall back to browser-chauffeur immediately - drive it in a browser-chauffeur subagent so the render stays out of this session's context - load the real URL, read the rendered body, and summarize that.
+Drive any browser-chauffeur render in a subagent, so the render stays out of this session's context.
 Resolve it in the same pass that gathers the digest, and present Russell the finished summary rather than an offer to go fetch it.
 The digest's fyi summary is that resolved content - for a hosted-PDF or attachment newsletter, read the file, then summarize it and pull its **action items for you** to-dos exactly as for a link-hosted bulletin - never the pointer stub restated.
-A Finalsite "Attachments: X.pdf" line, or a body link to a hosted `.pdf`, is a hosted reference rather than a file on the message, so resolve it through the pointer link-resolve above (open the hosted file and read it), the same as any hosted-content newsletter.
-An attachment-download step (a mail provider's `--get-attachments` or equivalent) pulls only a true inline attachment and comes back empty for a hosted reference, so it is never the path for these.
 
 **Before framing any item as still needing Russell** - an open ask, an awaited reply, anything that implies he still owes a response - run that provider's **SITUATIONAL-CHECK** first (search Sent + Drafts; read `<providers_dir>/<source>-provider.md` → SITUATIONAL-CHECK).
 The captured snippet is the *original inbound* message, and the conversation has usually moved on.
@@ -123,10 +121,8 @@ Do not append a speculative "things still to do" list assembled from unverified 
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.
 Summarize the recap's gist - what was discussed, the decisions, any date or number worth knowing - and never re-list those action items here, or the same action shows up twice: once as a live worker, once as a phantom digest to-do.
 
-The same principle applies to outreach: **before framing any item as new** - an introduction, or a reply from a company or individual who might already be a tracked contact - check `<repo>/trello-boards.yaml` (the registry the `trello` source and `trello-outreach` skill use) for an existing card naming that company or contact, the same check worker-core.md §2 runs before drafting.
+The same principle applies to outreach: **before framing any item as new**, run worker-core §2's "Also check Trello when the item could be outreach" against `<repo>/trello-boards.yaml`.
 A match means the item is already tracked: name and link the card, and frame the item as **already tracked** rather than new (optionally noting whether the card is worth updating).
-No match → surface it as genuinely new.
-This applies regardless of which source (mail, Teams, Slack) captured the item.
 
 Before calling a Slack item context-free, apply READ-IN-CONTEXT in `providers/slack-provider.md`.
 
@@ -148,7 +144,7 @@ If a provider has no REPORT-PHISHING action, fall back to the normal junk stop a
 Present phishing items as their own group so Russell sees at a glance what was flagged as deceptive.
 
 This step's proposal, and his go-ahead on it in step 4, approve **building a rule for this type of junk** - they are not approval of a rule's literal text.
-When the chosen stop is a mail rule, creating or appending it always routes through the provider's JUNK-LEARNING section, which in turn requires the **`mail-filters`** skill's show-literal-rule gate: show Russell the exact phrase(s), the bucket they land in, and the action, and create only on his explicit OK of that shown text.
+Creating or appending the rule goes through the provider's JUNK-LEARNING section and its show-literal-rule gate.
 
 ## 4. Present, then clear ONLY on Russell's review
 
@@ -161,8 +157,7 @@ For **each auto-handled item** (already actioned + source-cleared by its worker)
 On his OK, for **each fyi/junk item he approves clearing**:
 1. Read the item's `source` and ids from its `items/<id>.json` (or the queue entry).
 2. Run that provider's **CLEAR** op - read `<providers_dir>/<source>-provider.md` → CLEAR and use exactly what it specifies; narrate each with a one-line reason.
-   CLEAR is reversible by design (never a permanent purge).
-   The poller already archived the source at triage, so for an inbox provider this re-archive is a harmless no-op; it does the real clear for any provider that couldn't archive at triage.
+   For a source the poller already cleared at triage (`engine/poller-core.md` step 5), this is a harmless no-op; it does the real clear for any provider that couldn't.
 3. Remove it from the queue: `node <seen-state.js> queue-clear <runtime_dir> <id>`.
 
 For any junk source-stop Russell approves, apply it per that provider's JUNK-LEARNING.
@@ -172,18 +167,14 @@ Empty only what he approved.
 **Do the provider CLEAR and the `queue-clear` together, in that order, for every item you empty.**
 An item dropped from the queue while its source object is still sitting in the inbox is one the poller's reconcile reads as unfinished, so it re-dispatches as a fresh worker.
 
-## Hard rules (carry forward from the engine)
+## Hard rules
 
 - **Dispatch execution work, don't run it in this session.**
-  The digest is a triage-and-dispatch role by design: it summarizes, proposes, and clears.
-  When the review surfaces a real task to *do* - a reply to draft, a PR to ship, a workflow to build, anything Russell raises mid-review - hand it off to a fresh session (worker-core.md step 3's inline/subagent/handoff heuristic) rather than executing it inline.
-  This session already holds the whole day's triaged queue; loading an execution task's skills on top of that is exactly the accumulation the heuristic prevents.
-  Triage stays in this lean session; each execution task goes out to its own.
-- **Draft-only outbound.
-  Never send, never post.**
-  The digest only summarizes, proposes, and clears (delete/archive is reversible).
-  Any reply that a re-surfaced item warrants is drafted, never sent.
+  The digest summarizes, proposes, and clears.
+  When the review surfaces a real task to *do* - a reply to draft, a PR to ship, a workflow to build, anything Russell raises mid-review - hand it off to a fresh session, per worker-core step 3's inline/subagent/handoff routing.
+  This session already holds the whole day's triaged queue, so an execution task's skills loaded on top of it would ride along on every later round.
+  Any send follows worker-core's "Sending", in the session the work moved to.
 - **Clear nothing without Russell's review** - this is the whole point of the digest being interactive.
-- **Reversible-only without asking** - every provider's CLEAR is reversible by design; never a permanent purge.
+  Every provider's CLEAR is reversible by design (`engine/provider.md`), never a permanent purge.
 - **Link to descriptive text, never a bare URL** - route any composed prose through the `document-authoring` voice.
 - **Link PRs and issues from their repo** - per the `git-workflow` skill's PR-link rules.

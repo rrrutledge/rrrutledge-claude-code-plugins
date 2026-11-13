@@ -1,4 +1,4 @@
-"""Shared Zoom Server-to-Server OAuth client for drainer Zoom-based adapters.
+"""Shared Zoom OAuth client (a user-authorized OAuth app, refresh-token grant) for drainer Zoom-based adapters.
 
 Any adapter that talks to Zoom's REST API - the plugin's own `zoom-adapter.py`, or a machine-local
 adapter watching one specific meeting series - shares this one client instead of each carrying its own

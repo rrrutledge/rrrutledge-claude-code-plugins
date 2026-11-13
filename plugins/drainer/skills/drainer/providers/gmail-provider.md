@@ -45,7 +45,7 @@ When the work needs a message's attachments, save them with the gmail skill's "S
 ## CLEAR
 `node gmail.js --archive=<messageId>` - removes the message from the inbox and keeps it in **All Mail** (reversible; narrate it).
 Archiving, not trashing, is the drainer's clear: a drained item has been dealt with, not discarded.
-The poller also calls this (via the adapter's `clear`) to archive an fyi/junk message the moment it's triaged, so it leaves the inbox without waiting for the digest; the digest's own CLEAR on approval then re-archives it, a harmless no-op.
+The poller also runs this through the adapter's `clear`, at triage for fyi/junk and right after launch for needs-you (`../engine/poller-core.md` steps 5-6).
 
 `--reply` looks the original up across All Mail, so it can thread and quote whether the message is still in the inbox or has already been archived - archive order relative to drafting does not matter.
 

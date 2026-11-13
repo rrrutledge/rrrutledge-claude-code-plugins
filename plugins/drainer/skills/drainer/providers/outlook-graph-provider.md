@@ -7,8 +7,8 @@ Implements `../engine/provider.md`; classify by `../engine/triage.md`. id prefix
 > Two-file provider: the **reading** mechanics (enumerate, stable id, capture-writing) live in the sibling **`outlook-graph-adapter.py`** that the poller drives.
 > This doc is the **worker-facing** prose - AUTH-GLANCE, the captured item shape, CLEAR, JUNK-LEARNING, DRAFT-MODE.
 
-> This is the API counterpart to the browser `outlook-provider.md` (which is for **enterprise** Outlook on the web).
-> Use this one for a personal Microsoft account: it's cheaper, faster, and browser-free.
+> This is the Graph-transport counterpart to `outlook-rest-provider.md` (which reads whatever account is signed into Outlook web, e.g. a work mailbox).
+> Use this one for a personal Microsoft account.
 
 **Shared email rules:** See `email-base.md` for CAPTURE shape, SITUATIONAL-CHECK decision logic, DRAFT-MODE voice rules, and JUNK-LEARNING priority order.
 This file covers only the Graph-specific mechanisms.
@@ -30,8 +30,8 @@ Search all three folders - inbox, Archive, Deleted Items - covering both directi
 Use `node mail.js --search="<subject>"` - verify it covers Archive and Deleted Items and do not stop at the first page.
 
 ## RESOLVE-A-POINTER (hosted-PDF / body-link newsletter)
-The shared open-the-pointer mechanic lives in `../engine/worker-core.md` § 2b - a worker uses it for a needs-you pointer, the digest for an fyi one (`../engine/digest-core.md` step 2).
-This is the Graph-specific way to get the content.
+The shared open-the-pointer mechanic, used by both the worker and the daily digest, lives in `../engine/pointers.md`.
+This section holds only the Graph commands for it.
 
 **Decide which kind of "attachment" the newsletter has first, because the two resolve differently.**
 A **true inline/MIME attachment** is a real file on the message - `node mail.js --get-attachments=<messageId>` downloads it, and that is the right tool for it.
@@ -40,10 +40,8 @@ A **hosted/reference "attachment"** is a link, not a file: a Finalsite "Attachme
 
 A Finalsite-style school newsletter is the hosted kind: it delivers its real content as a hosted link in the HTML body, which the plaintext `mail.js --show` strips.
 Emit the raw HTML body with `node mail.js --show=<messageId> --html`, fetching by the captured message id, which stays valid after archiving (see the CLEAR section).
-These bodies are tiny (a sentence or two plus a footer), so scan the whole HTML: find the hosted-PDF `<a href>`, decode its Safe Links wrapper (`safelinks.protection.outlook.com/?url=<encoded real URL>`) back to the underlying URL, and fetch it with a plain fetch - these files are usually public (Google Cloud Storage / myschoolcdn) and return the PDF directly.
-When the newsletter's story is inline or on a "view in browser" page rather than a PDF, read that content straight from the HTML instead.
-Fall back to browser-chauffeur (open the message's `webLink` and download the file) only when the plain fetch returns a login wall or non-PDF bytes.
-Read the resolved content, then summarize it and pull its action items exactly as for any pointer.
+Scan that whole HTML for the hosted-PDF `<a href>` and fetch it per `../engine/pointers.md` (Safe Links decode, plain fetch first); for Graph mail the files usually sit on Google Cloud Storage or myschoolcdn.
+The browser-chauffeur fallback opens the message's `webLink` and downloads the file.
 
 ## CAPTURE
 See `email-base.md` for the shared two-file shape.
@@ -52,7 +50,7 @@ Graph-specific: `messageId` is the opaque Graph message id.
 ## CLEAR
 `node mail.js --delete=<messageId>` - moves the message to **Archive** (reversible; keeps it searchable later; narrate it).
 Never a permanent purge.
-The poller also calls this (via the adapter's `clear`) to archive an fyi/junk message the moment it's triaged, so it leaves the inbox without waiting for the digest; the digest's own CLEAR on approval then re-archives it, a harmless no-op.
+The poller also runs this through the adapter's `clear`, at triage for fyi/junk and right after launch for needs-you (`../engine/poller-core.md` steps 5-6).
 
 **The captured `messageId` stays valid after CLEAR moves the message.**
 ms-graph requests immutable message ids, so the `messageId` captured at triage time (or in `items/<id>.json`) keeps resolving after the message is archived or moved - `--show`, `--get-attachments`, and `--reply` all work against that same captured id.
@@ -73,5 +71,5 @@ The daily digest runs this on Russell's approval in place of the ordinary CLEAR 
 Follow all voice and reply-vs-fresh rules in `email-base.md`, then use these Graph commands:
 
 - **Reply-all on the thread:** `node mail.js --reply --message-id=<messageId> --body-file=<file>` - Graph's reply-all keeps the thread quote below your text automatically and preserves all To+CC recipients.
-  Thread off the most recent message (see `email-base.md`).
+  Thread off the message `email-base.md` names.
 - **Fresh note:** `node mail.js --draft-new --to="<addr>" --subject="<subj>" --body-file=<file> [--cc="<addrs>"]`

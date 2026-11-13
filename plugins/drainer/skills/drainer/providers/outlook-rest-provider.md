@@ -40,8 +40,8 @@ Both `id` (stable slug) and `messageId` (API handle) are persisted in the JSON.
 `node <ms-rest>/outlook-mail.js delete <messageId>` - moves the message to **Archive** (reversible; keeps it searchable later; narrate it).
 Never a permanent purge.
 
-## JUNK-LEARNING (step 3 - Outlook work mailbox-specific)
-After exhausting unsubscribe and source-app options (see `email-base.md`): propose an **Outlook rule** (a sender/subject/body match that files or deletes the class going forward).
+## JUNK-LEARNING (the first-reach rule - Outlook work mailbox-specific)
+For `email-base.md` JUNK-LEARNING step 1, propose an **Outlook rule** (a sender/subject/body match that files or deletes the class going forward).
 Prefer extending an existing rule bucket over a new standalone rule.
 Describe the rule for the user to add via the Outlook Rules UI.
 
@@ -49,6 +49,6 @@ Describe the rule for the user to add via the Outlook Rules UI.
 Follow all voice and reply-vs-fresh rules in `email-base.md`, then use these `ms-rest` REST commands:
 
 - **Reply-all on the thread:** `node <ms-rest>/outlook-mail.js create-reply <messageId> --json <path>` - creates the reply draft in **Drafts** with the quoted original below the new text and all To+CC recipients preserved.
-  Thread off the most recent message (see `email-base.md`).
+  Thread off the message `email-base.md` names.
   JSON: `{ "comment": "<p>HTML body</p>" }`.
 - **Fresh note:** `node <ms-rest>/outlook-mail.js create-draft --json <path>` - JSON: `{ "subject", "body": "<p>HTML</p>", "to": ["addr"], "cc": [], "bodyType": "HTML" }`.

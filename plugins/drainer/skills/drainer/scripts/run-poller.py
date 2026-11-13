@@ -3,30 +3,21 @@
 Its scheduled form runs the keeper (keeper.py): a long-running process whose feed thread runs this script's
 --feed cycle (enumerate -> drop seen -> judge -> file fyi/junk -> write needs-you and auto-handle items to the
 pending list, pending.py) and whose dispatch loop runs dispatch_pass over that list about once a minute
-(cap -> dispatch -> record). Both are deterministic algorithms, so they live here in Python - cheaper and more reliable than asking an AI to follow it each cycle. AI is used
-for exactly three things, each a `claude -p` call sharing a cached general-rules prefix: one **triage**
-call per new item (the needs-you / fyi / junk judgment, per engine/triage.md), one **security screen**
-call per new item triage didn't already bucket as junk (a separate input-guardrail pass, per
-engine/screen.md, so a classification call can't crowd out the guardrail), and the per-item **worker**
-session (the actual reply/work, draft-only). A new item in a conversation a live worker already holds is
-handed to that worker instead of getting its own; a single-tool `claude -p` call only carries that note,
-since a script can't post to a session's inbox itself. An item's triage and screen verdicts are cached, so an item
-that waits on the pending list is judged once; and when the background account is out of usage a
-circuit breaker skips the AI step until the account can serve calls again. Triage also records whether a
-person or a machine wrote each item (`sender`); the once-a-day acknowledgement sweep (ack_sweep.py) reads
-it from the verdict cache.
+(cap -> dispatch -> record). Both are deterministic algorithms, so they live here in Python - cheaper and
+more reliable than asking an AI to follow it each cycle. Where AI is used (triage into the four buckets,
+the security screen, the worker, the routed-item delivery call, plus the Teams mark-read batch worker and
+the diagnostic sessions), and when this script clears a source item, are in engine/poller-core.md, the
+contract this script implements.
 
 The orchestration below is **provider-agnostic**: it reads which providers are enabled from
-`.claude/drainer.local.md` and drives each through a small adapter (enumerate / stable_id / capture).
+`.claude/drainer.local.md` and drives each through a small adapter (provider_base.ProviderBase).
 All source-specific mechanics - mail.js, the Outlook id scheme, the Graph message body - live inside an
-adapter class, never in the loop. New sources (Gmail, Trello, …) plug in by adding an adapter.
+adapter class, never in the loop. A new source plugs in by adding an adapter.
 
 Fail-safe: a message-id is recorded as seen only AFTER its dispatch succeeds; losing seen-state
-re-processes items (safe), never drops one. The poller clears only fyi/junk, and only at the end of
-dispatch (after the item is captured, queued for the digest, and recorded), so an inbox provider archives
-mail Russell has already dispositioned right at triage; a failed clear leaves the item queued, never lost.
-needs-you item whose provider implements clear (email, Slack) is cleared by the poller right after its worker
-spawns; other needs-you items (Teams, Trello) are cleared by their worker on completion. See engine/poller-core.md for the contract.
+re-processes items (safe), never drops one. Every clear this script runs comes after the item is captured
+and recorded (and, for fyi/junk, queued for the daily digest), so a failed clear leaves the item in its
+source, never lost.
 
 Usage:
     python run-poller.py --repo C:/Users/russe/Dev/personal-ai-pod            # the keeper (the scheduled form)

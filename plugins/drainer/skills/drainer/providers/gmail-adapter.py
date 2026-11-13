@@ -10,10 +10,10 @@ Google App Password via GMAIL_ADDRESS/GMAIL_APP_PASSWORD, which carries no Gmail
 `--top=500` mailbox scan `enumerate()` and `still_in_inbox_ids()` run twice a cycle (`_list_inbox()` →
 `gmail.js --list-inbox-imap`), and every per-item read - `triage_text`, `screen_signal`, `capture`'s body
 fetch, `_fetch_body` - which fetch by the INBOX UID the scan already returned (`gmail.js --show-imap` /
-`--auth-imap`). Over the poller's ~5-minute cadence those calls would otherwise pin Gmail's per-user REST
-quota. `clear` and the draft/send path stay on the Gmail **REST API over OAuth** (GMAIL_OAUTH_CLIENT_ID/
+`--auth-imap`). Over the poller's feed cadence (keeper.py) those calls would otherwise pin Gmail's per-user
+REST quota. `clear` and the draft/send path stay on the Gmail **REST API over OAuth** (GMAIL_OAUTH_CLIENT_ID/
 SECRET, via the gmail skill's cached token): draft/send is low-volume, human-triggered, and wants the
-structured JSON and signature handling REST gives; `clear` is a single archive call per fyi/junk item, and
+structured JSON and signature handling REST gives; `clear` is a single archive call per cleared item, and
 REST label-removal archives predictably where Gmail's IMAP archive result would depend on a per-account
 "when deleted" setting - so `clear` keeps exact archive semantics without adding meaningful REST volume.
 
@@ -206,13 +206,14 @@ class Provider(ProviderBase):
         return {m["id"] for m in msgs if m.get("id")}
 
     def clear(self, item):
-        """Archive an fyi/junk message at triage time (the provider CLEAR: `gmail.js --archive` removes it
-        from the inbox, keeping it in [Gmail]/All Mail - reversible and still searchable). Returns True on
-        success, False on failure - see ProviderBase.clear for why this is safe for the poller to call.
+        """Archive a message (the provider CLEAR: `gmail.js --archive` removes it from the inbox, keeping it
+        in [Gmail]/All Mail - reversible and still searchable). The poller calls it on fyi/junk at triage and
+        on needs-you right after its worker launches. Returns True on success, False on failure - see
+        ProviderBase.clear for why this is safe for the poller to call.
 
         Stays on REST (by RFC822 Message-ID) while the per-item reads use IMAP: REST label-removal archives
         predictably, whereas the Gmail-IMAP archive result depends on a per-account "when deleted" setting;
-        and it's one call per fyi/junk item, so it isn't the recurring-read volume the IMAP move targets."""
+        and it's one call per cleared item, so it isn't the recurring-read volume the IMAP move targets."""
         res = run_node([self.gmailjs, f"--archive={item['id']}"])
         return res.returncode == 0
 
