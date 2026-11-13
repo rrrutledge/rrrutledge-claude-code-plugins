@@ -39,7 +39,7 @@ The poller runs `node mail.js --not-junk=<messageId>` in plain code, after triag
 It un-junks a message by reporting it "not junk" to Microsoft's filter and moving it to **Inbox**.
 This is a **single atomic step** that both rescues the misfiled message *and* retrains the junk filter so future mail from that sender is less likely to be misfiled.
 
-A screen-flagged item stays in Junk: the report would teach Microsoft's filter to pass it.
+RESCUE skips a screen-flagged item (`../engine/screen.md`, "What a flag does"), since un-junking it would teach Microsoft's filter to pass it.
 The item is recorded seen only after the un-junk succeeds; a failure leaves it unrecorded, so the next cycle retries.
 
 **Mechanism:** Uses the **beta** Graph action `POST /me/messages/{id}/reportMessage` with `IsMessageMoveRequested: true` and `ReportAction: "notJunk"`.

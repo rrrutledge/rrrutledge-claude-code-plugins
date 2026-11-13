@@ -80,7 +80,7 @@ Narrate it.
 Never delete messages.
 
 Marking read advances the cursor to `ts` in one move, clearing every unread message under it.
-The poller already marks a needs-you conversation read right after its worker launches (`../engine/poller-core.md` step 6), so the worker's own `--mark` is a harmless no-op and the open session is what tracks the span's asks; worker-core §2d says what that session must finish or track before it closes.
+The poller marks a needs-you conversation read after its worker launches (`../engine/poller-core.md` step 6); worker-core §2d covers what that means for this worker.
 
 - **DM / group DM / channel** - `node slack.js --mark --channel=<channel> --ts=<ts>` (`conversations.mark`).
   Advances the read cursor to `ts` (above).

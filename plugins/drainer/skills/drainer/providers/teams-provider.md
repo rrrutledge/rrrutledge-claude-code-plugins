@@ -62,7 +62,7 @@ Classify as **needs-you (work)** and follow these steps in order:
 
 ## WEEK-IN-REVIEW ANNOUNCEMENTS
 A team Week-in-Review announcement post (the weekly post linking to that week's R&D Weekly Confluence page) is a container pointing to a report worth analyzing - **needs-you (work)**.
-The work: open the linked Confluence page, analyze it, and present the opportunities it holds as a table; there's no reply to send.
+The work: run the `week-in-review-analyzer` skill on the linked Confluence page when this machine has it (it ships outside this marketplace), otherwise open the page and analyze it yourself, and present its opportunity table; there's no reply to send.
 
 ## CAPTURE (needs-you)
 The adapter writes these; documented here so the worker can rely on the shape:

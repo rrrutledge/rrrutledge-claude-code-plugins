@@ -1,7 +1,7 @@
 # drainer poller-core - the poller's contract
 
 The drainer runs as **the poller**: one long-running process that holds each source at **zero un-started actionable items**.
-Its feed cycle finds and judges new items, and its dispatch loop opens workers for them (see "The keeper" below).
+Its feed cycle finds and judges new items, and its dispatch loop opens workers for them (see "How the poller runs" below).
 Both are deterministic algorithms, so they are implemented as **scripts** - `scripts/run-poller.py`, `scripts/keeper.py`, `scripts/pending.py` - not prose an AI re-derives each run.
 This doc is the *contract*: what the script does and where AI is (and isn't) used.
 Every other drainer file that describes the poller points here.
@@ -29,22 +29,22 @@ Triage's `sender` field (person / automated) is cached with the rest of the verd
 Everything else - enumerate, stable ids, the seen-state check, the concurrency cap, capture, spawn, record - is code.
 No AI re-implements the loop.
 
-## The keeper
+## How the poller runs
 
-`python run-poller.py --repo <project>` is the form the `DrainerKeeper` scheduled task runs, and it starts the keeper (`scripts/keeper.py`).
-The task restarts it on its schedule (`scripts/install-schedule.ps1`) and ignores a start while one is running, so the task is the keeper's watchdog: a keeper that died or recycled is back by the next start.
-The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a second start from any path exits at once.
+`python run-poller.py --repo <project>` is the form the `DrainerKeeper` scheduled task runs, and it starts the poller's long-running process (`scripts/keeper.py`).
+The task restarts it on its schedule (`scripts/install-schedule.ps1`) and ignores a start while one is running, so the task is the poller's watchdog: a poller that died or recycled is back by the next start.
+The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a second start from any path exits at once.
 
 - **The feed thread** runs `run-poller.py --repo <project> --feed` as a child process: the cycle below, through judging and the fyi/junk handling, ending with every needs-you and auto-handle item written to the pending list.
   Feed cycles never skip: an overrun delays the next one (the spacing and the hung-cycle handling live in `scripts/keeper.py`).
 - **The pending list** (`scripts/pending.py`) holds one file per item under `<runtime_dir>/pending/`, the item with its verdicts, until a worker opens for it.
   The feed writes and prunes entries (`feed_pending` in `run-poller.py` holds the rule), so a source whose listing failed dispatches nothing until it lists cleanly again.
-- **The dispatch loop** (the keeper's main thread) runs one dispatch pass (step 5) over the whole pending list on a short interval, and at once whenever a feed cycle finishes.
+- **The dispatch loop** (the process's main thread) runs one dispatch pass (step 5) over the whole pending list on a short interval, and at once whenever a feed cycle finishes.
   A dispatch pass is the only code that opens item workers, and an on-demand `--channel` run dispatches through the same pass.
   An item that opens a worker, or is handed to a live one, is recorded seen and leaves the list; a held item stays on it for the next pass.
   Every pass holds the dispatch lock (`<runtime_dir>/dispatch.lock`), so two passes never open workers from two views of the same sessions.
 - **Recycling.**
-  The keeper exits cleanly on age, on memory, or once a newer drainer version is installed, and the task starts a fresh one; it logs what it does to `<runtime_dir>/keeper.log` (the thresholds and the clean-exit steps live in `scripts/keeper.py`, the version check in `run-poller.py`).
+  The poller exits cleanly on age, on memory, or once a newer drainer version is installed, and the task starts a fresh one; it logs what it does to `<runtime_dir>/keeper.log` (the thresholds and the clean-exit steps live in `scripts/keeper.py`, the version check in `run-poller.py`).
 
 `--once` runs one feed cycle and then one dispatch pass, for a manual run; `--dry-run` reports what one cycle would do and touches no state.
 
@@ -98,13 +98,12 @@ The keeper holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
      Teams fyi and junk are marked read the same cycle by one silent batch worker (`_spawn_teams_mark_read`), since a Teams chat reads as read only after a real open in Teams web.
      The triage-time archive changes only when an fyi/junk item leaves the inbox, not whether Russell reviews it in the digest.
 6. **Clear timing.**
-   This step is the one statement of when the poller clears an item; worker-core §2d holds when the worker does.
+   Steps 5 and 6 are the one statement of when the poller clears an item; worker-core §2d holds when the worker does.
    A needs-you item whose adapter implements `clear` (gmail, outlook-graph, Slack) is cleared by the poller itself right after its worker spawns, so the open session is the tracker and the source holds only untriaged items.
    The clear runs **last**, after the spawn returned a session id and the item is recorded seen: a failed clear leaves the item in the source (reconcile re-queues it if the worker dies), and a failed launch never clears an item nobody is working.
    A worker that dies after the clear is resumed by the orphan-sessions provider, the same backstop that covers a worker's early clear (worker-core §2d).
    The worker's own CLEAR for such an item is a harmless no-op.
    For a provider whose adapter has no `clear` (Teams, Trello, outlook-rest), the worker does the CLEAR, per worker-core §2d.
-   fyi/junk are archived at triage above (for providers whose CLEAR is a reversible archive); the daily digest still runs its review-gated CLEAR on each one, a harmless no-op for a message already archived here and the real clear for any provider that couldn't archive at triage.
 
 ## Reconcile: completion is read off the source, not off a receipt
 
@@ -120,7 +119,7 @@ Because the reconcile runs ahead of the enumerate, anything it re-queues is list
 
 Three guards keep it from re-queuing work that is fine:
 
-- **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 6) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
+- **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 5) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
 - **a live worker id** (the background session's short id, recorded in `seeds/<id>.prompt.txt.session`, matched against the live background sessions in `claude agents --json`) means a worker is open on the item: being worked, or parked for Russell.
   Liveness is the whole test - a live worker is left alone however long it's up, so there is no timeout.
 - **the launch grace** (`orphan_grace_minutes`) covers the window in which a just-dispatched worker hasn't written its `.session` file yet and so briefly looks session-less

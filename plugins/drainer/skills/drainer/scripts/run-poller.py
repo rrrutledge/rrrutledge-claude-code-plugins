@@ -1388,11 +1388,12 @@ def spawn_worker(iid, json_file, repo, runtime_dir, worker_model, local_dir, con
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are a drainer worker handling ONE item. Read `~/.claude/CLAUDE.md`, then read "
-            f"`{worker_core}` in full and follow it exactly - top to bottom, including the close-up "
-            f"steps at the end - for the single captured item at `{json_file}`.\n"
+            f"`{worker_core}` in full and follow it exactly - top to bottom, including its closing "
+            f"rules - for the single captured item at `{json_file}`.\n"
             "The item's `source` field names the provider - read its `<source>-provider.md` (in "
             f"`{PROVIDERS_DIR}`, or `{local_providers}` for a machine-local provider) for its "
-            "CLEAR and DRAFT-MODE and use them. Draft-only: never send or post.\n"
+            "CLEAR and DRAFT-MODE and use them. Draft-only by default: send only as worker-core's "
+            "\"Sending\" allows.\n"
             # Every `<name-skill>` placeholder, pre-resolved (see provider_base.resolve_skill_dirs).
             + _skill_dirs_block()
             # The shared brain (context.md) is pre-gated to THIS item and written beside its json, so the

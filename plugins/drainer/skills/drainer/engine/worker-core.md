@@ -110,7 +110,7 @@ A worker that still finds nothing reports "not found in Gmail or Outlook" and na
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
 The state at capture time is stale by the time you act on it: the contact may have replied since, or - easy to miss - the user may have posted their own follow-up that changes what's actually being waited on (a clarifying question they asked but hasn't been answered yet turns a "ready to act" item into a blocked one).
 Before drafting or deciding the move, pull the full recent thread/history, not just the linked message, and check both directions - the draft's content has to come *from* that thread, not just get checked against it afterward: don't hand the contact information the user's own last message already gave them (a follow-up that opens by repeating news the contact was already told is a sign the thread got read for its shape, not for what's actually in it), and don't miss another of the user's own asks to that same contact sitting a few messages back that never got answered (§4's "one active ask per person" covers what that means for the current draft).
-If the user's most recent message on the thread is already a reply to this sender, the item is done - close it without a new draft.
+**The done test:** if the user's most recent message on the thread is already a reply to this sender, the item is done - close it without a new draft.
 If it's a question of theirs still unanswered, the item is blocked on the other party, not ready to act.
 
 **An acknowledgement is not a reply.**
@@ -122,7 +122,8 @@ This section is the one statement of the rule; every provider SITUATIONAL-CHECK 
 Each provider's SITUATIONAL-CHECK/CAPTURE section describes how to pull full context for that source (for email: search sent + inbox in both directions; for Slack: `slack.js --history`, not just `--show` on the one linked message).
 **When you DO draft (a reply or a follow-up nudge), thread it off the most recent real message in the thread - even when that latest message is one the user sent.**
 A follow-up answers where the conversation actually stands, so quote and thread on the newest message, not an older inbound one; provider DRAFT-MODE notes how to target a sent message.
-"Real" means a person wrote it: skip auto-generated messages (an out-of-office or automatic reply, a meeting accept/decline, a read receipt) and thread on the newest human message before them.
+"Real" means a person wrote it: skip auto-generated messages (an out-of-office or automatic reply, a meeting accept/decline, a read or delivery receipt) and thread on the newest human message before them.
+An email auto-reply carries the "Automatic reply:" subject and only its sender, so threading on it drops the real subject line and every other recipient.
 An auto-reply also never counts as the contact answering.
 
 **One captured conversation can hold several distinct open asks - group them, then handle each.**
@@ -168,7 +169,7 @@ Settle with that session before any other work, by the rule in `duplicate-sessio
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
-The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → queue the digest and close the session per §2c).
+The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → close per "Close silently").
 Read it and follow it whenever you hit a pointer, then resume these steps where you left off.
 
 ## 2c. Re-triage to FYI after content examination
@@ -189,7 +190,7 @@ What differs source to source is **how soon the bar is met**, because that depen
 - **Scope isn't visible until you've read the item** - a chat source (Slack, Teams) can bundle several distinct asks behind one shared read-cursor; you don't know how many until the grouping read above (§2, "group-then-handle") is done.
   The bar isn't met at capture, so don't treat capture as the moment everything is accounted for: it's met once every ask the grouping surfaced is handled, staged, or tracked - which for a multi-ask span can land as late as step 6, but is never later than that.
 
-**Trello is the one exception: a card's CLEAR waits until Russell confirms any send**, per `providers/trello-provider.md` CLEAR, because moving the card's Start is the only thing that brings it back around.
+**Trello is the one exception to clearing early** (`providers/trello-provider.md`, CLEAR).
 
 For a source whose adapter implements `clear` (gmail, outlook-graph, Slack), the poller already cleared the item when it spawned you (`engine/poller-core.md` step 6), so your own CLEAR is a harmless no-op: run it anyway if you reach it, but never wait on it.
 For Slack that means the unread marker is already gone and your open session is the only tracker of the span's asks, so the grouping still decides what you must finish or track before you close.
@@ -203,7 +204,7 @@ Once you've cleared under this section, step 6 is a no-op for this item - nothin
 Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d already cleared it or the path that sent you here leaves it for the daily digest (a resolved pointer does).
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d already cleared it, the path that sent you here leaves it for the daily digest (a resolved pointer does), or you stood down for the session that keeps the item (§2).
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
@@ -211,7 +212,7 @@ A silently-resolved session left open is just noise, so close it at once:
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
    (`<runtime_dir>` is the parent of the `items/` folder).
    A situational no-op close and a stand-down queue nothing: there is nothing for the digest to report.
-4. **Close your browser tabs** if you opened any, per §6, "Close your browser tabs".
+4. **Close your browser tabs** if you opened any, per "Close your browser tabs when you and the user are truly finished" (end of §6a).
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.
 
@@ -296,6 +297,8 @@ This applies whether Trello is your own source or you found the card from anothe
 
 ## 4. Contact the person (draft-only by default)
 **After step 3's work is complete**, when a message is warranted, stage the draft with the **message-draft** skill in the source's mode - it writes in the user's voice and owns all staging mechanics, leaving the draft un-sent.
+Before composing, check whether a draft is already going on that thread (the user often has one), and build on it rather than staging a second.
+When you have little confidence that a reply would be right, ask Russell what he wants to say before drafting it.
 The text you show has already passed `writing-review` with a fresh receipt (the `document-authoring:writing-flow` order: draft, cold review, then show), so Russell reads a draft that is ready to send.
 The draft is already staged when you show it (per the provider's DRAFT-MODE); the reply shows the staged text plus where it lives.
 A draft carrying an attachment or inline image also sends each file to Russell in that reply, per `document-authoring:writing-flow`'s **Stage** step.
@@ -394,7 +397,7 @@ An item can be genuinely `needs-you` at triage time - there really was something
 No pre-existing label or rule predicted this in advance (that's what `auto-handle` is for, per `engine/auto-handle.md`) - you're only discovering it now, after doing the work, exactly because some things can't be known until you've done the situational check or the work itself.
 
 When that's the case, close per "Close silently" (after §2d) instead of presenting-and-waiting, even though this item was never labeled or triaged `auto-handle`: log what happened somewhere Russell will find it later - a dated comment on the source item (a Trello card, e.g.), or a digest entry.
-A digest entry is re-tagged `auto-handle` and stamped with the `disposition` matching the CLEAR you performed (`engine/auto-handle.md` step 4; a provider whose CLEAR has several outcomes, like Trello's, maps each to a value in its CLEAR section), so the digest files it under "Auto-handled" as a finished item rather than a live needs-you.
+The digest entry carries the `auto-handle` re-tag and disposition, per "Close silently" step 2, so the digest files it as a finished item rather than a live needs-you.
 
 **This is judgment, not a checklist - hold the same bar the other silent-resolution cases in this file already use: unsure → stay needs-you and present as normal (§1).**
 Self-close here only when ALL of these are unambiguously true:

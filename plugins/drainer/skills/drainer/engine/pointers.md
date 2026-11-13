@@ -14,8 +14,7 @@ A newsletter whose real content is a **hosted PDF or a body-referenced attachmen
 The download link lives in the HTML body, which the plaintext view strips, so recover it the way your source's RESOLVE-A-POINTER note specifies - for a mail source, by emitting the raw HTML body and scanning the whole thing for the link, since these bodies are tiny.
 Fetch the file with a plain fetch first - these hosted files are usually public (a direct object-storage or CDN URL) and return the PDF directly; decode a Safe Links wrapper (`safelinks.protection.outlook.com/?url=<encoded real URL>`) back to the underlying URL before fetching.
 Fall back to browser-chauffeur - open the message in the mail web UI and open or download the linked file - only when the plain fetch returns a login wall, a JS shell, or non-PDF bytes, the same fallback used for a JS-rendered link.
-The story lives in that PDF, so a bare "Attachments:" line - or an attachment endpoint that reports "No attachments" - is never grounds to treat the newsletter as whole-story fyi without reading it.
-A mail provider's attachment download (`--get-attachments` or equivalent) pulls only a true inline attachment and comes back empty for a hosted reference, so it is never the path for these.
+The story lives in that PDF, so a bare "Attachments:" line - or an attachment endpoint (`--get-attachments` or equivalent) that reports "No attachments", since it pulls only true inline attachments - is never grounds to treat the newsletter as whole-story fyi without reading it.
 
 **Reading a PDF or screenshot: do it inside a subagent that returns only the facts you need, never in this main thread** (worker-core step 3's cost rule) - a multi-MB PDF or a screenshot read inline stays in the prefix and is re-read on every later model call.
 

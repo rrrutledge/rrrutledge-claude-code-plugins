@@ -108,7 +108,6 @@ An fyi item can be a **pointer** (a stub whose real content is behind a link - s
 Open and read the real content per `engine/pointers.md`, the same mechanic a worker uses for needs-you, here at digest time for fyi.
 Resolving a pointer only reads the content Russell would have read himself, so it is part of *gathering* this item's summary, not an action that disposes of anything: do it on your own the moment you meet a pointer, exactly as you read any captured body.
 Step 4's review gate governs CLEAR (disposal) alone, never this read - so resolving never waits for a go-ahead, and offering to resolve instead of just doing it is the one failure this section closes.
-Drive any browser-chauffeur render in a subagent, so the render stays out of this session's context.
 Resolve it in the same pass that gathers the digest, and present Russell the finished summary rather than an offer to go fetch it.
 The digest's fyi summary is that resolved content - for a hosted-PDF or attachment newsletter, read the file, then summarize it and pull its **action items for you** to-dos exactly as for a link-hosted bulletin - never the pointer stub restated.
 

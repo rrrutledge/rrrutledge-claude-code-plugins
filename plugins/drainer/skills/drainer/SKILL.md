@@ -1,6 +1,6 @@
 ---
 skill: drainer
-description: Drain human-touch queues to zero - email, Teams, Slack, Trello outreach - with one shared loop. For each item: read the thread, do the action it implies (open a PR, file a ticket, run a check, update a system), draft any reply in the user's voice (draft-only by default, sent only on Russell's explicit per-message OK), then clear the item. Use to drain the inbox / Teams / Slack / outreach to zero. Per-machine settings come from .claude/drainer.local.md.
+description: Drain human-touch queues to zero - email, Teams, Slack, Trello outreach - with one shared loop. For each item: read the thread, do the action it implies (open a PR, file a ticket, run a check, update a system), draft any reply in the user's voice (staged for Russell's review), then clear the item. Use to drain the inbox / Teams / Slack / outreach to zero. Per-machine settings come from .claude/drainer.local.md.
 instructions: |-
   ## Drainer
 

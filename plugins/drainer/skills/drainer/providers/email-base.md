@@ -69,9 +69,7 @@ Pick the mode by who the message goes to:
 - **Reply-all on the thread** (responding to inbound mail): use your provider's `--reply` command.
   Always reply-all (not plain reply) to preserve every original To+CC recipient.
   Include the quoted original below the new text.
-  Pass the `messageId` of the message worker-core §2 says to thread off (the newest real message, even one the user sent).
-  A read or delivery receipt is never that target either, and an auto-reply carries the "Automatic reply:" subject and only its sender, so threading on it drops the real subject line and every other recipient.
-- **Fresh 1:1 (or small-group) note** (e.g. an outreach nudge to a single contact - do NOT reply-all a group thread to single someone out): use your provider's `--draft-new` / create-draft command with explicit To/Subject/CC.
+  Pass the `messageId` of the message worker-core §2 says to thread off (the newest real message, even one the user sent).- **Fresh 1:1 (or small-group) note** (e.g. an outreach nudge to a single contact - do NOT reply-all a group thread to single someone out): use your provider's `--draft-new` / create-draft command with explicit To/Subject/CC.
 
 ---
 

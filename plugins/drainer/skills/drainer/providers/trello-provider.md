@@ -82,7 +82,7 @@ Load once, before drafting:
    Empty → no initiative; proceed as a plain card (draft from the card/thread alone, ask the user if blank).
 2. **Open `initiatives/<slug>.md`** from the merged-main config repo named in your seed prompt (`../docs/architecture.md`, "Config comes from merged main, not the checked-out branch") and read its content.
    If it carries a `source:` frontmatter pointer, the content lives there instead - fetch it by shape:
-   - an **http(s) URL** → a Confluence page (`*.atlassian.net/wiki`) via Atlassian MCP (extract the numeric page id from the URL when one is needed); any other URL via plain web fetch.
+   - an **http(s) URL** → a Confluence page (`*.atlassian.net/wiki`) via Atlassian MCP, or the `confluence-investigator` skill on a machine that has it (extract the numeric page id from the URL when one is needed); any other URL via plain web fetch.
    - otherwise the file body itself is the content.
      You want: what the program is, why it matters to the contact, the ask, and any role the contact plays if the initiative defines roles.
      (If the file is missing, the slug is still a useful hint - note the gap and draft from the card/thread.)

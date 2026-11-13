@@ -4,7 +4,7 @@ The engine is source-agnostic: it operates on generic *items* and delegates ever
 The providers a machine runs are listed in `.claude/drainer.local.md` → `providers`.
 This file is the provider contract; `docs/writing-a-provider.md` walks through writing one against it.
 
-Classification is shared and lives in `engine/triage.md`; a provider never restates or redefines the buckets, it only implements how to enumerate, capture, and clear for its surface.
+Classification is shared and lives in `engine/triage.md`; a provider implements how to enumerate, capture, and clear for its surface.
 
 A provider is **two files** that sit together, because two different consumers drive a provider:
 
