@@ -120,7 +120,7 @@ Do not append a speculative "things still to do" list assembled from unverified 
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.
 Summarize the recap's gist - what was discussed, the decisions, any date or number worth knowing - and never re-list those action items here, or the same action shows up twice: once as a live worker, once as a phantom digest to-do.
 
-The same principle applies to outreach: **before framing any item as new**, run worker-core §2's "Also check Trello when the item could be outreach" against `<repo>/trello-boards.yaml`.
+The same principle applies to outreach: **before framing any item as new**, run the card lookup in worker-core §2's "Also check Trello when the item could be outreach" against `<repo>/trello-boards.yaml` - the lookup only; writing back to the card is a worker's job.
 A match means the item is already tracked: name and link the card, and frame the item as **already tracked** rather than new (optionally noting whether the card is worth updating).
 
 Before calling a Slack item context-free, apply READ-IN-CONTEXT in `providers/slack-provider.md`.
@@ -172,7 +172,7 @@ An item dropped from the queue while its source object is still sitting in the i
   The digest summarizes, proposes, and clears.
   When the review surfaces a real task to *do* - a reply to draft, a PR to ship, a workflow to build, anything Russell raises mid-review - hand it off to a fresh session, per worker-core step 3's inline/subagent/handoff routing.
   This session already holds the whole day's triaged queue, so an execution task's skills loaded on top of it would ride along on every later round.
-  Any send follows worker-core's "Sending", in the session the work moved to.
+  This session sends and posts nothing; any send follows worker-core's "Sending", in the session the work moved to.
 - **Clear nothing without Russell's review** - this is the whole point of the digest being interactive.
   Every provider's CLEAR is reversible by design (`engine/provider.md`), never a permanent purge.
 - **Link to descriptive text, never a bare URL** - route any composed prose through the `document-authoring` voice.

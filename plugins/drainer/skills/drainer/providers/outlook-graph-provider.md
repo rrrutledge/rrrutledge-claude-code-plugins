@@ -41,6 +41,7 @@ A **hosted/reference "attachment"** is a link, not a file: a Finalsite "Attachme
 A Finalsite-style school newsletter is the hosted kind: it delivers its real content as a hosted link in the HTML body, which the plaintext `mail.js --show` strips.
 Emit the raw HTML body with `node mail.js --show=<messageId> --html`, fetching by the captured message id, which stays valid after archiving (see the CLEAR section).
 Scan that whole HTML for the hosted-PDF `<a href>` and fetch it per `../engine/pointers.md` (Safe Links decode, plain fetch first); for Graph mail the files usually sit on Google Cloud Storage or myschoolcdn.
+When the newsletter's story is inline or on a "view in browser" page rather than a PDF, read that content straight from the HTML instead.
 The browser-chauffeur fallback opens the message's `webLink` and downloads the file.
 
 ## CAPTURE
