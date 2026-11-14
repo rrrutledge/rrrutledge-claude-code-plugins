@@ -70,10 +70,9 @@ A browser subagent ends by returning one of two structured results, and it never
 - **`HELP_NEEDED`** - the run reached a gate only the user can clear: a login wall, a CAPTCHA, MFA to a phone or authenticator app, an unresolvable consent wall, or an in-page action that cannot be done headless.
   Return the reason, the URL and a stable tab locator (the `findTab` predicate, so the same tab is re-findable), exactly what the user must do, and how far the run got.
   Leave the tab open on the correct page.
-  Such a gate comes back as `HELP_NEEDED` even under a brief that says not to ask the user, because returning `HELP_NEEDED` is how a subagent asks, and the page is reported as gated and waiting on the user.
+  Return `HELP_NEEDED` for such a gate whatever the brief says about asking the user, because returning it is how a subagent asks.
 
-A page ends unread in just two cases: the user declines to clear its gate, or no human action can clear it (an outage, a removed page).
-The report names which of the two it was.
+A page a person cannot get past either (an outage, a removed page) is a `DONE` with a fail outcome that names the cause.
 
 A code emailed to a mailbox under **Readable mailboxes** is fetched, not returned as `HELP_NEEDED` (see **Email-delivered MFA codes**).
 
@@ -88,7 +87,8 @@ The user acts directly in the persistent browser.
 When they confirm, the orchestrator continues the subagent via SendMessage; the subagent picks up per **After the user resolves the blocker**, then resumes from Phase 2.
 If the subagent cannot be continued, the orchestrator spawns a fresh continuation subagent seeded with "the login is done; resume the flow at step N on the tab matching <predicate>", and the persistent tab makes either path work.
 
-An orchestrator splitting work across several browser subagents copies the spawn brief's `HELP_NEEDED` line into every brief as written, so each gate any of them hits reaches the user as a question.
+An orchestrator splitting work across several browser subagents builds every brief from the whole spawn brief below, so each gate any of them hits reaches the user as a question.
+Its final report marks a page unread in two cases, and names which: the user declined to clear the gate, or the subagent's `DONE` showed a cause past anyone's reach.
 
 ### When one task runs very long
 
@@ -101,7 +101,7 @@ Human gates are already natural seams, since the run pauses there anyway.
 Invoke the browser-chauffeur skill and run this one browser task inside your own context: <task>.
 Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute, verify, recover.
 End by returning DONE or HELP_NEEDED, carrying what the skill's "The return contract" section lists for each.
-Handle emailed sign-in codes per the skill's "Email-delivered MFA codes" section, stop at the final irreversible button, and hand every gate the user can clear back to me as HELP_NEEDED, even if another line of this brief says not to ask - returning HELP_NEEDED is how you ask.
+Handle emailed sign-in codes per the skill's "Email-delivered MFA codes" section, stop at the final irreversible button, and hand every gate the user can clear back to me as HELP_NEEDED, whatever the rest of this brief says about asking - returning HELP_NEEDED is how you ask.
 ```
 
 ### When to run inline instead
