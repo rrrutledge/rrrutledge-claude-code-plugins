@@ -129,9 +129,9 @@ This section is the one place that says what a worker does with a card whose Sta
 **A card whose Start arrives has something to do, and the worker does it.**
 This holds on every board, for every card.
 A card's Start is the day its work should be done.
-When that day comes, the worker finds out where the work stands and moves the card forward: when the other party did their part, it takes the next step, and when they didn't, it follows up with them.
+When that day comes, the worker finds out where the work stands and moves the card forward: when the other party did their part, it takes the next step; when they didn't, it follows up with them; and when the next step is Russell's or its own, it does or presents that step.
 Finding it unfinished is expected - that is why the card came due - so "not done yet" is never a reason to wait.
-Every due card ends in a step taken; outcome 4 below is the one exception, for a real pending event with a known date.
+Every due card ends in a step taken; outcome 4 below, whose list names every event that may move Start with nothing else done, is the one exception.
 
 **Check before you decide.**
 Run the checks in `../engine/worker-core.md` §2, "Check before you ask", on each thing the card is waiting on, including a hold condition written on the card.
@@ -144,7 +144,7 @@ Then the card ends in exactly one of these:
 3. **It didn't happen, and Russell or you own the next step** - a needs-you item: a PR to review or merge, an institution login or MFA only he can do, a decision, a purchase, a call to make, an unmet hold condition, or the task itself.
    Do every part you can do alone first (worker-core step 3), then present what Russell needs to do now, in order ("review and merge PR #417, then let's do the bank logins together").
    Its Start stays put, and it never self-closes through worker-core §6a.
-4. **Something real is pending with a known date** - the one ending with nothing else done: set Start to that date, and name in the comment what happened and when.
+4. **One of the listed events has set a later date** - set Start to that date, and name in the comment what happened and when.
    Only new activity in this list counts:
    - a reply, or an outbound from Russell, that restarts the nudge cadence
    - an out-of-office or automatic reply, counted from its return date or, when it gives none, from its own date
@@ -154,7 +154,7 @@ Then the card ends in exactly one of these:
    - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
 
 **A party who hasn't replied gets a follow-up or a decision.**
-On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same party is held (its last bullet).
+On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its last bullet).
 
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
