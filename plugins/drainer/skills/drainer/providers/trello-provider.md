@@ -136,7 +136,7 @@ Run the checks in `../engine/worker-core.md` §2, "Check before you ask", on eac
 Then the card ends in exactly one of these:
 
 1. **The awaited thing happened** - advance or finish the card (CLEAR), and name in the comment what you checked and where.
-2. **It didn't happen, and someone else owns the next step** - draft the ping to that person, staged for Russell per DRAFT-MODE, then set Start to the next check under the nudge cadence below.
+2. **It didn't happen, and someone else owns the next step** - draft the ping to that person, staged for Russell per DRAFT-MODE; once he sends it, CLEAR's nudge sets Start to the next check under the nudge cadence below.
    That person can be an outreach contact, a ⏳ Waiting card's party, a business, a colleague, or a family member.
 3. **It didn't happen, and Russell or you own the next step** - a needs-you item: a PR to review or merge, an institution login or MFA only he can do, a decision, a purchase, a call to make, an unmet hold condition, or the task itself.
    Do every part you can do alone first (worker-core step 3), then present what Russell needs to do now, in order ("review and merge PR #417, then let's do the bank logins together").
@@ -148,12 +148,17 @@ Then the card ends in exactly one of these:
    - a new date from the other party, such as a rescheduled interview or a stated turnaround
    - this occurrence's work done on a `Recurs:` card
    - the card's work handed to a session this worker launched, named in the comment along with the fact that it resets Start when it finishes
+   - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
+
+**A contact who hasn't replied gets a follow-up or an abandon decision.**
+Silence ends the card in outcome 2 while its cadence allows another follow-up, and in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence).
+Outcome 4 takes only the events in its list, and a date moving on a different card is outside that list.
 
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
 ## CLEAR (advance the card)
 Only **after** the user confirms they sent/handled the message (the one exception to worker-core §2d's clear-early rule), advance the card via the `trello` skill:
-- **nudge** - bump the Start date out N days (they haven't replied; follow up later).
+- **nudge** - move the Start date to the next check, once the follow-up it waits on has gone out (DUE-CARD outcome 2) or a dated event has moved it later (outcome 4).
   Use the cadence below.
 - **advance** - move to a later stage + set the next Start date (it progressed).
 - **stop** - move to Abandoned + clear the Start date (not pursuing).
@@ -164,7 +169,7 @@ Only **after** the user confirms they sent/handled the message (the one exceptio
 When a worker auto-handles a card and self-closes it (worker-core §6a), the CLEAR it performed is what the digest reports: **stop → `abandoned`**, **advance → `advanced`**, **nudge → `nudged`**.
 Stamp that value as `disposition` on `items/<id>.json`, with the dated comment's one-liner as `dispositionReason`, before the digest `queue-add` (worker-core, "Close silently"); the digest groups the entries per `../engine/digest-core.md` step 2b.
 
-A card reaches the digest as `nudged` only through DUE-CARD outcome 4, with what happened and the new date in the `dispositionReason`.
+A card reaches the digest as `nudged` only through DUE-CARD outcome 4, with what happened and the new date in the `dispositionReason`; an outcome 2 nudge follows a follow-up Russell sent, so it never self-closes.
 
 A ⏳ Waiting card nudges the same way - bump its **Start** (ping-back date) out.
 Whenever a card is **finished** (moved to a terminal/skip list), fire `trello_utils.cascade_unblock(board_id, finished_card_id, session)` so any ⛔ Blocked cards waiting on it are freed on the spot, as the STARTABLE-TASK MODEL's unblock section describes.
@@ -204,11 +209,15 @@ When the ask requires real commitment or internal approval from the contact (e.g
 **A board or initiative that states its own cadence overrides the tiers, including the 2-week commitment start.**
 When the card's board `purpose` (or its initiative) sets a follow-up interval, that interval is the card's cadence interval for every card there, in every rule below.
 
+**When the follow-ups are spent.**
+Once the 1st follow-up has gone unanswered past its interval, the card's follow-ups are spent, and the card ends in DUE-CARD outcome 3: propose abandoning it, with one more follow-up as the alternative Russell can pick.
+A board or initiative cadence that sets its own number of follow-ups spends them at that number the same way, and one that sets only an interval keeps the single follow-up.
+
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
 So count the interval from the day they return, not from the day of the last outbound: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
 Before drafting a nudge on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
-When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence - a silent nudge, not a follow-up.
+When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence and its return date - DUE-CARD outcome 4, with nothing sent.
 An auto-reply with no return date gets the full interval counted from the auto-reply's own date.
 
 ## JUNK-LEARNING
