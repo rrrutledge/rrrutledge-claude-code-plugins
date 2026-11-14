@@ -103,7 +103,7 @@
     {
       "name": "drainer",
       "source": "./plugins/drainer",
-      "description": "Drain human-touch queues (email, Teams, Slack, Trello outreach) to zero with one shared loop: read each item, do the action it implies, draft any reply in your voice (draft-only, never sent), and clear it. Per-machine sources and context come from .claude/drainer.local.md."
+      "description": "Drain human-touch queues (email, Teams, Slack, Trello outreach) to zero with one shared loop: read each item, do the action it implies, draft any reply in your voice (staged for your review), and clear it. Per-machine sources and context come from .claude/drainer.local.md."
     },
     {
       "name": "ms-rest",

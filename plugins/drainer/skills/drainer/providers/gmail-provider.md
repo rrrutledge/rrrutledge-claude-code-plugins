@@ -33,7 +33,7 @@ Never surface a raw auth error to the user.
 Use `mcp__claude_ai_Gmail__search_threads` with `subject:"<subject>"` (no `in:` filter) - this covers All Mail in both directions.
 Read newest-first.
 CLEAR archives to All Mail (not Trash), so any reply the contact sent after capture is always findable here.
-Also run `node gmail.js --list-drafts` to check for an existing draft before staging a new one.
+Its draft-list command (email-base SITUATIONAL-CHECK step 3) is `node gmail.js --list-drafts`.
 
 ## CAPTURE
 See `email-base.md` for the shared two-file shape.
@@ -45,7 +45,7 @@ When the work needs a message's attachments, save them with the gmail skill's "S
 ## CLEAR
 `node gmail.js --archive=<messageId>` - removes the message from the inbox and keeps it in **All Mail** (reversible; narrate it).
 Archiving, not trashing, is the drainer's clear: a drained item has been dealt with, not discarded.
-The poller also calls this (via the adapter's `clear`) to archive an fyi/junk message the moment it's triaged, so it leaves the inbox without waiting for the digest; the digest's own CLEAR on approval then re-archives it, a harmless no-op.
+The poller also runs this through the adapter's `clear`, at triage for fyi/junk and right after launch for needs-you (`../engine/poller-core.md` steps 5-6).
 
 `--reply` looks the original up across All Mail, so it can thread and quote whether the message is still in the inbox or has already been archived - archive order relative to drafting does not matter.
 

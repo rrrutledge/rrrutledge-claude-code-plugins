@@ -3,7 +3,7 @@
 Shared by every source (Outlook, Teams, Trello, …).
 Classification is identical across sources - only the *mechanics* of enumerating/capturing/clearing differ (those live in each provider doc).
 Classify by THIS file; don't restate the buckets elsewhere.
-This file ONLY classifies - what the loop DOES with each bucket (own worker vs digest) lives in the driver and SKILL.
+This file ONLY classifies - what the poller DOES with each bucket (own worker vs digest) lives in `engine/poller-core.md` step 5.
 
 ## The question
 
@@ -96,7 +96,7 @@ Whether a sign-in exists doesn't decide it here.
     The narrow fyi case is only the action that *literally cannot be started* - sign-and-mail-back a paper form, pick something up in person, be present somewhere.
     Where a tracked action then lives - a task calendar for step-away work he must do himself, a tracker card for anything AI can do or drive alongside him - is machine config (the host's `context.md` and provider docs), not a triage call.
 - **junk** - not even worth surfacing: automated noise, pure marketing, cold newsletters (a sender Russell has no relationship with), generic marketplace promo with no one asking anything (deals, "items you might like", price-drop alerts; but a real member *question* relayed from a buyer/seller is needs-you, see the envelope note in the action bullets above), passing or duplicate automated status churn (an automated *something-you-own-is-broken/failing* alert is needs-you, see the action bullet above), chatter not aimed at the user.
-  Junk is also a signal to stop it arriving again; *how* to stop it is provider mechanics - each provider's **JUNK-LEARNING** section owns the remediation (unsubscribe → source-app notification settings → inbox rule, in that order).
+  Junk is also a signal to stop it arriving again; *how* to stop it is provider mechanics - each provider's **JUNK-LEARNING** section owns the remediation and its order.
 
 **Transactional and automated notifications - the litmus is news vs. confirmation.**
 The whole family of automated transactional mail - login codes, magic links, password resets, receipts, order and payment confirmations, shipping and delivery notices, subscription and billing notices, routine autopay, account-and-agreement updates - is **junk** when reading it changes nothing: it only confirms something he already knew or set up, or runs automatically.

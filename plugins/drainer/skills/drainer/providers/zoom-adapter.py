@@ -14,7 +14,7 @@ fan-out happens in `enumerate`: one candidate per owner-assigned next step (reca
 context) plus one recap candidate for the meeting. Same shape as the trello adapter turning one board into
 many card-items - `capture()` still writes exactly one `<iid>.json`, so no ProviderBase extension is needed.
 
-Auth (Zoom Server-to-Server / OAuth app), via `zoom_client.ZoomClient`:
+Auth (a Zoom OAuth app, refresh-token grant), via `zoom_client.ZoomClient`:
 - `providers.zoom.client_id` in drainer.local.md (the OAuth app's Client ID - not a secret).
 - `ZOOM_CLIENT_SECRET` in the environment (the secret).
 - A refresh token: bootstrapped from `ZOOM_REFRESH_TOKEN` on first run, then cached (and rotated) in the

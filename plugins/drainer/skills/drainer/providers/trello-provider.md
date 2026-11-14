@@ -80,9 +80,9 @@ Load once, before drafting:
 1. **Take the resolved slug.**
    The item's `initiative` field (set by the adapter from the initiative-colored label, else the board default).
    Empty → no initiative; proceed as a plain card (draft from the card/thread alone, ask the user if blank).
-2. **Open `initiatives/<slug>.md`** from the merged-main config repo named in your seed prompt (not the working directory - the config repo is a worktree pinned to origin/main, so a merged initiative doc is read even when the working tree is on a feature branch) and read its content.
+2. **Open `initiatives/<slug>.md`** from the merged-main config repo named in your seed prompt (`../docs/architecture.md`, "Config comes from merged main, not the checked-out branch") and read its content.
    If it carries a `source:` frontmatter pointer, the content lives there instead - fetch it by shape:
-   - an **http(s) URL** → a Confluence page (`*.atlassian.net/wiki`) via Atlassian MCP or the `confluence-investigator` skill (extract the numeric page id from the URL when one is needed); any other URL via plain web fetch.
+   - an **http(s) URL** → a Confluence page (`*.atlassian.net/wiki`) via Atlassian MCP, or the `confluence-investigator` skill on a machine that has it (extract the numeric page id from the URL when one is needed); any other URL via plain web fetch.
    - otherwise the file body itself is the content.
      You want: what the program is, why it matters to the contact, the ask, and any role the contact plays if the initiative defines roles.
      (If the file is missing, the slug is still a useful hint - note the gap and draft from the card/thread.)
@@ -152,7 +152,7 @@ Then the card ends in exactly one of these:
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
 ## CLEAR (advance the card)
-Only **after** the user confirms they sent/handled the message, advance the card via the `trello` skill:
+Only **after** the user confirms they sent/handled the message (the one exception to worker-core §2d's clear-early rule), advance the card via the `trello` skill:
 - **nudge** - bump the Start date out N days (they haven't replied; follow up later).
   Use the cadence below.
 - **advance** - move to a later stage + set the next Start date (it progressed).
@@ -162,8 +162,7 @@ Only **after** the user confirms they sent/handled the message, advance the card
 
 **The CLEAR op is the item's digest disposition.**
 When a worker auto-handles a card and self-closes it (worker-core §6a), the CLEAR it performed is what the digest reports: **stop → `abandoned`**, **advance → `advanced`**, **nudge → `nudged`**.
-Stamp that value as `disposition` on `items/<id>.json`, with the dated comment's one-liner as `dispositionReason`, before the digest `queue-add` (worker-core §6a).
-The digest then lists an abandoned or advanced card under its Auto-handled "state changed" group with that reason, and lists each nudge on its own line, with its reason and new Start date, under "checked, no change", so a closed-req abandon reads as a real signal, not a deferral.
+Stamp that value as `disposition` on `items/<id>.json`, with the dated comment's one-liner as `dispositionReason`, before the digest `queue-add` (worker-core, "Close silently"); the digest groups the entries per `../engine/digest-core.md` step 2b.
 
 A card reaches the digest as `nudged` only through DUE-CARD outcome 4, with what happened and the new date in the `dispositionReason`.
 

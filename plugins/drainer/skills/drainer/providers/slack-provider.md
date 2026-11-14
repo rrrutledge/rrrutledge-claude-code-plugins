@@ -45,9 +45,7 @@ There is no refresh-token flow; never surface a raw auth error to the user.
 The captured item is the message as it arrived; the conversation may have moved on.
 Re-read the full surrounding context with `node slack.js --history --channel=<C>` (add `--thread-ts=<threadTs>` for a thread item) - not `--show` alone, which returns only the single captured message.
 `--history` surfaces everything posted since, in both directions: the counterparty may have already replied, or - easy to miss - Russell may have posted his own follow-up that's still unanswered, which means the item is blocked on them, not ready to act on.
-Confirm there's not already a reply and the ask is still open before drafting.
-A post the ack ledger lists as a sent acknowledgement is not a reply; check the ledger first, per worker-core §2 "An acknowledgement is not a reply".
-Reply only to what is still open.
+Then apply worker-core §2's done test (an acknowledgement doesn't count, per "An acknowledgement is not a reply") and reply only to what is still open.
 
 A Slack item's body carries the **full unread span** (every unread message since Russell's last read, not just the newest), so apply worker-core §2's group-then-handle model to it: read the whole span and decide how many distinct asks it holds before you draft.
 
@@ -81,16 +79,14 @@ Advance the read cursor (the Slack "gone") - reversible and non-destructive (not
 Narrate it.
 Never delete messages.
 
-Marking read advances the cursor to `ts` in one move, clearing every unread message under it - so a still-unhandled ask in the span silently disappears and never re-surfaces.
-This is worker-core §2d's clear-as-soon-as-scope-is-accounted-for principle, same as every other source - it just lands later here because a Slack item's full scope (how many distinct asks the unread span holds) isn't knowable until the §2 grouping read is done.
-Once it is: mark read as soon as every ask in the span is handled, staged, or tracked - don't hold it for step 6 beyond that point.
+Marking read advances the cursor to `ts` in one move, clearing every unread message under it.
+The poller marks a needs-you conversation read after its worker launches (`../engine/poller-core.md` step 6); worker-core §2d covers what that means for this worker.
 
 - **DM / group DM / channel** - `node slack.js --mark --channel=<channel> --ts=<ts>` (`conversations.mark`).
   Advances the read cursor to `ts` (above).
 - **Thread item** - `node slack.js --mark --channel=<channel> --ts=<ts> --thread-ts=<threadTs>` (`subscriptions.thread.mark`) - advances the thread's own read cursor.
 
-**Poll-time clear (fyi/junk).**
-Same triage-time archive mechanism as `engine/poller-core.md` - here it's the `--mark` cursor advance above, done in-process over the Web API with no browser batch worker needed, unlike Teams.
+The poller's triage-time clear of a Slack fyi/junk item (`../engine/poller-core.md` step 5) is this same `--mark`, run in-process over the Web API.
 
 ## REACT
 Add an emoji reaction to a message: `node slack.js --react --channel=<channel> --ts=<ts> --emoji=<name>` (`reactions.add`).

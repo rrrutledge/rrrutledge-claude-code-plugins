@@ -29,7 +29,7 @@ The registry (`~/.claude/session-mgr/live-sessions.json`) and the live-session l
 ## Deterministic triage (not an AUTH-GLANCE-adjacent judgment call)
 
 Every enumerated item is unconditionally `needs-you` - an orphaned session unconditionally needs resuming, no judgment involved.
-`run-poller.py`'s pre-triage block stamps `_bucket="needs-you"`, `_kind="resume"`, `_complexity="simple"` for every `orphan-sessions` item before the AI triage call, the same tautology-bypass the `trello` adapter gets for its always-needs-you startable cards, so this source never reaches the AI triage call at all.
+Every `orphan-sessions` item is needs-you by rule, with no AI triage call (`run-poller.py`'s pre-triage rules hold the list of sources triaged this way).
 
 ## CAPTURE (needs-you)
 
