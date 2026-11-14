@@ -144,21 +144,20 @@ Then the card ends in exactly one of these:
 4. **Something happened since Start was set that moves the date later** - set Start to the new date, and name in the comment what happened and when.
    Only new activity counts:
    - a reply, or an outbound from Russell, that restarts the nudge cadence
-   - an out-of-office reply with a return date
+   - an out-of-office or automatic reply, counted from its return date or, when it gives none, from its own date
    - a new date from the other party, such as a rescheduled interview or a stated turnaround
    - this occurrence's work done on a `Recurs:` card
    - the card's work handed to a session this worker launched, named in the comment along with the fact that it resets Start when it finishes
    - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
 
-**A contact who hasn't replied gets a follow-up or an abandon decision.**
-Silence ends the card in outcome 2 while its cadence allows another follow-up, and in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence).
-Outcome 4 takes only the events in its list, and a date moving on a different card is outside that list.
+**A contact who hasn't replied gets a follow-up or a decision.**
+Silence ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its last bullet).
 
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 
 ## CLEAR (advance the card)
 Only **after** the user confirms they sent/handled the message (the one exception to worker-core §2d's clear-early rule), advance the card via the `trello` skill:
-- **nudge** - move the Start date to the next check, once the follow-up it waits on has gone out (DUE-CARD outcome 2) or a dated event has moved it later (outcome 4).
+- **nudge** - move the Start date to the next check, once the follow-up it waits on has gone out (DUE-CARD outcome 2) or one of DUE-CARD outcome 4's events has moved it later.
   Use the cadence below.
 - **advance** - move to a later stage + set the next Start date (it progressed).
 - **stop** - move to Abandoned + clear the Start date (not pursuing).
@@ -216,7 +215,7 @@ A board or initiative cadence that sets its own number of follow-ups spends them
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
 So count the interval from the day they return, not from the day of the last outbound: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
-Before drafting a nudge on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
+Before drafting a follow-up on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
 When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence and its return date - DUE-CARD outcome 4, with nothing sent.
 An auto-reply with no return date gets the full interval counted from the auto-reply's own date.
 
