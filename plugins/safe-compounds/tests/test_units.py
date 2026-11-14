@@ -853,6 +853,12 @@ class TestUnquotedDrivePathBlocking:
     def test_allows_forward_slashes(self):
         assert enforce_bash('node scripts/x.js --out=C:/Users/russe/a.json') is None
 
+    def test_allows_escaped_backslashes(self):
+        assert enforce_bash(r'node scripts/x.js --out=C:\\Users\\russe\\a.json') is None
+
+    def test_allows_mid_word_letter_colon_backslash(self):
+        assert enforce_bash(r'git log --grep=fix:\. --oneline') is None
+
     def test_allows_single_quoted(self):
         assert enforce_bash(r"node scripts/x.js --out='C:\Users\russe\a.json'") is None
 
