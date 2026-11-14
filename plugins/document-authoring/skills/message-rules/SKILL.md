@@ -67,6 +67,8 @@ Don't present a menu of options or stack a numbered list of questions.
   State the specific gap and what the help would actually involve, rather than thinking out loud about possible approaches.
 - **If you have options to resolve, pick the one you'd recommend and ask about that** — let the reader counter if they disagree.
   This applies even to a single sentence with an embedded "or"; cut it to the one ask you actually want and let them redirect.
+  **A bulleted checklist of decisions is the same stack.**
+  Ask only about the decisions you can't settle yourself, make the rest as drafting calls, and leave them out of the message.
   - **Exception — when you're genuinely unsure what to do next, ask for their read instead of proposing an action.**
     State the impasse plainly ("I don't know here at all"), lay out the live options as open questions rather than a decision you've made, and end on their judgment. This is for soliciting advice from someone closer to the situation, not for stacking multiple requests-for-action onto them.
     **State a reluctant option as your lean.**
@@ -150,8 +152,8 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
   **Holds in conversational/1on1 register too, not formal writing only** — even a warm email handing a contact a resource compresses to one gist sentence ("a cost model, in team hours, of what the shared tooling saves") rather than itemizing the document's sections or methodology, and ends right after it with no closing "let me know what you think" unless their reaction is the ask (see **Handing off a finished deliverable**); otherwise the link and the one line are the whole message.
   **When the attachment itself is the answer, drop the summary too** — say what it is, point at it, and carry in the body only what the attachment leaves out, never the facts it already states.
   This covers an image or screenshot of the thing, where any description just repeats the picture, and equally a document sent because someone asked for exactly what it contains (a prospectus in answer to "what are the options?"): pulling its numbers or headings into the body pre-empts the read and buries the one line that matters.
-  **A handoff or acknowledgement completes the current item and promises nothing about what happens next.**
-  A sentence forecasting a later step the recipient has no part in (who will review the item, what the org does with it) is a helper tail and gets cut; only a closing line that names no step, owner, or timing stays.
+  **A handoff or acknowledgement completes the current item and says nothing about what happens next.**
+  A sentence about a later step the recipient has no part in (who will review the item, what the org does with it) is a helper tail and gets cut, whether it forecasts the step or states it as a plain fact; only a closing line that names no step, owner, or timing stays.
   A next step the message genuinely names for the recipient falls under the next-step wording rules below (**"We" for coordinating follow-up**, **When Russell owns the next step**, **Energizing close**).
   **Point at attachments generically.**
   Write "see screenshot", "other screenshot", or "more screenshots" in place of numbered pointers, because the mail client sets images apart from the body and "(screenshot 3)" refers to nothing the reader can match.
