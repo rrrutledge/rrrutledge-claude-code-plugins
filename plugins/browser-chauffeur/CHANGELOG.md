@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.1] - 2026-11-13
+
+### Changed
+- **A gate only the user can clear is always asked about.**
+  A browser subagent returns `HELP_NEEDED` for it whatever its brief says about asking, and the spawn brief carries that rule itself; see **The return contract** in `SKILL.md`.
+- **A page no one can reach after recovery is a `DONE` with a fail outcome naming the cause**, and a fan-out orchestrator reports each unread page with one of two named reasons; see **The help-channel**.
+
 ## [1.18.0] - 2026-11-12
 
 ### Changed
