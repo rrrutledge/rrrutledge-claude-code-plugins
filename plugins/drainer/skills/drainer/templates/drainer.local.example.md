@@ -3,13 +3,12 @@
 # Everything machine/user-specific lives here; the plugin (engine + providers) stays generic.
 
 # Which providers to run, plus any config each needs. Reference a provider by name (they live in the
-# plugin's providers/ dir). All sources are harvested every run on one schedule.
+# plugin's providers/ dir, or in <local_dir>/providers/ for a machine-local one).
 providers:
   orphan-sessions: {}         # crash-recovered Claude Code sessions (session-mgr) - no config; recent ones dispatch first
-  outlook: {}                    # work Outlook on the web (browser) - no config, just sign in
   outlook-graph: {}           # personal Outlook.com via the Microsoft Graph API (ms-graph; no browser)
-  teams: {}                      # Microsoft Teams on the web (browser) - no config, just sign in
-  trello:                        # outreach boards (via the trello-outreach skill)
+  teams: {}                   # Microsoft Teams (the teams skill's REST reads; mark-read and drafts in the browser)
+  trello:                     # outreach boards (via the trello skill's trello_utils.py)
     boards:
       - name: "<Board name>"
         id: "<board id>"
@@ -18,11 +17,10 @@ providers:
       channels: [Email, Teams, Slack]
       features: ["<feature label>"]
       # any label not in channels/features is treated as a contact name
-  # slack:                       # example of another config-bearing provider (future)
-  #   workspace: your-workspace  # the <workspace>.slack.com subdomain
+  # Other shipped providers (gmail, outlook-rest, outlook-graph-junk, slack, zoom, physical-task) enable
+  # the same way; each provider's prose file names any config it reads.
 
-# Credentials never go here - keep them in your OS credential store / environment
-# (e.g. TRELLO_KEY / TRELLO_TOKEN for the trello provider).
+# Credentials never go here (docs/extending.md, "Credentials").
 
 # A folder holding context.md (your world + standing rules). Keep it a RELATIVE path (resolved against
 # the config root) and commit it in your project, so the poller reads it from the drainer's config root
@@ -35,16 +33,9 @@ local_dir: drainer-local
 # worktree, so it stays put and never re-enumerates when the config root moves to the worktree.
 runtime_dir: .tmp/drainer
 
-# The keeper sets its own cadence (a feed cycle about every 5 minutes, a dispatch pass about once a
-# minute; scripts/keeper.py), not a config value here. The DrainerKeeper task only restarts a keeper
-# that exited.
-
-# The continuous-keeper (run-poller.py) has no per-cycle work cap: every cycle enumerates everything
-# eligible from every source. The worker buffer - tuned via the DRAINER_TARGET_REVIEWABLE (default 5)
-# and DRAINER_MAX_CONCURRENT (default 18) environment variables, not here - is the only thing that
-# throttles how much of it actually gets dispatched at once: each dispatch pass tops the workers waiting
-# for review up toward DRAINER_TARGET_REVIEWABLE, never exceeding DRAINER_MAX_CONCURRENT total live
-# workers; anything held waits on the pending list for a later pass.
+# The poller sets its own cadence (scripts/keeper.py), not a config value here.
+# The worker buffer is tuned by the DRAINER_TARGET_REVIEWABLE and DRAINER_MAX_CONCURRENT environment
+# variables, not here (engine/poller-core.md step 5; defaults in scripts/drainer_config.py).
 
 # Worker model per item - the poller picks by triage complexity (simple -> worker_model,
 # complex -> worker_model_complex). Set an EXPLICIT model so workers don't inherit whatever the
@@ -55,12 +46,10 @@ worker_model: sonnet              # simple items (quick replies, trivial actions
 worker_model_complex: opus        # complex items (multi-step work, code, delicate messages)
 triage_model: sonnet              # the per-item triage call(s) (runs through `claude -p`, so an alias works)
 
-# EOD digest (run-digest.py) - the once-a-day interactive slow loop.
+# The daily digest (run-digest.py) - the once-a-day interactive review.
 digest_model: opus              # the digest session (summarize fyi, group junk)
-orphan_grace_minutes: 15        # the poller re-queues any item whose source object is still unhandled with
-                                # no live worker session on it - there is no time limit on an open session.
-                                # This grace only stops a just-spawned worker (session not up yet) from being
-                                # misread as dead.
+orphan_grace_minutes: 15        # reconcile's launch grace (engine/poller-core.md, "Reconcile"): how long a
+                                # just-spawned worker may go without a session before it reads as dead.
 digest_time: "17:00"            # wall-clock time (HH:MM, 24h) the daily digest task fires (used by the installer).
 show_backlog_depth: true        # lead the digest with the per-source "N pending" backlog barometer. Set false
                                 # once the queues are under control - the launcher then skips measuring it and
@@ -70,4 +59,3 @@ show_backlog_depth: true        # lead the digest with the per-source "N pending
 # drainer.local
 
 Free-form notes about this machine's drainer setup (which sources are live, quirks, etc.).
-Credentials never go here - keep them in your OS credential store / environment.

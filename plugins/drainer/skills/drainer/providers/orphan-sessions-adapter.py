@@ -13,8 +13,8 @@ itself, in the background, IS the whole action. See orphan-sessions-provider.md 
 worker-facing contract, and run-poller.py for the dedicated spawn_resume() dispatch path and the
 deterministic pre-triage bypass (this source never reaches the AI triage call).
 
-id scheme: `orphan-<session_id>-<slug(started_at)>` - see stable_id() for why started_at
-(not just session_id) is baked into the id. No body file - capture() writes only
+id scheme: `orphan-<session_id>-<slug(ended_at or started_at)>` - see stable_id() for why that
+stamp (not just session_id) is baked into the id. No body file - capture() writes only
 `<id>.json`.
 """
 import json

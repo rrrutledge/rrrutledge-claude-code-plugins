@@ -17,7 +17,7 @@
 // so the worst case is reprocessing an item, never silently dropping one. Writes are atomic
 // (write a temp file, then rename over the target).
 //
-// CLI (the prose poller calls these):
+// CLI (run-poller.py and the workers call these):
 //   node seen-state.js seen        <runtimeDir> <source> <id>             -> prints yes|no
 //   node seen-state.js record      <runtimeDir> <source> <id> <triage>    -> records (idempotent)
 //   node seen-state.js queue-add   <runtimeDir> <source> <id> <json-file> -> append a captured fyi/junk item to the digest queue

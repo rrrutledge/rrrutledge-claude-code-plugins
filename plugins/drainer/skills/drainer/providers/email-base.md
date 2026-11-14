@@ -1,7 +1,7 @@
 # email-base - shared logic for all email providers
 
 All email providers (gmail, outlook-graph, outlook-rest) inherit these rules.
-Each provider's own file covers only the provider-specific bits: CONFIG, AUTH-GLANCE, SITUATIONAL-CHECK mechanism, CLEAR, JUNK-LEARNING step 3, and DRAFT-MODE CLI commands.
+Each provider's own file covers only the provider-specific bits: CONFIG, AUTH-GLANCE, SITUATIONAL-CHECK mechanism, CLEAR, JUNK-LEARNING step 1's rule mechanics, and DRAFT-MODE CLI commands.
 Everything here applies as-is.
 
 ---
@@ -25,10 +25,8 @@ The captured item is the inbound message at capture time; the conversation may h
 1. **Read the full thread** using your provider's thread-fetch mechanism (see your provider file).
    Cover both directions - messages FROM the contact AND the user's own sent replies.
    Paginate fully; don't stop at the first page.
-2. **If the user's most recent message on the thread is already a reply to this sender** → the item is done.
-   Close it without a new draft.
-   A message the ack ledger lists as a sent acknowledgement is not that reply; check the ledger first, per worker-core §2 "An acknowledgement is not a reply".
-3. **Check for an existing draft** using your provider's draft-list command, to avoid staging a duplicate if a prior session already started one.
+2. **Apply worker-core §2's done test** to what the thread shows: the user already replied (an acknowledgement doesn't count, per "An acknowledgement is not a reply").
+3. **Check for an existing draft** (worker-core step 4) with your provider's draft-list command.
 
 ---
 
@@ -60,11 +58,9 @@ The stage command enforces this: your provider's `--reply` / `--draft-new` / `cr
 
 ### After composing
 
-- Learning from the send still applies: after the user sends, run the document-authoring skill's Learn step (`learn-from-send.md`).
-- Write the body as an HTML file, then create the draft via your provider's CLI - **never sent** from inside the worker.
+- Write the body as an HTML file, then create the draft via your provider's CLI.
   Show the draft text in your reply so the user can review it.
-- The user edits + sends themselves.
-  Never auto-send; sending is gated behind an explicit OK in the top-level interactive session.
+- Sending follows worker-core's "Sending"; learning from the send follows worker-core §5.
 
 ### Reply vs fresh note
 
@@ -73,10 +69,7 @@ Pick the mode by who the message goes to:
 - **Reply-all on the thread** (responding to inbound mail): use your provider's `--reply` command.
   Always reply-all (not plain reply) to preserve every original To+CC recipient.
   Include the quoted original below the new text.
-  Thread off the **most recent real message in the thread** - pass *its* `messageId`, even if that last message is one the user sent - so the reply lands where the conversation actually stands.
-  An auto-generated message is never that target: an out-of-office or automatic reply, a meeting accept/decline, a read or delivery receipt.
-  Skip past it to the newest message a person actually wrote.
-  An auto-reply carries the "Automatic reply:" subject and only its sender, so threading on it drops the real subject line and every other recipient.
+  Pass the `messageId` of the message worker-core §2 says to thread off (the newest real message, even one the user sent).
 - **Fresh 1:1 (or small-group) note** (e.g. an outreach nudge to a single contact - do NOT reply-all a group thread to single someone out): use your provider's `--draft-new` / create-draft command with explicit To/Subject/CC.
 
 ---

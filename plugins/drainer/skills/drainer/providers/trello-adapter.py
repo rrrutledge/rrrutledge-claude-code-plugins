@@ -1,7 +1,7 @@
 """trello poller adapter - outreach boards via the `trello` skill's trello_utils.py (Trello REST).
 
 All Trello mechanics live HERE. The prose describing this adapter's behavior - config parsing, the
-Start-date-as-queue enumerate, the ranking bands, and the `trello-<slug>-<last6>` id scheme - is the
+Start-date-as-queue enumerate, the ranking bands, and the `trello-<slug>-<last6>-<start|nodue>` id scheme - is the
 companion `trello-provider.md` sibling `trello-queue-model.md`; the worker-facing half (how to act on
 one card and CLEAR it) is `trello-provider.md`. This covers locating trello_utils.py, reading the
 `providers.trello` board config out of `.claude/drainer.local.md`, the Start-date-as-queue enumerate,
@@ -579,8 +579,8 @@ class Provider(ProviderBase):
 
     def stable_id(self, item):
         # The Start is PART OF the identity, not just a field: a card recurs every cycle (a nudge bumps
-        # its Start out, CLEAR bumps it out), and seen-state's `clear` leaves a drained id in seen.json
-        # forever (status=cleared, key persists) while dedup is pure key-presence. So a stable per-card id
+        # its Start out, CLEAR bumps it out), and seen-state keeps a recorded id in seen.json forever while
+        # dedup is pure key-presence. So a stable per-card id
         # would be marked seen on the first drain and never resurface when the next Start arrives. Folding
         # the Start in makes each go-live a distinct item that surfaces anew; an undated card stamps to the
         # fixed sentinel `nodue`, so it stays seen until it's given a Start.

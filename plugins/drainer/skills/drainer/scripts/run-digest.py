@@ -65,8 +65,9 @@ def write_seed(runtime_dir, repo, cfg, backlog_block):
             f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` - read it FIRST "
             "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
             + backlog_fact +
-            "Present the digest to Russell and clear NOTHING until he approves. Draft-only: never send "
-            "or post. When the queue is emptied (or Russell defers) and you are done, stop.\n"
+            "Present the digest to Russell and clear NOTHING until he approves. Never send or post from "
+            "this session: a reply goes to the session the work is handed off to (digest-core's Hard "
+            "rules). When the queue is emptied (or Russell defers) and you are done, stop.\n"
         )
     return prompt_file
 

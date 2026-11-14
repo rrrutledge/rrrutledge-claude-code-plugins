@@ -86,7 +86,7 @@ If it errors with "Not signed in" or an auth error, do the `ms-graph` one-time s
 - `url` - the event's Outlook `webLink`, so Russell can open the actual calendar item if he wants to.
 
 ## Why this item bypassed the usual triage judgment
-`run-poller.py` routes every `physical-task` item straight to `needs-you`/`work`, the same deterministic shortcut it uses for a started Trello card or an orphaned session - never through the AI triage call.
+Every `physical-task` item is `needs-you`/`work` by rule, with no AI triage call (`run-poller.py`'s pre-triage rules).
 There's nothing to judge: the adapter's `enumerate` already established the task is queued AND a real gap for it exists right now, and that combination is definitionally "go do this."
 A physical task is never `fyi` or `junk` - there's no inbound noise to distinguish it from, only Russell's own to-dos.
 

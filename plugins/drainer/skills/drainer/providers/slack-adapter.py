@@ -14,14 +14,14 @@ periodically (usually just the `d` session cookie, not the token); `slack.js`'s 
 ONCE on `invalid_auth` by re-deriving a fresh pair from the persistent, already-logged-in
 browser-chauffeur browser (the sibling `slack-token-refresh.js` - a plain, deterministic script, no AI
 involved) before giving up, and persists the fresh pair to the Windows registry so the next process
-(this poller's next 5-minute cycle, a worker session, a manual run) picks it up too. This adapter never
+(the poller's next feed cycle, a worker session, a manual run) picks it up too. This adapter never
 drives that recovery itself - putting it in `slack.js`'s own call layer means EVERY command that funnels
 through it (list-unread, show, mark, react, send, ...) self-heals, not just this adapter's `enumerate`.
 
 What this adapter DOES do is tell "already tried and failed" apart from an ordinary transient auth blip,
-so only the former earns an immediate diagnostic session instead of waiting for the once-a-day digest -
+so only the former earns an immediate diagnostic session instead of waiting for the daily digest -
 see `_UNRECOVERABLE_MARKER` and the `kind="auth-unrecoverable"` it raises below, and
-run-poller.py's `AUTH_UNRECOVERABLE_ALERT_THRESHOLD`.
+run-poller.py's `AUTH_FAILURE_ALERT_THRESHOLD` / `AUTH_FAILURE_ALERT_COOLDOWN_SECONDS`.
 """
 import json
 import os
