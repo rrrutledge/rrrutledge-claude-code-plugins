@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.18.1] - 2026-11-13
+
+### Changed
+- **A gate the user can clear is always asked about.**
+  A browser subagent returns `HELP_NEEDED` for it even under a brief that says not to ask, and the spawn brief carries that rule itself; see **The return contract** in `SKILL.md`.
+
 ## [1.18.0] - 2026-11-12
 
 ### Changed

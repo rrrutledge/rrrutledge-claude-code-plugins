@@ -136,6 +136,7 @@ WORKER_CONTRACT = """
 
 You are a worker for the coordinator of job `{job}`; you report to it, not to Russell.
 Ask Russell only for what only he can give; anything else goes in your result file.
+A browser page gated on a human action is one of those: leave the tab open on it, ask him to clear it, and carry on once he has.
 Stage nothing that reaches another person - write drafts as files and list them under Artifacts.
 
 Write your result to `{result}`, in this shape:
