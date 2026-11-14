@@ -839,6 +839,24 @@ class TestHasUnquotedWindowsDrivePath:
         assert has_unquoted_windows_drive_path(seg) is True
 
 
+class TestUnquotedDrivePathBlocking:
+    def test_blocks_flag_value_path(self):
+        reason = enforce_bash(r'node scripts/x.js --out=C:\Users\russe\a.json')
+        assert reason and 'C:/Users' in reason
+
+    def test_blocks_rm_argument(self):
+        assert enforce_bash(r'rm -f C:\Users\russe\a.json')
+
+    def test_allows_double_quoted(self):
+        assert enforce_bash(r'node scripts/x.js --out="C:\Users\russe\a.json"') is None
+
+    def test_allows_forward_slashes(self):
+        assert enforce_bash('node scripts/x.js --out=C:/Users/russe/a.json') is None
+
+    def test_allows_single_quoted(self):
+        assert enforce_bash(r"node scripts/x.js --out='C:\Users\russe\a.json'") is None
+
+
 class TestMissingScriptBlocks(object):
     """A relative script filename that doesn't resolve against CLAUDE_CWD should
     deny with an actionable message (use the full path), not silently fall
