@@ -65,7 +65,7 @@ def shell_tokenize(text):
 
 
 # A bare (unquoted) Windows drive-letter path, e.g. C:\Users\...
-_WINDOWS_DRIVE_PATH = re.compile(r'^[A-Za-z]:\\')
+_WINDOWS_DRIVE_PATH = re.compile(r'^[A-Za-z]:\\(?!\\)')
 
 
 def has_unquoted_windows_drive_path(segment):
@@ -83,7 +83,8 @@ def has_unquoted_windows_drive_path(segment):
         if tok.update_quote_state():
             tok.advance()
             continue
-        if not tok.in_quotes() and _WINDOWS_DRIVE_PATH.match(segment[tok.pos:]):
+        if (not tok.in_quotes() and _WINDOWS_DRIVE_PATH.match(segment[tok.pos:])
+                and (tok.pos == 0 or not (segment[tok.pos - 1].isalnum() or segment[tok.pos - 1] in '_:'))):
             return True
         tok.advance()
     return False
