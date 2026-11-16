@@ -207,6 +207,31 @@ def test_handoff_launch_records_link():
     with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
         json.dump({"handoffs": ["not", "a", "map"]}, f)
     check("a handoffs list instead of a map reads as empty", bg_session.holder_resolver()(C) == [(C, 0)])
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": {C: [{"to": ["x"], "at": "2026-11-16T10:00:00+00:00"},
+                                    {"to": D, "at": "2026-11-16T10:00:00"}]}}, f)
+    check("an unhashable link target is skipped", bg_session.holder_resolver()(C)[0] == (C, 0))
+    bg_session.record_pause(B, "x", TMP)
+    check("a naive timestamp never blocks a write", B in bg_session.paused_sessions([]))
+
+    print("test: a launch declared keep-open after the fact drops its handoff link")
+    reset()
+    bg_session.record_handoff(A, B)
+    bg_session.record_handoff(A, E)
+    marker = load("launch_marker")
+    marker.read = lambda sid: {"mode": "handoff", "title": "Apply", "short_id": B.split("-", 1)[0]}
+    marker.write = lambda *a: True
+    saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    os.environ["CLAUDE_CODE_SESSION_ID"] = A
+    try:
+        marker.main(["keep-open"])
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    check("only that launch's link is dropped", bg_session.holder_resolver()(A) == [(A, 0), (E, 1)],
+          bg_session.holder_resolver()(A))
 
 
 def test_end_session_records_pause():

@@ -120,7 +120,7 @@ Because the reconcile runs ahead of the enumerate, anything it re-queues is list
 Three guards keep it from re-queuing work that is fine:
 
 - **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 5) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
-- **a live worker id** (the background session's short id, recorded in `seeds/<id>.prompt.txt.session`, matched against the live background sessions in `claude agents --json`) means a worker is open on the item: being worked, or parked for Russell.
+- **a live worker session**, as the rule above defines one (the worker's id is recorded in `seeds/<id>.prompt.txt.session` and matched against the live background sessions in `claude agents --json`), means a worker is open on the item: being worked, or parked for Russell.
   Liveness is the whole test - a live worker is left alone however long it's up, so there is no timeout.
 - **the launch grace** (`orphan_grace_minutes`) covers the window in which a just-dispatched worker hasn't written its `.session` file yet and so briefly looks session-less
 

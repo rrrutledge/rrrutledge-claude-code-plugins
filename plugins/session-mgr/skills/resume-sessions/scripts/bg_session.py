@@ -594,15 +594,22 @@ def _load_paused():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
+    # The poller reads the handoff links every cycle, unattended, so a hand-edited link is dropped here,
+    # once, and never reaches a reader or a write.
+    handoffs = data.get("handoffs") if isinstance(data.get("handoffs"), dict) else {}
+    handoffs = {g: [e for e in kids if isinstance(e, dict) and isinstance(e.get("to"), str) and e["to"]]
+                for g, kids in handoffs.items() if isinstance(kids, list)}
     return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {}),
-            "handoffs": dict(data.get("handoffs") if isinstance(data.get("handoffs"), dict) else {})}
+            "handoffs": handoffs}
 
 
 def _iso_at(entry, key):
+    """The aware datetime in `entry[key]`, or None when it is missing, unparseable, or naive."""
     try:
-        return datetime.datetime.fromisoformat(entry[key])
+        stamp = datetime.datetime.fromisoformat(entry[key])
     except (KeyError, TypeError, ValueError):
         return None
+    return stamp if stamp.tzinfo else None
 
 
 def _update_paused(mutate):
@@ -614,9 +621,7 @@ def _update_paused(mutate):
         data = _load_paused()
         mutate(data)
         data["paused"] = {g: e for g, e in data["paused"].items() if (_iso_at(e, "pausedAt") or cutoff) > cutoff}
-        # A hand-edited handoff entry is dropped here, so it never blocks a pause, resume, or link write.
-        handoffs = {g: [e for e in kids if (_iso_at(e, "at") or keep) > keep and isinstance(e, dict) and e.get("to")]
-                    for g, kids in data["handoffs"].items() if isinstance(kids, list)}
+        handoffs = {g: [e for e in kids if (_iso_at(e, "at") or keep) > keep] for g, kids in data["handoffs"].items()}
         data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
@@ -668,9 +673,17 @@ def record_handoff(session_guid, handed_to):
     entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
     def mutate(d):
-        kids = d["handoffs"].get(session_guid)
-        kids = [e for e in kids if isinstance(e, dict) and e.get("to") != handed_to] if isinstance(kids, list) else []
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"] != handed_to]
         d["handoffs"][session_guid] = kids + [entry]
+    _update_paused(mutate)
+
+
+def drop_handoff(session_guid, short_id):
+    """Remove the link `session_guid` recorded to the session whose short id is `short_id`, for a launch
+    declared a side quest after the fact (launch_marker.py keep-open)."""
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"].split("-", 1)[0] != short_id]
+        d["handoffs"][session_guid] = kids
     _update_paused(mutate)
 
 
@@ -687,10 +700,8 @@ def holder_resolver():
         successors[guid] = nxt
         successors.setdefault(guid.split("-", 1)[0], nxt)
     for parent, entries in data["handoffs"].items():
-        # The poller reads this every cycle, unattended, so a hand-edited entry is skipped, never fatal.
-        to = [e["to"] for e in entries if isinstance(e, dict) and e.get("to")] if isinstance(entries, list) else []
         for key in {parent, parent.split("-", 1)[0]}:
-            kids.setdefault(key, []).extend(to)
+            kids.setdefault(key, []).extend(e["to"] for e in entries)
 
     def holders(receipt):
         out, seen, queue = [], set(), [(receipt, 0)]

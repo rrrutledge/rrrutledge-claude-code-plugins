@@ -16,7 +16,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.abspath(os.path.join(HERE, "..", "skills", "resume-sessions", "scripts"))
 sys.path.insert(0, SCRIPTS)
 
+import bg_session  # noqa: E402
 import launch_marker  # noqa: E402
+
+bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # handoff links stay off the machine's record
 
 spec = importlib.util.spec_from_file_location("spawn_session", os.path.join(SCRIPTS, "spawn-session.py"))
 spawn_session = importlib.util.module_from_spec(spec)

@@ -1592,6 +1592,10 @@ def paused_ids(agents):
     return {i for guid in paused_sessions(agents) for i in (guid, guid.split("-", 1)[0])}
 
 
+# Which conversation holder wins when several hold one conversation, best first.
+HOLDER_RANK = {"live": 0, "handoff": 1, "paused": 2}
+
+
 def open_conversations(runtime_dir, live, paused):
     """`{conversation key: (holder id, "live" | "handoff" | "paused")}` for every conversation a live
     or paused worker, or a live session it handed its work to, holds right now: a live worker wins, then
@@ -1605,7 +1609,6 @@ def open_conversations(runtime_dir, live, paused):
     and the next item in its conversation launches normally. `paused` is paused_ids' set. Empty `live`
     and `paused` yield `{}`."""
     live = live or set()
-    rank = {"live": 0, "handoff": 1, "paused": 2}
     out = {}
     for hits, rec in _worker_items(runtime_dir, live | paused):
         key = rec.get("conversationKey")
@@ -1615,7 +1618,7 @@ def open_conversations(runtime_dir, live, paused):
         handed = next((i for i, depth in reversed(hits) if depth and i in live), None)
         holder = ((own_live, "live") if own_live else (handed, "handoff") if handed
                   else (hits[-1][0], "paused"))
-        if key not in out or rank[holder[1]] < rank[out[key][1]]:
+        if key not in out or HOLDER_RANK[holder[1]] < HOLDER_RANK[out[key][1]]:
             out[key] = holder
     return out
 
@@ -2247,7 +2250,7 @@ def main():
         key = providers[0].conversation_key({"channel": args.channel})
         holders = [h for k, h in open_conversations(cfg["runtime_dir"], live, paused_ids(agents)).items()
                    if k == key or k.startswith(key + "|")]
-        holder = next((h for h in holders if h[1] == "live"), holders[0] if holders else None)
+        holder = min(holders, key=lambda h: HOLDER_RANK[h[1]], default=None)
         if holder:
             print(f"on-demand: held behind {_held_word(holder[1])} worker {holder[0]} "
                   f"on {args.channel}.")
@@ -2711,7 +2714,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     if channel:
         base = prov["slack"].conversation_key({"channel": channel})
         thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
-        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
+        thread_holder = min(thread_holders, key=lambda h: HOLDER_RANK[h[1]], default=None)
     # The duplicate check's session list, grown as this pass launches workers; None when the scan failed,
     # so a seed never claims a partial list is the machine's live sessions.
     peers = None if agents is None else list(agents)
