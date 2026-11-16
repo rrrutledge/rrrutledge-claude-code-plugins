@@ -45,7 +45,7 @@ run unattended but the server as a whole isn't (e.g. a Gmail label/trash
 tool whose effect is private and reversible, without blanket-trusting
 every other Gmail tool too).
 
-`trusted_destination_dirs` adds *extra* dirs `cp`/`mv`/`ln` may write to
+`trusted_destination_dirs` adds *extra* dirs `cp`/`mv`/`ln` and the Write/Edit tools may write to
 outside the repo, on top of the built-in default (`~/Downloads` - see
 `paths.TRUSTED_DESTINATION_DIRS`). Writing outside the repo is otherwise
 treated as elevated risk (an out-of-repo write can silently overwrite an

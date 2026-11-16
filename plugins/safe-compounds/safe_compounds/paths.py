@@ -92,6 +92,26 @@ def is_path_within_cwd(path):
     return path_under(path, cwd)
 
 
+def is_stray_root_file(path):
+    """True if `path` is a non-dotfile sitting directly in the user's home
+    folder or in a drive root (~/b5-postings.json, C:/out.json).
+
+    A file there is almost never deliberate - it is what a scratch write
+    looks like when its intended directory was dropped or mangled. Dotfiles
+    (~/.gitconfig, ~/.bashrc) are exempt because they are the normal way to
+    configure a tool."""
+    try:
+        canonical = _canonical(_abs_against_cwd(path))
+        name = os.path.basename(canonical)
+        if not name or name.startswith('.'):
+            return False
+        parent = os.path.dirname(canonical).rstrip('/')
+        home = _canonical(os.path.expanduser('~')).rstrip('/')
+        return parent == home or re.fullmatch(r'([a-z]:)?', parent) is not None
+    except Exception:
+        return False
+
+
 # Credential/token stores under home that must never be treated as a safe
 # cp/mv/ln source, even though they live under an otherwise-trusted base
 # (home itself, or Documents for the PowerShell profile).

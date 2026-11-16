@@ -13,7 +13,10 @@ import re
 
 from . import ai
 from .log import log_debug
-from .paths import PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_cwd, is_within_claude_jobs_dir
+from .paths import (
+    PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_allowed_edits, is_path_within_cwd,
+    is_path_within_trusted_destination, is_stray_root_file, is_within_claude_jobs_dir,
+)
 
 TEMP_FILE_NAME_PATTERNS = [
     re.compile(r'[_.-][Tt][Mm][Pp]$'),
@@ -55,6 +58,14 @@ def _temp_redirect_reason(file_path):
         f'BLOCKED: "{base}" looks like a temporary file but is not in .tmp/. '
         'Write it to .tmp/ instead (e.g. .tmp/commit-msg.txt). '
         'Per CLAUDE.md, .tmp/ is the only location for temporary staging files.'
+    )
+
+
+def _stray_root_reason(file_path):
+    base = os.path.basename(file_path.replace('\\', '/'))
+    return (
+        f'BLOCKED: "{base}" would be a loose file at the root of your home folder or a drive. '
+        'Write scratch files to .tmp/ in your working repo, or put the file inside a git repo.'
     )
 
 
@@ -138,6 +149,14 @@ def decide_write_edit(file_path):
 
     if is_in_git_repo(cwd) and is_path_within_cwd(file_path):
         return 'allow', None
+
+    # The same places cp/mv/ln may write outside the repo: dirs already covered by an
+    # Edit/Write allow rule, and the trusted destination dirs (~/Downloads plus config extras).
+    if is_path_within_allowed_edits(file_path) or is_path_within_trusted_destination(file_path):
+        return 'allow', None
+
+    if is_stray_root_file(file_path):
+        return 'block', _stray_root_reason(file_path)
 
     if ask_ai_if_temp_file(file_path):
         return 'block', _temp_redirect_reason(file_path)
