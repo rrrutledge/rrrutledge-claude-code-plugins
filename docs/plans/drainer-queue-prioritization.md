@@ -76,6 +76,31 @@ Russell edits one line to start a crunch, and the poller reads it every cycle.
 It puts a card in lane 0 until Russell removes it.
 Everything else is automatic, so the stated rule above is what runs, and the pin is the one escape hatch.
 
+## Recurring cards that get missed
+
+Cards with a `Recurs:` line (the Primary lesson, getting the mail, the monthly budget) are a different kind of work from "start as soon as you can".
+Today a missed occurrence just sits with an old Start, and it ranks as stale work among everything else.
+The next occurrence never appears, so a weekly task missed for two weeks shows up as one old card instead of "you missed this week and it is now next week's turn".
+
+Proposal: each recurring card gets a lapse rule, and a plain-code sweep applies it once a day.
+No model tokens are involved, since the decision depends only on the cadence and the dates.
+
+- **Expiring occurrences** (the Primary lesson, getting the mail): when the next occurrence's date arrives and this one is still not done, the missed occurrence is dropped, not carried.
+  The sweep moves Start forward to the new occurrence, writes a dated "missed" comment on the card, and records the miss.
+  Late work on last week's lesson is worth nothing, and two weeks of mail is one trip, so a missed occurrence never piles up.
+- **Accumulating occurrences** (the monthly budget, an ISC invoice): a miss stays owed.
+  The card keeps its Start and is flagged overdue, which moves it up under the due-date lane above instead of letting it sink.
+- **Digest**: every missed occurrence and every overdue accumulating card appears in the end-of-day digest, so a miss is something you see once, not something that silently ages.
+
+Each card declares which kind it is with one added word on its `Recurs:` line, for example `Recurs: weekly, expires`.
+A card with no word keeps today's behavior, so nothing changes until a card is marked.
+
+A card whose next occurrence is close also counts as having a deadline.
+A weekly Sunday lesson becomes lane 2 (due) in the days before Sunday, the same as a card with a real Due date, so it competes for attention when it matters.
+
+The sweep lives with the poller, next to the unblock sweep that already runs every cycle.
+It lands as step 5 of the rollout.
+
 ## Review load and intake
 
 Russell's point that a finished item still costs review time is real, and the existing throttle does not see it.
@@ -111,6 +136,7 @@ Each step is its own PR and can ship alone.
 2. Due-date lane.
 3. `💰 Money`, `⏸ Big`, `🔝 Now` labels and the crunch file.
 4. Per-lane dispatch ceilings.
+5. Recurring-card lapse sweep and the digest section for missed occurrences.
 
 ## Questions for Russell
 
@@ -118,3 +144,5 @@ Each step is its own PR and can ship alone.
    Recommendation: job search always leads, since a 48-hour deadline you can see coming is usually already a card you are working.
 2. Is the 7-day due window right, or do you want a shorter or longer one?
 3. Oldest-Start-first for mail as well as cards: is that what you want, or should only cards flip?
+4. Is the split right: Primary lesson and getting the mail expire when missed, while the budget and invoices stay owed?
+   Which of your other recurring cards belong on the expiring side?
