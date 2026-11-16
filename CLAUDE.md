@@ -111,6 +111,10 @@ Some commands are approved based on their *arguments*, not just their name:
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory
   anywhere on disk (not just the current repo's) - `.tmp/` is always scratch space,
   regardless of which repo it's under.
+- **Write/Edit tools** - approved inside the current git repo, any `.tmp/`, or a `settings.json` allowed-edit path.
+  A trusted destination dir (`~/Downloads` plus `trusted_destination_dirs`) is approved only for a file that doesn't exist yet, because an overwrite outside git can't be undone, so an existing file there prompts.
+  Creating a non-dotfile directly in the home folder or a drive root is BLOCKed, with an instruction to use `.tmp/` or a git repo, because a scratch file written there is almost always one whose intended directory was lost.
+  Editing a file that already exists there prompts.
 - **`sed`** - approved for read-only use; `enforce_bash()` BLOCKs an in-place flag before this check runs (see the decision pipeline).
 
 #### 4. AI inspection + learned store (`commands.py` - `_ai_learn`, `learned.py`)
@@ -177,7 +181,7 @@ are promoted back to the plugin source via a GitHub PR on a rolling branch
 | `trusted_script_dirs` | Directories containing safe scripts |
 | `learned_sync_exclude` | Learned commands to exclude from PR sync |
 | `workflow_blanket_names` | Saved workflow names (`tool_input.name`) to blanket-allow - never matches an inline/dynamic script, which is instead judged fresh each run by the AI content check in `workflow.py` |
-| `trusted_destination_dirs` | Extra dirs `cp`/`mv`/`ln` may write to outside the repo, beyond the built-in default (`~/Downloads`) |
+| `trusted_destination_dirs` | Extra dirs `cp`/`mv`/`ln` and the Write/Edit tools may write to outside the repo, beyond the built-in default (`~/Downloads`) |
 
 ---
 
@@ -219,6 +223,7 @@ are promoted back to the plugin source via a GitHub PR on a rolling branch
 | `plugins/safe-compounds/safe_compounds/enforce.py` | Bash form validation + block messages |
 | `plugins/safe-compounds/safe_compounds/learned.py` | Machine-local learned store read/write |
 | `plugins/safe-compounds/safe_compounds/workflow.py` | Classifies Workflow tool calls: `workflow_blanket_names` for saved workflows, AI content check for inline scripts |
+| `plugins/safe-compounds/safe_compounds/writes.py` | Write/Edit decisions: the blocked `~/.claude` dirs, `.tmp/` and repo allows, trusted destination dirs, and the home-root creation block |
 | `plugins/safe-compounds/safe_compounds/worktree_tool.py` | Classifies EnterWorktree (approved only when creating fresh with no path; any explicit path is denied with a redirect to work the worktree directly via `git -C`/absolute paths instead - see §7) and ExitWorktree (`keep` and plain `remove` approved, `discard_changes` prompts) tool calls |
 | `plugins/safe-compounds/tools/sync_learned.py` | Promotes learned approvals to a GitHub PR |
 | `plugins/safe-compounds/safe_compounds/config.py` | Config file schema + loader |

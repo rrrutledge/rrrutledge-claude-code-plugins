@@ -396,6 +396,21 @@ CASES = [
     {"id": "edit_claude_jobs_tmp", "tool": "Edit",
      "file_path": "{HOME}/.claude/jobs/7c53ac71/tmp/notes.md", "expect": "BLOCK"},
 
+    # Write/Edit allows the same outside-the-repo dirs cp/mv/ln do (~/Downloads), and redirects a
+    # loose non-dotfile at the root of home, which is what a scratch write with a dropped dir looks like.
+    {"id": "write_downloads", "tool": "Write", "file_path": "{HOME}/Downloads/report.pdf", "expect": "ALLOW"},
+    {"id": "write_downloads_plain_cwd", "tool": "Write", "file_path": "{HOME}/Downloads/notes.md",
+     "cwd": "plain", "expect": "ALLOW"},
+    {"id": "edit_downloads_existing_file", "tool": "Edit", "file_path": "{HOME}/Downloads/taxes.md",
+     "home_files": {"Downloads/taxes.md": "x"}, "cwd": "plain", "expect": "PROMPT"},
+    {"id": "write_home_root_stray", "tool": "Write", "file_path": "{HOME}/b5-postings.json",
+     "cwd": "plain", "expect": "BLOCK"},
+    {"id": "edit_home_root_existing_file", "tool": "Edit", "file_path": "{HOME}/todo.md",
+     "home_files": {"todo.md": "x"}, "cwd": "plain", "expect": "PROMPT"},
+    {"id": "write_home_dotfile", "tool": "Write", "file_path": "{HOME}/.gitconfig", "cwd": "plain", "expect": "PROMPT"},
+    {"id": "write_home_subdir", "tool": "Write", "file_path": "{HOME}/projects/data.json",
+     "cwd": "plain", "expect": "PROMPT"},
+
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},
 ]
