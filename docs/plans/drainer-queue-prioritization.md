@@ -92,6 +92,18 @@ No model tokens are involved, since the decision depends only on the cadence and
   The card keeps its Start and is flagged overdue, which moves it up under the due-date lane above instead of letting it sink.
 - **Digest**: every missed occurrence and every overdue accumulating card appears in the end-of-day digest, so a miss is something you see once, not something that silently ages.
 
+There is one card per recurring task, and its Start moves forward only when an occurrence is finished.
+A missed occurrence therefore leaves the card with an old Start, and no "next occurrence" exists to arrive on its own.
+The sweep works the lapse out from the card's own dates.
+
+- The card's Start is the date this occurrence became due, and the `Recurs:` line gives the period.
+- When today is at or past Start plus one period and the card was not completed, the occurrence is missed.
+  A completed card would already have had its Start moved forward, so an old Start means the work was not done.
+- The sweep moves Start to the most recent date on the card's original schedule that is not in the future.
+  The date comes from the card's Start and period, so a Thursday card stays on Thursdays and a missed week does not shift the schedule.
+- The new occurrence is startable right away.
+- A task missed several times in a row ends up with one current occurrence, not several.
+
 Each card declares which kind it is with one added word on its `Recurs:` line, for example `Recurs: weekly, expires`.
 A card with no word keeps today's behavior, so nothing changes until a card is marked.
 
