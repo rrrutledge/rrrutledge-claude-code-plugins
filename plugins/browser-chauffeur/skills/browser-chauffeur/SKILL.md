@@ -88,7 +88,7 @@ When they confirm, the orchestrator continues the subagent via SendMessage; the 
 If the subagent cannot be continued, the orchestrator spawns a fresh continuation subagent seeded with "the login is done; resume the flow at step N on the tab matching <predicate>", and the persistent tab makes either path work.
 
 An orchestrator splitting work across several browser subagents builds every brief from the whole spawn brief below.
-The orchestrator's final report lists a page as not read for one of two named reasons: the user declined to clear its gate, or the subagent's `DONE` named a cause no one can fix.
+The orchestrator's final report lists a page as not read for one reason: the subagent's `DONE` named a cause no one can fix.
 
 ### When one task runs very long
 
