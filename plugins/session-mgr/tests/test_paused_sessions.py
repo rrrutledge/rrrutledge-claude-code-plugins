@@ -150,6 +150,39 @@ def test_resume_cwd_defaults_to_paused_record():
     check("in the paused session's cwd", seen and seen[0]["cwd"] == repo, seen)
 
 
+def test_handoff_launch_records_link():
+    print("test: a handoff or resume-me launch from a session links it to the new session; a side quest doesn't")
+    reset()
+    spawn_session = load("spawn-session")
+    D, E, F = "dddddddd-0000-0000-0000-000000000004", "eeeeeeee", "ffffffff-0000-0000-0000-000000000006"
+    launched = iter([B, D, F])
+    spawn_session.launch = lambda **kw: ("short", next(launched))
+    spawn_session.claude_agents = lambda: None
+    spawn_session.launch_marker.write = lambda *a, **kw: True
+    spawn_session._append_resume_me = lambda brief, sid, cwd, title: "resume command"
+    brief = os.path.join(TMP, "handoff.md")
+    saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    try:
+        for sid, extra in ((A, []), (C, ["--keep-open"]), (E, ["--resume-me"])):
+            open(brief, "w").close()
+            os.environ["CLAUDE_CODE_SESSION_ID"] = sid
+            spawn_session.main(["--title", "Apply", "--model", "opus", "--cwd", TMP, "--brief", brief] + extra)
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    holders = bg_session.holder_resolver()
+    check("a handoff reaches the new session", holders(A) == [A, B], holders(A))
+    check("a short-id receipt reaches it too", holders(A.split("-", 1)[0]) == [A.split("-", 1)[0], B],
+          holders(A.split("-", 1)[0]))
+    check("a keep-open side quest records no link", holders(C) == [C], holders(C))
+    check("a resume-me launch records a link", holders(E) == [E, F], holders(E))
+    old = datetime.datetime.now(datetime.timezone.utc) - bg_session.HANDOFF_KEEP - datetime.timedelta(minutes=1)
+    bg_session._update_paused(lambda d: d["handoffs"][A][0].__setitem__("at", old.isoformat()))
+    check("a link past the keep bound is dropped", bg_session.holder_resolver()(A) == [A])
+
+
 def test_end_session_records_pause():
     print("test: end-session --pause records the pause from the session's job record")
     reset()
@@ -190,6 +223,7 @@ if __name__ == "__main__":
     test_successor_from_job_record()
     test_duplicate_check_lists_paused()
     test_resume_cwd_defaults_to_paused_record()
+    test_handoff_launch_records_link()
     test_end_session_records_pause()
     print(f"\n{'ALL PASS' if not failures else f'{len(failures)} FAILED: {failures}'}")
     sys.exit(1 if failures else 0)

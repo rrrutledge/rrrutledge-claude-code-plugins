@@ -72,7 +72,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           duplicate_check_section, paused_sessions, session_resolver,
+                           duplicate_check_section, paused_sessions, holder_resolver,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs, session_mgr_script)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
@@ -1611,13 +1611,15 @@ def open_conversations(runtime_dir, live, paused):
 
 
 def _worker_items(runtime_dir, ids):
-    """(receipt id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt is in
-    `ids`. A receipt names the session as launched; a session resumed since continues under a newer
-    guid (session_resolver), so the receipt is read as that one. Bounded by the number of session
-    files, the same work reconcile does each cycle."""
+    """(holder id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt's
+    session, or a session it handed its work to, is in `ids`. A receipt names the session as launched;
+    a session resumed since continues under a newer guid, and one that handed off is carried by the
+    session it launched (holder_resolver), so the holder is the furthest of those in `ids` - the session
+    the work went to last. Bounded by the number of session files, the same work reconcile does each
+    cycle."""
     if not ids:
         return
-    resolve = session_resolver()
+    holders = holder_resolver()
     seeds_dir = os.path.join(runtime_dir, "seeds")
     items_dir = os.path.join(runtime_dir, "items")
     suffix = ".prompt.txt.session"
@@ -1630,10 +1632,11 @@ def _worker_items(runtime_dir, ids):
             continue
         try:
             with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
-                receipt = resolve(f.read().strip())
+                receipt = f.read().strip()
         except OSError:
             continue
-        if receipt not in ids:
+        receipt = next((h for h in reversed(holders(receipt)) if h in ids), None)
+        if not receipt:
             continue
         try:
             with open(os.path.join(items_dir, f"{fn[:-len(suffix)]}.json"), encoding="utf-8") as f:
@@ -1964,7 +1967,8 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     Three guards, each load-bearing:
       - an item awaiting the daily digest sits in the inbox BY DESIGN, so the digest queue is excluded;
         without that every queued fyi/junk item would requeue on every cycle
-      - a live worker id means a session is open on it: being worked, or parked for Russell
+      - a live worker id means a session is open on it: being worked, or parked for Russell; so does
+        a live session the worker handed its work to (holder_resolver)
       - the launch grace (orphan_grace_minutes) covers the window where a just-dispatched worker hasn't
         written its .session file yet and so briefly looks session-less
 
@@ -1998,7 +2002,9 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
         if inbox_ids is None:
             continue
         prior, still_handled = handled.get(provider.name, set()), set()
-        resolve = session_resolver()  # a worker resumed since launch is live under its newer guid
+        # A worker resumed since launch is live under its newer guid, and one that handed off is
+        # carried by the session it launched for as long as that session is live.
+        holders = holder_resolver()
         for iid in load_seen(runtime_dir, provider.name):
             if iid in prior:
                 still_handled.add(iid)  # already proven gone from the inbox; carry it forward
@@ -2010,7 +2016,7 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
                 still_handled.add(iid)
                 continue
             guid, smtime = _session_guid(runtime_dir, iid)
-            if guid and resolve(guid) in live:
+            if guid and live.intersection(holders(guid)):
                 continue
             # Grace runs from the .session file's mtime (launch time) when there is one, else from the
             # capture timestamp. No usable time at all means it can't be proven fresh, so it requeues.

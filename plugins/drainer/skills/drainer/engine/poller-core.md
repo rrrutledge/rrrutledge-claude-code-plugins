@@ -122,6 +122,8 @@ Three guards keep it from re-queuing work that is fine:
 - **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 5) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
 - **a live worker id** (the background session's short id, recorded in `seeds/<id>.prompt.txt.session`, matched against the live background sessions in `claude agents --json`) means a worker is open on the item: being worked, or parked for Russell.
   Liveness is the whole test - a live worker is left alone however long it's up, so there is no timeout.
+  A worker that handed its item's work to a new session (session-mgr's `spawn-session.py`, which `spawn-handoff.py` forwards to) is carried by that session: the launch records a handoff link, and the item stays held while the worker, or any session down its chain of handoffs, is live.
+  When the last of them ends with the item still unhandled, the item re-queues on the next cycle like any other.
 - **the launch grace** (`orphan_grace_minutes`) covers the window in which a just-dispatched worker hasn't written its `.session` file yet and so briefly looks session-less
 
 Both fail-safes point at reconciling nothing rather than re-queuing live work: a process scan that can't run skips the cycle, and a provider whose inbox listing fails skips that provider (an empty id set would otherwise read as "every item is archived").
@@ -153,7 +155,7 @@ If one matches, the item is left **unrecorded** on the pending list - the same p
 
 "Currently has an open item" is recomputed **every pass from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
 The one stored record is short-lived: a worker launched within the last few minutes holds its correspondent and its conversation by the dispatcher's own launch record (`launch-holds.json`, `LAUNCH_HOLD` in `run-poller.py`) until the session scan lists it, and its slot counts against `max_concurrent` the same way.
-The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
+The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live worker, or a live session it handed off to, holds one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
 If a worker dies without clearing, the hold behind it goes false on the next pass, and reconcile re-queues *its* item within one feed cycle - both read the same liveness signal, not a separate flag.
 Worst case is one feed cycle's delay, never indefinite starvation.
 A live-session scan that fails yields no held-open set, so a hold across passes **fails open** (dispatch proceeds); the same-pass dedup still holds a burst.

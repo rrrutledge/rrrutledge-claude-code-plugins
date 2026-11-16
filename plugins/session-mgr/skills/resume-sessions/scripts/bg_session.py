@@ -575,11 +575,16 @@ def record_wake(session_guid):
 # the only way to tell the two apart. `paused`: guid -> when it paused, its name and cwd, dropped when
 # the session is resumed. `successors`: resumed guid -> the guid it continued under, since a resume
 # with a follow-up starts a new session id, and a later resume of the old guid would fork the history
-# from before that continuation's work.
+# from before that continuation's work. `handoffs`: launching guid -> the sessions it handed its work
+# to (spawn-session.py), so a drainer item stays held by the session now working it after its worker
+# closes.
 PAUSED_PATH = os.path.expanduser("~/.claude/session-mgr/paused.json")
 # How long a paused record counts. A paused session is meant to be resumed, but one whose resume never
 # comes must not hold its work forever.
 PAUSE_HOLD = datetime.timedelta(days=3)
+# How long a handoff link is kept. The link only carries a hold while the session it names is live, so
+# this bounds the record's size, not how long anything is held.
+HANDOFF_KEEP = datetime.timedelta(days=30)
 
 
 def _load_paused():
@@ -589,7 +594,8 @@ def _load_paused():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {})}
+    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {}),
+            "handoffs": dict(data.get("handoffs") or {})}
 
 
 def _paused_at(entry):
@@ -599,14 +605,25 @@ def _paused_at(entry):
         return None
 
 
+def _handed_at(entry):
+    try:
+        return datetime.datetime.fromisoformat(entry["at"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _update_paused(mutate):
     """Apply `mutate` to the record and write it back, dropping pauses past PAUSE_HOLD, which no
-    longer count. Best effort, like the wake log."""
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
+    longer count, and handoff links past HANDOFF_KEEP. Best effort, like the wake log."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff, keep = now - PAUSE_HOLD, now - HANDOFF_KEEP
     for _ in range(5):
         data = _load_paused()
         mutate(data)
         data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
+        handoffs = {g: [e for e in kids if isinstance(e, dict) and (_handed_at(e) or keep) > keep]
+                    for g, kids in data["handoffs"].items() if isinstance(kids, list)}
+        data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
             tmp_path = PAUSED_PATH + f".tmp.{os.getpid()}"
@@ -649,6 +666,41 @@ def session_resolver():
     """latest_session over one read of the record, for a caller resolving many guids at once."""
     successors = _load_paused()["successors"]
     return lambda session_guid: latest_session(session_guid, successors)
+
+
+def record_handoff(session_guid, handed_to):
+    """Record that `session_guid` handed its work to the session `handed_to` (its launch receipt: the
+    full guid, or the short id when the launch couldn't resolve it)."""
+    entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e.get("to") != handed_to]
+        d["handoffs"][session_guid] = kids + [entry]
+    _update_paused(mutate)
+
+
+def holder_resolver():
+    """Over one read of the record: a function from a session receipt (full guid or short id) to every
+    session that may now be carrying its work, in order - the session its history continues under
+    (latest_session), then each session it handed off to, and theirs in turn, each followed through its
+    own resumes. A caller tests the result against its live sessions, so a link to a session that has
+    ended holds nothing."""
+    data = _load_paused()
+    successors, by_parent = data["successors"], {}
+    for parent, kids in data["handoffs"].items():
+        ids = [e.get("to") for e in kids if isinstance(e, dict) and e.get("to")]
+        for key in {parent, parent.split("-", 1)[0]}:
+            by_parent.setdefault(key, []).extend(ids)
+
+    def holders(receipt):
+        out, queue = [], [receipt]
+        while queue:
+            ident = latest_session(queue.pop(0), successors)
+            if ident and ident not in out:
+                out.append(ident)
+                queue.extend(by_parent.get(ident, []))
+        return out
+    return holders
 
 
 def paused_record(session_guid):
