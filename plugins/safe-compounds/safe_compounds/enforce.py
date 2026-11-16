@@ -25,7 +25,10 @@ from .paths import (
     read_script_file, resolve_against_cwd,
 )
 from .scripts import extract_script_filename
-from .shell import ShellTokenizer, first_word, shell_tokenize, split_segments, strip_var_assignment
+from .shell import (
+    ShellTokenizer, first_word, has_unquoted_windows_drive_path, shell_tokenize, split_segments,
+    strip_var_assignment,
+)
 
 POWERSHELL_CMDLETS = {
     'Get-ChildItem': 'ls (list) or find (recursive search)',
@@ -613,6 +616,13 @@ def enforce_bash(command):
                 'into the command line as further shell input. Write the multi-line text to a file '
                 'with the Write tool instead, then pass it via that file (e.g. '
                 '`git commit -F .tmp/commit-msg.txt`).')
+
+    if has_unquoted_windows_drive_path(command):
+        return ('BLOCKED: Command contains an unquoted Windows drive path (e.g. C:\\Users\\...). The '
+                'shell strips unquoted backslashes, so the program receives "C:Users..." -- a '
+                'drive-relative path that lands files in the wrong directory and prompts on later '
+                'cleanup. Rewrite the path either in double quotes ("C:\\Users\\...") or with forward '
+                'slashes (C:/Users/...), then re-run.')
 
     if detect_gh_api_contents_write(command):
         return ('BLOCKED: "gh api" is writing directly to the GitHub Contents API '
