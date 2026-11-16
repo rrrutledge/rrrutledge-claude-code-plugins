@@ -370,9 +370,12 @@ duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda 
 # worker's item: the guid its history continues under, then each session it handed its work to. An
 # older session-mgr records no handoffs, or neither.
 paused_sessions = getattr(bg_session, "paused_sessions", lambda agents: {})
-_session_resolver = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)
-holder_resolver = getattr(bg_session, "holder_resolver",
-                          lambda: (lambda resolve: lambda receipt: [resolve(receipt)])(_session_resolver()))
+def _own_chain_only():
+    resolve = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)()
+    return lambda receipt: [(resolve(receipt), 0)]
+
+
+holder_resolver = getattr(bg_session, "holder_resolver", _own_chain_only)
 
 
 # ---------------------------------------------------------------------------- correspondent identity

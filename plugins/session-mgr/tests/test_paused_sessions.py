@@ -173,14 +173,31 @@ def test_handoff_launch_records_link():
         else:
             os.environ["CLAUDE_CODE_SESSION_ID"] = saved
     holders = bg_session.holder_resolver()
-    check("a handoff reaches the new session", holders(A) == [A, B], holders(A))
-    check("a short-id receipt reaches it too", holders(A.split("-", 1)[0]) == [A.split("-", 1)[0], B],
-          holders(A.split("-", 1)[0]))
-    check("a keep-open side quest records no link", holders(C) == [C], holders(C))
-    check("a resume-me launch records a link", holders(E) == [E, F], holders(E))
+    short = A.split("-", 1)[0]
+    check("a handoff reaches the new session", holders(A) == [(A, 0), (B, 1)], holders(A))
+    check("a short-id receipt reaches it too", holders(short) == [(short, 0), (B, 1)], holders(short))
+    check("a keep-open side quest records no link", holders(C) == [(C, 0)], holders(C))
+    check("a resume-me launch records a link", holders(E) == [(E, 0), (F, 1)], holders(E))
+    bg_session.record_resume(A, continued_as=D)
+    check("a resumed launcher keeps its earlier link", bg_session.holder_resolver()(A) == [(A, 0), (D, 0), (B, 1)],
+          bg_session.holder_resolver()(A))
     old = datetime.datetime.now(datetime.timezone.utc) - bg_session.HANDOFF_KEEP - datetime.timedelta(minutes=1)
     bg_session._update_paused(lambda d: d["handoffs"][A][0].__setitem__("at", old.isoformat()))
-    check("a link past the keep bound is dropped", bg_session.holder_resolver()(A) == [A])
+    check("a link past the keep bound is dropped", bg_session.holder_resolver()(A) == [(A, 0), (D, 0)])
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:  # a hand edit, past _update_paused's prune
+        json.dump({"handoffs": {C: "not a list"}}, f)
+    spawn_session.launch = lambda **kw: ("short", F)
+    os.environ["CLAUDE_CODE_SESSION_ID"] = C
+    try:
+        open(brief, "w").close()
+        rc = spawn_session.main(["--title", "Apply", "--model", "opus", "--cwd", TMP, "--brief", brief])
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    check("a malformed record never fails a launch that already happened", rc == 0, rc)
+    check("a malformed record still resolves", bg_session.holder_resolver()(C) == [(C, 0)])
 
 
 def test_end_session_records_pause():

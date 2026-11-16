@@ -598,16 +598,9 @@ def _load_paused():
             "handoffs": dict(data.get("handoffs") or {})}
 
 
-def _paused_at(entry):
+def _paused_at(entry, key="pausedAt"):
     try:
-        return datetime.datetime.fromisoformat(entry["pausedAt"])
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _handed_at(entry):
-    try:
-        return datetime.datetime.fromisoformat(entry["at"])
+        return datetime.datetime.fromisoformat(entry[key])
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -621,8 +614,7 @@ def _update_paused(mutate):
         data = _load_paused()
         mutate(data)
         data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
-        handoffs = {g: [e for e in kids if isinstance(e, dict) and (_handed_at(e) or keep) > keep]
-                    for g, kids in data["handoffs"].items() if isinstance(kids, list)}
+        handoffs = {g: [e for e in kids if (_paused_at(e, "at") or keep) > keep] for g, kids in data["handoffs"].items()}
         data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
@@ -674,31 +666,38 @@ def record_handoff(session_guid, handed_to):
     entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
     def mutate(d):
-        kids = [e for e in d["handoffs"].get(session_guid) or [] if e.get("to") != handed_to]
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"] != handed_to]
         d["handoffs"][session_guid] = kids + [entry]
     _update_paused(mutate)
 
 
 def holder_resolver():
-    """Over one read of the record: a function from a session receipt (full guid or short id) to every
-    session that may now be carrying its work, in order - the session its history continues under
-    (latest_session), then each session it handed off to, and theirs in turn, each followed through its
-    own resumes. A caller tests the result against its live sessions, so a link to a session that has
-    ended holds nothing."""
+    """Over one read of the record: a function from a session receipt (full guid or short id) to
+    `[(session id, handoffs away)]` for every session that may now be carrying its work. Depth 0 is the
+    session itself and each guid a resume continued it under; each session any of those handed off to
+    comes next at depth 1, followed through its own resumes and handoffs in turn. Both maps are also
+    keyed by short id, so a short-id receipt follows them too. A caller tests the ids against its live
+    sessions, so a link to a session that has ended holds nothing."""
     data = _load_paused()
-    successors, by_parent = data["successors"], {}
-    for parent, kids in data["handoffs"].items():
-        ids = [e.get("to") for e in kids if isinstance(e, dict) and e.get("to")]
+    successors, kids = {}, {}
+    for guid, nxt in data["successors"].items():
+        successors[guid] = nxt
+        successors.setdefault(guid.split("-", 1)[0], nxt)
+    for parent, entries in data["handoffs"].items():
+        # The poller reads this every cycle, unattended, so a hand-edited entry is skipped, never fatal.
+        to = [e["to"] for e in entries if isinstance(e, dict) and e.get("to")] if isinstance(entries, list) else []
         for key in {parent, parent.split("-", 1)[0]}:
-            by_parent.setdefault(key, []).extend(ids)
+            kids.setdefault(key, []).extend(to)
 
     def holders(receipt):
-        out, queue = [], [receipt]
+        out, seen, queue = [], set(), [(receipt, 0)]
         while queue:
-            ident = latest_session(queue.pop(0), successors)
-            if ident and ident not in out:
-                out.append(ident)
-                queue.extend(by_parent.get(ident, []))
+            ident, depth = queue.pop(0)
+            while ident and ident not in seen:
+                seen.add(ident)
+                out.append((ident, depth))
+                queue.extend((k, depth + 1) for k in kids.get(ident, []))
+                ident = successors.get(ident)
         return out
     return holders
 

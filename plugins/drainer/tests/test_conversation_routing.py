@@ -115,7 +115,7 @@ check("a live holder wins over a paused one", poller.open_conversations(rt2, {"g
 check("no live scan and nothing paused -> nothing held, every item launches",
       poller.open_conversations(rt, None, set()), {})
 real_resolver = poller.holder_resolver
-poller.holder_resolver = lambda: lambda guid: [{"guid-paused": "guid-resumed"}.get(guid, guid)]
+poller.holder_resolver = lambda: lambda guid: [({"guid-paused": "guid-resumed"}.get(guid, guid), 0)]
 try:
     check("a receipt is read as the session it was resumed into",
           poller.open_conversations(rt, {"guid-resumed"}, set()).get("gmail|t4"), ("guid-resumed", "live"))

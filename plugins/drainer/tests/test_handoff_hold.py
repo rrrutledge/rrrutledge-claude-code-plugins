@@ -94,11 +94,15 @@ check("no live holder -> re-queued", reconcile(rt, set()), [IID])
 
 print("\nhandoff recorded: the session the worker launched holds the card while it is live")
 bg.record_handoff(WORKER, HANDOFF)
-check("the resolver reaches the handoff session", bg.holder_resolver()(WORKER), [WORKER, HANDOFF])
+check("the resolver reaches the handoff session", bg.holder_resolver()(WORKER), [(WORKER, 0), (HANDOFF, 1)])
 check("worker closed, handoff live -> not re-queued", reconcile(rt, {HANDOFF}), [])
 check("its correspondent stays held", poller.open_correspondents(rt, {HANDOFF}), {CARD})
-check("its conversation is held by the handoff session",
-      poller.open_conversations(rt, {HANDOFF}, set()), {KEY: (HANDOFF, "live")})
+convs = poller.open_conversations(rt, {HANDOFF}, set())
+check("its conversation is held by the handoff session", convs, {KEY: (HANDOFF, "handoff")})
+check("a new item there waits, never forwarded to a non-worker", poller.conversation_route(KEY, convs, set()),
+      "handoff")
+check("a live worker still takes its conversation's items itself",
+      poller.open_conversations(rt, {WORKER, HANDOFF}, set()), {KEY: (WORKER, "live")})
 
 print("\nfail-open: a handoff session that has ended releases the card within one cycle")
 check("worker and handoff both gone -> re-queued", reconcile(rt, set()), [IID])
@@ -108,7 +112,7 @@ print("\nchains: a handoff that hands off again, and a short-id receipt")
 bg.record_handoff(HANDOFF, SECOND)
 check("the second handoff holds the card", reconcile(rt, {SECOND}), [])
 check("the furthest live session is the holder",
-      poller.open_conversations(rt, {HANDOFF, SECOND}, set()), {KEY: (SECOND, "live")})
+      poller.open_conversations(rt, {HANDOFF, SECOND}, set()), {KEY: (SECOND, "handoff")})
 check("a worker receipt written as a short id still reaches its handoff",
       reconcile(workspace(WORKER.split("-", 1)[0]), {HANDOFF}), [])
 
@@ -116,6 +120,11 @@ print("\nresumes: a handoff session that was resumed holds under its newer guid"
 RESUMED = "cccc1111-2222-3333-4444-555555555555"
 bg.record_resume(HANDOFF, continued_as=RESUMED)
 check("the resumed guid holds the card", reconcile(rt, {RESUMED}), [])
+check("a link the session recorded before its resume is still followed", reconcile(rt, {SECOND}), [])
+SHORT_HANDOFF = "dddd2222"
+bg.record_handoff(SECOND, SHORT_HANDOFF)
+bg.record_resume("dddd2222-0000-0000-0000-000000000000", continued_as=RESUMED.replace("cccc", "eeee"))
+check("a short-id handoff receipt follows its resume", reconcile(rt, {RESUMED.replace("cccc", "eeee")}), [])
 check("a paused worker with no live handoff holds its conversation as paused",
       poller.open_conversations(rt, set(), {WORKER}),
       {KEY: (WORKER, "paused")})

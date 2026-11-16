@@ -312,7 +312,10 @@ def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
         return
     mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
     if mode != "keep-open":
-        record_handoff(session_id, receipt)
+        try:
+            record_handoff(session_id, receipt)
+        except Exception:  # best-effort, like the duplicate check: a bad record never fails a done launch
+            pass
     if not launch_marker.write(session_id, mode, title or "", short_id):
         print(f"WARNING: session {session_id} has no entry in the live-session registry "
               f"({launch_marker.session_registry.REGISTRY_PATH}), so the Stop hook cannot hold it to this launch. "
