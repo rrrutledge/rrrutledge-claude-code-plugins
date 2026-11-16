@@ -56,6 +56,12 @@ def setup_case(root, case):
         with open(full, "w", encoding="utf-8") as f:
             f.write(content)
 
+    for rel, content in (case.get("home_files") or {}).items():
+        full = os.path.join(home_dir, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(content)
+
     def resolve(value):
         return value.replace("{CWD}", cwd_path).replace("{HOME}", home_dir)
 

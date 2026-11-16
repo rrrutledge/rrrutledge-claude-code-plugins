@@ -399,8 +399,10 @@ CASES = [
     # Write/Edit allows the same outside-the-repo dirs cp/mv/ln do (~/Downloads), and redirects a
     # loose non-dotfile at the root of home, which is what a scratch write with a dropped dir looks like.
     {"id": "write_downloads", "tool": "Write", "file_path": "{HOME}/Downloads/report.pdf", "expect": "ALLOW"},
-    {"id": "edit_downloads_plain_cwd", "tool": "Edit", "file_path": "{HOME}/Downloads/notes.md",
+    {"id": "write_downloads_plain_cwd", "tool": "Write", "file_path": "{HOME}/Downloads/notes.md",
      "cwd": "plain", "expect": "ALLOW"},
+    {"id": "edit_downloads_existing_file", "tool": "Edit", "file_path": "{HOME}/Downloads/taxes.md",
+     "home_files": {"Downloads/taxes.md": "x"}, "cwd": "plain", "expect": "PROMPT"},
     {"id": "write_home_root_stray", "tool": "Write", "file_path": "{HOME}/b5-postings.json",
      "cwd": "plain", "expect": "BLOCK"},
     {"id": "edit_home_root_stray", "tool": "Edit", "file_path": "{HOME}/b5-postings.json",

@@ -65,7 +65,8 @@ def _stray_root_reason(file_path):
     base = os.path.basename(file_path.replace('\\', '/'))
     return (
         f'BLOCKED: "{base}" would be a loose file at the root of your home folder or a drive. '
-        'Write scratch files to .tmp/ in your working repo, or put the file inside a git repo.'
+        'For a scratch file, write it to .tmp/ in your working repo; otherwise put it inside a git repo. '
+        'If the user named this exact path, tell them it needs to go somewhere else or that they should write it themselves.'
     )
 
 
@@ -150,9 +151,13 @@ def decide_write_edit(file_path):
     if is_in_git_repo(cwd) and is_path_within_cwd(file_path):
         return 'allow', None
 
-    # The same places cp/mv/ln may write outside the repo: dirs already covered by an
-    # Edit/Write allow rule, and the trusted destination dirs (~/Downloads plus config extras).
-    if is_path_within_allowed_edits(file_path) or is_path_within_trusted_destination(file_path):
+    # The same places cp/mv/ln may write outside the repo. A dir the user already covered with an
+    # Edit/Write allow rule is theirs to have granted. A trusted destination dir (~/Downloads plus
+    # config extras) is allowed only for a file that doesn't exist yet: a Write or Edit replaces
+    # contents in place, and outside git an overwrite can't be undone.
+    if is_path_within_allowed_edits(file_path):
+        return 'allow', None
+    if is_path_within_trusted_destination(file_path) and not os.path.exists(file_path):
         return 'allow', None
 
     if is_stray_root_file(file_path):
