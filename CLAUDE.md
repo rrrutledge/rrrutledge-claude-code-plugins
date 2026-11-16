@@ -112,7 +112,7 @@ Some commands are approved based on their *arguments*, not just their name:
   anywhere on disk (not just the current repo's) - `.tmp/` is always scratch space,
   regardless of which repo it's under.
 - **Write/Edit tools** - approved inside the current git repo, any `.tmp/`, a `settings.json` allowed-edit path, or a trusted destination dir (`~/Downloads` plus `trusted_destination_dirs`) for a file that doesn't exist yet - overwriting an existing file there still prompts, since outside git it can't be undone.
-  A non-dotfile sitting directly in the home folder or a drive root is BLOCKed with an instruction to use `.tmp/` or a git repo, since that shape is what a scratch write with a dropped directory looks like.
+  Creating a non-dotfile directly in the home folder or a drive root is BLOCKed (editing one that already exists prompts) with an instruction to use `.tmp/` or a git repo, since that shape is what a scratch write with a dropped directory looks like.
 - **`sed`** - approved for read-only use; `enforce_bash()` BLOCKs an in-place flag before this check runs (see the decision pipeline).
 
 #### 4. AI inspection + learned store (`commands.py` - `_ai_learn`, `learned.py`)

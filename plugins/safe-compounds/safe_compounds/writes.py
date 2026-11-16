@@ -14,8 +14,9 @@ import re
 from . import ai
 from .log import log_debug
 from .paths import (
-    PLUGIN_CACHE_PATTERN, is_in_git_repo, is_path_within_allowed_edits, is_path_within_cwd,
-    is_path_within_trusted_destination, is_stray_root_file, is_within_claude_jobs_dir,
+    PLUGIN_CACHE_PATTERN, convert_msys_path_to_windows, is_in_git_repo, is_path_within_allowed_edits,
+    is_path_within_cwd, is_path_within_trusted_destination, is_stray_root_file,
+    is_within_claude_jobs_dir, resolve_against_cwd,
 )
 
 TEMP_FILE_NAME_PATTERNS = [
@@ -59,6 +60,14 @@ def _temp_redirect_reason(file_path):
         'Write it to .tmp/ instead (e.g. .tmp/commit-msg.txt). '
         'Per CLAUDE.md, .tmp/ is the only location for temporary staging files.'
     )
+
+
+def _file_exists(file_path):
+    """Whether the file exists, reading ~, relative, and MSYS /c/... forms the way the path checks do."""
+    path = resolve_against_cwd(file_path)
+    if os.name == 'nt':
+        path = convert_msys_path_to_windows(path)
+    return os.path.exists(path)
 
 
 def _stray_root_reason(file_path):
@@ -157,10 +166,13 @@ def decide_write_edit(file_path):
     # contents in place, and outside git an overwrite can't be undone.
     if is_path_within_allowed_edits(file_path):
         return 'allow', None
-    if is_path_within_trusted_destination(file_path) and not os.path.exists(file_path):
+    exists = _file_exists(file_path)
+    if is_path_within_trusted_destination(file_path) and not exists:
         return 'allow', None
 
-    if is_stray_root_file(file_path):
+    # Only a new loose file is blocked: that is the write that creates the stray. An existing one
+    # was put there deliberately (or earlier), so editing it prompts as usual.
+    if is_stray_root_file(file_path) and not exists:
         return 'block', _stray_root_reason(file_path)
 
     if ask_ai_if_temp_file(file_path):
