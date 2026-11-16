@@ -197,7 +197,16 @@ def test_handoff_launch_records_link():
         else:
             os.environ["CLAUDE_CODE_SESSION_ID"] = saved
     check("a malformed record never fails a launch that already happened", rc == 0, rc)
+    check("a malformed entry is replaced by the new link", bg_session.holder_resolver()(C) == [(C, 0), (F, 1)],
+          bg_session.holder_resolver()(C))
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": {C: 5, A: [{"at": "x"}]}}, f)
     check("a malformed record still resolves", bg_session.holder_resolver()(C) == [(C, 0)])
+    bg_session.record_pause(B, "x", TMP)
+    check("and never blocks a pause write", B in bg_session.paused_sessions([]))
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": ["not", "a", "map"]}, f)
+    check("a handoffs list instead of a map reads as empty", bg_session.holder_resolver()(C) == [(C, 0)])
 
 
 def test_end_session_records_pause():

@@ -1594,7 +1594,8 @@ def paused_ids(agents):
 
 def open_conversations(runtime_dir, live, paused):
     """`{conversation key: (holder id, "live" | "handoff" | "paused")}` for every conversation a live
-    or paused worker, or a session it handed its work to, holds right now, a live worker winning.
+    or paused worker, or a live session it handed its work to, holds right now: a live worker wins, then
+    a live handoff session, then a paused session (the worker's own, or one down its handoffs).
 
     A new item whose conversation a live worker holds is handed to that worker instead of getting its
     own, so one conversation has one worker. One whose worker handed its work off waits while that
@@ -1604,15 +1605,18 @@ def open_conversations(runtime_dir, live, paused):
     and the next item in its conversation launches normally. `paused` is paused_ids' set. Empty `live`
     and `paused` yield `{}`."""
     live = live or set()
+    rank = {"live": 0, "handoff": 1, "paused": 2}
     out = {}
     for hits, rec in _worker_items(runtime_dir, live | paused):
         key = rec.get("conversationKey")
-        if not key or out.get(key, ("", ""))[1] == "live":
+        if not key:
             continue
         own_live = next((i for i, depth in hits if not depth and i in live), None)
-        handed = next((i for i, depth in reversed(hits) if depth), None)
-        out[key] = ((own_live, "live") if own_live else (handed, "handoff") if handed
-                    else (hits[-1][0], "paused"))
+        handed = next((i for i, depth in reversed(hits) if depth and i in live), None)
+        holder = ((own_live, "live") if own_live else (handed, "handoff") if handed
+                  else (hits[-1][0], "paused"))
+        if key not in out or rank[holder[1]] < rank[out[key][1]]:
+            out[key] = holder
     return out
 
 

@@ -595,10 +595,10 @@ def _load_paused():
         data = {}
     data = data if isinstance(data, dict) else {}
     return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {}),
-            "handoffs": dict(data.get("handoffs") or {})}
+            "handoffs": dict(data.get("handoffs") if isinstance(data.get("handoffs"), dict) else {})}
 
 
-def _paused_at(entry, key="pausedAt"):
+def _iso_at(entry, key):
     try:
         return datetime.datetime.fromisoformat(entry[key])
     except (KeyError, TypeError, ValueError):
@@ -613,8 +613,10 @@ def _update_paused(mutate):
     for _ in range(5):
         data = _load_paused()
         mutate(data)
-        data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
-        handoffs = {g: [e for e in kids if (_paused_at(e, "at") or keep) > keep] for g, kids in data["handoffs"].items()}
+        data["paused"] = {g: e for g, e in data["paused"].items() if (_iso_at(e, "pausedAt") or cutoff) > cutoff}
+        # A hand-edited handoff entry is dropped here, so it never blocks a pause, resume, or link write.
+        handoffs = {g: [e for e in kids if (_iso_at(e, "at") or keep) > keep and isinstance(e, dict) and e.get("to")]
+                    for g, kids in data["handoffs"].items() if isinstance(kids, list)}
         data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
@@ -666,7 +668,8 @@ def record_handoff(session_guid, handed_to):
     entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
     def mutate(d):
-        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"] != handed_to]
+        kids = d["handoffs"].get(session_guid)
+        kids = [e for e in kids if isinstance(e, dict) and e.get("to") != handed_to] if isinstance(kids, list) else []
         d["handoffs"][session_guid] = kids + [entry]
     _update_paused(mutate)
 
@@ -713,7 +716,7 @@ def paused_sessions(agents):
     cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
     running = {a.get("sessionId") for a in agents or [] if a.get("pid")}
     return {guid: entry for guid, entry in _load_paused()["paused"].items()
-            if guid not in running and (_paused_at(entry) or cutoff) > cutoff}
+            if guid not in running and (_iso_at(entry, "pausedAt") or cutoff) > cutoff}
 
 
 def forget_session(session_guid):

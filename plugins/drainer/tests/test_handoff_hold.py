@@ -113,6 +113,10 @@ bg.record_handoff(HANDOFF, SECOND)
 check("the second handoff holds the card", reconcile(rt, {SECOND}), [])
 check("the furthest live session is the holder",
       poller.open_conversations(rt, {HANDOFF, SECOND}, set()), {KEY: (SECOND, "handoff")})
+check("a live handoff outranks a paused one further down",
+      poller.open_conversations(rt, {HANDOFF}, {SECOND}), {KEY: (HANDOFF, "handoff")})
+check("only paused sessions left -> held as paused",
+      poller.open_conversations(rt, set(), {SECOND}), {KEY: (SECOND, "paused")})
 check("a worker receipt written as a short id still reaches its handoff",
       reconcile(workspace(WORKER.split("-", 1)[0]), {HANDOFF}), [])
 
