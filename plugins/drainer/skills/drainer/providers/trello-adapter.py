@@ -50,6 +50,11 @@ _PRIORITY_RE = re.compile(r"^\s*(?:🎯\s*)?P([1-3])\s*$")
 # matches that one canonical form; anchored so a contact name containing "referral" never trips it.
 _REFERRAL_RE = re.compile(r"^\s*🤝 Referral\s*$")
 
+# A money label marks a card where money comes in or goes out (a bill, the ISC invoice, the monthly
+# budget, a sponsorship follow-up). The pod's money skills apply the exact string "💰 Money" when they
+# create or recur their card; the card then sits in the top lane with job search.
+_MONEY_RE = re.compile(r"^\s*💰 Money\s*$")
+
 # A person follow-up card wears the "👤 Contact" label: it tracks the follow-up cadence with one
 # network contact (its Start is the next-ping date), as opposed to an application card, which tracks a
 # job's own progress and carries a P1/P2/P3 label instead. The two never share a card. Written as the
@@ -286,6 +291,7 @@ class Provider(ProviderBase):
                  and not any(tok in l.get("name").lower() for tok in self.status_labels)
                  and not _PRIORITY_RE.match(l.get("name"))
                  and not _REFERRAL_RE.match(l.get("name"))
+                 and not _MONEY_RE.match(l.get("name"))
                  and not _CONTACT_RE.match(l.get("name"))]
         channel = next((n for n in names if n in self.channels), None)
         feats = [n for n in names if n in self.features]
@@ -295,10 +301,10 @@ class Provider(ProviderBase):
     @staticmethod
     def _priority_band(card, in_progress=False):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        Three pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
+        Four pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
         Contact person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
-        resolved by the caller from the card's list), whatever other labels either wears; and every P1
-        role. Otherwise the first P2/P3 priority label wins; an application card normally wears exactly
+        resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
+        card; and every P1 role. Otherwise the first P2/P3 priority label wins; an application card normally wears exactly
         one."""
         labels = card.get("labels", [])
         if in_progress:
@@ -306,7 +312,7 @@ class Provider(ProviderBase):
         if Provider._is_p1(card):
             return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
-            if _CONTACT_RE.match(l.get("name") or ""):
+            if _CONTACT_RE.match(l.get("name") or "") or _MONEY_RE.match(l.get("name") or ""):
                 return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
             m = _PRIORITY_RE.match(l.get("name") or "")

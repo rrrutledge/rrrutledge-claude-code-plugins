@@ -111,6 +111,23 @@ def test_band_rank_is_lane_then_due_then_priority_level_referral():
           (provider_base.LANE_NEUTRAL, 0, provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
 
 
+def test_money_label():
+    print("test: the 💰 Money label puts a card in the top lane and is held out of contacts")
+    Provider = adapter_mod.Provider
+    above = provider_base.NEUTRAL_PRIORITY_BAND + 1
+    money = [{"name": "💰 Money"}]
+    check("a Money card is above neutral", Provider._priority_band(card(labels=money)) == above)
+    check("a Money card is in the money lane", Provider._lane(Provider._priority_band(card(labels=money)))
+          == provider_base.LANE_MONEY)
+    check("a P3 role that is also Money is lifted", Provider._priority_band(card(labels=money + [{"name": "🎯 P3"}])) == above)
+    check("bare 'Money' without the emoji does not count",
+          Provider._priority_band(card(labels=[{"name": "Money"}])) == provider_base.NEUTRAL_PRIORITY_BAND)
+    prov = adapter_mod.Provider.__new__(adapter_mod.Provider)
+    prov.channels, prov.features, prov.status_labels = set(), set(), {"blocked", "waiting"}
+    _, _, contacts, _ = prov._classify_labels(card(labels=money + [{"name": "Dana Whitfield"}]))
+    check("Money held out; a real person stays a contact", contacts == ["Dana Whitfield"], contacts)
+
+
 def test_due_lane():
     print("test: due lane - an incomplete Due on a started card sits between money and neutral, soonest Due first")
     from datetime import datetime, timezone, timedelta
@@ -312,6 +329,7 @@ if __name__ == "__main__":
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_lane_then_due_then_priority_level_referral()
     test_lane_order()
+    test_money_label()
     test_due_lane()
     test_sort_key_orders_level_within_band()
     test_level_leads_referral_within_band()
