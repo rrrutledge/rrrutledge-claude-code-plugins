@@ -45,16 +45,18 @@ A **person follow-up card** carries the **`👤 Contact`** label and is pinned *
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
 A card wearing the **`💰 Money`** label, meaning money owed or paid, is pinned to that same band, whatever its other labels.
 The label is matched as the exact string and is never read as a contact name.
-**Every P1 role** is pinned to that same band, whatever its level, management scope, or posted pay.
-A P2/P3 role keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
-An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` sits **above** the neutral band, so a top-fit role is worked ahead of the inbox, while `P2`/`P3` sit **below** it.
+A **P1 Director-or-above card** (desc level `Director/VP-level`) is pinned there too, with or without posted pay.
+A **P1 people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
+A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
+A people manager with no posted pay, or pay under the floor, is not pinned: it keeps its P-tier band and sits at the neutral level, interleaved with email by date (see the level band below).
+An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
 The leading value of `band_rank` is the **lane** the adapter stamps on each card.
 A card above neutral is in the top (money and job-search) lane.
 A card with a Due date that is not marked complete, and a Start that has arrived, is in the due lane, between the top lane and the neutral lane; the adapter reads the card's `due` and `dueComplete` fields.
 Inside the due lane cards run soonest Due first, and a card with no Start never enters it.
 `band_rank` carries that order as a due rank right after the lane: the negated Due time, so the descending sort puts the soonest Due first, and zero for every other item.
 Marking the Due complete takes the card back out of the due lane.
-A card takes the highest lane it qualifies for, so a P1 role with a Due date stays in the top lane, and a P2/P3 role with a Due date moves up into the due lane.
+A card takes the highest lane it qualifies for, so a pinned top-lane card with a Due date stays in the top lane, and a plain P1 or P2/P3 role with a Due date moves up into the due lane.
 Neutral is the lane that mail and Slack also sit in.
 Below neutral is the lowest lane, behind everything else.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
@@ -63,7 +65,7 @@ The band each tier maps to - and how to change it - is defined in one place, the
 A card's level band comes from its `desc`: `job-board-poll.js` writes a `Priority: P<n> · <category> · Director/VP-level` or `· IC-level` line into every Job Search Outreach card it scores, plus a `Manages people: yes` line when engineers or engineering managers report to the role and a `Comp: up to $<N>K/yr (posted)` line when the posting states pay.
 The poller only records these facts; this model alone decides what they rank.
 Level-0 is the shared neutral level email/Slack and ordinary Trello cards also carry, so a card whose desc contains `Director/VP-level` or `Manages people: yes` (or carries no priority line yet) resolves to that same neutral level and interleaves with today's mail by date; a P2/P3 `IC-level` card that manages no one drops to level -1 and waits behind its priority band's neutral-level items - see the adapter's `_level_band`.
-Every P1, individual contributors included, sits at level 0; within the top lane a Director-or-above and a P1 IC share level 0 and order by referral, then date.
+Every P1, individual contributors included, sits at level 0, so a P1 that is not pinned above the inbox interleaves with email by date.
 
 The referral band comes from a **`🤝 Referral` label** (a role at a company where someone in Russell's network will refer him): it breaks ties within a band+level, lifting a referral role ahead of a cold one of the **same level** - but a leadership role without a referral is still worked before an IC role even with one, because level leads referral.
 See the adapter's `_referral_band`.
