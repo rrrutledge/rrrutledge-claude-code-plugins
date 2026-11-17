@@ -43,6 +43,8 @@ The order of the bands and the due rank is defined in exactly one place, `provid
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
+A card wearing the **`💰 Money`** label, meaning money owed or paid, is pinned to that same band, whatever its other labels.
+The label is matched as the exact string and is never read as a contact name.
 A **P1 Director-or-above card** (desc level `Director/VP-level`) is pinned there too, with or without posted pay.
 A **P1 people-manager card whose posted pay reaches the floor** is pinned there as well: its desc carries `Manages people: yes` and its `Comp:` line's highest dollar figure is at least the adapter's `_PAY_BAND_FLOOR` ($250K).
 A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
