@@ -39,7 +39,7 @@ The run ends with `on-demand:` lines, one per outcome:
     nothing to drain in <C>.
     launched worker for <id> / launched auto-handle worker for <id>
     filed <id> as fyi|junk (nothing waits on Russell)
-    held behind open worker <session id> on <C>.        (a live worker holds the conversation)
+    held behind open worker <session id> on <C>.        (a live worker, or a session it handed off to, holds the conversation)
     held behind paused worker <session id> on <C>.      (a worker closed paused holds it)
     held - the session scan failed, ...                 (a holder can't be ruled out)
     held - another drainer dispatch pass is running, ... (the keeper's pass holds the dispatch lock)
@@ -72,7 +72,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           duplicate_check_section, paused_sessions, session_resolver,
+                           duplicate_check_section, paused_sessions, holder_resolver,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs, session_mgr_script)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
@@ -1592,32 +1592,46 @@ def paused_ids(agents):
     return {i for guid in paused_sessions(agents) for i in (guid, guid.split("-", 1)[0])}
 
 
+# Which conversation holder wins when several hold one conversation, best first.
+HOLDER_RANK = {"live": 0, "handoff": 1, "paused": 2}
+
+
 def open_conversations(runtime_dir, live, paused):
-    """`{conversation key: (worker receipt id, "live" | "paused")}` for every conversation a live or
-    paused worker holds right now, a live holder winning when both do.
+    """`{conversation key: (holder id, "live" | "handoff" | "paused")}` for every conversation a live
+    or paused worker, or a live session it handed its work to, holds right now: a live worker wins, then
+    a live handoff session, then a paused session (the worker's own, or one down its handoffs).
 
     A new item whose conversation a live worker holds is handed to that worker instead of getting its
-    own, so one conversation has one worker; one whose holder is paused waits for that worker to be
-    resumed (see the needs loop in main). Read off the same live-session signal as open_correspondents,
-    so a worker that has finished, or died, holds nothing and the next item in its conversation
-    launches normally. `paused` is paused_ids' set. Empty `live` and `paused` yield `{}`."""
+    own, so one conversation has one worker. One whose worker handed its work off waits while that
+    session runs, since a handoff session is no drainer worker to forward to, and one whose holder is
+    paused waits for that worker to be resumed (see the needs loop in main). Read off the same
+    live-session signal as open_correspondents, so a worker that has finished, or died, holds nothing
+    and the next item in its conversation launches normally. `paused` is paused_ids' set. Empty `live`
+    and `paused` yield `{}`."""
     live = live or set()
     out = {}
-    for receipt, rec in _worker_items(runtime_dir, live | paused):
+    for hits, rec in _worker_items(runtime_dir, live | paused):
         key = rec.get("conversationKey")
-        if key and out.get(key, ("", ""))[1] != "live":
-            out[key] = (receipt, "live" if receipt in live else "paused")
+        if not key:
+            continue
+        own_live = next((i for i, depth in hits if not depth and i in live), None)
+        handed = next((i for i, depth in reversed(hits) if depth and i in live), None)
+        holder = ((own_live, "live") if own_live else (handed, "handoff") if handed
+                  else (hits[-1][0], "paused"))
+        if key not in out or HOLDER_RANK[holder[1]] < HOLDER_RANK[out[key][1]]:
+            out[key] = holder
     return out
 
 
 def _worker_items(runtime_dir, ids):
-    """(receipt id, captured item record) for every seeds/<id>.prompt.txt.session whose receipt is in
-    `ids`. A receipt names the session as launched; a session resumed since continues under a newer
-    guid (session_resolver), so the receipt is read as that one. Bounded by the number of session
-    files, the same work reconcile does each cycle."""
+    """(holders, captured item record) for every seeds/<id>.prompt.txt.session whose receipt's
+    session, or a session it handed its work to, is in `ids`; `holders` is holder_resolver's
+    `[(id, handoffs away)]` cut to those in `ids`. A receipt names the session as launched; a session
+    resumed since continues under a newer guid, and one that handed off is carried by the session it
+    launched. Bounded by the number of session files, the same work reconcile does each cycle."""
     if not ids:
         return
-    resolve = session_resolver()
+    holders = holder_resolver()
     seeds_dir = os.path.join(runtime_dir, "seeds")
     items_dir = os.path.join(runtime_dir, "items")
     suffix = ".prompt.txt.session"
@@ -1630,10 +1644,11 @@ def _worker_items(runtime_dir, ids):
             continue
         try:
             with open(os.path.join(seeds_dir, fn), encoding="utf-8") as f:
-                receipt = resolve(f.read().strip())
+                receipt = f.read().strip()
         except OSError:
             continue
-        if receipt not in ids:
+        hits = [(i, depth) for i, depth in holders(receipt) if i in ids]
+        if not hits:
             continue
         try:
             with open(os.path.join(items_dir, f"{fn[:-len(suffix)]}.json"), encoding="utf-8") as f:
@@ -1641,7 +1656,7 @@ def _worker_items(runtime_dir, ids):
         except (OSError, ValueError):
             continue
         if isinstance(rec, dict):
-            yield receipt, rec
+            yield hits, rec
 
 
 FORWARD_PROMPT = """Call the SendMessage tool exactly once, then stop.
@@ -1798,12 +1813,18 @@ def held_for_correspondent(corr, active):
     return bool(corr) and corr in active
 
 
+def _held_word(state):
+    """The on-demand line's word for a conversation holder's state (the header's outcome lines). A
+    handed-off session is live and can take the resume instruction, so it reads as an open worker."""
+    return "paused" if state == "paused" else "open"
+
+
 def conversation_route(key, open_convs, claimed, flagged=False):
     """How dispatch treats an item by its conversation: "hold" when a worker launched this pass or within
     LAUNCH_HOLD holds the conversation but may not take a message yet, "forward" when a live worker
-    launched before that holds it, "paused" when its holder closed paused and waits to be resumed, None to
-    dispatch as usual. A screen-flagged item is never forwarded or held: it gets its own worker, which leads with
-    the warning for Russell."""
+    launched before that holds it, "handoff" when a session its worker handed off to holds it, "paused" when
+    its holder closed paused and waits to be resumed, None to dispatch as usual. A screen-flagged item is
+    never forwarded or held: it gets its own worker, which leads with the warning for Russell."""
     if not key or flagged:
         return None
     if key in claimed:
@@ -1811,7 +1832,7 @@ def conversation_route(key, open_convs, claimed, flagged=False):
     holder = open_convs.get(key)
     if not holder:
         return None
-    return "forward" if holder[1] == "live" else "paused"
+    return "forward" if holder[1] == "live" else holder[1]
 
 
 # An orphan that ended within this window dispatches ahead of every other source; an older one waits
@@ -1964,7 +1985,8 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     Three guards, each load-bearing:
       - an item awaiting the daily digest sits in the inbox BY DESIGN, so the digest queue is excluded;
         without that every queued fyi/junk item would requeue on every cycle
-      - a live worker id means a session is open on it: being worked, or parked for Russell
+      - a live worker id means a session is open on it: being worked, or parked for Russell; so does
+        a live session the worker handed its work to (holder_resolver)
       - the launch grace (orphan_grace_minutes) covers the window where a just-dispatched worker hasn't
         written its .session file yet and so briefly looks session-less
 
@@ -1998,7 +2020,9 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
         if inbox_ids is None:
             continue
         prior, still_handled = handled.get(provider.name, set()), set()
-        resolve = session_resolver()  # a worker resumed since launch is live under its newer guid
+        # A worker resumed since launch is live under its newer guid, and one that handed off is
+        # carried by the session it launched for as long as that session is live.
+        holders = holder_resolver()
         for iid in load_seen(runtime_dir, provider.name):
             if iid in prior:
                 still_handled.add(iid)  # already proven gone from the inbox; carry it forward
@@ -2010,7 +2034,7 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
                 still_handled.add(iid)
                 continue
             guid, smtime = _session_guid(runtime_dir, iid)
-            if guid and resolve(guid) in live:
+            if guid and any(i in live for i, _ in holders(guid)):
                 continue
             # Grace runs from the .session file's mtime (launch time) when there is one, else from the
             # capture timestamp. No usable time at all means it can't be proven fresh, so it requeues.
@@ -2226,9 +2250,9 @@ def main():
         key = providers[0].conversation_key({"channel": args.channel})
         holders = [h for k, h in open_conversations(cfg["runtime_dir"], live, paused_ids(agents)).items()
                    if k == key or k.startswith(key + "|")]
-        holder = next((h for h in holders if h[1] == "live"), holders[0] if holders else None)
+        holder = min(holders, key=lambda h: HOLDER_RANK[h[1]], default=None)
         if holder:
-            print(f"on-demand: held behind {'open' if holder[1] == 'live' else 'paused'} worker {holder[0]} "
+            print(f"on-demand: held behind {_held_word(holder[1])} worker {holder[0]} "
                   f"on {args.channel}.")
         else:
             print(f"on-demand: nothing to drain in {args.channel}.")
@@ -2338,6 +2362,7 @@ def main():
                 holder = open_convs.get(key, ("",))[0]
                 action = {"hold": "HOLD (same conversation)",
                           "paused": f"HOLD (paused worker {holder} holds the conversation)",
+                          "handoff": f"HOLD (handed-off session {holder} holds the conversation)",
                           "forward": f"FORWARD to the live worker {holder}"}[route]
                 print(f"    [{it['_source']:20}] {it['_id']}  ->  {action}\n"
                       f"        {it.get('received')} | {it.get('from')} | {it.get('subject')}")
@@ -2689,7 +2714,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
     if channel:
         base = prov["slack"].conversation_key({"channel": channel})
         thread_holders = [h for k, h in open_convs.items() if k.startswith(base + "|")]
-        thread_holder = next((h for h in thread_holders if h[1] == "live"), thread_holders[0] if thread_holders else None)
+        thread_holder = min(thread_holders, key=lambda h: HOLDER_RANK[h[1]], default=None)
     # The duplicate check's session list, grown as this pass launches workers; None when the scan failed,
     # so a seed never claims a partial list is the machine's live sessions.
     peers = None if agents is None else list(agents)
@@ -2711,10 +2736,10 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
             held_conv += 1
             on_demand.append(f"held {it['_id']} - a worker launched in the last few minutes holds its conversation, retry shortly")
             return True
-        if route == "paused":
-            held += 1  # stays pending, retried each pass until its worker is resumed or its pause expires
+        if route in ("paused", "handoff"):
+            held += 1  # stays pending, retried each pass until its holder is resumed, ends, or its pause expires
             held_paused += 1
-            on_demand.append(f"held behind paused worker {open_convs[key][0]} on {channel}.")
+            on_demand.append(f"held behind {_held_word(route)} worker {open_convs[key][0]} on {channel}.")
             return True
         if route == "forward":
             holder = open_convs[key][0]
@@ -2772,7 +2797,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
             continue
         if thread_holder and not it.get("_screen") and "_conversationHolder" not in it:
             held += 1
-            on_demand.append(f"held behind {'open' if thread_holder[1] == 'live' else 'paused'} worker "
+            on_demand.append(f"held behind {_held_word(thread_holder[1])} worker "
                              f"{thread_holder[0]} on {channel}.")
             continue
         corr = provider.correspondent(it)
@@ -2849,7 +2874,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
           f"{forwarded} handed to the live worker on their conversation, "
           f"held {held} (of which {held_corr} behind an open item from the same correspondent, "
           f"{held_conv} behind a worker launched this pass on the same conversation, "
-          f"{held_paused} behind a paused worker on their conversation) at "
+          f"{held_paused} behind a paused worker or handed-off session on their conversation) at "
           f"worker buffer {buf}. Workers clear needs-you on completion.")
     return dispatched + auto_dispatched
 

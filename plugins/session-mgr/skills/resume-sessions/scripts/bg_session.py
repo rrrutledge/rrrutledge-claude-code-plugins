@@ -575,11 +575,16 @@ def record_wake(session_guid):
 # the only way to tell the two apart. `paused`: guid -> when it paused, its name and cwd, dropped when
 # the session is resumed. `successors`: resumed guid -> the guid it continued under, since a resume
 # with a follow-up starts a new session id, and a later resume of the old guid would fork the history
-# from before that continuation's work.
+# from before that continuation's work. `handoffs`: launching guid -> the sessions it handed its work
+# to (spawn-session.py), so a drainer item stays held by the session now working it after its worker
+# closes.
 PAUSED_PATH = os.path.expanduser("~/.claude/session-mgr/paused.json")
 # How long a paused record counts. A paused session is meant to be resumed, but one whose resume never
 # comes must not hold its work forever.
 PAUSE_HOLD = datetime.timedelta(days=3)
+# How long a handoff link is kept. The link only carries a hold while the session it names is live, so
+# this bounds the record's size, not how long anything is held.
+HANDOFF_KEEP = datetime.timedelta(days=30)
 
 
 def _load_paused():
@@ -589,24 +594,35 @@ def _load_paused():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {})}
+    # The poller reads the handoff links every cycle, unattended, so a hand-edited link is dropped here,
+    # once, and never reaches a reader or a write.
+    handoffs = data.get("handoffs") if isinstance(data.get("handoffs"), dict) else {}
+    handoffs = {g: [e for e in kids if isinstance(e, dict) and isinstance(e.get("to"), str) and e["to"]]
+                for g, kids in handoffs.items() if isinstance(kids, list)}
+    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {}),
+            "handoffs": handoffs}
 
 
-def _paused_at(entry):
+def _iso_at(entry, key):
+    """The aware datetime in `entry[key]`, or None when it is missing, unparseable, or naive."""
     try:
-        return datetime.datetime.fromisoformat(entry["pausedAt"])
+        stamp = datetime.datetime.fromisoformat(entry[key])
     except (KeyError, TypeError, ValueError):
         return None
+    return stamp if stamp.tzinfo else None
 
 
 def _update_paused(mutate):
     """Apply `mutate` to the record and write it back, dropping pauses past PAUSE_HOLD, which no
-    longer count. Best effort, like the wake log."""
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
+    longer count, and handoff links past HANDOFF_KEEP. Best effort, like the wake log."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff, keep = now - PAUSE_HOLD, now - HANDOFF_KEEP
     for _ in range(5):
         data = _load_paused()
         mutate(data)
-        data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
+        data["paused"] = {g: e for g, e in data["paused"].items() if (_iso_at(e, "pausedAt") or cutoff) > cutoff}
+        handoffs = {g: [e for e in kids if (_iso_at(e, "at") or keep) > keep] for g, kids in data["handoffs"].items()}
+        data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
             tmp_path = PAUSED_PATH + f".tmp.{os.getpid()}"
@@ -651,6 +667,55 @@ def session_resolver():
     return lambda session_guid: latest_session(session_guid, successors)
 
 
+def record_handoff(session_guid, handed_to):
+    """Record that `session_guid` handed its work to the session `handed_to` (its launch receipt: the
+    full guid, or the short id when the launch couldn't resolve it)."""
+    entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"] != handed_to]
+        d["handoffs"][session_guid] = kids + [entry]
+    _update_paused(mutate)
+
+
+def drop_handoff(session_guid, short_id):
+    """Remove the link `session_guid` recorded to the session whose short id is `short_id`, for a launch
+    declared a side quest after the fact (launch_marker.py keep-open)."""
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"].split("-", 1)[0] != short_id]
+        d["handoffs"][session_guid] = kids
+    _update_paused(mutate)
+
+
+def holder_resolver():
+    """Over one read of the record: a function from a session receipt (full guid or short id) to
+    `[(session id, handoffs away)]` for every session that may now be carrying its work. Depth 0 is the
+    session itself and each guid a resume continued it under; each session any of those handed off to
+    comes next at depth 1, followed through its own resumes and handoffs in turn. Both maps are also
+    keyed by short id, so a short-id receipt follows them too. A caller tests the ids against its live
+    sessions, so a link to a session that has ended holds nothing."""
+    data = _load_paused()
+    successors, kids = {}, {}
+    for guid, nxt in data["successors"].items():
+        successors[guid] = nxt
+        successors.setdefault(guid.split("-", 1)[0], nxt)
+    for parent, entries in data["handoffs"].items():
+        for key in {parent, parent.split("-", 1)[0]}:
+            kids.setdefault(key, []).extend(e["to"] for e in entries)
+
+    def holders(receipt):
+        out, seen, queue = [], set(), [(receipt, 0)]
+        while queue:
+            ident, depth = queue.pop(0)
+            while ident and ident not in seen:
+                seen.add(ident)
+                out.append((ident, depth))
+                queue.extend((k, depth + 1) for k in kids.get(ident, []))
+                ident = successors.get(ident)
+        return out
+    return holders
+
+
 def paused_record(session_guid):
     """The paused record of the session `session_guid` continues under now, or None."""
     return _load_paused()["paused"].get(latest_session(session_guid))
@@ -662,7 +727,7 @@ def paused_sessions(agents):
     cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
     running = {a.get("sessionId") for a in agents or [] if a.get("pid")}
     return {guid: entry for guid, entry in _load_paused()["paused"].items()
-            if guid not in running and (_paused_at(entry) or cutoff) > cutoff}
+            if guid not in running and (_iso_at(entry, "pausedAt") or cutoff) > cutoff}
 
 
 def forget_session(session_guid):
