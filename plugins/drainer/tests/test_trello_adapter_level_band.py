@@ -101,8 +101,8 @@ def test_sort_key_orders_level_within_band():
           ranked[0]["name"] == "Contoso", [it["name"] for it in ranked])
 
 
-def test_band_rank_is_priority_then_level_then_referral():
-    print("test: band_rank returns (priority, level, referral) - the one place the queue order is defined")
+def test_band_rank_is_lane_then_due_then_priority_level_referral():
+    print("test: band_rank returns (lane, due rank, priority, level, referral) - the one place the queue order is defined")
     it = {"_priority_band": 5, "_level_band": -1, "_referral_band": 1}
     check("band_rank orders lane, due rank, then priority, level, referral",
           provider_base.band_rank({**it, "_lane": provider_base.LANE_MONEY}) == (provider_base.LANE_MONEY, 0, 5, -1, 1),
@@ -139,7 +139,7 @@ def test_due_lane():
         dd = due(days) if days is not None else None
         band = neutral
         lane = Provider._lane(band, dd)
-        return {"name": name, "_lane": lane, "_due_rank": -dd.timestamp() if lane == provider_base.LANE_DUE else 0,
+        return {"name": name, "_lane": lane, "_due_rank": Provider._due_rank(lane, dd),
                 "_priority_band": band, "_level_band": 0, "_referral_band": 0, "_sort_dt": dt}
     items = [stamped("due later", 9), stamped("plain", None, "2026-11-16"), stamped("due soon", -2),
              stamped("due mid", 4)]
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     test_level_band_reads_desc_line()
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
-    test_band_rank_is_priority_then_level_then_referral()
+    test_band_rank_is_lane_then_due_then_priority_level_referral()
     test_lane_order()
     test_due_lane()
     test_sort_key_orders_level_within_band()

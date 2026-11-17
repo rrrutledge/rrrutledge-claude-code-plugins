@@ -39,17 +39,19 @@ A future Start is the only thing that holds a card back.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
 Rank is `(lane, due rank, priority band, level band, referral band, date)`, all descending - level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
-The order of the lane and those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
+The order of the lane, the due rank, and those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
 **Every P1 role** is pinned to that same band, whatever its level, management scope, or posted pay.
 A P2/P3 role keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` sits **above** the neutral band, so a top-fit role is worked ahead of the inbox, while `P2`/`P3` sit **below** it.
-The leading value of `band_rank` is the **lane** the adapter derives from that band.
-Above neutral is the top (money and job-search) lane.
+The leading value of `band_rank` is the **lane** the adapter stamps on each card.
+A card above neutral is in the top (money and job-search) lane.
 A card with a Due date that is not marked complete, and a Start that has arrived, is in the due lane, between the top lane and the neutral lane; the adapter reads the card's `due` and `dueComplete` fields.
-Inside the due lane cards run soonest Due first, an overdue card ahead of one due later, and `band_rank` carries that order as a due rank right after the lane (zero for every other item).
+Inside the due lane cards run soonest Due first, and a card with no Start never enters it.
+`band_rank` carries that order as a due rank right after the lane: the negated Due time, so the descending sort puts the soonest Due first, and zero for every other item.
+Marking the Due complete takes the card back out of the due lane.
 A card takes the highest lane it qualifies for, so a P1 role with a Due date stays in the top lane, and a P2/P3 role with a Due date moves up into the due lane.
 Neutral is the lane that mail and Slack also sit in.
 Below neutral is the lowest lane, behind everything else.

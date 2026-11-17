@@ -30,11 +30,10 @@ Start is the one date, alongside two labels + a description convention:
   Record `Blocked-by: <upstream-shortlink>[, …]` in the description; optionally attach the upstream card for a human-visible link.
   (The `trello` skill's SKILL.md owns applying this at creation time - it's the mechanics layer every Trello write goes through.)
 
-**Trello's native Due field ranks a card once its Start has arrived; it never holds a card back.**
-A card with a Due date that is not marked complete, and a Start that has arrived, enters the due lane of the queue and is worked soonest Due first.
-Setting only Due, expecting it to hold a card back, nudge it, or make it resurface, still does nothing: whether a card is in play, and every nudge/advance operation in this file, act on Start alone, and a card with no Start does not enter the due lane.
+**Trello's native Due field ranks a card once its Start has arrived.**
+The due-lane rule lives in `trello-queue-model.md`.
+Setting only Due, expecting it to hold a card back, nudge it, or make it resurface, does nothing: whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
-Marking the Due complete takes the card back out of the due lane.
 
 **Unblock has a push and a pull.**
 When an upstream card is finished (moved to a terminal/skip list or archived), call `trello_utils.cascade_unblock(board_id, finished_card_id, session)`: it scans the board once, finds cards whose `Blocked-by:` names the finished card, and for each whose **last** blocker just cleared, strips its ⛔ label and sets **Start = today** so it surfaces on the next drain.

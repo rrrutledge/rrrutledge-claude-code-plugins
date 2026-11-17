@@ -324,6 +324,12 @@ class Provider(ProviderBase):
         return Provider._parse_dt(card.get("due"))
 
     @staticmethod
+    def _due_rank(lane, due_dt):
+        """The sort value band_rank reads for the due lane: the negated Due epoch seconds, so the
+        descending sort puts the soonest (or most overdue) Due first; 0 outside the due lane."""
+        return -due_dt.timestamp() if lane == LANE_DUE else 0
+
+    @staticmethod
     def _lane(priority_band, due_dt=None):
         """Map a card to its queue lane, the highest it qualifies for: above neutral is the money/job-search
         lane, then a due-dated card is the due lane, below neutral is below the line, otherwise neutral."""
@@ -537,7 +543,7 @@ class Provider(ProviderBase):
                     "preview": f"[{bname} / {list_name}] {(card.get('desc') or '').strip()[:200]}",
                     "_sort_dt": sort_dt,
                     "_lane": lane,
-                    "_due_rank": -due_dt.timestamp() if lane == LANE_DUE else 0,
+                    "_due_rank": self._due_rank(lane, due_dt),
                     "_priority_band": priority_band,
                     "_referral_band": referral_band,
                     "_level_band": level_band,
