@@ -263,7 +263,8 @@ def test_continuation_keeps_name_and_guard_setting():
         job = os.path.join(s.main, "jobs", SHORT)
         os.makedirs(job)
         with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
-            json.dump({"sessionId": GUID, "name": "Trello: Grafana", "respawnFlags": list(flags)}, f)
+            json.dump({"sessionId": GUID, "name": "Trello: Grafana", "nameSource": "user",
+                       "respawnFlags": list(flags)}, f)
         bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
         bg_session.spawn_bg("follow up", None, s.tmp, "New title", resume=GUID)
         kept, renamed = s.calls[0][0], s.calls[1][0]
@@ -308,9 +309,15 @@ def test_resume_adds_report_to_note():
             body = f.read()
         check("report appended under ## Report",
               body == "Your wait is over.\n\n## Report\n\nRussell replied to Jagannathan.\n", body)
+        check("report consumed after the launch", not os.path.exists(report))
+        with open(report, "w", encoding="utf-8") as f:
+            f.write("A retry's report.\n")
+        spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note, "--report-file", report])
+        with open(note, encoding="utf-8") as f:
+            check("a retried resume adds no second report", f.read().count("## Report") == 1)
         rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note,
                                  "--report-file", report + ".missing"])
-        check("missing report -> still resumes", rc == 0 and len(s.calls) == 2, f"rc {rc}")
+        check("missing report -> still resumes", rc == 0 and len(s.calls) == 3, f"rc {rc}")
 
 
 def test_wake_that_copies_the_job_is_replaced():

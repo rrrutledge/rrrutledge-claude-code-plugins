@@ -188,8 +188,12 @@ def _worker_seed_file(folder, slug, anchor, job):
 
 
 def _add_report(prompt_file, report_file):
-    """Append the launched session's report to the wake note under a `## Report` heading. A missing
-    report costs only the report, never the resume: the note still says the work is done."""
+    """Append the launched session's report to the wake note under a `## Report` heading, once, so a
+    retried resume adds nothing more. A missing report costs only the report, never the resume: the
+    note still says the work is done."""
+    with open(prompt_file, encoding="utf-8") as f:
+        if "\n## Report\n" in f.read():
+            return
     try:
         with open(report_file, encoding="utf-8") as f:
             report = f.read().strip()
@@ -307,6 +311,8 @@ def main(argv=None):
     if not short_id:
         print("spawn-session: `claude --bg` launch failed or returned no session id; nothing was launched.")
         return 1
+    if a.report_file and a.resume and prompt_file and os.path.isfile(a.report_file):
+        os.remove(a.report_file)  # consumed, so a later run of a brief with the same name never picks it up
     if slug:
         worker_job.register_worker(folder, slug, short_id)
         print(f"Registered worker {slug} ({short_id}); its result goes to {worker_job.result_path(folder, slug)}.")

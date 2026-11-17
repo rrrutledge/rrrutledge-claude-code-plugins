@@ -231,8 +231,9 @@ def _flags_whole(flags):
     return "--remote-control" in flags and manual
 
 
-def find_job(short_id):
-    """`(config_dir, state)` of the background job `short_id` across every account, or `(False, None)`."""
+def find_job(short_id, session_guid=None):
+    """`(config_dir, state)` of the background job `short_id` across every account, or `(False, None)`.
+    With `session_guid`, only a job whose session is that guid counts."""
     for d in account_config_dirs():
         root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
         try:
@@ -240,7 +241,7 @@ def find_job(short_id):
                 state = json.load(f)
         except (OSError, ValueError):
             continue
-        if isinstance(state, dict):
+        if isinstance(state, dict) and session_guid in (None, state.get("sessionId")):
             return d, state
     return False, None
 
@@ -276,24 +277,8 @@ def _wake_account(session_guid):
     a job that a bare `claude --bg --resume <guid>` can wake in place, or False when there is no such
     job. Waking reuses the job's saved launch flags, so it only qualifies when those already carry
     the two a launch can't do without: `--remote-control` and `--permission-mode manual`."""
-    d, state = _job_for_guid(session_guid)
+    d, state = find_job(session_guid.split("-", 1)[0], session_guid)
     return d if state and _flags_whole(state.get("respawnFlags")) else False
-
-
-def _job_for_guid(session_guid):
-    """`(config_dir, state)` of the background job whose session is `session_guid`, searching every
-    account, or `(False, None)`."""
-    short = session_guid.split("-", 1)[0]
-    for d in account_config_dirs():
-        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
-        try:
-            with open(os.path.join(root, "jobs", short, "state.json"), encoding="utf-8") as f:
-                state = json.load(f)
-        except (OSError, ValueError):
-            continue
-        if isinstance(state, dict) and state.get("sessionId") == session_guid:
-            return d, state
-    return False, None
 
 
 def claude_agents():
@@ -489,17 +474,17 @@ def _resumed_identity(session_guid):
     continuation passes both again, because the service names a continuation from its first prompt
     and saves only the flags typed on it, so without them a resumed worker comes back named after its
     wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place.
-    A name the service generated itself (`nameSource` auto) is one of those first-prompt names, so it
-    is never carried forward."""
-    state = _job_for_guid(session_guid)[1] or {}
-    given = state.get("name") if state.get("nameSource") != "auto" else None
+    Only a name typed on the launch (`nameSource` user) is carried forward, never one the service
+    generated from a first prompt."""
+    state = find_job(session_guid.split("-", 1)[0], session_guid)[1] or {}
+    given = state.get("name") if state.get("nameSource") == "user" else None
     name = given or (paused_record(session_guid) or {}).get("name")
     flags = [str(x) for x in state.get("respawnFlags") or []]
     try:
         settings = json.loads(flags[flags.index("--settings") + 1])
-    except (ValueError, IndexError):
-        settings = {}
-    return name, settings.get("worktree", {}).get("bgIsolation") == "none"
+        return name, settings.get("worktree", {}).get("bgIsolation") == "none"
+    except (ValueError, IndexError, AttributeError):
+        return name, False
 
 
 def _wake(session_guid, config_dir, cwd):
