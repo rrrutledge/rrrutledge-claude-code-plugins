@@ -75,7 +75,7 @@ from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, Provider
                            duplicate_check_section, paused_sessions, holder_resolver,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
-                           resolve_skill_dirs, session_mgr_script)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution
+                           resolve_skill_dirs, session_mgr_script, bg_session)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution + background-session stop and transcript lookup
 _LIVE_UNSET = object()  # reconcile_unhandled sentinel: scan for live sessions itself unless one is passed in
 from drainer_config import read_config, find_provider_file, provider_search_dirs, ensure_main_worktree  # noqa: E402  (shared reader + provider resolution + main-pinned config worktree)
 import usage_limit  # noqa: E402  (recognises the background account refusing a call, and when to retry)
@@ -2054,6 +2054,50 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     return requeued
 
 
+# Margin between the source's clock and this machine's, so a worker whose last write landed just after its
+# own finish never reads as finished by someone else.
+CLOCK_SKEW = timedelta(minutes=5)
+
+
+def close_finished_workers(runtime_dir, providers, agents, dry_run=False):
+    """Stop every parked worker whose items were all finished at their source by someone else, by the
+    rule in engine/poller-core.md, "Close a parked worker whose item already finished". Returns how
+    many workers it stopped (or would stop, under `dry_run`)."""
+    held = {}
+    for receipt, rec in _worker_items(runtime_dir, live_session_ids(agents)):
+        agent = _live_agent(receipt, agents)
+        if agent and agent.get("sessionId") and rec.get("id"):
+            held.setdefault(agent["sessionId"], (agent, {}))[1][rec["id"]] = rec
+    finished = {}
+    for provider in providers:
+        recs = {iid: rec for _, items in held.values() for iid, rec in items.items()
+                if rec.get("source") == provider.name}
+        if not recs:
+            continue
+        try:
+            finished.update(provider.finished_since(recs))
+        except Exception as e:  # one provider's fault never fails the cycle
+            print(f"{provider.name}: finished-item check FAILED - {e}. Skipping it this cycle.")
+    stopped = 0
+    for guid, (agent, items) in held.items():
+        busy = agent.get("status") == "busy" or agent.get("state") == "working"
+        if busy or not all(iid in finished for iid in items):
+            continue
+        try:
+            written = datetime.fromtimestamp(os.path.getmtime(bg_session.transcript_file(guid)), timezone.utc)
+        except (OSError, TypeError):  # no transcript found
+            continue
+        if any(finished[iid] <= written + CLOCK_SKEW for iid in items):
+            continue
+        verb = "would stop" if dry_run else "stopped"
+        if not dry_run:
+            bg_session.stop_session(agent["id"], agent.get("configDir"))
+        print(f"finished: {', '.join(sorted(items))} already done at the source; "
+              f"{verb} its parked worker {agent['id']} ({agent.get('name') or 'untitled'}).")
+        stopped += 1
+    return stopped
+
+
 def judge_items(items, repo, cfg, providers_by_name, cache, breaker):
     """The AI step for the cycle's AI-triaged items: triage, then the security screen, spending a call only
     on what the verdict cache and the breaker don't already answer.
@@ -2172,8 +2216,14 @@ def main():
     live = live_session_ids(agents)
     if not args.channel:
         unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
+        try:
+            finished = close_finished_workers(cfg["runtime_dir"], providers, agents, dry_run=args.dry_run)
+        except Exception as e:  # closing stale workers is housekeeping; it never costs the cycle its drain
+            print(f"finished-worker check FAILED - {e}. Skipped this cycle.")
+            finished = 0
         if args.dry_run:
-            print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s).")
+            print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s) "
+                  f"and stop {finished} finished worker(s).")
 
     # --- enumerate ALL providers first, accumulate into one global list ---
     # Each provider's enumerate is isolated: a failure (expired creds, network/API blip) is caught,

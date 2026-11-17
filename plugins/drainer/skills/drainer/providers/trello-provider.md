@@ -136,6 +136,11 @@ Every due card ends in a step taken; outcome 4 below, whose list names every eve
 **Check before you decide.**
 Run the checks in `../engine/worker-core.md` §2, "Check before you ask", on each thing the card is waiting on, including a hold condition written on the card.
 
+**A card that prepares for a dated event reaches outcome 1 once that date has passed.**
+When the description names the fixed date of the event the card prepares for, and today is past that date with no later date in its comments, the event is the awaited thing and it has happened.
+With no follow-up open, finish the card, naming the event and its date in the comment, and self-close per `../engine/worker-core.md` §6a.
+A follow-up the event created, open in the card's comments or the contact's thread, becomes the card's next step: advance the card to it, naming the event in the comment.
+
 Then the card ends in exactly one of these:
 
 1. **The awaited thing happened** - advance or finish the card (CLEAR), and name in the comment what you checked and where.

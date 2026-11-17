@@ -625,6 +625,32 @@ class Provider(ProviderBase):
             print(f"  trello: still_in_inbox check FAILED ({e}); reconcile skips trello this cycle.")
             return None
 
+    def finished_since(self, records):
+        """A captured card that is now archived, or sits on an archived list or one of the trello
+        skill's terminal lists, mapped to its last-activity time. That card is done whoever moved it
+        there. A card whose fetch fails is left out, so a Trello outage never closes a worker."""
+        out, cards = {}, {}
+        for iid, rec in records.items():
+            cid = rec.get("cardId")
+            if not cid:
+                continue
+            try:
+                if cid not in cards:  # each recurrence of a card is its own item on the same card
+                    cards[cid] = self._utils.trello_request(
+                        "GET", f"/cards/{cid}", self.session,
+                        params={"fields": "closed,dateLastActivity", "list": "true",
+                                "list_fields": "name,closed"})
+            except Exception as e:
+                print(f"  trello: finished check for card {cid} FAILED ({e}); its worker stays open.")
+                continue
+            card = cards[cid]
+            lst = card.get("list") or {}
+            terminal = card.get("closed") or lst.get("closed") or self._utils._is_terminal_list(lst.get("name"))
+            when = self._parse_dt(card.get("dateLastActivity"))
+            if terminal and when:
+                out[iid] = when
+        return out
+
     def capture(self, item, iid, runtime_dir):
         items_dir = os.path.join(runtime_dir, "items")
         os.makedirs(items_dir, exist_ok=True)

@@ -167,6 +167,13 @@ Settle with that session before any other work, by the rule in `duplicate-sessio
 
 **A new item in your own conversation arrives as a message from the drainer; handle it under §2d and §6 like your own.**
 
+**Every turn that follows a wait starts with §2's situational check again.**
+When a message wakes this session after it sat waiting, first run `date` and re-read the item's source as it stands now: for a card, its list, its Start, and its newest comments.
+What you last presented is as old as that wait, so a date you called upcoming may have passed and another session may have finished the work.
+Then do what the waking message asks.
+When it asks nothing beyond the item, and another session has since archived the card or moved it to a terminal list, close per "Close silently".
+When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
+
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
 The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → close per "Close silently").
@@ -201,17 +208,17 @@ What still must not slip: anything this session doesn't finish before ending nee
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
 
 ## Close silently
-Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
+Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), an item already over at its source when you wake from a wait (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), or you stood down for the session that keeps the item (§2).
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), you stood down for the session that keeps the item (§2), or the item is a Trello card that already sits on a terminal list or is archived.
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
 3. **Queue the digest entry:**
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
    (`<runtime_dir>` is the parent of the `items/` folder).
-   A situational no-op close and a stand-down queue nothing: there is nothing for the digest to report.
+   A situational no-op close, a stand-down, and an item already over at its source when you wake from a wait queue nothing: there is nothing for the digest to report.
 4. **Close your browser tabs** if you opened any, now, with browser-chauffeur's `chauffeur.py --close-owned`: a silent close leaves no human step for them to wait on.
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.
