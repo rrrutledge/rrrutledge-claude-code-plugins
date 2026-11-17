@@ -18,7 +18,7 @@ Carry the dropped ones as a one-line count; the rest are your batch.
 
 Read each ready row's `message`, and open the thread at its link when the message leans on earlier context.
 Before sorting a row, confirm the matter it waits on is still open.
-Read the row's thread for every message after the waiting one, from anyone, and read each `since` entry, automated notices included: a later message in any thread can settle the matter.
+Read the row's thread for every message after the waiting one, from anyone, and read each `since` entry, automated notices included.
 When `since` is null, search the row's source yourself for what the thread's participants have sent since the wait began, and for later messages about its subject.
 Then put each row in one of these groups:
 

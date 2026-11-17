@@ -488,8 +488,8 @@ class Review:
 
     def recheck(self, entry):
         """Re-run eligibility for one due entry against the live source. Returns (current_item, reason,
-        info): the conversation's newest still-waiting item and its fresh thread read, or None and why it
-        stopped qualifying."""
+        info): the conversation's newest still-waiting item and its fresh thread read carrying the wait's
+        start as `clock`, or None and why it stopped qualifying."""
         p = self.providers.get(entry["source"])
         if not p:
             return None, f"provider {entry['source']} not loaded", None
@@ -533,7 +533,7 @@ class Review:
                                 relay=is_relay(p, current))
         if reason:
             return None, reason, None
-        return current, None, info
+        return current, None, {**info, "clock": clock}
 
     def entry(self, key):
         for e in load_due(self.runtime_dir):
@@ -549,17 +549,19 @@ def _waited(hours):
 def mail_since(review, entry, current, info):
     """What the thread's other participants have sent since the clock started, in any thread, searched in
     the mailbox the reply goes out from. `thread_verdict` reads only the one thread, so this is how the
-    review sees a conversation resolved elsewhere (engine/ack-review.md section 2). None when that source
-    has no such search or the search failed, which tells the review to check by hand."""
+    review sees a conversation resolved elsewhere (engine/ack-review.md section 2). None when no search
+    ran (the source has none, there was no one to search for, or it failed), which tells the review to
+    check by hand."""
     via = info.get("replyVia")
     p = review.providers[via["source"]] if via else review.providers[entry["source"]]
     search = getattr(p, "mail_since", None)
     if not search:
         return None
     try:
-        return search(via["item"] if via else current, info, _parse(entry.get("clockStart")))
+        found = search(via["item"] if via else current, info, info.get("clock"))
     except ProviderError:
         return None
+    return None if found is None else [{**m, "received": _local(_parse(m.get("received")))} for m in found]
 
 
 def cmd_prepare(review):

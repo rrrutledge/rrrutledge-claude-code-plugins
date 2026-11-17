@@ -181,8 +181,9 @@ check("returns the later mail, the waiting message itself left out",
       [m["subject"] for m in got], ["Your payout is on the way!"])
 check("each entry links to its message", "rfc822msgid%3Apayout%40x" in got[0]["link"], True)
 nocall = stub_run_node(_Res(0, "[]"))
-check("a thread with only Russell's messages searches nothing",
-      (p.mail_since(ITEM, {"messages": [{"fromAddress": "russ@x", "fromMe": True}]}, SINCE), nocall), ([], []))
+check("a thread with only Russell's messages searches nothing and says so with None",
+      (p.mail_since(ITEM, {"messages": [{"fromAddress": "russ@x", "fromMe": True}]}, SINCE), nocall), (None, []))
+check("no wait start searches nothing", (p.mail_since(ITEM, thread_info, None), nocall), (None, []))
 stub_run_node(_Res(1))
 try:
     p.mail_since(ITEM, thread_info, SINCE)

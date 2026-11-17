@@ -407,14 +407,21 @@ check("prepare marks the waiting entry ready and the vanished one dropped",
 check("a ready row carries what the person said", rows[0]["message"], "text of w")
 check("a source with no since-search leaves `since` unset, so the review checks by hand", rows[0]["since"], None)
 
-payout = {"subject": "Your payout is on the way!", "from": "Eventbrite <eventbrite@example.org>"}
+payout = {"subject": "Your payout is on the way!", "from": "Eventbrite <eventbrite@example.org>",
+          "received": "2026-11-10T22:05:26.000Z"}
 r, demo = review_for([due_entry(waiting)], [waiting])
 since_calls = []
 demo.mail_since = lambda it, info, since: since_calls.append((it["_id"], since)) or [payout]
 with contextlib.redirect_stdout(io.StringIO()) as buf:
     ack_sweep.cmd_prepare(r)
-check("a ready row lists what the thread's participants sent since the clock started",
-      (json.loads(buf.getvalue())[0]["since"], since_calls), ([payout], [("w", received_dt(waiting))]))
+check("a ready row lists what the thread's participants sent since the clock started, in local time",
+      (json.loads(buf.getvalue())[0]["since"], since_calls),
+      ([{**payout, "received": ack_sweep._local(received_dt(payout))}], [("w", received_dt(waiting))]))
+
+demo.mail_since = lambda it, info, since: None
+with contextlib.redirect_stdout(io.StringIO()) as buf:
+    ack_sweep.cmd_prepare(r)
+check("a search with no one to search for leaves `since` unset", json.loads(buf.getvalue())[0]["since"], None)
 
 
 def failing_since(it, info, since):
