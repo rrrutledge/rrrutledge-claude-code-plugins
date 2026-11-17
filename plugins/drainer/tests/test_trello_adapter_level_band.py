@@ -104,10 +104,29 @@ def test_sort_key_orders_level_within_band():
 def test_band_rank_is_priority_then_level_then_referral():
     print("test: band_rank returns (priority, level, referral) - the one place the queue order is defined")
     it = {"_priority_band": 5, "_level_band": -1, "_referral_band": 1}
-    check("band_rank orders priority, then level, then referral", provider_base.band_rank(it) == (5, -1, 1),
+    check("band_rank orders lane, then priority, level, referral",
+          provider_base.band_rank({**it, "_lane": provider_base.LANE_MONEY}) == (provider_base.LANE_MONEY, 5, -1, 1),
           provider_base.band_rank(it))
     check("missing bands fall back to neutral", provider_base.band_rank({}) ==
-          (provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
+          (provider_base.LANE_NEUTRAL, provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
+
+
+def test_lane_order():
+    print("test: lane leads - money lane, then neutral (mail and plain cards), then below the line")
+    Provider = adapter_mod.Provider
+    p1 = [{"name": "🎯 P1"}]
+    p2 = [{"name": "🎯 P2"}]
+    def stamped(name, c, dt):
+        band = Provider._priority_band(c)
+        return {"name": name, "_lane": Provider._lane(band), "_priority_band": band,
+                "_level_band": Provider._level_band(c), "_referral_band": 0, "_sort_dt": dt}
+    items = [stamped("plain card", card("bill"), "2026-08-20"),
+             stamped("P2 role", card("Priority: P2 · x · Director/VP-level", p2), "2026-08-21"),
+             stamped("old P1 IC", card("Priority: P1 · x · IC-level", p1), "2026-01-01"),
+             {"name": "mail", "_sort_dt": "2026-08-22"}]
+    ranked = [it["name"] for it in sorted(items, key=SORT_KEY, reverse=True)]
+    check("a stale plain P1 role leads newer mail and cards; P2 sits below the line",
+          ranked == ["old P1 IC", "mail", "plain card", "P2 role"], ranked)
 
 
 def test_level_leads_referral_within_band():
@@ -190,15 +209,15 @@ def test_priority_band_above_inbox_pins():
     check("exactly $250K reaches the floor",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $250K/yr", p1))
           == above)
-    check("P1 people manager at $240K -> its P-tier band",
+    check("P1 people manager at $240K -> above neutral (every P1 is in the top lane)",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nComp: up to $240K/yr", p1))
-          == adapter_mod._PRIORITY_BAND[1])
-    check("people manager with no posted pay -> its P-tier band (P1 stays neutral)",
+          == above)
+    check("P1 people manager with no posted pay -> above neutral",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes", p1))
-          == adapter_mod._PRIORITY_BAND[1])
-    check("IC-level at $300K, manages no one -> its P-tier band (pay lifts people managers only)",
+          == above)
+    check("P1 IC-level, manages no one -> above neutral",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nComp: up to $300K/yr", p1))
-          == adapter_mod._PRIORITY_BAND[1])
+          == above)
     check("P1 Director/VP-level with no Comp line -> above neutral",
           Provider._priority_band(card("Priority: P1 · x · Director/VP-level", p1)) == above)
     check("P1 Director/VP-level under the floor -> above neutral",
@@ -209,9 +228,9 @@ def test_priority_band_above_inbox_pins():
           == adapter_mod._PRIORITY_BAND[2])
     check("P3 Director/VP-level -> its P-tier band",
           Provider._priority_band(card("Priority: P3 · x · Director/VP-level", p3)) == adapter_mod._PRIORITY_BAND[3])
-    check("a dollar figure outside a Comp: line is ignored",
-          Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\nnotes: $300K budget", p1))
-          == adapter_mod._PRIORITY_BAND[1])
+    check("a P2 manager with a dollar figure outside a Comp: line keeps its P-tier band",
+          Provider._priority_band(card("Priority: P2 · x · IC-level\nManages people: yes\nnotes: $300K budget", p2))
+          == adapter_mod._PRIORITY_BAND[2])
     check("Comp: line figures read with commas and K",
           Provider._priority_band(card("Priority: P1 · x · IC-level\nManages people: yes\n"
                                        "Comp: $200,000 - $262,500", p1)) == above)
@@ -255,6 +274,7 @@ if __name__ == "__main__":
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_priority_then_level_then_referral()
+    test_lane_order()
     test_sort_key_orders_level_within_band()
     test_level_leads_referral_within_band()
     test_startable_gate_start_is_the_only_date()

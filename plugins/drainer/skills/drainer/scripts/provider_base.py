@@ -28,8 +28,17 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NEUTRAL_PRIORITY_BAND = 1
 
 
+# The queue lanes, highest first (sorts run descending, so a larger value is worked sooner). Orphan
+# sessions are lane 0 in the design and are placed ahead of everything by the poller's order_needs, so
+# they carry no value here. An item without a stamped `_lane` (all mail and Slack) is neutral.
+LANE_MONEY = 4    # job search and money: contact, in-progress, every P1 role
+LANE_NEUTRAL = 2  # email, Slack, every ordinary card
+LANE_BELOW = 1    # P2/P3 roles, below the line
+
+
 def band_rank(it):
-    """The cross-source queue order, defined in ONE place: priority band, then level, then referral.
+    """The cross-source queue order, defined in ONE place: lane, then priority band, level, referral.
+    The lane is the leading value (the trello adapter stamps `_lane`; anything unstamped is neutral).
     Every drained item (email/Slack, ordinary Trello cards, and job-search cards) is ranked by this
     tuple; only job-search cards carry a non-neutral value in any band (the trello adapter stamps
     `_priority_band`/`_level_band`/`_referral_band` - see its _PRIORITY_BAND, _level_band, _referral_band
@@ -38,7 +47,8 @@ def band_rank(it):
     needs-you sort) and the band-ranking test read it, so the policy lives at one spot. Each caller
     appends its own trailing date key (the adapter's `_sort_dt`, the poller's `received`), which breaks
     the final tie most-recent-first."""
-    return (it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
+    return (it.get("_lane", LANE_NEUTRAL),
+            it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
             it.get("_level_band", 0),
             it.get("_referral_band", 0))
 
