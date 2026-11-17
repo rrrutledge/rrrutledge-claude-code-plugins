@@ -36,7 +36,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank,  # noqa: E402
-                           find_skill_script)
+                           DUE_PRIORITY_BAND, TOP_PRIORITY_BAND, find_skill_script)
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
@@ -59,13 +59,14 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy - the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
-#   👤 Contact (person follow-up)  → above neutral   worked ahead of email/Slack and every application
-#   card on an in-progress list    → above neutral   a live application is worked ahead of the inbox
-#   P1 Director-or-above role      → above neutral   with or without posted pay
-#   P1 manager, pay >= floor       → above neutral   the role Russell needs, whatever its title
+#   👤 Contact (person follow-up)  → top band        worked ahead of email/Slack and every application
+#   card on an in-progress list    → top band        a live application is worked ahead of the inbox
+#   P1 Director-or-above role      → top band        with or without posted pay
+#   P1 manager, pay >= floor       → top band        the role Russell needs, whatever its title
+#   card with an incomplete Due    → due band        started on purpose with a deadline; soonest Due first
 #   other P1 application card      → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card         → below neutral   worked once the neutral band is drained
-# The four above-neutral pins live in _priority_band. A P2/P3 Director or well-paid manager keeps its
+# The top-band pins and the due band live in _priority_band. A P2/P3 Director or well-paid manager keeps its
 # P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 # A P1 (top-fit) application stays AT neutral so a fresh strong-fit role is caught the same day as email;
 # P2/P3 drop below. Within a band, a people manager below the pay floor, or with no posted pay, sits at the
@@ -303,23 +304,41 @@ class Provider(ProviderBase):
         return channel, feats, contacts, initiative
 
     @staticmethod
-    def _priority_band(card, in_progress=False):
+    def _due_dt(card, start_dt):
+        """The card's Due datetime when it counts for the due band, else None: the Due is set and not
+        marked complete, and the card has a Start (it was started on purpose; the startable gate already
+        ensured that Start has arrived)."""
+        if start_dt is None or card.get("dueComplete"):
+            return None
+        return Provider._parse_dt(card.get("due"))
+
+    @staticmethod
+    def _due_rank(band, due_dt):
+        """The sort value band_rank reads for the due band: the negated Due epoch seconds, so the
+        descending sort puts the soonest (or most overdue) Due first; 0 outside the due band."""
+        return -due_dt.timestamp() if band == DUE_PRIORITY_BAND else 0
+
+    @staticmethod
+    def _priority_band(card, in_progress=False, due_dt=None):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        Four pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
-        Contact person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
+        Three pins put a card in the top band, ahead of everything below it: a 👤 Contact
+        person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; and a P1
         Director-or-above role, with or without posted pay, or a P1 people manager whose posted pay reaches
-        _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3 priority label wins; an application card normally
+        _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
+        whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
         if in_progress:
-            return NEUTRAL_PRIORITY_BAND + 1
+            return TOP_PRIORITY_BAND
         if Provider._is_p1(card) and (Provider._is_director_level(card)
                                       or Provider._pays_people_manager_floor(card)):
-            return NEUTRAL_PRIORITY_BAND + 1
+            return TOP_PRIORITY_BAND
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or ""):
-                return NEUTRAL_PRIORITY_BAND + 1
+                return TOP_PRIORITY_BAND
+        if due_dt is not None:
+            return DUE_PRIORITY_BAND
         for l in labels:
             m = _PRIORITY_RE.match(l.get("name") or "")
             if m:
@@ -519,7 +538,8 @@ class Provider(ProviderBase):
                 sort_dt = start_dt or self._created_dt(card["id"])
                 # The three band values; band_rank (provider_base) defines the order they sort in.
                 in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
-                priority_band = self._priority_band(card, in_progress)  # see _PRIORITY_BAND
+                due_dt = self._due_dt(card, start_dt)
+                priority_band = self._priority_band(card, in_progress, due_dt)  # see _PRIORITY_BAND
                 referral_band = self._referral_band(card)  # see _referral_band
                 level_band = self._level_band(card)        # see _level_band
                 channel, feats, contacts, initiative_label = self._classify_labels(card)
@@ -550,6 +570,7 @@ class Provider(ProviderBase):
                     "preview": f"[{bname} / {list_name}] {(card.get('desc') or '').strip()[:200]}",
                     "_sort_dt": sort_dt,
                     "_priority_band": priority_band,
+                    "_due_rank": self._due_rank(priority_band, due_dt),
                     "_referral_band": referral_band,
                     "_level_band": level_band,
                 })
