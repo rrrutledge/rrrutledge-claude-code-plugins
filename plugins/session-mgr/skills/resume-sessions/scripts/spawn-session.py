@@ -188,20 +188,19 @@ def _worker_seed_file(folder, slug, anchor, job):
 
 
 def _add_report(prompt_file, report_file):
-    """Append the launched session's report to the wake note under a `## Report` heading, once, so a
-    retried resume adds nothing more. A missing report costs only the report, never the resume: the
-    note still says the work is done."""
-    with open(prompt_file, encoding="utf-8") as f:
-        if "\n## Report\n" in f.read():
-            return
+    """End the wake note with the launched session's report under a `## Report` heading, replacing
+    the one a failed earlier attempt added, so a retried resume carries the latest report once. A
+    missing report costs only the report, never the resume: the note still says the work is done."""
     try:
         with open(report_file, encoding="utf-8") as f:
             report = f.read().strip()
     except OSError:
         print(f"spawn-session: no report at {os.path.abspath(report_file)}; resuming without one.")
         return
-    with open(prompt_file, "a", encoding="utf-8") as f:
-        f.write("\n## Report\n\n" + report + "\n")
+    with open(prompt_file, encoding="utf-8") as f:
+        note = f.read().split("\n## Report\n", 1)[0]
+    with open(prompt_file, "w", encoding="utf-8") as f:
+        f.write(note + "\n## Report\n\n" + report + "\n")
 
 
 def _read_summary(path):

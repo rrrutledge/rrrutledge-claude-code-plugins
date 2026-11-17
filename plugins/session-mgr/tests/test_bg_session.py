@@ -288,7 +288,11 @@ def test_continuation_keeps_name_and_guard_setting():
         os.makedirs(job)
         with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
             json.dump({"sessionId": GUID, "name": "x resume note", "nameSource": "auto"}, f)
-        bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        bg_session.record_pause(GUID, "x resume note", s.tmp)  # the paused record copies the job's name
+        try:
+            bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        finally:
+            bg_session.record_resume(GUID)
         check("a service-generated name is not carried forward", "--name" not in s.calls[0][0], s.calls[0][0])
 
 
@@ -314,7 +318,9 @@ def test_resume_adds_report_to_note():
             f.write("A retry's report.\n")
         spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note, "--report-file", report])
         with open(note, encoding="utf-8") as f:
-            check("a retried resume adds no second report", f.read().count("## Report") == 1)
+            body = f.read()
+        check("a retried resume carries only the latest report",
+              body.count("## Report") == 1 and "A retry's report." in body, body)
         rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note,
                                  "--report-file", report + ".missing"])
         check("missing report -> still resumes", rc == 0 and len(s.calls) == 3, f"rc {rc}")

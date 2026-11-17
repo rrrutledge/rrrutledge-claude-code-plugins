@@ -469,16 +469,18 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
 
 
 def _resumed_identity(session_guid):
-    """`(name, scratch_only)` the session `session_guid` ran under: the name its job was given (else
-    its paused record's), and whether its saved launch settings turned the worktree guard off. A
+    """`(name, scratch_only)` the session `session_guid` ran under: the name its job was given (its
+    paused record's when it has no job), and whether its saved launch settings turned the worktree guard off. A
     continuation passes both again, because the service names a continuation from its first prompt
     and saves only the flags typed on it, so without them a resumed worker comes back named after its
     wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place.
     Only a name typed on the launch (`nameSource` user) is carried forward, never one the service
     generated from a first prompt."""
     state = find_job(session_guid.split("-", 1)[0], session_guid)[1] or {}
-    given = state.get("name") if state.get("nameSource") == "user" else None
-    name = given or (paused_record(session_guid) or {}).get("name")
+    if state:  # the paused record copies the job's name, so it is no fallback for an auto name
+        name = state.get("name") if state.get("nameSource") == "user" else None
+    else:
+        name = (paused_record(session_guid) or {}).get("name")
     flags = [str(x) for x in state.get("respawnFlags") or []]
     try:
         settings = json.loads(flags[flags.index("--settings") + 1])
