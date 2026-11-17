@@ -186,11 +186,10 @@ Instead **bump its Start date forward by the stated cadence** (same mechanism as
 The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
 
 **A missed occurrence is brought forward by a plain-code sweep.**
-Each poller cycle, the adapter checks every startable `Recurs:` card (cadences: daily, weekly, biweekly, monthly, quarterly, yearly, "every N days/weeks/months/years", "every <weekday>"; any other wording is left alone).
-Once today is at or past the card's Start plus one period, the occurrence was not done, because finishing one moves Start.
-The sweep then moves Start to the latest date on the card's original schedule that is not in the future, so a Thursday card stays on Thursdays and a task missed several times in a row ends on one current occurrence, startable right away.
-It leaves one dated comment on the card ("occurrence of <date> missed, moved to <date>"), adds nothing to the digest, and takes no opt-out word.
-A card that is a day late is not touched, so the monthly budget, which starts on the first of the month for the previous month, keeps a month of grace.
+Each poller cycle, the adapter moves the Start of a `Recurs:` card whose Start is a full period or more in the past, because finishing an occurrence already moves Start.
+The sweep acts silently: one dated comment on the card ("occurrence of <date> missed, moved to <date>"), no digest entry, no opt-out word.
+It waits a full period before acting, so a card whose Start is the first of a period it covers retroactively keeps a period of grace.
+The cadences it reads and the date math live in `scripts/recurrence.py`.
 
 A `Recurs:` card is never `stop`ped for being "done" - completing one occurrence isn't the end of the task, only this cycle of it.
 `stop` still applies if Russell explicitly says to abandon the recurring task altogether (clear the `Recurs:` line too, so it can't come back by mistake).
