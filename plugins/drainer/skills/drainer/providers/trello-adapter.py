@@ -488,24 +488,29 @@ class Provider(ProviderBase):
         """Bring a missed `Recurs:` card forward and return its Start (moved, or unchanged).
         A card whose Start is a full period or more in the past was not completed (finishing an occurrence
         already moves Start), so Start moves to the latest date on its original schedule that is not in the
-        future and one dated comment is left on the card. No digest entry, no opt-out. A failed write is
-        logged and the card keeps its old Start this cycle."""
+        future and one dated comment is left on the card. No digest entry, no opt-out. A failure on one
+        card is logged and never stops the cycle: a failed Start write keeps the old Start this cycle, a
+        failed comment keeps the move."""
         period = recurrence.parse_period(card.get("desc"))
         if period is None or start_dt is None:
             return start_dt
-        new_start = recurrence.moved_start(start_dt, period, now)
-        if new_start is None:
-            return start_dt
         try:
+            new_start = recurrence.moved_start(start_dt, period, now)
+            if new_start is None:
+                return start_dt
             self._utils.trello_request("PUT", f"/cards/{card['id']}", self.session,
                                        body={"start": new_start.isoformat()})
-            self._utils.add_comment(
-                card["id"], f"{now.date()}: occurrence of {start_dt.date()} missed, moved to {new_start.date()}",
-                self.session)
         except Exception as e:
             print(f"  recurring sweep could not move card {card['id']}: {e}")
             return start_dt
         card["start"] = new_start.isoformat()
+        local = lambda d: d.astimezone().date()  # noqa: E731 - the card history reads in local time
+        try:
+            self._utils.add_comment(
+                card["id"], f"{local(now)}: occurrence of {local(start_dt)} missed, moved to {local(new_start)}",
+                self.session)
+        except Exception as e:
+            print(f"  recurring sweep moved card {card['id']} but could not comment: {e}")
         return new_start
 
     def _my_id(self):

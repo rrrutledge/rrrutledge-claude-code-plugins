@@ -79,11 +79,13 @@ class FakeUtils:
         self.calls, self.fail = [], fail
 
     def trello_request(self, method, path, session, params=None, body=None):
-        if self.fail:
+        if self.fail is True:
             raise RuntimeError("boom")
         self.calls.append((method, path, body))
 
     def add_comment(self, card_id, text, session):
+        if self.fail == "comment":
+            raise RuntimeError("rate limited")
         self.calls.append(("COMMENT", card_id, text))
 
 
@@ -119,6 +121,15 @@ def test_sweep_recurring():
     old = utc(2026, 11, 5, 9)
     check("a failed write keeps the old Start", broken._sweep_recurring(
         {"id": "c4", "desc": "Recurs: weekly"}, old, now) == old)
+
+    half = make_provider(fail="comment")
+    check("a failed comment still keeps the move", half._sweep_recurring(
+        {"id": "c5", "desc": "Recurs: weekly"}, old, now) == utc(2026, 11, 12, 9))
+
+    import datetime as _dt
+    naive = _dt.datetime(2026, 11, 5, 9)
+    check("a naive Start never raises out of the sweep", make_provider()._sweep_recurring(
+        {"id": "c6", "desc": "Recurs: weekly"}, naive, now) == naive)
 
 
 if __name__ == "__main__":
