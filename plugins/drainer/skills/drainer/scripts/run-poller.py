@@ -2030,33 +2030,34 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     return requeued
 
 
-# How long a source object must sit unchanged in its terminal state before its parked worker is closed,
-# so a worker that just finished the card itself still gets to present the result.
-FINISHED_GRACE = timedelta(hours=2)
+def _last_written(session_guid):
+    """When the session's transcript was last written, or None when it can't be found."""
+    path = bg_session.transcript_file(session_guid)
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path), timezone.utc) if path else None
+    except OSError:
+        return None
 
 
-def close_finished_workers(runtime_dir, providers, agents, dry_run=False, now=None):
-    """Stop every parked worker whose items have all reached a terminal state at their source.
+def close_finished_workers(runtime_dir, providers, agents, dry_run=False):
+    """Stop every parked worker whose items were all finished at their source by someone else.
 
     The mirror of reconcile_unhandled: that re-queues an unhandled item nobody is working, and this
     closes a live worker on an item that is already over. A card another session moved to Finished,
     or archived, leaves its original worker parked with nothing to do until Russell finds it.
-    A worker is stopped only when every item it holds is in some provider's finished_since map, has
-    been quiet there for FINISHED_GRACE, and the session is not mid-turn. `claude stop` keeps the
-    transcript resumable, and the orphan-sessions provider leaves a stopped job closed.
-    Returns how many workers it stopped (or would stop, under `dry_run`)."""
-    if not agents:
-        return 0
-    now = now or datetime.now(timezone.utc)
+    A worker is stopped when every item it holds is in some provider's finished_since map with a time
+    after the worker's own transcript was last written, so the finish came from outside it. A worker
+    that finished its card itself, or that Russell has written to since, has written after the finish
+    and stays open. `claude stop` keeps the transcript resumable, and the orphan-sessions provider
+    leaves a stopped job closed. Returns how many workers it stopped (or would stop, under `dry_run`)."""
     held = {}
     for receipt, rec in _worker_items(runtime_dir, live_session_ids(agents)):
-        if rec.get("id"):
-            held.setdefault(receipt, {})[rec["id"]] = rec
-    if not held:
-        return 0
+        agent = _live_agent(receipt, agents)
+        if agent:
+            held.setdefault(agent.get("sessionId"), (agent, {}))[1][rec["id"]] = rec
     finished = {}
     for provider in providers:
-        recs = {iid: rec for items in held.values() for iid, rec in items.items()
+        recs = {iid: rec for _, items in held.values() for iid, rec in items.items()
                 if rec.get("source") == provider.name}
         if not recs:
             continue
@@ -2065,11 +2066,11 @@ def close_finished_workers(runtime_dir, providers, agents, dry_run=False, now=No
         except Exception as e:  # one provider's fault never fails the cycle
             print(f"{provider.name}: finished-item check FAILED - {e}. Skipping it this cycle.")
     stopped = 0
-    for receipt, items in held.items():
-        agent = _live_agent(receipt, agents)
-        if not agent or not agent.get("id") or agent.get("status") == "busy" or agent.get("state") == "working":
+    for guid, (agent, items) in held.items():
+        if agent.get("status") == "busy" or not all(iid in finished for iid in items):
             continue
-        if not all(iid in finished and now - finished[iid] >= FINISHED_GRACE for iid in items):
+        written = _last_written(guid)
+        if not written or any(finished[iid] <= written for iid in items):
             continue
         verb = "would stop" if dry_run else "stopped"
         if not dry_run:

@@ -627,27 +627,23 @@ class Provider(ProviderBase):
 
     def finished_since(self, records):
         """A captured card that is now archived, or sits on an archived list or one of the trello
-        skill's terminal lists (trello_utils.TERMINAL_LIST_SUBSTRS), mapped to its last-activity time.
-        That card is done whoever moved it there, so a worker still parked on it has nothing left to
-        do. A card whose fetch fails is left out, so a Trello outage never closes a worker."""
-        out, lists = {}, {}
+        skill's terminal lists, mapped to its last-activity time. That card is done whoever moved it
+        there. A card whose fetch fails is left out, so a Trello outage never closes a worker."""
+        out, cards = {}, {}
         for iid, rec in records.items():
-            cid = rec.get("cardId")
-            if not cid:
-                continue
+            cid = rec["cardId"]
             try:
-                card = self._utils.trello_request("GET", f"/cards/{cid}", self.session,
-                                                  params={"fields": "closed,idList,dateLastActivity"})
-                lid = card.get("idList")
-                if lid not in lists:
-                    lists[lid] = self._utils.trello_request("GET", f"/lists/{lid}", self.session,
-                                                            params={"fields": "name,closed"})
-            except Exception:
+                if cid not in cards:  # each recurrence of a card is its own item on the same card
+                    cards[cid] = self._utils.trello_request(
+                        "GET", f"/cards/{cid}", self.session,
+                        params={"fields": "closed,dateLastActivity", "list": "true",
+                                "list_fields": "name,closed"})
+            except Exception as e:
+                print(f"  trello: finished check for card {cid} FAILED ({e}); its worker stays open.")
                 continue
-            lst = lists[lid] or {}
-            name = (lst.get("name") or "").lower()
-            terminal = (card.get("closed") or lst.get("closed")
-                        or any(tok in name for tok in self._utils.TERMINAL_LIST_SUBSTRS))
+            card = cards[cid]
+            lst = card.get("list") or {}
+            terminal = card.get("closed") or lst.get("closed") or self._utils._is_terminal_list(lst.get("name"))
             when = self._parse_dt(card.get("dateLastActivity"))
             if terminal and when:
                 out[iid] = when

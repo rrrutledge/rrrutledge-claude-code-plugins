@@ -152,10 +152,10 @@ The cycle stops such a worker with `claude stop`, which keeps its transcript res
 A worker is stopped when all three hold:
 
 - **every item it holds has finished at its source** - each provider's `finished_since()` names its items that reached a terminal state, and for Trello that is a card that is archived or sits on a terminal list (the adapter's `finished_since()` names them)
-- **that state has been quiet for `FINISHED_GRACE`** (two hours of no activity on the source object), so a worker that just finished the item itself still presents the result to Russell
+- **each finish came after the worker's transcript was last written** - so someone else finished it, while a worker that finished the item itself, or that Russell has written to since, stays open to present its result
 - **the session is between turns**
 
-An inbox source reports nothing here: the poller and the worker clear an email while its work is still open, so an email gone from the inbox says nothing about whether the worker is done.
+Only a source with a terminal state takes part: the poller and the worker clear an email while its work is still open, so an inbox source reports an empty map.
 A provider whose check fails is skipped for the cycle, and a session scan that fails stops nothing.
 
 ## Hold by correspondent: one open item per person, so one worker reads them all
