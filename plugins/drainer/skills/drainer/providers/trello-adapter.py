@@ -631,7 +631,9 @@ class Provider(ProviderBase):
         there. A card whose fetch fails is left out, so a Trello outage never closes a worker."""
         out, cards = {}, {}
         for iid, rec in records.items():
-            cid = rec["cardId"]
+            cid = rec.get("cardId")
+            if not cid:
+                continue
             try:
                 if cid not in cards:  # each recurrence of a card is its own item on the same card
                     cards[cid] = self._utils.trello_request(

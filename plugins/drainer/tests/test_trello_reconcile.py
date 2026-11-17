@@ -338,7 +338,7 @@ def agent(guid, **kw):
     return {"id": guid[:8], "sessionId": guid, "kind": "background", "pid": 1, "status": "idle", **kw}
 
 
-G = [f"{n}{n}{n}{n}{n}{n}{n}{n}-0000-0000-0000-000000000000" for n in range(1, 6)]
+G = [f"{n}{n}{n}{n}{n}{n}{n}{n}-0000-0000-0000-000000000000" for n in range(1, 4)]
 print("\nclose_finished_workers: stops a parked worker only when someone else finished its card")
 n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S), G[1]: (C_ARCH, 3 * DAY_S), G[2]: (C_OPEN, 3 * DAY_S)},
                           [agent(g) for g in G[:3]])
@@ -347,7 +347,9 @@ n, stopped = finished_run({G[0]: (C_DONE, 60)}, [agent(G[0])])
 check("a worker written to after the finish (it finished the card, or Russell replied) stays open",
       stopped, [])
 n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0], status="busy")])
-check("a worker mid-turn is left running", stopped, [])
+check("an interactive-style busy worker is left running", stopped, [])
+n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0], status=None, state="working")])
+check("a background worker mid-turn is left running", stopped, [])
 n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, None)
 check("a failed session scan stops nothing", (n, stopped), (0, []))
 

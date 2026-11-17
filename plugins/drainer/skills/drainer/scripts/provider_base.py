@@ -919,8 +919,7 @@ class ProviderBase:
         """Optional: `{item id: when it finished}` for each captured item record (`{item id: record}`)
         whose source object has reached a terminal state that no worker can still act on, the time
         being when the source last changed. The poller closes a parked worker whose every item is in
-        this map (close_finished_workers). An inbox provider keeps the default, since the poller and
-        the worker clear an email while its work is still open. An item whose state
+        this map (close_finished_workers). An item whose state
         can't be read this run is left out. A provider with no terminal state returns {}.
         """
         return {}
