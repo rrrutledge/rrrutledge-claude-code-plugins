@@ -56,14 +56,14 @@ Then stop and wait.
 
 ## 4. Act on Russell's answer
 
-He answers for the batch you presented: which entries to send, any edit to a draft, and a done or skipped mark for each by-hand row.
+He answers for the batch you presented: which entries to send, any edit to a draft, and a done or skipped mark for each by-hand row, and any already-resolved or asks-someone-else row he sends back for an ack.
 Act on exactly the entries that answer names, and only after it:
 
 - **An approved entry** - `python <ack script> send --repo <repo> --key <key> --body-file <body>`, adding `--handles` for a reply that handles the item.
   When Russell edited a draft, write his text to a new body file, run `writing-review` on it and mint it, then send that file with `--scored-body <the original body>` so the outcome records his edit.
 - **An entry he left out** - `python <ack script> skip --repo <repo> --key <key> --body-file <body>` (omit `--body-file` when nothing was drafted).
-  Every already-resolved and asks-someone-else row is skipped this way, unless his answer asks for an ack on it.
-  That row then gets an ack drafted and reviewed per §2 and presented per §3 before anything is sent.
+  Every already-resolved and asks-someone-else row he didn't send back is skipped this way.
+- **A row he sent back for an ack** - draft and review its ack per §2, and present it per §3 before anything is sent.
 - **A by-hand row marked done** - `python <ack script> hand-done --repo <repo> --key <key>`; one marked skipped takes `skip`.
 
 `send` re-checks the entry right before it sends and exits 3 with the reason when it stopped qualifying; tell Russell which ones that was.
