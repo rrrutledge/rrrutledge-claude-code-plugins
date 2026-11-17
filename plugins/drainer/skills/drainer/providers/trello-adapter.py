@@ -67,13 +67,17 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)  → above neutral   worked ahead of email/Slack and every application
 #   card on an in-progress list    → above neutral   a live application is worked ahead of the inbox
-#   every P1 role                  → above neutral   the money/job-search lane, ahead of the inbox
+#   P1 Director-or-above role      → above neutral   with or without posted pay
+#   P1 manager, pay >= floor       → above neutral   the role Russell needs, whatever its title
+#   other P1 application card      → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card         → below neutral   worked once the neutral band is drained
-# The above-neutral pins live in _priority_band, and band_rank's leading lane (see _lane) is derived from
-# the band. A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the
-# inbox and every P1 card, whatever its level or pay. Within the top lane, level (see _level_band) then
-# referral order the cards; a P2/P3 individual contributor waits behind the same tier's Director-or-above
-# roles and people managers. This is inert for every other
+# The four above-neutral pins live in _priority_band. A P2/P3 Director or well-paid manager keeps its
+# P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
+# A P1 (top-fit) application stays AT neutral so a fresh strong-fit role is caught the same day as email;
+# P2/P3 drop below. Within a band, a people manager below the pay floor, or with no posted pay, sits at the
+# neutral level (see _level_band) and interleaves with email by date, as does every individual-contributor
+# P1; a P2/P3 individual contributor waits behind the same tier's Director-or-above roles and people
+# managers. This is inert for every other
 # board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
 # `in_progress_lists` in the registry are the ones that leave the default neutral.
 _PRIORITY_BAND = {
@@ -82,10 +86,16 @@ _PRIORITY_BAND = {
     3: NEUTRAL_PRIORITY_BAND - 2,
 }
 
-# The personal-ai-pod job-board poller records the `Manages people: yes` line and the `Director/VP-level`
-# level word as facts; this adapter alone decides what they rank (see _level_band).
+# The pay-band floor: a people-manager card (a `Manages people: yes` desc line) whose `Comp:` desc line
+# tops out at or above this annual USD figure ranks above neutral when it is a P1. The personal-ai-pod
+# job-board poller records both lines, plus the `Director/VP-level` level word, as facts; this adapter
+# alone decides what they rank.
+_PAY_BAND_FLOOR = 250_000
 _DIRECTOR_LEVEL = "Director/VP-level"
 _MANAGES_PEOPLE_RE = re.compile(r"^Manages people:\s*yes\b", re.MULTILINE | re.IGNORECASE)
+# A `Comp:` desc line's dollar figures: "$260K", "$262,500", "$262.5k".
+_COMP_LINE_RE = re.compile(r"^Comp:(.*)$", re.MULTILINE)
+_DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 
 class Provider(ProviderBase):
@@ -305,12 +315,14 @@ class Provider(ProviderBase):
         Four pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
         Contact person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
-        card; and every P1 role. Otherwise the first P2/P3 priority label wins; an application card normally wears exactly
-        one."""
+        card; and a P1 Director-or-above role, with or without posted pay, or a P1 people manager whose
+        posted pay reaches _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3 priority label wins; an
+        application card normally wears exactly one."""
         labels = card.get("labels", [])
         if in_progress:
             return NEUTRAL_PRIORITY_BAND + 1
-        if Provider._is_p1(card):
+        if Provider._is_p1(card) and (Provider._is_director_level(card)
+                                      or Provider._pays_people_manager_floor(card)):
             return NEUTRAL_PRIORITY_BAND + 1
         for l in labels:
             if _CONTACT_RE.match(l.get("name") or "") or _MONEY_RE.match(l.get("name") or ""):
@@ -349,6 +361,22 @@ class Provider(ProviderBase):
         return LANE_NEUTRAL
 
     @staticmethod
+    def _comp_max(card):
+        """Return the highest annual USD figure on a card's `Comp:` desc line, or None when the card has
+        no such line or it names no dollar figure."""
+        m = _COMP_LINE_RE.search(card.get("desc") or "")
+        if not m:
+            return None
+        figures = []
+        for num, k in _DOLLAR_RE.findall(m.group(1)):
+            try:
+                value = float(num.replace(",", ""))
+            except ValueError:
+                continue
+            figures.append(value * 1000 if k else value)
+        return max(figures) if figures else None
+
+    @staticmethod
     def _is_director_level(card):
         """True for a Director-or-above card (its desc level word is `Director/VP-level`)."""
         return _DIRECTOR_LEVEL in (card.get("desc") or "")
@@ -358,6 +386,14 @@ class Provider(ProviderBase):
         """True for a card whose desc carries the poller's `Manages people: yes` line, or whose level
         is Director/VP (every Director-or-above manages people)."""
         return bool(_MANAGES_PEOPLE_RE.search(card.get("desc") or "")) or Provider._is_director_level(card)
+
+    @staticmethod
+    def _pays_people_manager_floor(card):
+        """True for a people-manager card whose `Comp:` line reaches _PAY_BAND_FLOOR."""
+        if not Provider._manages_people(card):
+            return False
+        comp = Provider._comp_max(card)
+        return comp is not None and comp >= _PAY_BAND_FLOOR
 
     @staticmethod
     def _referral_band(card):
@@ -380,8 +416,8 @@ class Provider(ProviderBase):
         scored yet; -1 for a P2/P3 IC-level job-search card that manages no one. Level leads referral in band_rank, so within a fit tier the level decides
         before referral. Zero is the shared neutral level that email/Slack and ordinary Trello cards also
         carry by default, so a people manager interleaves with today's mail by date within its priority
-        band; a P2/P3 IC posting drops below and waits for that neutral level to clear. Every P1 is lifted a whole
-        band instead (see _priority_band)."""
+        band; a P2/P3 IC posting drops below and waits for that neutral level to clear. A P1 people manager
+        at the pay floor, or a P1 Director-or-above, is lifted a whole band instead (see _priority_band)."""
         desc = card.get("desc") or ""
         if "IC-level" in desc and not Provider._manages_people(card) and not Provider._is_p1(card):
             return -1
