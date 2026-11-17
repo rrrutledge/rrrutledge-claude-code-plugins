@@ -431,7 +431,7 @@ def failing_since(it, info, since):
 demo.mail_since = failing_since
 with contextlib.redirect_stdout(io.StringIO()) as buf:
     ack_sweep.cmd_prepare(r)
-check("a failed since-search leaves `since` unset rather than empty", json.loads(buf.getvalue())[0]["since"], None)
+check("a failed since-search leaves `since` unset", json.loads(buf.getvalue())[0]["since"], None)
 
 body_dir = tempfile.mkdtemp()
 body = os.path.join(body_dir, "ack.md")

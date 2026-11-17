@@ -184,16 +184,17 @@ class Provider(ProviderBase):
         return {**found[0], "uid": None}
 
     def mail_since(self, item, info, since):
-        """Mail from anyone besides Russell who wrote in the item's thread (`info`, from thread_state) that
-        arrived after `since`, from any thread, newest ten first, the item itself left out. It is how the
-        ack review sees that a conversation moved on elsewhere. None when there is no one to search for.
+        """Mail that arrived after `since`, in any thread, from anyone besides Russell who wrote in the
+        item's thread (`info`, from thread_state), newest first, the item itself left out. It is how the
+        ack review sees that a conversation moved on elsewhere. None when there is no one to search for,
+        or when more than ten match, since a cut-short list can't vouch that nothing settled the matter.
         A REST search, so call it per item."""
         senders = sorted({m["fromAddress"].lower() for m in info.get("messages") or []
                           if m.get("fromAddress") and not m.get("fromMe")})
-        if not senders or not since:
+        if not senders:
             return None
         query = f"from:({' OR '.join(senders)}) after:{int(since.timestamp())}"
-        res = run_node([self.gmailjs, f"--search={query}", "--top=11", "--json"])
+        res = run_node([self.gmailjs, f"--search={query}", "--top=12", "--json"])
         if res.returncode != 0:
             raise ProviderError(f"gmail since-search failed: {res.stderr.strip()[:300]}",
                                 kind=node_failure_kind(res.stderr))
@@ -202,9 +203,10 @@ class Provider(ProviderBase):
         except ValueError:
             raise ProviderError("gmail since-search returned unreadable output")
         own = item.get("id") or item.get("messageId")
-        return [{"subject": m.get("subject"), "from": m.get("from"), "received": m.get("received"),
-                 "link": self._web_link(m.get("id"))}
-                for m in found if m.get("id") != own][:10]
+        later = [{"subject": m.get("subject"), "from": m.get("from"), "received": m.get("received"),
+                  "link": self._web_link(m.get("id"))}
+                 for m in found if m.get("id") != own]
+        return None if len(later) > 10 else later
 
     def send_reply(self, item, body_file):
         """Stage a reply in the thread (gmail.js appends the account's signature), then send exactly that

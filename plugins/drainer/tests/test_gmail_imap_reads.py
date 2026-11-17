@@ -183,7 +183,9 @@ check("each entry links to its message", "rfc822msgid%3Apayout%40x" in got[0]["l
 nocall = stub_run_node(_Res(0, "[]"))
 check("a thread with only Russell's messages searches nothing and says so with None",
       (p.mail_since(ITEM, {"messages": [{"fromAddress": "russ@x", "fromMe": True}]}, SINCE), nocall), (None, []))
-check("no wait start searches nothing", (p.mail_since(ITEM, thread_info, None), nocall), (None, []))
+flood = [{"id": f"<n{i}@x>", "subject": f"notice {i}", "from": "x", "received": "x"} for i in range(11)]
+stub_run_node(_Res(0, json.dumps(flood)))
+check("more than ten matches can't vouch for the rest, so it says None", p.mail_since(ITEM, thread_info, SINCE), None)
 stub_run_node(_Res(1))
 try:
     p.mail_since(ITEM, thread_info, SINCE)
