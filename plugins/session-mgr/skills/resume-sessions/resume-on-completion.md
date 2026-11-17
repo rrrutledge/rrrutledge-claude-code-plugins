@@ -50,6 +50,7 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    `--pause` stops the session instead of removing it, because a plain close deletes its worktree and the resume needs that worktree intact.
 
 The resume carries the wake note as a follow-up prompt, so the session comes back under a new session id (the old id leaves the live-session registry), carrying the full history, and starts a turn on that note, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
+It comes back under its own title and in its own working directory, with the worktree-guard setting it was launched with, and reads the wake note from a copy in that directory's `.tmp/`, so nothing of the session that ran the resume carries over into it.
 
 ## Why this is safe against a duplicate worker (drainer)
 

@@ -421,9 +421,10 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         copied) saves no flags, so it is stopped and the session continued as below.
       - Anything else - an interactive session, a follow-up seed, or saved flags missing
         --remote-control - starts a continuation under a new session id, because any flag on the
-        command makes the service copy the job rather than continue it. The resumed guid then leaves
-        the live-session registry (forget_session); its history lives on in the new session, which
-        registers itself.
+        command makes the service copy the job rather than continue it. The continuation is launched
+        under the session's own name and worktree-guard setting unless the caller overrides them
+        (_resumed_identity). The resumed guid then leaves the live-session registry
+        (forget_session); its history lives on in the new session, which registers itself.
     A resume of a guid that an earlier resume already continued under a new one continues the newest
     (latest_session), and a successful resume clears the session's paused record (record_resume).
     """
@@ -449,6 +450,9 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         owner = transcript_account(resume)
         if owner is not False:
             env = _account_env(owner, env)
+        saved_name, saved_scratch_only = _resumed_identity(resume)
+        name = name or saved_name
+        scratch_only = scratch_only or saved_scratch_only
     if name:
         args += ["--name", name]
     if model:
@@ -471,6 +475,25 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         new_guid = session_guid(m.group(1)) or (find_job(m.group(1))[1] or {}).get("sessionId")
         record_resume(resume, continued_as=new_guid)
     return m.group(1) if m else None
+
+
+def _resumed_identity(session_guid):
+    """`(name, scratch_only)` the session `session_guid` ran under: its background job's name (else
+    its paused record's), and whether its saved launch settings turned the worktree guard off. A
+    continuation passes both again, because the service names a continuation from its first prompt
+    and saves only the flags typed on it, so without them a resumed worker comes back named after its
+    wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place."""
+    state = find_job(session_guid.split("-", 1)[0])[1] or {}
+    if state.get("sessionId") != session_guid:
+        state = {}
+    name = state.get("name") or (_load_paused()["paused"].get(session_guid) or {}).get("name") or None
+    flags = [str(x) for x in state.get("respawnFlags") or []]
+    try:
+        settings = json.loads(flags[flags.index("--settings") + 1])
+    except (ValueError, IndexError):
+        settings = {}
+    worktree = settings.get("worktree") if isinstance(settings, dict) else None
+    return name, isinstance(worktree, dict) and worktree.get("bgIsolation") == "none"
 
 
 def _wake(session_guid, config_dir, cwd):

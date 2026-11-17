@@ -253,6 +253,55 @@ def test_resume_copies_when_wake_does_not_fit():
             check(f"{label}: no wake logged", not bg_session.load_wakes(), bg_session.load_wakes())
 
 
+def test_continuation_keeps_name_and_guard_setting():
+    print("test: a continuation passes the session's own name and its worktree-guard setting again, "
+          "unless the caller overrides the name")
+    scratch = json.dumps({"env": {"CLAUDE_HOST_PID": ""}, "worktree": {"bgIsolation": "none"}})
+    flags = ("--remote-control", "--permission-mode", "manual", "--name", "Trello: Grafana", "--settings", scratch)
+    with sandbox() as s:
+        write_transcript(s.main)
+        job = os.path.join(s.main, "jobs", SHORT)
+        os.makedirs(job)
+        with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"sessionId": GUID, "name": "Trello: Grafana", "respawnFlags": list(flags)}, f)
+        bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        bg_session.spawn_bg("follow up", None, s.tmp, "New title", resume=GUID)
+        kept, renamed = s.calls[0][0], s.calls[1][0]
+        check("own name passed again", flag_value(kept, "--name") == "Trello: Grafana", kept)
+        settings = json.loads(flag_value(kept, "--settings"))
+        check("guard stays off", settings.get("worktree") == {"bgIsolation": "none"}, settings)
+        check("--title overrides the name", flag_value(renamed, "--name") == "New title", renamed)
+    with sandbox() as s:
+        write_transcript(s.main)
+        bg_session.record_pause(GUID, "Paused title", s.tmp)
+        try:
+            bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        finally:
+            bg_session.record_resume(GUID)
+        args = s.calls[0][0]
+        check("no job -> the paused record's name", flag_value(args, "--name") == "Paused title", args)
+        check("no job -> guard on", "worktree" not in json.loads(flag_value(args, "--settings")), args)
+
+
+def test_resume_note_copied_into_own_tmp():
+    print("test: a resume's --prompt-file outside the resumed cwd's .tmp/ is copied there and seeded from the copy")
+    with sandbox() as s:
+        write_transcript(s.main)
+        other = os.path.join(s.tmp, "other-worktree", ".tmp")
+        os.makedirs(other)
+        note = os.path.join(other, "handoff-x.md.resume-note.md")
+        with open(note, "w", encoding="utf-8") as f:
+            f.write("## Report\ndone\n")
+        home = os.path.join(s.tmp, "home")
+        os.makedirs(home)
+        rc = spawn_session.main(["--resume", GUID, "--cwd", home, "--prompt-file", note])
+        check("resume -> 0", rc == 0, f"rc {rc}")
+        copy = os.path.join(home, ".tmp", "handoff-x.md.resume-note.md")
+        check("note copied into the resumed cwd's .tmp/", os.path.isfile(copy))
+        seed = s.calls[-1][0][-1] if s.calls else ""
+        check("seed points at the copy", copy in seed, seed)
+
+
 def test_wake_that_copies_the_job_is_replaced():
     print("test: a wake that comes back as a new job with no saved flags is stopped and the session "
           "continued with every flag")
@@ -461,6 +510,8 @@ if __name__ == "__main__":
     test_resume_forgets_old_registry_entry()
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
+    test_continuation_keeps_name_and_guard_setting()
+    test_resume_note_copied_into_own_tmp()
     test_wake_that_copies_the_job_is_replaced()
     test_respawn_session_runs_claude_respawn()
     test_failed_wake_returns_none()

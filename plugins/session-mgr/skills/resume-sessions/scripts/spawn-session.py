@@ -57,6 +57,7 @@ Exit code 1 means nothing was launched.
 import argparse
 import importlib.util
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -78,6 +79,7 @@ RESUME_ME = """
 The session that launched you closed paused; its own next step waits on this work.
 Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first append a report to `{note}` under a `## Report` heading: a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
 Leave out the steps you took and your internal details.
+When that edit is refused because you work in your own worktree, write the note's text plus your report to the same file name under your worktree's `.tmp/` and point the command's `--prompt-file` at that file; the resume copies it into the launcher's own `.tmp/`.
 The launcher reads that note when it wakes, with its own history but not yours, so the report is how it learns what happened.
 Then run this via the Bash tool without waiting to be asked, and tell Russell in one line which session you resumed:
 
@@ -182,6 +184,18 @@ def _worker_seed_file(folder, slug, anchor, job):
     return path
 
 
+def _own_tmp_copy(prompt_file, cwd):
+    """A resume's follow-up file, copied into the resumed session's own `<cwd>/.tmp/` unless it is
+    already there. The session that runs a --resume-me command usually works in its own worktree and
+    writes the wake note there, and that worktree is removed when it closes, so the resumed session
+    reads its copy from its own checkout instead. Returns the path to seed with."""
+    dest = os.path.join(os.path.abspath(cwd), ".tmp", os.path.basename(prompt_file))
+    if os.path.normcase(dest) != os.path.normcase(prompt_file):
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copyfile(prompt_file, dest)
+    return dest
+
+
 def _read_summary(path):
     """The one-line lead from --summary-file, or "" when there is none. A missing or unreadable file
     only costs the descriptive lead, never the launch."""
@@ -236,6 +250,9 @@ def main(argv=None):
     if not os.path.isdir(a.cwd):
         print(f"spawn-session: working directory not found: {a.cwd}")
         return 1
+
+    if a.resume and prompt_file:
+        prompt_file = _own_tmp_copy(prompt_file, a.cwd)
 
     summary = _read_summary(a.summary_file)
     name = session_name(a.title or summary, "") or None
