@@ -43,8 +43,8 @@ The order of the lane, the due rank, and those three bands is defined in exactly
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
-A card wearing the **`💰 Money`** label (a bill, the ISC invoice, the monthly budget, a sponsorship follow-up) is pinned to that same band, whatever its other labels.
-The adapter reads the label like `🤝 Referral` and holds it out of contact parsing; the pod's money skills apply it when they create or recur their card.
+A card wearing the **`💰 Money`** label, meaning money owed or paid, is pinned to that same band, whatever its other labels.
+The label is matched as the exact string and is never read as a contact name.
 **Every P1 role** is pinned to that same band, whatever its level, management scope, or posted pay.
 A P2/P3 role keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` sits **above** the neutral band, so a top-fit role is worked ahead of the inbox, while `P2`/`P3` sit **below** it.
