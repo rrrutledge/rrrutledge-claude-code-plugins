@@ -36,7 +36,7 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank,  # noqa: E402
-                           LANE_MONEY, LANE_NEUTRAL, LANE_BELOW, find_skill_script)
+                           LANE_MONEY, LANE_DUE, LANE_NEUTRAL, LANE_BELOW, find_skill_script)
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
@@ -315,11 +315,22 @@ class Provider(ProviderBase):
         return NEUTRAL_PRIORITY_BAND
 
     @staticmethod
-    def _lane(priority_band):
-        """Map a priority band to its queue lane: above neutral is the money/job-search lane, below
-        neutral is below the line, neutral stays neutral."""
+    def _due_dt(card, start_dt):
+        """The card's Due datetime when it counts for the due lane, else None: the Due is set and not
+        marked complete, and the card has a Start (it was started on purpose; the startable gate already
+        ensured that Start has arrived)."""
+        if start_dt is None or card.get("dueComplete"):
+            return None
+        return Provider._parse_dt(card.get("due"))
+
+    @staticmethod
+    def _lane(priority_band, due_dt=None):
+        """Map a card to its queue lane, the highest it qualifies for: above neutral is the money/job-search
+        lane, then a due-dated card is the due lane, below neutral is below the line, otherwise neutral."""
         if priority_band > NEUTRAL_PRIORITY_BAND:
             return LANE_MONEY
+        if due_dt is not None:
+            return LANE_DUE
         if priority_band < NEUTRAL_PRIORITY_BAND:
             return LANE_BELOW
         return LANE_NEUTRAL
@@ -494,6 +505,8 @@ class Provider(ProviderBase):
                 # The three band values; band_rank (provider_base) defines the order they sort in.
                 in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
                 priority_band = self._priority_band(card, in_progress)  # see _PRIORITY_BAND
+                due_dt = self._due_dt(card, start_dt)
+                lane = self._lane(priority_band, due_dt)
                 referral_band = self._referral_band(card)  # see _referral_band
                 level_band = self._level_band(card)        # see _level_band
                 channel, feats, contacts, initiative_label = self._classify_labels(card)
@@ -523,7 +536,8 @@ class Provider(ProviderBase):
                     "received": sort_dt.isoformat() if sort_dt else "(no date)",
                     "preview": f"[{bname} / {list_name}] {(card.get('desc') or '').strip()[:200]}",
                     "_sort_dt": sort_dt,
-                    "_lane": self._lane(priority_band),
+                    "_lane": lane,
+                    "_due_rank": -due_dt.timestamp() if lane == LANE_DUE else 0,
                     "_priority_band": priority_band,
                     "_referral_band": referral_band,
                     "_level_band": level_band,

@@ -32,6 +32,7 @@ NEUTRAL_PRIORITY_BAND = 1
 # sessions are lane 0 in the design and are placed ahead of everything by the poller's order_needs, so
 # they carry no value here. An item without a stamped `_lane` (all mail and Slack) is neutral.
 LANE_MONEY = 4    # job search and money: contact, in-progress, every P1 role
+LANE_DUE = 3      # a started card with an incomplete Due date, soonest Due first
 LANE_NEUTRAL = 2  # email, Slack, every ordinary card
 LANE_BELOW = 1    # P2/P3 roles, below the line
 
@@ -46,8 +47,10 @@ def band_rank(it):
     change the tuple HERE; both sort sites (trello-adapter._enumerate and run-poller's cross-source
     needs-you sort) and the band-ranking test read it, so the policy lives at one spot. Each caller
     appends its own trailing date key (the adapter's `_sort_dt`, the poller's `received`), which breaks
-    the final tie most-recent-first."""
+    the final tie most-recent-first. `_due_rank` is the negated Due epoch seconds of a due-lane card
+    (0 for every other item), so the descending sort puts the soonest Due first within that lane."""
     return (it.get("_lane", LANE_NEUTRAL),
+            it.get("_due_rank", 0),
             it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
             it.get("_level_band", 0),
             it.get("_referral_band", 0))

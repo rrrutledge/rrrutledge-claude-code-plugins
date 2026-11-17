@@ -104,11 +104,48 @@ def test_sort_key_orders_level_within_band():
 def test_band_rank_is_priority_then_level_then_referral():
     print("test: band_rank returns (priority, level, referral) - the one place the queue order is defined")
     it = {"_priority_band": 5, "_level_band": -1, "_referral_band": 1}
-    check("band_rank orders lane, then priority, level, referral",
-          provider_base.band_rank({**it, "_lane": provider_base.LANE_MONEY}) == (provider_base.LANE_MONEY, 5, -1, 1),
+    check("band_rank orders lane, due rank, then priority, level, referral",
+          provider_base.band_rank({**it, "_lane": provider_base.LANE_MONEY}) == (provider_base.LANE_MONEY, 0, 5, -1, 1),
           provider_base.band_rank(it))
     check("missing bands fall back to neutral", provider_base.band_rank({}) ==
-          (provider_base.LANE_NEUTRAL, provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
+          (provider_base.LANE_NEUTRAL, 0, provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
+
+
+def test_due_lane():
+    print("test: due lane - an incomplete Due on a started card sits between money and neutral, soonest Due first")
+    from datetime import datetime, timezone, timedelta
+    Provider = adapter_mod.Provider
+    now = datetime(2026, 11, 17, tzinfo=timezone.utc)
+    start = now - timedelta(days=1)
+    def due(days, complete=False, has_start=True):
+        c = card()
+        c["due"] = (now + timedelta(days=days)).isoformat().replace("+00:00", "Z")
+        c["dueComplete"] = complete
+        return Provider._due_dt(c, start if has_start else None)
+    check("incomplete Due on a started card counts", due(3) is not None)
+    check("a completed Due does not count", due(3, complete=True) is None)
+    check("a card with no Start does not enter the due lane", due(3, has_start=False) is None)
+    check("no Due field -> None", Provider._due_dt(card(), start) is None)
+    neutral, p1, p2 = provider_base.NEUTRAL_PRIORITY_BAND, provider_base.NEUTRAL_PRIORITY_BAND + 1, \
+        provider_base.NEUTRAL_PRIORITY_BAND - 1
+    d = due(2)
+    check("money lane beats a due card", Provider._lane(p1, d) == provider_base.LANE_MONEY)
+    check("a due card beats neutral and below-the-line", Provider._lane(neutral, d) == provider_base.LANE_DUE
+          and Provider._lane(p2, d) == provider_base.LANE_DUE)
+    check("no due keeps neutral / below", Provider._lane(neutral) == provider_base.LANE_NEUTRAL
+          and Provider._lane(p2) == provider_base.LANE_BELOW)
+
+    def stamped(name, days, dt="2026-11-01"):
+        dd = due(days) if days is not None else None
+        band = neutral
+        lane = Provider._lane(band, dd)
+        return {"name": name, "_lane": lane, "_due_rank": -dd.timestamp() if lane == provider_base.LANE_DUE else 0,
+                "_priority_band": band, "_level_band": 0, "_referral_band": 0, "_sort_dt": dt}
+    items = [stamped("due later", 9), stamped("plain", None, "2026-11-16"), stamped("due soon", -2),
+             stamped("due mid", 4)]
+    ranked = [it["name"] for it in sorted(items, key=SORT_KEY, reverse=True)]
+    check("due lane soonest first (overdue leads), then neutral", ranked ==
+          ["due soon", "due mid", "due later", "plain"], ranked)
 
 
 def test_lane_order():
@@ -275,6 +312,7 @@ if __name__ == "__main__":
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_priority_then_level_then_referral()
     test_lane_order()
+    test_due_lane()
     test_sort_key_orders_level_within_band()
     test_level_leads_referral_within_band()
     test_startable_gate_start_is_the_only_date()
