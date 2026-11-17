@@ -51,9 +51,8 @@ _PRIORITY_RE = re.compile(r"^\s*(?:🎯\s*)?P([1-3])\s*$")
 # matches that one canonical form; anchored so a contact name containing "referral" never trips it.
 _REFERRAL_RE = re.compile(r"^\s*🤝 Referral\s*$")
 
-# A money label marks a card where money comes in or goes out (a bill, the ISC invoice, the monthly
-# budget, a sponsorship follow-up). The pod's money skills apply the exact string "💰 Money" when they
-# create or recur their card; the card then sits in the top band with job search.
+# A money label marks a card where money comes in or goes out. A "💰 Money" card is pinned to
+# TOP_PRIORITY_BAND (see _priority_band).
 _MONEY_RE = re.compile(r"^\s*💰 Money\s*$")
 
 # A person follow-up card wears the "👤 Contact" label: it tracks the follow-up cadence with one
@@ -298,10 +297,10 @@ class Provider(ProviderBase):
                            if (l.get("color") or "").lower() == "yellow" and l.get("name")),
                           None)
         # Hold status labels (⛔ Blocked / ⏳ Waiting), priority labels (🎯 P1/P2/P3), the 🤝 Referral
-        # label, and the 👤 Contact card-type label out of the name pool so none is ever read as a
-        # contact - a status label carries dependency state, a priority label carries fit rank, the
-        # referral label carries a queue promotion, and 👤 Contact marks the card as a person-follow-up
-        # card, none of them a contact's name.
+        # and 💰 Money labels, and the 👤 Contact card-type label out of the name pool so none is ever
+        # read as a contact - a status label carries dependency state, a priority label carries fit rank,
+        # the referral and money labels carry a queue promotion, and 👤 Contact marks the card as a
+        # person-follow-up card, none of them a contact's name.
         names = [l.get("name") for l in labels
                  if l.get("name") and l.get("name") != initiative
                  and not any(tok in l.get("name").lower() for tok in self.status_labels)
@@ -335,9 +334,8 @@ class Provider(ProviderBase):
         Four pins put a card in the top band, ahead of everything below it: a 👤 Contact
         person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
-        card; and a P1
-        Director-or-above role, with or without posted pay, or a P1 people manager whose posted pay reaches
-        _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
+        card; and a P1 Director-or-above role, with or without posted pay, or a P1 people manager whose
+        posted pay reaches _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
         whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
