@@ -3,6 +3,9 @@
 Card: https://trello.com/c/YnIyEj0V
 Source: Russell's 2026-11-09 self-email "Re: Getting behind".
 
+This changes the order of the queue and nothing about how the queue is drained.
+Dispatch stays as it is: while sessions waiting on Russell are under `target_reviewable` and total sessions are under `max_concurrent`, the next item in queue order is dispatched.
+
 ## What the queue does today
 
 Every drained item, from every source, sorts by one key: `(priority band, level band, referral band)` and then its date, all descending.
@@ -20,81 +23,58 @@ Two behaviors matter for the redesign.
 
 Trello's native Due field is never read.
 
-Intake is already throttled.
-The poller opens a new worker only while the sessions waiting on Russell are below `target_reviewable` and total live sessions are below `max_concurrent`.
-That throttle counts sessions and ignores what they are about, so an urgent item and a low-value one wait on the same cap.
+## Proposed model: four lanes, then date
 
-## Proposed model: five lanes, then date
-
-The queue becomes an ordered list of lanes.
 An item takes the highest lane it qualifies for.
 Inside a lane the existing tiebreakers apply, with one change to the date direction described below.
 
 | Lane | What is in it | Within the lane |
 |---|---|---|
-| 0. Pinned | Anything Russell marks `🔝 Now`, plus recent orphan sessions (unchanged) | Most recently pinned first |
-| 1. Job search live | `👤 Contact` cards, cards on an in-progress list, every P1 role (today only Director-or-above and well-paid managers are lifted) | Existing level then referral order, then oldest Start first |
-| 2. Due | Any card with a Due date that is not marked complete, due within 7 days or already overdue | Soonest Due first |
-| 3. Money | Cards labelled `💰 Money`, and sponsorship-sheet rows whose check-in has arrived | Soonest Due first when it has one, else oldest Start first |
-| 4. Neutral | Email, Slack, and every ordinary card | Oldest Start first |
-| 5. Below the line | P2/P3 roles, and `⏸ Big` cards while crunch mode is on | Existing P2 then P3 order |
+| 1. Money | Job search (`👤 Contact` cards, cards on an in-progress list, every P1 role) and any card labelled `💰 Money` (bills, the ISC invoice, the monthly budget, sponsorship follow-up) | Existing level then referral order, then oldest Start first |
+| 2. Due | Any card with a Due date that is not marked complete and whose Start has arrived | Soonest Due first |
+| 3. Neutral | Email, Slack, and every ordinary card | Oldest Start first |
+| 4. Below the line | P2/P3 roles, and `⏸ Big` cards while crunch mode is on | Existing P2 then P3 order |
 
-Lanes 1 to 3 follow the order Russell stated: job search first, then due dates, then money.
+Recent orphan sessions still come ahead of lane 1, as they do today.
 
 ### Decisions this makes
 
-**A plain P1 role moves up out of the inbox.**
-Russell said P1 roles come before everything including email, so the P1 band lifts for every P1.
-Level and referral still order P1 roles against each other.
+**Job search and money are one lane.**
+Both are about money coming in or going out, so a P1 role, a contact follow-up, a bill, and an invoice all rank together.
+A plain P1 role moves up out of the inbox, since P1 roles now sit in this lane too.
+Level and referral still order job-search cards against each other.
 
 **Due-dated work is read from Trello's Due field.**
 A Start date keeps meaning "unblocked, do it when you can".
-A Due date means "this has a deadline", and the adapter reads it for the first time.
-A card due within 7 days or overdue enters lane 2 and sorts by how soon it is due.
-A card due later than 7 days ranks as if it had no Due until it comes inside the window, so a far-off deadline does not crowd out the lanes above.
+A card with a Due date and a Start that has arrived has been started on purpose and has a deadline, so it enters lane 2 and sorts by how soon it is due.
+There is no time window: once Start has arrived, the Due date counts.
+A bill carries both the money label and a Due date and lands in lane 1.
 
 **Overdue work stops sinking.**
 Today the newest date sorts first, so stale cards are worked last.
-Inside lanes 1, 3, and 4 the order flips to oldest Start first, so work that has been waiting longest comes up before work that just arrived.
-This is the change that stops items dropping silently, and it applies to mail as well.
+Inside lanes 1 and 3 the order flips to oldest Start first, so work that has been waiting longest comes up before work that just arrived.
+This is the change that stops items dropping silently.
 
 **Money is a label, not a guess.**
 The pod's own money skills (budget, ISC invoice, sponsorship follow-up, bill cards) apply `💰 Money` when they create or recur their card, and the adapter reads the label like it reads `🤝 Referral`.
-Bills carry both the label and a Due date, so they enter lane 2 as their deadline nears and fall back to lane 3 otherwise.
 Money-related email is not re-ranked in the first version.
 
-**Big pieces of work defer in a crunch.**
-A `⏸ Big` label marks a card as a large piece of work.
-While crunch mode is on, those cards drop to lane 5.
+**Big pieces of work wait out a crunch.**
+A `⏸ Big` label marks a card as a large piece of work, the kind you would rather not start while behind.
+While crunch mode is on, those cards drop to lane 4.
 Crunch mode is a single file in the drainer config repo, `drainer-local/crunch.yaml`, holding an end date (`until: 2026-11-14`).
 It switches itself off when the date passes, so a forgotten flag cannot defer work forever.
-Russell edits one line to start a crunch, and the poller reads it every cycle.
-
-### The override
-
-`🔝 Now` is the manual pin.
-It puts a card in lane 0 until Russell removes it.
-Everything else is automatic, so the stated rule above is what runs, and the pin is the one escape hatch.
+Turning it on is editing that one line, and the poller reads it every cycle.
 
 ## Recurring cards that get missed
 
-Cards with a `Recurs:` line (the Primary lesson, getting the mail, the monthly budget) are a different kind of work from "start as soon as you can".
-Today a missed occurrence just sits with an old Start, and it ranks as stale work among everything else.
-The next occurrence never appears, so a weekly task missed for two weeks shows up as one old card instead of "you missed this week and it is now next week's turn".
-
-Proposal: each recurring card gets a lapse rule, and a plain-code sweep applies it once a day.
-No model tokens are involved, since the decision depends only on the cadence and the dates.
-
-- **Expiring occurrences** (the Primary lesson, getting the mail): when the next occurrence's date arrives and this one is still not done, the missed occurrence is dropped, not carried.
-  The sweep moves Start forward to the new occurrence, writes a dated "missed" comment on the card, and records the miss.
-  Late work on last week's lesson is worth nothing, and two weeks of mail is one trip, so a missed occurrence never piles up.
-- **Accumulating occurrences** (the monthly budget, an ISC invoice): a miss stays owed.
-  The card keeps its Start and is flagged overdue, which moves it up under the due-date lane above instead of letting it sink.
-- **Digest**: every missed occurrence and every overdue accumulating card appears in the end-of-day digest, so a miss is something you see once, not something that silently ages.
-
 There is one card per recurring task, and its Start moves forward only when an occurrence is finished.
 A missed occurrence therefore leaves the card with an old Start, and no "next occurrence" exists to arrive on its own.
-The sweep works the lapse out from the card's own dates.
+A weekly task missed for two weeks shows up as one old card instead of this week's turn.
+
+A plain-code sweep, run each poller cycle next to the unblock sweep, brings every `Recurs:` card forward once its next occurrence is reached.
+No model tokens are involved, and nothing is surfaced in the digest.
+The new occurrence simply comes up in the queue.
 
 - The card's Start is the date this occurrence became due, and the `Recurs:` line gives the period.
 - When today is at or past Start plus one period and the card was not completed, the occurrence is missed.
@@ -103,42 +83,22 @@ The sweep works the lapse out from the card's own dates.
   The date comes from the card's Start and period, so a Thursday card stays on Thursdays and a missed week does not shift the schedule.
 - The new occurrence is startable right away.
 - A task missed several times in a row ends up with one current occurrence, not several.
+- The sweep leaves one dated line on the card ("occurrence of <date> missed, moved to <date>") so the card's history is honest, and tells no one.
 
-Each card declares which kind it is with one added word on its `Recurs:` line, for example `Recurs: weekly, expires`.
-A card with no word keeps today's behavior, so nothing changes until a card is marked.
-
-A card whose next occurrence is close also counts as having a deadline.
-A weekly Sunday lesson becomes lane 2 (due) in the days before Sunday, the same as a card with a real Due date, so it competes for attention when it matters.
-
-The sweep lives with the poller, next to the unblock sweep that already runs every cycle.
-It lands as step 5 of the rollout.
-
-## Review load and intake
-
-Russell's point that a finished item still costs review time is real, and the existing throttle does not see it.
-
-Proposal: count only sessions that wait on Russell (blocked or idle, which `worker_counts` already separates) and give each lane its own ceiling.
-Lanes 0 to 3 dispatch whenever the overall `max_concurrent` has headroom.
-Lane 4 dispatches only while waiting sessions are under `target_reviewable`.
-Lane 5 dispatches only when waiting sessions are under half of `target_reviewable`.
-
-This means a full review pile holds back new mail and ordinary cards but never holds back a P1 contact, a deadline, or a bill.
-It also means the throttle finally trades off by value instead of by arrival.
-
-Letting agents finish more on their own is separate from ranking and not part of this change.
-The existing `auto-handle` path already carries it, and widening that is better done from the triage rules once this ordering is live.
+A card whose work should stay owed when missed (the monthly budget is the likely one) can opt out with one added word on its `Recurs:` line, `Recurs: monthly, keep`.
+A kept card is not moved by the sweep.
 
 ## Where the change lands
 
 All in the drainer plugin, in four places.
 
 1. `provider_base.band_rank` becomes lane-aware (a single `lane` value first), and stays the one definition both sort sites read.
-2. The Trello adapter reads `due` and `dueComplete`, the `💰 Money`, `⏸ Big`, and `🔝 Now` labels, and the crunch file, and stamps the lane on each item.
-3. The poller's cross-source sort reads the same lane value for mail and Slack, which keeps them in lane 4, and applies the per-lane dispatch ceilings.
-4. `trello-queue-model.md` and `trello-provider.md` change to match: the "Due is informational" paragraph is rewritten, since Due becomes a ranking input.
+2. The Trello adapter reads `due` and `dueComplete`, the `💰 Money` and `⏸ Big` labels, and the crunch file, and stamps the lane on each item.
+3. The poller's cross-source sort reads the same lane value, which keeps mail and Slack in lane 3, and the poller runs the recurring-card sweep.
+4. `trello-queue-model.md` and `trello-provider.md` change to match: the "Due is informational" paragraph is rewritten, since Due becomes a ranking input, and the `Recurs:` section gains the sweep and the `keep` word.
 
 In this repo the pod's money skills and recurring cards gain the `💰 Money` label.
-The existing band-ranking tests extend to cover lane order, the date-direction flip, and a due-window boundary.
+The existing band-ranking tests extend to cover lane order, the date-direction flip, and the sweep's date math.
 
 ## Rollout
 
@@ -146,15 +106,12 @@ Each step is its own PR and can ship alone.
 
 1. Date direction flip plus lifting every P1 (smallest change, immediate relief).
 2. Due-date lane.
-3. `💰 Money`, `⏸ Big`, `🔝 Now` labels and the crunch file.
-4. Per-lane dispatch ceilings.
-5. Recurring-card lapse sweep and the digest section for missed occurrences.
+3. `💰 Money` and `⏸ Big` labels and the crunch file.
+4. Recurring-card sweep.
 
 ## Questions for Russell
 
-1. Should a card due within 48 hours outrank a live job-search contact, or does job search always lead as you stated?
-   Recommendation: job search always leads, since a 48-hour deadline you can see coming is usually already a card you are working.
-2. Is the 7-day due window right, or do you want a shorter or longer one?
-3. Oldest-Start-first for mail as well as cards: is that what you want, or should only cards flip?
-4. Is the split right: Primary lesson and getting the mail expire when missed, while the budget and invoices stay owed?
-   Which of your other recurring cards belong on the expiring side?
+1. Should lane 1 (money and job search) come before lane 2 (due), as drawn, or should a card with a deadline come first?
+   Recommendation: as drawn, since a bill with a deadline is already in lane 1 and the remaining due-dated cards are lower stakes.
+2. Oldest-Start-first for mail as well as cards: is that what you want, or should only cards flip?
+3. Is the `keep` opt-out worth having for the monthly budget, or should every recurring card roll forward?
