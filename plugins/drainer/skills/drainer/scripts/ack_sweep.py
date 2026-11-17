@@ -11,8 +11,7 @@ written down in advance:
 - the once-a-day sweep the digest launcher runs before it starts the review, which writes the due list
   and nothing else;
 - the ack ledger reads (writes go through seen-state.js, the one writer of seen.json);
-- the review session's script steps: re-checking each due item, listing the mail its thread's other
-  participants have sent since (Gmail only), sending an approved ack through the
+- the review session's script steps: re-checking each due item, sending an approved ack through the
   source's own send path (or, for a copy another mailbox auto-forwarded, that mailbox's), writing the ledger, clearing a reply that fully handles its item, and recording
   the send-confidence outcome.
 
@@ -488,8 +487,8 @@ class Review:
 
     def recheck(self, entry):
         """Re-run eligibility for one due entry against the live source. Returns (current_item, reason,
-        info): the conversation's newest still-waiting item and its fresh thread read carrying the wait's
-        start as `clock`, or None and why it stopped qualifying."""
+        info): the conversation's newest still-waiting item and its fresh thread read, or None and why it
+        stopped qualifying."""
         p = self.providers.get(entry["source"])
         if not p:
             return None, f"provider {entry['source']} not loaded", None
@@ -533,7 +532,7 @@ class Review:
                                 relay=is_relay(p, current))
         if reason:
             return None, reason, None
-        return current, None, {**info, "clock": clock}
+        return current, None, info
 
     def entry(self, key):
         for e in load_due(self.runtime_dir):
@@ -544,24 +543,6 @@ class Review:
 
 def _waited(hours):
     return f"{hours / 24:.1f} business days"
-
-
-def mail_since(review, entry, current, info):
-    """What the thread's other participants have sent since the clock started, in any thread, searched in
-    the mailbox the reply goes out from. `thread_verdict` reads only the one thread, so this is how the
-    review sees a conversation resolved elsewhere (engine/ack-review.md section 2). None when no search
-    ran (the source has none, there was no one to search for, or it failed), which tells the review to
-    check by hand."""
-    via = info.get("replyVia")
-    p = review.providers[via["source"]] if via else review.providers[entry["source"]]
-    search = getattr(p, "mail_since", None)
-    if not search:
-        return None
-    try:
-        found = search(via["item"] if via else current, info, info.get("clock"))
-    except ProviderError:
-        return None
-    return None if found is None else [{**m, "received": _local(_parse(m.get("received")))} for m in found]
 
 
 def cmd_prepare(review):
@@ -583,8 +564,7 @@ def cmd_prepare(review):
                 link = m.group(0) if m else link
             linkedin = "linkedin.com" in (current.get("fromAddress") or "").lower()
             row.update(status="ready", link=link, hasDraft=bool(info.get("hasDraft")), message=text,
-                       linkedin=linkedin, repliesFrom=(info.get("replyVia") or {}).get("source", entry["source"]),
-                       since=mail_since(review, entry, current, info))
+                       linkedin=linkedin, repliesFrom=(info.get("replyVia") or {}).get("source", entry["source"]))
         out.append(row)
     print(json.dumps(out, indent=2))
 

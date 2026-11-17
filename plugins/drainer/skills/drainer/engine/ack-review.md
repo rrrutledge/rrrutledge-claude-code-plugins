@@ -11,18 +11,16 @@ This doc holds the judgment and the order of the calls.
 ## 1. Re-check the batch
 
 Run `python <ack script> prepare --repo <repo>`.
-It re-checks every due conversation against the live source and prints one row per conversation: `status` `ready` with what the person said (`message`), the link, how long they've waited, the send path, whether a draft is already staged (`hasDraft`), the mail the thread's other participants have sent since the wait began (`since`), and any other waiting threads from the same person it `covers`; or `status` `dropped` with the reason it stopped qualifying.
+It re-checks every due conversation against the live source and prints one row per conversation: `status` `ready` with what the person said (`message`), the link, how long they've waited, the send path, whether a draft is already staged (`hasDraft`), and any other waiting threads from the same person it `covers`; or `status` `dropped` with the reason it stopped qualifying.
 Carry the dropped ones as a one-line count; the rest are your batch.
 
 ## 2. Sort and draft
 
 Read each ready row's `message`, and open the thread at its link when the message leans on earlier context.
-Before sorting a row, confirm the matter it waits on is still open.
-Read the row's thread for every message after the waiting one, from anyone, and read each `since` entry, automated notices included.
-When `since` is null, search the row's source yourself for what the thread's participants have sent since the wait began, and for later messages about its subject.
+Before sorting a row, run worker-core §2's situational-check on the matter it waits on.
 Then put each row in one of these groups:
 
-- **Already resolved** - a later message, in this thread or another, settles what the person was waiting on.
+- **Already resolved** - the situational-check shows the matter has already moved or been handled.
   Draft nothing for it.
 - **Asks someone else** - every ask in the message goes to another recipient, and Russell is on it to stay informed.
   Draft nothing for it.

@@ -1,8 +1,7 @@
 """Tests for the gmail adapter's per-item reads running over IMAP by INBOX UID (off the REST quota):
 triage_text / _fetch_body / screen_signal / capture all shell out to gmail.js's --show-imap / --auth-imap
 keyed on the item's `uid`, and every failure path (nonzero exit, bad JSON, missing uid) keeps its prior
-fallback. clear() staying on REST by Message-ID is covered by test_poll_clear.py. Also covers mail_since,
-the ack review's one REST search for mail a thread's other senders sent after the wait began.
+fallback. clear() staying on REST by Message-ID is covered by test_poll_clear.py.
 
 Run directly:
     python plugins/drainer/tests/test_gmail_imap_reads.py
@@ -156,43 +155,6 @@ json_file = p.capture({**item, "uid": None}, "item-3", rt)
 with open(json.load(open(json_file, encoding="utf-8"))["emailFile"], encoding="utf-8") as f:
     check("no uid -> (could not load body), no fetch attempted", "(could not load body)" in f.read(), True)
 check("  ... and run_node was never called for the no-uid capture", nocall, [])
-
-
-print("\nmail_since: one REST search for mail the thread's other senders sent after the clock started")
-from datetime import datetime, timezone  # noqa: E402
-SINCE = datetime(2026, 11, 5, 17, 32, 20, tzinfo=timezone.utc)
-thread_info = {"messages": [
-    {"fromAddress": "Eventbrite@example.org", "fromMe": False},
-    {"fromAddress": "russ@innersourcecommons.org", "fromMe": True},
-    {"fromAddress": "georg@example.org", "fromMe": False},
-    {"fromAddress": "georg@example.org", "fromMe": False},
-]}
-found = [
-    {"id": "<payout@x>", "subject": "Your payout is on the way!", "from": "Eventbrite <eventbrite@example.org>",
-     "received": "2026-11-10T22:05:26.000Z"},
-    {"id": "<abc@mail.gmail.com>", "subject": "the waiting message itself", "from": "Georg", "received": "x"},
-]
-p = new_provider()
-calls = stub_run_node(_Res(0, json.dumps(found)))
-got = p.mail_since(ITEM, thread_info, SINCE)
-check("searches every other sender once, Russell left out, after the clock's epoch",
-      calls and calls[0][1], f"--search=from:(eventbrite@example.org OR georg@example.org) after:{int(SINCE.timestamp())}")
-check("returns the later mail, the waiting message itself left out",
-      [m["subject"] for m in got], ["Your payout is on the way!"])
-check("each entry links to its message", "rfc822msgid%3Apayout%40x" in got[0]["link"], True)
-nocall = stub_run_node(_Res(0, "[]"))
-check("a thread with only Russell's messages searches nothing and says so with None",
-      (p.mail_since(ITEM, {"messages": [{"fromAddress": "russ@x", "fromMe": True}]}, SINCE), nocall), (None, []))
-flood = [{"id": f"<n{i}@x>", "subject": f"notice {i}", "from": "x", "received": "x"} for i in range(11)]
-stub_run_node(_Res(0, json.dumps(flood)))
-check("more than ten matches can't vouch for the rest, so it says None", p.mail_since(ITEM, thread_info, SINCE), None)
-stub_run_node(_Res(1))
-try:
-    p.mail_since(ITEM, thread_info, SINCE)
-    raised = False
-except gmail.ProviderError:
-    raised = True
-check("a failed search raises, so the review knows it wasn't checked", raised, True)
 
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")

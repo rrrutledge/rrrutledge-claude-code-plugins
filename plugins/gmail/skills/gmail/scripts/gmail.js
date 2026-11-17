@@ -59,7 +59,7 @@
 //                (same JSON output as --auth, fetched over IMAP by INBOX UID exactly like --show-imap.
 //                 Both also carry any List-Unsubscribe value(s), the bulk-mail marker.)
 // Thread:        node gmail.js --thread=<threadId> [--json]
-//                (every message in one thread, oldest first: Gmail id, Message-ID, from, fromAddress, fromMe, sent
+//                (every message in one thread, oldest first: Gmail id, Message-ID, from, fromMe, sent
 //                 time, isDraft. <threadId> is the hex `threadId` --list-inbox-imap returns per item.
 //                 Read-only; the drainer's acknowledgement sweep reads it.)
 // List drafts:   node gmail.js --list-drafts [--top=30]
@@ -486,7 +486,6 @@ async function thread() {
       uid: m.id,
       id: hdr(idx, 'message-id'),
       from: fromList(fromAddrs),
-      fromAddress: fromAddrs[0] ? fromAddrs[0].address : '',
       fromMe: !!(fromAddrs[0] && (fromAddrs[0].address || '').toLowerCase() === acct),
       sent: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : '',
       isDraft: (m.labelIds || []).includes('DRAFT'),
