@@ -601,7 +601,7 @@ async function search() {
   for (const hit of (r.messages && r.messages.matches) || []) {
     out.push({
       channel: (hit.channel && hit.channel.id) || '', channelName: (hit.channel && hit.channel.name) || '',
-      ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.username || await userName(hit.user),
+      ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.user ? await userName(hit.user) : hit.username || '?',
       received: tsToIso(hit.ts), text: hit.text || '', permalink: hit.permalink || '',
     });
   }
