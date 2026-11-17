@@ -11,7 +11,8 @@ written down in advance:
 - the once-a-day sweep the digest launcher runs before it starts the review, which writes the due list
   and nothing else;
 - the ack ledger reads (writes go through seen-state.js, the one writer of seen.json);
-- the review session's script steps: re-checking each due item, sending an approved ack through the
+- the review session's script steps: re-checking each due item, listing the mail its thread's other
+  participants have sent since (Gmail only), sending an approved ack through the
   source's own send path (or, for a copy another mailbox auto-forwarded, that mailbox's), writing the ledger, clearing a reply that fully handles its item, and recording
   the send-confidence outcome.
 
@@ -545,6 +546,22 @@ def _waited(hours):
     return f"{hours / 24:.1f} business days"
 
 
+def mail_since(review, entry, current, info):
+    """What the thread's other participants have sent since the clock started, in any thread, searched in
+    the mailbox the reply goes out from. `thread_verdict` reads only the one thread, so this is how the
+    review sees a conversation resolved elsewhere (engine/ack-review.md section 2). None when that source
+    has no such search or the search failed, which tells the review to check by hand."""
+    via = info.get("replyVia")
+    p = review.providers[via["source"]] if via else review.providers[entry["source"]]
+    search = getattr(p, "mail_since", None)
+    if not search:
+        return None
+    try:
+        return search(via["item"] if via else current, info, _parse(entry.get("clockStart")))
+    except ProviderError:
+        return None
+
+
 def cmd_prepare(review):
     out = []
     for n, entry in enumerate(load_due(review.runtime_dir), 1):
@@ -564,7 +581,8 @@ def cmd_prepare(review):
                 link = m.group(0) if m else link
             linkedin = "linkedin.com" in (current.get("fromAddress") or "").lower()
             row.update(status="ready", link=link, hasDraft=bool(info.get("hasDraft")), message=text,
-                       linkedin=linkedin, repliesFrom=(info.get("replyVia") or {}).get("source", entry["source"]))
+                       linkedin=linkedin, repliesFrom=(info.get("replyVia") or {}).get("source", entry["source"]),
+                       since=mail_since(review, entry, current, info))
         out.append(row)
     print(json.dumps(out, indent=2))
 

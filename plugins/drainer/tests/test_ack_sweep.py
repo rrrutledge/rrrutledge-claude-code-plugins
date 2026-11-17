@@ -405,6 +405,26 @@ rows = json.loads(buf.getvalue())
 check("prepare marks the waiting entry ready and the vanished one dropped",
       [(row["key"], row["status"]) for row in rows], [("demo|c-w", "ready"), ("demo|c-gone", "dropped")])
 check("a ready row carries what the person said", rows[0]["message"], "text of w")
+check("a source with no since-search leaves `since` unset, so the review checks by hand", rows[0]["since"], None)
+
+payout = {"subject": "Your payout is on the way!", "from": "Eventbrite <eventbrite@example.org>"}
+r, demo = review_for([due_entry(waiting)], [waiting])
+since_calls = []
+demo.mail_since = lambda it, info, since: since_calls.append((it["_id"], since)) or [payout]
+with contextlib.redirect_stdout(io.StringIO()) as buf:
+    ack_sweep.cmd_prepare(r)
+check("a ready row lists what the thread's participants sent since the clock started",
+      (json.loads(buf.getvalue())[0]["since"], since_calls), ([payout], [("w", received_dt(waiting))]))
+
+
+def failing_since(it, info, since):
+    raise ack_sweep.ProviderError("quota")
+
+
+demo.mail_since = failing_since
+with contextlib.redirect_stdout(io.StringIO()) as buf:
+    ack_sweep.cmd_prepare(r)
+check("a failed since-search leaves `since` unset rather than empty", json.loads(buf.getvalue())[0]["since"], None)
 
 body_dir = tempfile.mkdtemp()
 body = os.path.join(body_dir, "ack.md")

@@ -11,14 +11,21 @@ This doc holds the judgment and the order of the calls.
 ## 1. Re-check the batch
 
 Run `python <ack script> prepare --repo <repo>`.
-It re-checks every due conversation against the live source and prints one row per conversation: `status` `ready` with what the person said (`message`), the link, how long they've waited, the send path, whether a draft is already staged (`hasDraft`), and any other waiting threads from the same person it `covers`; or `status` `dropped` with the reason it stopped qualifying.
+It re-checks every due conversation against the live source and prints one row per conversation: `status` `ready` with what the person said (`message`), the link, how long they've waited, the send path, whether a draft is already staged (`hasDraft`), the mail the thread's other participants have sent since the wait began (`since`), and any other waiting threads from the same person it `covers`; or `status` `dropped` with the reason it stopped qualifying.
 Carry the dropped ones as a one-line count; the rest are your batch.
 
 ## 2. Sort and draft
 
 Read each ready row's `message`, and open the thread at its link when the message leans on earlier context.
+Before sorting a row, confirm the matter it waits on is still open.
+Read the row's thread for every message after the waiting one, from anyone, and read each `since` entry, automated notices included: a later message in any thread can settle the matter.
+When `since` is null, search the row's source yourself for what the thread's participants have sent since the wait began, and for later messages about its subject.
 Then put each row in one of these groups:
 
+- **Already resolved** - a later message, in this thread or another, settles what the person was waiting on.
+  Draft nothing for it.
+- **Not addressed to Russell** - the message asks someone else for something and asks Russell nothing, though he is on it.
+  Draft nothing for it.
 - **Yours to write** - a deeply personal message, by worker-core §4's "Deeply personal messages" test.
   Draft nothing for it.
 - **Draft already staged** (`hasDraft` true) - something is already in progress on the thread; list it with its link and draft nothing, so nothing overwrites it.
@@ -44,7 +51,8 @@ One numbered list, each entry pairing what the person said with the text that an
 - **What they said** - a quote or tight paraphrase, with every ask in it for a multi-message span, plus the other threads it covers.
 - **The draft** - the body text, marked **closes the item on send** when it is a reply that handles the item.
 
-After the list, the **yours to write**, **draft already staged**, and **send by hand** groups, each entry with its link (and its drafted text, for a by-hand row that has one).
+After the list, the **already resolved** and **not addressed to Russell** groups, each entry one line saying why, with the link to the resolving message or the thread.
+Then the **yours to write**, **draft already staged**, and **send by hand** groups, each entry with its link (and its drafted text, for a by-hand row that has one).
 Then stop and wait.
 
 ## 4. Act on Russell's answer
@@ -55,6 +63,7 @@ Act on exactly the entries that answer names, and only after it:
 - **An approved entry** - `python <ack script> send --repo <repo> --key <key> --body-file <body>`, adding `--handles` for a reply that handles the item.
   When Russell edited a draft, write his text to a new body file, run `writing-review` on it and mint it, then send that file with `--scored-body <the original body>` so the outcome records his edit.
 - **An entry he left out** - `python <ack script> skip --repo <repo> --key <key> --body-file <body>` (omit `--body-file` when nothing was drafted).
+  Every already-resolved and not-addressed row is skipped this way, unless his answer sends it back for an ack.
 - **A by-hand row marked done** - `python <ack script> hand-done --repo <repo> --key <key>`; one marked skipped takes `skip`.
 
 `send` re-checks the entry right before it sends and exits 3 with the reason when it stopped qualifying; tell Russell which ones that was.

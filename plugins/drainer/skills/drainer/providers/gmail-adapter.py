@@ -183,6 +183,29 @@ class Provider(ProviderBase):
             return None
         return {**found[0], "uid": None}
 
+    def mail_since(self, item, info, since, limit=5):
+        """Mail from anyone besides Russell who wrote in the item's thread (`info`, from thread_state) that
+        arrived after `since`, from any thread, newest first and capped at `limit`, the item itself left
+        out. It is how the ack review sees that a conversation moved on elsewhere, such as an automated
+        notice from the same sender that resolved it. A REST search, so call it per item."""
+        senders = sorted({m["fromAddress"].lower() for m in info.get("messages") or []
+                          if m.get("fromAddress") and not m.get("fromMe")})
+        if not senders or not since:
+            return []
+        query = f"from:({' OR '.join(senders)}) after:{int(since.timestamp())}"
+        res = run_node([self.gmailjs, f"--search={query}", f"--top={limit + 1}", "--json"])
+        if res.returncode != 0:
+            raise ProviderError(f"gmail since-search failed: {res.stderr.strip()[:300]}",
+                                kind=node_failure_kind(res.stderr))
+        try:
+            found = json.loads(res.stdout or "[]")
+        except ValueError:
+            raise ProviderError("gmail since-search returned unreadable output")
+        own = item.get("id") or item.get("messageId")
+        return [{"subject": m.get("subject"), "from": m.get("from"), "received": m.get("received"),
+                 "link": self._web_link(m.get("id"))}
+                for m in found if m.get("id") != own and not m.get("fromMe")][:limit]
+
     def send_reply(self, item, body_file):
         """Stage a reply in the thread (gmail.js appends the account's signature), then send exactly that
         draft."""
