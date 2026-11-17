@@ -32,7 +32,7 @@ Start is the one date, alongside two labels + a description convention:
 
 **Trello's native Due field ranks a card once its Start has arrived.**
 The due-band rule lives in `trello-queue-model.md`.
-Setting only Due, expecting it to hold a card back, nudge it, or make it resurface, does nothing: whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
+Whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
 
 **Unblock has a push and a pull.**
