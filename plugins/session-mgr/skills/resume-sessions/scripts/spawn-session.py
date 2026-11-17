@@ -43,13 +43,9 @@ What the launching session does next is the launch's third answer, and a fresh l
 session records it (launch_marker.py) so the Stop hook can hold the session to it:
     (no flag)     the new session takes over: close this session now (the default)
     --resume-me   this session's next step waits on the new work: close paused (above)
-    --keep-open   this session carries on with its own work and stays open
-
-Whether the new session carries this session's work is a separate answer. By default it does: the
-launch continues the same job (a dependency done first, a context reset, one part of a fan-out), so
-it records a handoff link to the new session (bg_session.record_handoff), and a drainer worker's item
-stays held by the new session while it runs. --side-quest launches work found along the way that
-serves some other purpose, and records no link.
+    --keep-open   a side quest: this session carries on with its own work and stays open
+The first two hand this session's work over, so they also record a handoff link to the new session
+(bg_session.record_handoff): a drainer worker's item stays held by the new session while it runs.
 
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
@@ -219,11 +215,8 @@ def main(argv=None):
                          "the command that resumes this session (with a wake note as its prompt) to "
                          "the brief, then close this one paused")
     ap.add_argument("--keep-open", action="store_true",
-                    help="this (launching) session carries on with its own work after the launch, "
-                         "so it stays open")
-    ap.add_argument("--side-quest", action="store_true",
-                    help="the new session's work serves some other purpose than this session's, so "
-                         "it carries none of this session's work (records no handoff link)")
+                    help="a side quest: this (launching) session carries on with its own work after "
+                         "the launch, so it stays open")
     a = ap.parse_args(argv)
     a.cwd = a.cwd or (a.resume and (paused_record(a.resume) or {}).get("cwd")) or os.getcwd()
     if a.keep_open and a.resume_me:
@@ -312,13 +305,13 @@ def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
     existing session, a coordinator's worker, and a launch from outside any session are not a handoff
     from a session that then has to decide, so they record nothing for the Stop hook.
 
-    A fresh launch from a session that continues its work (any but a --side-quest, a coordinator's
-    worker included) is recorded as a handoff link, so the drainer reads the new session as holding
-    the launching session's item while it runs."""
+    A fresh launch that carries this session's work (any but a keep-open side quest, a coordinator's
+    worker included) is also recorded as a handoff link, so the drainer reads the new session as
+    holding this session's item while it runs."""
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
     if a.resume or not session_id:
         return
-    if not a.side_quest:
+    if not a.keep_open:
         try:
             record_handoff(session_id, receipt)
         except Exception:  # best-effort, like the duplicate check: a bad record never fails a done launch

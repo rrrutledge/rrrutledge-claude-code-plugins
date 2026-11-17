@@ -678,6 +678,15 @@ def record_handoff(session_guid, handed_to):
     _update_paused(mutate)
 
 
+def drop_handoff(session_guid, short_id):
+    """Remove the link `session_guid` recorded to the session whose short id is `short_id`, for a launch
+    declared a side quest after the fact (launch_marker.py keep-open)."""
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"].split("-", 1)[0] != short_id]
+        d["handoffs"][session_guid] = kids
+    _update_paused(mutate)
+
+
 def holder_resolver():
     """Over one read of the record: a function from a session receipt (full guid or short id) to
     `[(session id, handoffs away)]` for every session that may now be carrying its work. Depth 0 is the

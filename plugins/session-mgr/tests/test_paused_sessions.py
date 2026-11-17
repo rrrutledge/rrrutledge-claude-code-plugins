@@ -151,12 +151,11 @@ def test_resume_cwd_defaults_to_paused_record():
 
 
 def test_handoff_launch_records_link():
-    print("test: every launch from a session links it to the new session, except a side quest")
+    print("test: a handoff or resume-me launch from a session links it to the new session; a side quest doesn't")
     reset()
     spawn_session = load("spawn-session")
     D, E, F = "dddddddd-0000-0000-0000-000000000004", "eeeeeeee", "ffffffff-0000-0000-0000-000000000006"
-    G, H = "99999999-0000-0000-0000-000000000007", "88888888-0000-0000-0000-000000000008"
-    launched = iter([B, D, F, G])
+    launched = iter([B, D, F])
     spawn_session.launch = lambda **kw: ("short", next(launched))
     spawn_session.claude_agents = lambda: None
     spawn_session.launch_marker.write = lambda *a, **kw: True
@@ -164,7 +163,7 @@ def test_handoff_launch_records_link():
     brief = os.path.join(TMP, "handoff.md")
     saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
     try:
-        for sid, extra in ((A, []), (C, ["--keep-open"]), (E, ["--resume-me"]), (H, ["--side-quest"])):
+        for sid, extra in ((A, []), (C, ["--keep-open"]), (E, ["--resume-me"])):
             open(brief, "w").close()
             os.environ["CLAUDE_CODE_SESSION_ID"] = sid
             spawn_session.main(["--title", "Apply", "--model", "opus", "--cwd", TMP, "--brief", brief] + extra)
@@ -177,9 +176,8 @@ def test_handoff_launch_records_link():
     short = A.split("-", 1)[0]
     check("a handoff reaches the new session", holders(A) == [(A, 0), (B, 1)], holders(A))
     check("a short-id receipt reaches it too", holders(short) == [(short, 0), (B, 1)], holders(short))
-    check("a keep-open launch (a fan-out) records a link", holders(C) == [(C, 0), (D, 1)], holders(C))
+    check("a keep-open side quest records no link", holders(C) == [(C, 0)], holders(C))
     check("a resume-me launch records a link", holders(E) == [(E, 0), (F, 1)], holders(E))
-    check("a side quest records no link", holders(H) == [(H, 0)], holders(H))
     bg_session.record_resume(A, continued_as=D)
     check("a resumed launcher keeps its earlier link", bg_session.holder_resolver()(A) == [(A, 0), (D, 0), (B, 1)],
           bg_session.holder_resolver()(A))
@@ -215,6 +213,25 @@ def test_handoff_launch_records_link():
     check("an unhashable link target is skipped", bg_session.holder_resolver()(C)[0] == (C, 0))
     bg_session.record_pause(B, "x", TMP)
     check("a naive timestamp never blocks a write", B in bg_session.paused_sessions([]))
+
+    print("test: a launch declared keep-open after the fact drops its handoff link")
+    reset()
+    bg_session.record_handoff(A, B)
+    bg_session.record_handoff(A, E)
+    marker = load("launch_marker")
+    marker.read = lambda sid: {"mode": "handoff", "title": "Apply", "short_id": B.split("-", 1)[0]}
+    marker.write = lambda *a: True
+    saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    os.environ["CLAUDE_CODE_SESSION_ID"] = A
+    try:
+        marker.main(["keep-open"])
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    check("only that launch's link is dropped", bg_session.holder_resolver()(A) == [(A, 0), (E, 1)],
+          bg_session.holder_resolver()(A))
 
 
 def test_end_session_records_pause():

@@ -18,7 +18,7 @@ the entry is what find-orphans.py reads, so this module never creates one, and e
 registers at start, so a missing entry is a bug to surface, not a case to skip.
 
 Command line, from inside the launching session (via the Bash tool):
-    python "<this file>" keep-open      declare that this session stays open past its launch
+    python "<this file>" keep-open      declare the launch a side quest this session carries on past
 """
 import os
 import sys
@@ -51,6 +51,11 @@ def declare_keep_open(session_id):
     launch = read(session_id)
     if not launch:
         return False
+    try:  # a side quest carries none of this session's work, so its handoff link goes (best effort)
+        import bg_session
+        bg_session.drop_handoff(session_id, launch.get("short_id", ""))
+    except Exception:
+        pass
     return write(session_id, "keep-open", launch.get("title", ""), launch.get("short_id", ""))
 
 
