@@ -2030,7 +2030,7 @@ def reconcile_unhandled(runtime_dir, cfg, providers, dry_run=False, live=_LIVE_U
     return requeued
 
 
-# Slack between Trello's clock and this machine's, so a worker whose last write landed just after its
+# Margin between the source's clock and this machine's, so a worker whose last write landed just after its
 # own finish never reads as finished by someone else.
 CLOCK_SKEW = timedelta(minutes=5)
 
@@ -2192,7 +2192,11 @@ def main():
     live = live_session_ids(agents)
     if not args.channel:
         unhandled = reconcile_unhandled(cfg["runtime_dir"], cfg, providers, dry_run=args.dry_run, live=live)
-        finished = close_finished_workers(cfg["runtime_dir"], providers, agents, dry_run=args.dry_run)
+        try:
+            finished = close_finished_workers(cfg["runtime_dir"], providers, agents, dry_run=args.dry_run)
+        except Exception as e:  # closing stale workers is housekeeping; it never costs the cycle its drain
+            print(f"finished-worker check FAILED - {e}. Skipped this cycle.")
+            finished = 0
         if args.dry_run:
             print(f"DRY-RUN - reconcile would re-queue {unhandled} unhandled item(s) "
                   f"and stop {finished} finished worker(s).")

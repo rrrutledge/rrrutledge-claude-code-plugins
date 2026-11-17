@@ -218,7 +218,7 @@ A silently-resolved session left open is just noise, so close it at once:
 3. **Queue the digest entry:**
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
    (`<runtime_dir>` is the parent of the `items/` folder).
-   A situational no-op close and a stand-down queue nothing: there is nothing for the digest to report.
+   A situational no-op close, a stand-down, and an item already over at its source when you wake from a wait queue nothing: there is nothing for the digest to report.
 4. **Close your browser tabs** if you opened any, now, with browser-chauffeur's `chauffeur.py --close-owned`: a silent close leaves no human step for them to wait on.
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.

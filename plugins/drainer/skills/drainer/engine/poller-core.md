@@ -152,8 +152,8 @@ The cycle stops such a worker with `claude stop`, which keeps its transcript res
 A worker is stopped when all three hold:
 
 - **every item it holds has finished at its source**, by its provider's `finished_since()`
-- **each item's last change at its source came after the worker's transcript was last written**, by more than `CLOCK_SKEW` - the change came from outside the worker, so a worker that Russell has written to since, or that is still presenting its own finish, stays open
-  A worker that finished its own Trello card did so after Russell confirmed the send (`providers/trello-provider.md`, CLEAR), so a later touch to that card leaves nothing of his open when the worker is stopped.
+- **each item's last change at its source came after the worker's transcript was last written**, by more than `CLOCK_SKEW` - the change came from outside the worker, so a worker that Russell has written to since, or that is still presenting its own finish, stays open.
+  A worker that finished its own Trello card did so after Russell confirmed the send (`providers/trello-provider.md`, CLEAR), so when another session changes that card later, stopping the worker cuts off nothing Russell still needs from it.
 - **the session is between turns**
 
 Only a source with a terminal state takes part: the poller and the worker clear an email while its work is still open, so an inbox source reports an empty map.
