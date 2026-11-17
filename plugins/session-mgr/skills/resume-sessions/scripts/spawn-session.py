@@ -49,7 +49,7 @@ The first two hand this session's work over, so they also record a handoff link 
 (bg_session.record_handoff): a drainer worker's item stays held by the new session while it runs.
 
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
-session's own model and name unless --model/--title override them, and keeps the worktree guard off
+session's own model, and the name typed on its launch, unless --model/--title override them, and keeps the worktree guard off
 when the session's own launch turned it off.
 
 Prints the new session's short id (the handle `claude attach/logs/stop` take) and full guid, and
@@ -190,7 +190,7 @@ def _worker_seed_file(folder, slug, anchor, job):
 def _add_report(prompt_file, report_file):
     """End the wake note with the launched session's report under a `## Report` heading, replacing
     the one a failed earlier attempt added, so a retried resume carries the latest report once. A
-    missing report costs only the report, never the resume: the note still says the work is done."""
+    missing report still lets the resume run, on a note that says the work is done."""
     try:
         with open(report_file, encoding="utf-8") as f:
             report = f.read().strip()
@@ -227,7 +227,7 @@ def main(argv=None):
     ap.add_argument("--summary-file", help="one-line summary that leads a --prompt-file seed and names the session")
     ap.add_argument("--resume", help="full guid of an existing session to continue in the background")
     ap.add_argument("--report-file", help="with --resume and --prompt-file: a report to append to the "
-                    "prompt file first (the command --resume-me builds names it)")
+                    "prompt file first, deleted once the launch succeeds (the command --resume-me builds names it)")
     ap.add_argument("--model", help="explicit model id, per handoffs.md's model-choice rule")
     ap.add_argument("--worker-of", metavar="JOB_FOLDER",
                     help="launch this session as a worker of the coordinator whose job folder "
