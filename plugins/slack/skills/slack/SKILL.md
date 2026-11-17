@@ -49,6 +49,10 @@ Under `scripts/` (run with `node`):
     after that day, oldest first, from `search.messages` `from:me`: channel, ts, threadTs, send time, and
     the raw mrkdwn text.
     Read by the send-confidence outcome sweep.
+  - Search: `node slack.js --search=<query> [--top=20] [--json]` - `search.messages` across the workspace, newest first, in Slack's search syntax (`from:@name`, `in:#channel`, `after:YYYY-MM-DD`, keywords).
+    `--json` emits an array of `{channel,channelName,ts,threadTs,from,received,text,permalink}`.
+    Read-only.
+    Use it to find whether a matter came up or was settled in Slack.
   - History: `node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]` — recent
     messages, oldest first: a whole thread (`conversations.replies`) when `--thread-ts` is given, else
     the channel/DM/group-DM timeline (`conversations.history`). Use this for a situational check — a

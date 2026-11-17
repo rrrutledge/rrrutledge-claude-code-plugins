@@ -91,7 +91,7 @@ That changes the right action.
 
 **Check before you ask.**
 Before nudging anyone to make something happen, find out on your own whether it already happened.
-Check each thing the item is waiting on against the system that records it, including both mailboxes per "Search both mailboxes before concluding anything about email" in this section.
+Check each thing the item is waiting on against the system that records it, including both mailboxes and Slack per "Search both mailboxes and Slack before concluding whether something already happened" in this section.
 A dated note on the item saying something is still pending is the claim to check, not the answer: it was true when written and may have changed since.
 When a check can't be run - the page URL is unknown, a sign-in has expired - name what's unchecked and what blocked it, and ask Russell for that instead of drafting a nudge on the old note.
 Only a check showing it really hasn't happened leads to a ping, addressed to whoever owns the next step.
@@ -100,11 +100,11 @@ For an unknown mechanism internal to the user's organization, consult the user's
 The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
 Work out which system would hold the record before a turn ends on that question.
 
-**Search both mailboxes before concluding anything about email.**
-When the question is whether something already happened or a reply already went out, search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive) before answering, whichever mailbox the item arrived in.
-A thread often runs through one mailbox while the evidence sits in the other: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, and an order confirmation can land in either.
-Search two ways: by sender or platform (a ticketing platform like pretix, a vendor name) and by subject or event name, since one narrow keyword search of one mailbox proves nothing.
-A worker that still finds nothing reports "not found in Gmail or Outlook" and names the searches it ran, not "probably not done".
+**Search both mailboxes and Slack before concluding whether something already happened.**
+When the question is whether something already happened or a reply already went out, search the ISC Gmail (All Mail, so Sent is included), personal Outlook (inbox, Sent, Archive), and Slack (`slack.js --search`) before answering, whichever source the item arrived in.
+A thread often runs through one source while the evidence sits in another: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, an order confirmation can land in either mailbox, and a colleague can report in Slack that an emailed matter is settled.
+Search two ways: by sender or platform (a ticketing platform like pretix, a vendor name) and by subject or event name, since one narrow keyword search of one source proves nothing.
+A worker that still finds nothing reports "not found in Gmail, Outlook, or Slack" and names the searches it ran, not "probably not done".
 
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
