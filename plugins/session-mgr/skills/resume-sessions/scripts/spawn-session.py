@@ -44,6 +44,8 @@ session records it (launch_marker.py) so the Stop hook can hold the session to i
     (no flag)     the new session takes over: close this session now (the default)
     --resume-me   this session's next step waits on the new work: close paused (above)
     --keep-open   a side quest: this session carries on with its own work and stays open
+The first two hand this session's work over, so they also record a handoff link to the new session
+(bg_session.record_handoff): a drainer worker's item stays held by the new session while it runs.
 
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
@@ -59,7 +61,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bg_session import (DUPLICATE_CHECK_HEADING, claude_agents, duplicate_check_section, launch,  # noqa: E402
-                        paused_record, session_name)
+                        paused_record, record_handoff, session_name)
 import launch_marker  # noqa: E402
 import worker_job  # noqa: E402
 
@@ -294,16 +296,27 @@ def main(argv=None):
               "Leave the paper trail (a drainer worker: a dated comment on its card, with the card in an "
               "active list and its Start set to when to check back), then close this "
               "session paused this turn: session-mgr:close with --pause (a drainer worker: close-session.py --pause).")
-    _record_launch(a, short_id, name or summary, bool(resume_me), bool(slug))
+    _record_launch(a, short_id, receipt, name or summary, bool(resume_me), bool(slug))
     return 0
 
 
-def _record_launch(a, short_id, title, resume_me, is_worker):
+def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
     """Record the launch for the Stop hook and print what this session does next. A resume of an
     existing session, a coordinator's worker, and a launch from outside any session are not a handoff
-    from a session that then has to decide, so they record nothing."""
+    from a session that then has to decide, so they record nothing for the Stop hook.
+
+    A fresh launch that carries this session's work (any but a keep-open side quest, a coordinator's
+    worker included) is also recorded as a handoff link, so the drainer reads the new session as
+    holding this session's item while it runs."""
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    if a.resume or is_worker or not session_id:
+    if a.resume or not session_id:
+        return
+    if not a.keep_open:
+        try:
+            record_handoff(session_id, receipt)
+        except Exception:  # best-effort, like the duplicate check: a bad record never fails a done launch
+            pass
+    if is_worker:
         return
     mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
     if not launch_marker.write(session_id, mode, title or "", short_id):
