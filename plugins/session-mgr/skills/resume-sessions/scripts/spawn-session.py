@@ -43,9 +43,13 @@ What the launching session does next is the launch's third answer, and a fresh l
 session records it (launch_marker.py) so the Stop hook can hold the session to it:
     (no flag)     the new session takes over: close this session now (the default)
     --resume-me   this session's next step waits on the new work: close paused (above)
-    --keep-open   a side quest: this session carries on with its own work and stays open
-The first two hand this session's work over, so they also record a handoff link to the new session
-(bg_session.record_handoff): a drainer worker's item stays held by the new session while it runs.
+    --keep-open   this session carries on with its own work and stays open
+
+Whether the new session carries this session's work is a separate answer. By default it does: the
+launch continues the same job (a dependency done first, a context reset, one part of a fan-out), so
+it records a handoff link to the new session (bg_session.record_handoff), and a drainer worker's item
+stays held by the new session while it runs. --side-quest launches work found along the way that
+serves some other purpose, and records no link.
 
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
 session's own model and name unless --model/--title override them.
@@ -215,8 +219,11 @@ def main(argv=None):
                          "the command that resumes this session (with a wake note as its prompt) to "
                          "the brief, then close this one paused")
     ap.add_argument("--keep-open", action="store_true",
-                    help="a side quest: this (launching) session carries on with its own work after "
-                         "the launch, so it stays open")
+                    help="this (launching) session carries on with its own work after the launch, "
+                         "so it stays open")
+    ap.add_argument("--side-quest", action="store_true",
+                    help="the new session's work serves some other purpose than this session's, so "
+                         "it carries none of this session's work (records no handoff link)")
     a = ap.parse_args(argv)
     a.cwd = a.cwd or (a.resume and (paused_record(a.resume) or {}).get("cwd")) or os.getcwd()
     if a.keep_open and a.resume_me:
@@ -303,19 +310,22 @@ def main(argv=None):
 def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
     """Record the launch for the Stop hook and print what this session does next. A resume of an
     existing session, a coordinator's worker, and a launch from outside any session are not a handoff
-    from a session that then has to decide, so they record nothing.
+    from a session that then has to decide, so they record nothing for the Stop hook.
 
-    A launch that hands this session's work over (not a keep-open side quest) is also recorded as a
-    handoff link, so the drainer reads the new session as holding this session's item while it runs."""
+    A fresh launch from a session that continues its work (any but a --side-quest, a coordinator's
+    worker included) is recorded as a handoff link, so the drainer reads the new session as holding
+    the launching session's item while it runs."""
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    if a.resume or is_worker or not session_id:
+    if a.resume or not session_id:
         return
-    mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
-    if mode != "keep-open":
+    if not a.side_quest:
         try:
             record_handoff(session_id, receipt)
         except Exception:  # best-effort, like the duplicate check: a bad record never fails a done launch
             pass
+    if is_worker:
+        return
+    mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
     if not launch_marker.write(session_id, mode, title or "", short_id):
         print(f"WARNING: session {session_id} has no entry in the live-session registry "
               f"({launch_marker.session_registry.REGISTRY_PATH}), so the Stop hook cannot hold it to this launch. "

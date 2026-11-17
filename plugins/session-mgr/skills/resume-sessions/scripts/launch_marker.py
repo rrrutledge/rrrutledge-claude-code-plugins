@@ -51,11 +51,6 @@ def declare_keep_open(session_id):
     launch = read(session_id)
     if not launch:
         return False
-    try:  # a side quest carries none of this session's work, so its handoff link goes (best effort)
-        import bg_session
-        bg_session.drop_handoff(session_id, launch.get("short_id", ""))
-    except Exception:
-        pass
     return write(session_id, "keep-open", launch.get("title", ""), launch.get("short_id", ""))
 
 

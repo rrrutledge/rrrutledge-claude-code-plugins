@@ -244,6 +244,8 @@ Route each piece of work by where it belongs - which is also where Russell can r
   Launch it as a background session, the way the poller launched you:
   `python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo dir>" --brief "<repo dir>/.tmp/handoff-<slug>.md" --model <model alias>`
   This script forwards every argument to session-mgr's `spawn-session.py`, the one launcher every background session goes through.
+  **Add `--side-quest` when the handoff's work is unrelated to the seed item - something found along the way that serves another purpose.**
+  Every other handoff continues this item's work (a dependency done first, a context reset, one part of a fan-out), and the poller reads it as holding your item while it runs (`engine/poller-core.md`, "Reconcile"); a side quest holds none of it.
   **Before launching, ask whether this item's next step can start before the handoff finishes; if not, launch with `--resume-me` and close paused in that same turn, per §6, "Blocked on another in-flight session".**
   A session that launches a handoff and closes plain (no `--resume-me`, no `--pause`) is gone for good: nothing revives it.
   Write the full brief to the `.tmp/` handoff doc (the new session opens it with the Read tool, so it may hold anything); pick the model by residual work (`sonnet` for a bounded task, `opus` for open investigation or design), per `~/OneDrive/Claude/handoffs.md`, "Choosing the model when creating or launching a handoff".
