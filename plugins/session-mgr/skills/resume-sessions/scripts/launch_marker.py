@@ -18,7 +18,7 @@ the entry is what find-orphans.py reads, so this module never creates one, and e
 registers at start, so a missing entry is a bug to surface, not a case to skip.
 
 Command line, from inside the launching session (via the Bash tool):
-    python "<this file>" keep-open      declare the launch a side quest this session carries on past
+    python "<this file>" keep-open      declare that this session stays open past its launch
 """
 import os
 import sys
