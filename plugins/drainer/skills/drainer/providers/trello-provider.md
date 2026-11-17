@@ -190,6 +190,12 @@ On CLEAR, once the work for this occurrence is done - or launched and running on
 Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the usual dated comment.
 The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
 
+**A missed occurrence is brought forward by a plain-code sweep.**
+Each poller cycle, the adapter moves the Start of a `Recurs:` card whose Start is a full period or more in the past, because finishing an occurrence already moves Start.
+The sweep acts silently: one dated comment on the card ("occurrence of <date> missed, moved to <date>"), no digest entry, no opt-out word.
+It waits a full period before acting, so a card whose Start is the first of a period it covers retroactively keeps a period of grace.
+The cadences it reads and the date math live in `scripts/recurrence.py`.
+
 A `Recurs:` card is never `stop`ped for being "done" - completing one occurrence isn't the end of the task, only this cycle of it.
 `stop` still applies if Russell explicitly says to abandon the recurring task altogether (clear the `Recurs:` line too, so it can't come back by mistake).
 
