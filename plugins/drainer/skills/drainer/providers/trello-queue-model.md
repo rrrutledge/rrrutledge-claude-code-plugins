@@ -39,14 +39,17 @@ A future Start is the only thing that holds a card back.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
 Rank is `(lane, priority band, level band, referral band, date)`, all descending - level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
-The order of those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
+The order of the lane and those three bands is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
 A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
-**Every P1 role** is pinned there too, whatever its level, management scope, or posted pay.
-A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
+**Every P1 role** is pinned to that same band, whatever its level, management scope, or posted pay.
+A P2/P3 role keeps its P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` sits **above** the neutral band, so a top-fit role is worked ahead of the inbox, while `P2`/`P3` sit **below** it.
-The leading value of `band_rank` is the **lane** the adapter derives from that band: above neutral is the top (money and job-search) lane, neutral is the neutral lane that mail and Slack also sit in, below neutral is below the line.
+The leading value of `band_rank` is the **lane** the adapter derives from that band.
+Above neutral is the top (money and job-search) lane.
+Neutral is the lane that mail and Slack also sit in.
+Below neutral is the lowest lane, behind everything else.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
