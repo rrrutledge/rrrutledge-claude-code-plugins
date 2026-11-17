@@ -274,5 +274,72 @@ check("and nothing is memoized (the whole provider was skipped)",
       and json.load(open(os.path.join(rt, poller.HANDLED_FILE), encoding="utf-8")).get("trello"),
       None)
 
+# --------------------------------------------------------------------- finished cards close their worker
+class CardUtils(FakeUtils):
+    """FakeUtils plus the per-card and per-list GETs finished_since reads."""
+    TERMINAL_LIST_SUBSTRS = ("finished", "abandoned", "adopted", "done", "template")
+
+    def __init__(self, cards, lists, fail_ids=()):
+        super().__init__({}, {})
+        self.cards_by_id, self.lists_by_id, self.fail_ids = cards, lists, set(fail_ids)
+
+    def trello_request(self, method, path, session, params=None):
+        kind, oid = path.strip("/").split("/")
+        if oid in self.fail_ids:
+            raise RuntimeError("card fetch blew up")
+        return (self.cards_by_id if kind == "cards" else self.lists_by_id)[oid]
+
+
+DAY_AGO = _iso_ago(24 * 3600).replace("+00:00", "Z")
+JUST_NOW = _iso_ago(60).replace("+00:00", "Z")
+C_DONE, C_ARCH, C_OPEN, C_FRESH, C_ERR = (f"bbbbbbbb000000000000{n:04d}" for n in range(1, 6))
+FIN_LISTS = {"LF": {"name": "✅ Finished", "closed": False},
+             "LO": {"name": "To Do", "closed": False}}
+FIN_CARDS = {C_DONE: {"closed": False, "idList": "LF", "dateLastActivity": DAY_AGO},
+             C_ARCH: {"closed": True, "idList": "LO", "dateLastActivity": DAY_AGO},
+             C_OPEN: {"closed": False, "idList": "LO", "dateLastActivity": DAY_AGO},
+             C_FRESH: {"closed": False, "idList": "LF", "dateLastActivity": JUST_NOW},
+             C_ERR: {}}
+
+
+def rec_for(cid):
+    return {"id": f"trello-{cid}", "source": "trello", "cardId": cid}
+
+
+print("\nfinished_since: Finished-list and archived cards are done; open and unreadable ones are not")
+p = make_provider(CardUtils(FIN_CARDS, FIN_LISTS, fail_ids=[C_ERR]))
+got = p.finished_since({f"trello-{c}": rec_for(c) for c in (C_DONE, C_ARCH, C_OPEN, C_FRESH, C_ERR)})
+check("terminal cards reported", sorted(got), sorted(f"trello-{c}" for c in (C_DONE, C_ARCH, C_FRESH)))
+
+
+def finished_run(cid_by_guid, agents):
+    """Run close_finished_workers over one worker session per card; return the short ids stopped."""
+    rt = workspace({}, {f"trello-{c}": rec_for(c) for c in cid_by_guid.values()})
+    for guid, c in cid_by_guid.items():
+        write_session(rt, f"trello-{c}", guid)
+    stopped, real_stop = [], poller.bg_session.stop_session
+    poller.bg_session.stop_session = lambda short, cfg_dir: stopped.append(short)
+    try:
+        n = poller.close_finished_workers(rt, [make_provider(CardUtils(FIN_CARDS, FIN_LISTS))], agents)
+    finally:
+        poller.bg_session.stop_session = real_stop
+    return n, sorted(stopped)
+
+
+def agent(guid, **kw):
+    return {"id": guid[:8], "sessionId": guid, "kind": "background", "pid": 1, "status": "idle",
+            "state": "blocked", **kw}
+
+
+G = [f"{n}{n}{n}{n}{n}{n}{n}{n}-0000-0000-0000-000000000000" for n in range(1, 6)]
+print("\nclose_finished_workers: stops a parked worker only on a card that's been finished a while")
+n, stopped = finished_run({G[0]: C_DONE, G[1]: C_ARCH, G[2]: C_OPEN, G[3]: C_FRESH},
+                          [agent(g) for g in G[:4]])
+check("the Finished and archived cards' workers are stopped", stopped, sorted([G[0][:8], G[1][:8]]))
+n, stopped = finished_run({G[0]: C_DONE}, [agent(G[0], status="busy", state="working")])
+check("a worker mid-turn is left running", stopped, [])
+n, stopped = finished_run({G[0]: C_DONE}, None)
+check("a failed session scan stops nothing", (n, stopped), (0, []))
+
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

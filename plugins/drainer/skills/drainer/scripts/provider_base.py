@@ -914,3 +914,13 @@ class ProviderBase:
         adapter overrides this: its analog is the set of currently-startable card ids (see its override).
         """
         return None
+
+    def finished_since(self, records):
+        """Optional: `{item id: when it finished}` for each captured item record (`{item id: record}`)
+        whose source object has reached a terminal state that no worker can still act on, the time
+        being when the source last changed. The poller closes a parked worker whose every item is in
+        this map (close_finished_workers). An email's absence from the inbox does not qualify: the
+        poller and the worker clear it while the work is still open. An item whose state
+        can't be read this run is left out. A provider with no terminal state returns {}.
+        """
+        return {}
