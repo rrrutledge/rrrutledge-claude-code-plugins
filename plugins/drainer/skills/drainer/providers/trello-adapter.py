@@ -37,6 +37,7 @@ if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank,  # noqa: E402
                            LANE_MONEY, LANE_DUE, LANE_NEUTRAL, LANE_BELOW, find_skill_script)
+import recurrence  # noqa: E402 - scripts/ is on sys.path above
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
@@ -483,6 +484,30 @@ class Provider(ProviderBase):
             # isolates trello and records it to provider-health instead of aborting the whole cycle.
             raise ProviderError(f"trello enumerate failed (auth/API?): {e}", kind="auth")
 
+    def _sweep_recurring(self, card, start_dt, now):
+        """Bring a missed `Recurs:` card forward and return its Start (moved, or unchanged).
+        A card whose Start is a full period or more in the past was not completed (finishing an occurrence
+        already moves Start), so Start moves to the latest date on its original schedule that is not in the
+        future and one dated comment is left on the card. No digest entry, no opt-out. A failed write is
+        logged and the card keeps its old Start this cycle."""
+        period = recurrence.parse_period(card.get("desc"))
+        if period is None or start_dt is None:
+            return start_dt
+        new_start = recurrence.moved_start(start_dt, period, now)
+        if new_start is None:
+            return start_dt
+        try:
+            self._utils.trello_request("PUT", f"/cards/{card['id']}", self.session,
+                                       body={"start": new_start.isoformat()})
+            self._utils.add_comment(
+                card["id"], f"{now.date()}: occurrence of {start_dt.date()} missed, moved to {new_start.date()}",
+                self.session)
+        except Exception as e:
+            print(f"  recurring sweep could not move card {card['id']}: {e}")
+            return start_dt
+        card["start"] = new_start.isoformat()
+        return new_start
+
     def _my_id(self):
         """Return the authenticated member's Trello ID, fetched once and cached."""
         if self._my_member_id is None:
@@ -511,6 +536,7 @@ class Provider(ProviderBase):
             # feeds still_in_inbox_ids, so a card in play here is exactly one reconcile treats as
             # outstanding.
             for card, list_name, start_dt in self._startable_cards(board, now, my_id):
+                start_dt = self._sweep_recurring(card, start_dt, now)
                 # Sort rank / go-live: a card ranks by its Start (its resurface day); an undated card by
                 # its creation date (always in the past), so it sorts by age alongside email/Slack.
                 sort_dt = start_dt or self._created_dt(card["id"])
