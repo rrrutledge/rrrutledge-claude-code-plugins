@@ -602,13 +602,14 @@ async function search() {
     out.push({
       channel: (hit.channel && hit.channel.id) || '', channelName: (hit.channel && hit.channel.name) || '',
       ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.user ? await userName(hit.user) : hit.username || '?',
-      received: tsToIso(hit.ts), text: hit.text || '', permalink: hit.permalink || '',
+      received: tsToIso(hit.ts), text: await messageText(hit), permalink: hit.permalink || '',
     });
   }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   console.log(`${out.length} message(s) matching "${args.search}", newest first:`);
   for (const m of out) {
-    console.log(`\n--- ${m.received.slice(0, 16)} | ${m.from} in ${m.channelName || m.channel}\n${m.permalink}`);
+    const when = new Date(m.received).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    console.log(`\n--- ${when} | ${m.from} in ${m.channelName || m.channel}\n${m.permalink}`);
     console.log(clean(m.text) || '(no text)');
   }
 }

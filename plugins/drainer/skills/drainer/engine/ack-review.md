@@ -17,15 +17,16 @@ Carry the dropped ones as a one-line count; the rest are your batch.
 ## 2. Sort and draft
 
 Read each ready row's `message`, and open the thread at its link when the message leans on earlier context.
-Before sorting a row, run worker-core §2's situational-check on the matter it waits on.
-Then put each row in the first of these groups that fits:
+Put each row in the first of these groups that fits.
+Before testing a row against **Already resolved**, run the searches in worker-core §2's "Check before you ask" and "Search both mailboxes and Slack before concluding whether something already happened" on the matter it waits on.
+When part of that search can't run, sort the row as still open and name what went unchecked in its entry.
 
 - **Yours to write** - a deeply personal message, by worker-core §4's "Deeply personal messages" test.
   Draft nothing for it.
 - **Draft already staged** (`hasDraft` true) - something is already in progress on the thread; list it with its link and draft nothing, so nothing overwrites it.
-- **Already resolved** - the situational-check shows the matter has moved or been handled since the person's waiting message.
+- **Already resolved** - the search shows the matter has been settled since the person's waiting message.
   Draft nothing for it.
-- **Asks someone else** - every ask in the message goes to another recipient, and Russell is on it to stay informed.
+- **Asks someone else** - every ask in the message goes to another recipient, and Russell is copied to stay informed.
   Draft nothing for it.
 - **Send by hand** (`sendPath` `by-hand`) - a relayed message with no programmatic reply path.
   When the row is LinkedIn (`linkedin` true), draft nothing: Russell writes those himself, and the row's link opens the conversation.
