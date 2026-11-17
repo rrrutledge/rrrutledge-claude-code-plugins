@@ -276,6 +276,13 @@ def _wake_account(session_guid):
     a job that a bare `claude --bg --resume <guid>` can wake in place, or False when there is no such
     job. Waking reuses the job's saved launch flags, so it only qualifies when those already carry
     the two a launch can't do without: `--remote-control` and `--permission-mode manual`."""
+    d, state = _job_for_guid(session_guid)
+    return d if state and _flags_whole(state.get("respawnFlags")) else False
+
+
+def _job_for_guid(session_guid):
+    """`(config_dir, state)` of the background job whose session is `session_guid`, searching every
+    account, or `(False, None)`."""
     short = session_guid.split("-", 1)[0]
     for d in account_config_dirs():
         root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
@@ -284,10 +291,9 @@ def _wake_account(session_guid):
                 state = json.load(f)
         except (OSError, ValueError):
             continue
-        if not isinstance(state, dict) or state.get("sessionId") != session_guid:
-            continue
-        return d if _flags_whole(state.get("respawnFlags")) else False
-    return False
+        if isinstance(state, dict) and state.get("sessionId") == session_guid:
+            return d, state
+    return False, None
 
 
 def claude_agents():
@@ -422,8 +428,8 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
       - Anything else - an interactive session, a follow-up seed, or saved flags missing
         --remote-control - starts a continuation under a new session id, because any flag on the
         command makes the service copy the job rather than continue it. The continuation is launched
-        under the session's own name and worktree-guard setting unless the caller overrides them
-        (_resumed_identity). The resumed guid then leaves the live-session registry
+        under the session's own name (unless the caller passes one) and keeps the worktree guard off
+        when its saved launch turned it off (_resumed_identity). The resumed guid then leaves the live-session registry
         (forget_session); its history lives on in the new session, which registers itself.
     A resume of a guid that an earlier resume already continued under a new one continues the newest
     (latest_session), and a successful resume clears the session's paused record (record_resume).
@@ -478,22 +484,22 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
 
 
 def _resumed_identity(session_guid):
-    """`(name, scratch_only)` the session `session_guid` ran under: its background job's name (else
+    """`(name, scratch_only)` the session `session_guid` ran under: the name its job was given (else
     its paused record's), and whether its saved launch settings turned the worktree guard off. A
     continuation passes both again, because the service names a continuation from its first prompt
     and saves only the flags typed on it, so without them a resumed worker comes back named after its
-    wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place."""
-    state = find_job(session_guid.split("-", 1)[0])[1] or {}
-    if state.get("sessionId") != session_guid:
-        state = {}
-    name = state.get("name") or (_load_paused()["paused"].get(session_guid) or {}).get("name") or None
+    wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place.
+    A name the service generated itself (`nameSource` auto) is one of those first-prompt names, so it
+    is never carried forward."""
+    state = _job_for_guid(session_guid)[1] or {}
+    given = state.get("name") if state.get("nameSource") != "auto" else None
+    name = given or (paused_record(session_guid) or {}).get("name")
     flags = [str(x) for x in state.get("respawnFlags") or []]
     try:
         settings = json.loads(flags[flags.index("--settings") + 1])
     except (ValueError, IndexError):
         settings = {}
-    worktree = settings.get("worktree") if isinstance(settings, dict) else None
-    return name, isinstance(worktree, dict) and worktree.get("bgIsolation") == "none"
+    return name, settings.get("worktree", {}).get("bgIsolation") == "none"
 
 
 def _wake(session_guid, config_dir, cwd):

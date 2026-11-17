@@ -26,7 +26,7 @@ Resume-on-completion supplements that pattern for the identifiable-session case.
 
 **A fresh spawn does steps 1 and 2 in the launch itself: add `--resume-me` to the `spawn-session.py` call (a drainer worker's `spawn-handoff.py` forwards it).**
 The launcher appends the resume command and the "run it once this is done" instruction to the end of the brief, where the new session reads it with the Read tool (a seed line truncates on the command's quotes), then prints the remaining steps; record the paper trail (step 3) and close paused (step 4) in that same turn.
-It also writes the wake note that step 1 describes, beside the brief (`<brief>.resume-note.md`), and the brief tells the new session to append its report to that note before it runs the resume.
+It also writes the wake note that step 1 describes, beside the brief (`<brief>.resume-note.md`), and the brief tells the new session to write its report in its own working directory before it runs the resume, whose `--report-file` adds that report to the note.
 Steps 1 and 2 below are the by-hand path for an existing peer.
 
 1. **Capture the resume command.**
@@ -50,8 +50,6 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    `--pause` stops the session instead of removing it, because a plain close deletes its worktree and the resume needs that worktree intact.
 
 The resume carries the wake note as a follow-up prompt, so the session comes back under a new session id (the old id leaves the live-session registry), carrying the full history, and starts a turn on that note, registers that id when `SessionStart` fires, and finishes the remaining work exactly where it stopped.
-It comes back under its own title and in its own working directory, with the worktree-guard setting it was launched with, and reads the wake note from a copy in that directory's `.tmp/`, so nothing of the session that ran the resume carries over into it.
-
 ## Why this is safe against a duplicate worker (drainer)
 
 A drainer worker's item is a Trello card, and the poller stamps that card's id into seen-state the moment it dispatches the worker.

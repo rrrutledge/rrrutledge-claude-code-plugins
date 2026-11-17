@@ -281,25 +281,36 @@ def test_continuation_keeps_name_and_guard_setting():
         args = s.calls[0][0]
         check("no job -> the paused record's name", flag_value(args, "--name") == "Paused title", args)
         check("no job -> guard on", "worktree" not in json.loads(flag_value(args, "--settings")), args)
-
-
-def test_resume_note_copied_into_own_tmp():
-    print("test: a resume's --prompt-file outside the resumed cwd's .tmp/ is copied there and seeded from the copy")
     with sandbox() as s:
         write_transcript(s.main)
-        other = os.path.join(s.tmp, "other-worktree", ".tmp")
-        os.makedirs(other)
-        note = os.path.join(other, "handoff-x.md.resume-note.md")
+        job = os.path.join(s.main, "jobs", SHORT)
+        os.makedirs(job)
+        with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"sessionId": GUID, "name": "x resume note", "nameSource": "auto"}, f)
+        bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        check("a service-generated name is not carried forward", "--name" not in s.calls[0][0], s.calls[0][0])
+
+
+def test_resume_adds_report_to_note():
+    print("test: a resume's --report-file is appended to its --prompt-file under ## Report; a missing one "
+          "still resumes")
+    with sandbox() as s:
+        write_transcript(s.main)
+        note = os.path.join(s.tmp, "handoff-x.md.resume-note.md")
         with open(note, "w", encoding="utf-8") as f:
-            f.write("## Report\ndone\n")
-        home = os.path.join(s.tmp, "home")
-        os.makedirs(home)
-        rc = spawn_session.main(["--resume", GUID, "--cwd", home, "--prompt-file", note])
+            f.write("Your wait is over.\n")
+        report = os.path.join(s.tmp, "handoff-x.md.report.md")
+        with open(report, "w", encoding="utf-8") as f:
+            f.write("Russell replied to Jagannathan.\n")
+        rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note, "--report-file", report])
         check("resume -> 0", rc == 0, f"rc {rc}")
-        copy = os.path.join(home, ".tmp", "handoff-x.md.resume-note.md")
-        check("note copied into the resumed cwd's .tmp/", os.path.isfile(copy))
-        seed = s.calls[-1][0][-1] if s.calls else ""
-        check("seed points at the copy", copy in seed, seed)
+        with open(note, encoding="utf-8") as f:
+            body = f.read()
+        check("report appended under ## Report",
+              body == "Your wait is over.\n\n## Report\n\nRussell replied to Jagannathan.\n", body)
+        rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note,
+                                 "--report-file", report + ".missing"])
+        check("missing report -> still resumes", rc == 0 and len(s.calls) == 2, f"rc {rc}")
 
 
 def test_wake_that_copies_the_job_is_replaced():
@@ -511,7 +522,7 @@ if __name__ == "__main__":
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
     test_continuation_keeps_name_and_guard_setting()
-    test_resume_note_copied_into_own_tmp()
+    test_resume_adds_report_to_note()
     test_wake_that_copies_the_job_is_replaced()
     test_respawn_session_runs_claude_respawn()
     test_failed_wake_returns_none()
