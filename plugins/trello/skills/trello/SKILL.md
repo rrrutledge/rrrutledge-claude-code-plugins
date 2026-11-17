@@ -129,14 +129,14 @@ instructions: |-
   - **`start`** is the one date the drainer's queue reads (see the drainer's `trello-provider.md` for the
     full model) - it's the "work-on-it / resurface" day. Every reschedule (a nudge, a hold-back, an
     advance, a Russell-requested date change) means setting `start`.
-  - **`due`** is a separate, purely informational deadline. Nothing in this system reads it to decide when
-    a card resurfaces. Set it alongside `start` when a card genuinely has an external deadline worth
-    displaying, but setting `due` alone and expecting the card to nudge, hold back, or resurface on that
-    date does nothing - the queue never looks at it.
+  - **`due`** is a separate deadline that ranks a card once its Start has arrived: a card with an
+    incomplete `due` and a `start` in the past is worked soonest-due first, ahead of ordinary cards.
+    It never decides when a card resurfaces, so a card with only `due` set (no `start`) is not ranked
+    by it. Set `due` alongside `start` when a card has an external deadline.
 
   ```python
   update_card(card_id, {'start': '2026-08-28'}, session)  # reschedules when it resurfaces
-  update_card(card_id, {'due': '2026-08-28'}, session)     # cosmetic only - does not reschedule anything
+  update_card(card_id, {'due': '2026-08-28'}, session)     # ranks the card by this deadline once its start has arrived
   ```
 
   ---

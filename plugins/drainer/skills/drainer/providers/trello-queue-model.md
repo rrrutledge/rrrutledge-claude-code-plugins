@@ -38,10 +38,10 @@ Via the `trello` skill, list cards across the configured boards that sit in an *
 A future Start is the only thing that holds a card back.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
-Rank is `(priority band, due rank, level band, referral band, date)`, all descending - due rank orders the due band soonest Due first (it is zero everywhere else), level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
+Rank is `(priority band, due rank, level band, referral band, date)`, all descending - due rank is zero everywhere but the due band, level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
 The order of the bands and the due rank is defined in exactly one place, `provider_base.band_rank`, which both this adapter's enumerate and the poller's cross-source sort call; to reorder the queue (e.g. put referral back ahead of level), change the tuple there.
 A Job Search Outreach card's band reflects its card type.
-A **person follow-up card** carries the **`👤 Contact`** label and is pinned **one band above** neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
+A **person follow-up card** carries the **`👤 Contact`** label and is pinned to the **top band**, above the due band and neutral, so a live contact thread is worked ahead of email/Slack and every application - following up with an existing contact is the highest-value move.
 A card on one of its board's **in-progress lists** is pinned to that same band once its Start arrives, whatever its labels, so a live application is worked ahead of the inbox.
 A card wearing the **`💰 Money`** label, meaning money owed or paid, is pinned to that same band, whatever its other labels.
 The label is matched as the exact string and is never read as a contact name.
@@ -52,8 +52,7 @@ A people manager with no posted pay, or pay under the floor, is not pinned: it k
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
 The bands, highest first, are the top band (the pins above), the **due band**, neutral (mail, Slack, ordinary cards, a plain P1), then P2, then P3.
 A card with a Due date that is not marked complete, and a Start that has arrived, is in the due band; the adapter reads the card's `due` and `dueComplete` fields.
-Cards in the due band run soonest Due first, and a card with no Start never enters it.
-Marking the Due complete takes the card back out of the due band.
+Cards in the due band run soonest Due first, an overdue card ahead of one due later.
 A card takes the highest band it qualifies for, so a top-band card with a Due date stays in the top band, and a plain P1 or P2/P3 role with a Due date moves up into the due band.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
