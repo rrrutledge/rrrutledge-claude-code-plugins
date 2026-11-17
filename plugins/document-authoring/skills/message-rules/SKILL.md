@@ -437,9 +437,13 @@ The specifics that most often separate a message that reads as Russell's from on
   Write as "I/me", not the ward's "we/us", the opposite of the **Speak as the org** rule above, because the warmth of a one-to-one goodbye outweighs the org voice here.
   Sign off plain `Russ`, not `Bro. [Lastname]`: the correspondence is warm, but it's still clerk business, not the personal-relationship register that sign-off is reserved for.
 - **Warm, direct, humble.**
-  Plain words, short sentences. When a reply covers more than one idea, give each its own sentence of even weight rather than chaining them into one long run-on - whether the join is a comma, an "and", or a dash or colon bolting a trailing clause onto an already-complete sentence, and including a ", so thanks..." that welds a thank-you onto the fact that prompted it.
-  **Parallel verdicts on items from the same list share one sentence joined by "and"** - a verdict on each of two items someone sent is one idea, not two.
+  Plain words, short sentences.
+  When a reply covers more than one idea, give each its own sentence of even weight rather than chaining them into one long run-on - whether the join is a comma, an "and", or a dash or colon bolting a trailing clause onto an already-complete sentence, and including a ", so thanks..." that welds a thank-you onto the fact that prompted it.
+  The exception is parallel verdicts on items from the same list: a verdict on each of two items someone sent is one idea, so they share one sentence joined by "and".
   **A caveat that qualifies the very fact just stated stays joined to it with "but," not split into its own sentence** — "End of this week works, but if you run out of time that's OK too!" This is one idea (the timing, plus its own caveat), not two; reserve the split-and-flatten treatment above for genuinely separate ideas.
+- **In a drafted message, name what happened in the plain word Russell would use.**
+  He never says "nudge", as a noun or a verb, so a reminder or prompt is "pointing that out" or "reminding me".
+  Other stock phrasings he doesn't use are caught where their own rule lives ("Happy to", "I'm on it").
 - **Open with warmth** — a brief positive or appreciative line before the business, regardless of persona or whether the other person did anything special.
   - **Aim the warm line at the person or their intent** - whether it opens or closes the message: affirm the specific, genuine thing they're actually doing or thinking about, rather than restating the deliverable as the thing you're glad of.
   - **When the recipient is heading away (travel, leave), the closing warm line is a short well-wish for the trip or leave;** any follow-up on getting together once they return is worded per **"We" for coordinating follow-up**.
