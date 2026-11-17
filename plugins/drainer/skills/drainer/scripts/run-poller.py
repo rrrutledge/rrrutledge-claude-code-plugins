@@ -1822,7 +1822,7 @@ ORPHAN_RECENT = timedelta(days=7)
 
 def order_needs(needs_you_items, now=None):
     """The needs-you dispatch order. Recent orphans (ended within ORPHAN_RECENT) come first, ahead of
-    any priority band. Then every other source by band_rank (priority, level, referral - the queue
+    any priority band. Then every other source by band_rank (lane, priority, level, referral - the queue
     policy defined once in provider_base) and `received`, descending. Older orphans come last. Each orphan
     group runs most recently ended first. An orphan with no readable time counts as recent."""
     now = now or datetime.now(timezone.utc)

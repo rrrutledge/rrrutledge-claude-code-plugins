@@ -195,7 +195,7 @@ def test_priority_band_still_leads_level_band():
 
 
 def test_priority_band_above_inbox_pins():
-    print("test: _priority_band - in-progress, P1 Director-or-above, and P1 $250K+ people-manager cards rank above neutral")
+    print("test: _priority_band - in-progress and every P1 card rank above neutral")
     Provider = adapter_mod.Provider
     above = provider_base.NEUTRAL_PRIORITY_BAND + 1
     p1 = [{"name": "🎯 P1"}]
