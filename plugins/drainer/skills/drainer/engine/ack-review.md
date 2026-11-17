@@ -24,7 +24,7 @@ Then put each row in one of these groups:
 
 - **Already resolved** - a later message, in this thread or another, settles what the person was waiting on.
   Draft nothing for it.
-- **Not addressed to Russell** - the message asks someone else for something and asks Russell nothing, though he is on it.
+- **Asks someone else** - every ask in the message goes to another recipient, and Russell is on it to stay informed.
   Draft nothing for it.
 - **Yours to write** - a deeply personal message, by worker-core §4's "Deeply personal messages" test.
   Draft nothing for it.
@@ -51,7 +51,7 @@ One numbered list, each entry pairing what the person said with the text that an
 - **What they said** - a quote or tight paraphrase, with every ask in it for a multi-message span, plus the other threads it covers.
 - **The draft** - the body text, marked **closes the item on send** when it is a reply that handles the item.
 
-After the list, the **already resolved** and **not addressed to Russell** groups, each entry one line saying why, with the link to the resolving message or the thread.
+After the list, the **already resolved** and **asks someone else** groups, each entry one line saying why, with the link to the resolving message or the thread.
 Then the **yours to write**, **draft already staged**, and **send by hand** groups, each entry with its link (and its drafted text, for a by-hand row that has one).
 Then stop and wait.
 
@@ -63,7 +63,7 @@ Act on exactly the entries that answer names, and only after it:
 - **An approved entry** - `python <ack script> send --repo <repo> --key <key> --body-file <body>`, adding `--handles` for a reply that handles the item.
   When Russell edited a draft, write his text to a new body file, run `writing-review` on it and mint it, then send that file with `--scored-body <the original body>` so the outcome records his edit.
 - **An entry he left out** - `python <ack script> skip --repo <repo> --key <key> --body-file <body>` (omit `--body-file` when nothing was drafted).
-  Every already-resolved and not-addressed row is skipped this way, unless his answer sends it back for an ack.
+  Every already-resolved and asks-someone-else row is skipped this way, unless his answer sends it back for an ack.
 - **A by-hand row marked done** - `python <ack script> hand-done --repo <repo> --key <key>`; one marked skipped takes `skip`.
 
 `send` re-checks the entry right before it sends and exits 3 with the reason when it stopped qualifying; tell Russell which ones that was.
