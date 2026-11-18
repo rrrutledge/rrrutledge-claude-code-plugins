@@ -6,8 +6,7 @@ import os
 import re
 import subprocess
 
-from . import ai, config
-from . import curl_judge
+from . import ai, config, curl_judge
 from .learned import add_learned_command, add_learned_subcommand, learned_subcommands
 from .log import log_debug
 from .paths import (
@@ -34,6 +33,21 @@ def _matches_configured_domain(segment):
     return False
 
 
+_CURL_WRITE_SHORT = {f[1] for f in CURL_WRITE_FLAGS if len(f) == 2}
+
+
+def _curl_has_write_flag(segment):
+    """True for a write flag in any spelling curl accepts: `-d x`, `-dx`, `-XPOST`,
+    a short cluster like `-sXPOST`, and `--data=x` / `--request=POST`."""
+    for token in shell_tokenize(segment):
+        if token.startswith('--'):
+            if token.split('=', 1)[0] in CURL_WRITE_FLAGS:
+                return True
+        elif token.startswith('-') and len(token) > 1 and any(c in _CURL_WRITE_SHORT for c in token[1:]):
+            return True
+    return False
+
+
 def is_curl_safe(segment):
     """Approve curl to localhost or a configured-trusted domain (any method);
     otherwise allow read-only (no write flag) requests, and let the AI judge a
@@ -46,7 +60,7 @@ def is_curl_safe(segment):
     """
     if CURL_LOCALHOST_PATTERNS.search(segment) or _matches_configured_domain(segment):
         return True
-    if not any(token in CURL_WRITE_FLAGS for token in segment.split()):
+    if not _curl_has_write_flag(segment):
         return True
     return curl_judge.judge_curl(segment)
 
