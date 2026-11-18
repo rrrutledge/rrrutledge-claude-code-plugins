@@ -64,7 +64,8 @@ For each tool call the hook produces one of:
 - **Enforcement (BLOCK → rewrite)** - heredocs, output/input redirection, inline
   `python -c` / `node -e`, PowerShell cmdlets in bash, `cmd /c`, `sed -i`, `$VAR`
   expansion, `VAR=...` assignment, and complex bash (loops, `$()`, conditionals,
-  3+-stage pipelines, brace groups). Each returns a message pointing at the
+  3+-stage pipelines, brace groups), and shell scripts run directly or via
+  `bash`/`sh` (rewrite as a `.tmp/` Python script). Each returns a message pointing at the
   validatable alternative.
 - **Write/Edit** - approves `.tmp/` files, `.claude/{skills,commands,screenshots}`,
   and files inside a git repo's working tree; redirects stray temp-named files

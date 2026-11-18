@@ -795,6 +795,29 @@ class TestCheckNodeSegment:
         assert "full absolute path" in reason
 
 
+class TestShellScriptBlocked:
+    def _check(self, seg):
+        from safe_compounds.approve import is_segment_trusted
+        set_config()
+        reset_block_reason()
+        return is_segment_trusted(seg, {'bash', 'sh', 'python'}), get_block_reason()
+
+    def test_shell_script_forms_block_with_python_instruction(self):
+        for seg in ('.tmp/x.sh args', './x.sh', 'bash .tmp/x.sh', 'sh x.sh', 'bash -x x.sh a b'):
+            ok, reason = self._check(seg)
+            assert ok is False, seg
+            assert reason is not None and 'BLOCKED' in reason, seg
+            assert '.tmp/<name>.py' in reason, seg
+
+    def test_compound_with_sh_beside_py_blocks_whole_command(self):
+        from safe_compounds.approve import is_segment_trusted
+        set_config()
+        reset_block_reason()
+        segs = ['.tmp/w4-dump.sh per3b url', 'python .tmp/w4-links.py db1']
+        assert not all(is_segment_trusted(s, {'python'}) for s in segs)
+        assert 'shell script' in get_block_reason()
+
+
 class TestScratchpadTrustedScriptDir:
     def test_session_scratchpad_path_is_trusted(self):
         # Mirrors the harness's actual per-session scratch layout:
@@ -1400,7 +1423,7 @@ class TestCdCompoundBlocking:
         os.environ['CLAUDE_CWD'] = str(tmp_path)
         reason = enforce_bash("cd /other && python script.py")
         assert "python /other/script.py" in reason
-        assert "bash /other/script.sh" in reason
+        assert ".sh" not in reason
 
     def test_block_message_has_git_c_flag(self, tmp_path):
         os.environ['CLAUDE_CWD'] = str(tmp_path)
@@ -1551,7 +1574,7 @@ class TestCdCompoundBlocking:
         os.environ['CLAUDE_CWD'] = str(tmp_path)
         reason = enforce_bash("cd /other && python script.py")
         assert "python /other/script.py" in reason
-        assert "bash /other/script.sh" in reason
+        assert ".sh" not in reason
 
     def test_block_message_has_git_c_flag(self, tmp_path):
         """Block message should show git -C alternative."""
