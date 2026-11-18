@@ -182,6 +182,21 @@ def detect_inline_script(command):
     return None, None
 
 
+def detect_shell_script(command):
+    """Return the .sh file a segment runs directly or through bash/sh, else None."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens:
+            continue
+        if tokens[0].lower().endswith('.sh'):
+            return tokens[0]
+        if tokens[0] in ('bash', 'sh'):
+            operand = next((t for t in tokens[1:] if not t.startswith('-')), '')
+            if operand.lower().endswith('.sh'):
+                return operand
+    return None
+
+
 def detect_output_redirection(command):
     for seg in split_segments(command):
         # Replace quoted spans with a placeholder (not erase them) so a quoted
@@ -747,6 +762,14 @@ def enforce_bash(command):
     if inline_flag:
         return (f'BLOCKED: Inline script flag "{inline_flag}" can\'t be validated inline. '
                 f'{inline_alternative}')
+
+    shell_script = detect_shell_script(command)
+    if shell_script:
+        return (f'BLOCKED: "{shell_script}" is a shell script, and shell scripts cannot be '
+                'safety-checked (quoting, globbing and eval hide what they run). Rewrite it as a '
+                f'Python script at .tmp/<name>.py (for {shell_script}, port what it does), using '
+                'client libraries (urllib/requests) rather than subprocess where possible, then '
+                'run: python .tmp/<name>.py')
 
     if detect_output_redirection(command):
         return ('BLOCKED: Output redirection (> or >>) detected. Per CLAUDE.md rules, never use output '

@@ -61,7 +61,7 @@ enumerate everything dangerous.
 For every Bash call:
 1. `enforce_bash()` - if the *form* is unvalidatable (heredoc, output redirection, `$()`,
    3+ pipes, loops, `cd /other/dir && cmd`, etc.) → **BLOCK** with rewrite instruction.
-   It also BLOCKs an unbounded `find` from `/`, a drive root, or home, which walks the whole
+   It also BLOCKs a shell script run directly or through `bash`/`sh` (shell scripts can't be safety-checked; the message asks for a `.tmp/` Python script instead), an unbounded `find` from `/`, a drive root, or home, which walks the whole
    disk for hours, and any `sed` in-place flag (`-i`, `--in-place`), which rewrites a file with no undo.
 2. Split compound command (`a && b | c`) into segments.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.

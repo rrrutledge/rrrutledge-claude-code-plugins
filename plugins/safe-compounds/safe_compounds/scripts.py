@@ -60,23 +60,6 @@ def _record_untracked_script_block(filename):
     )
 
 
-def block_shell_script_segment(seg):
-    """Always False; records a BLOCK reason telling the session to use a Python script.
-
-    Shell quoting, globbing and eval make a shell script's safety unreliable to judge,
-    so a directly-run .sh file (or `bash`/`sh` on one) is rejected outright."""
-    global _last_block_reason
-    tokens = shell_tokenize(seg)
-    name = next((t for t in tokens if t.endswith('.sh')), 'the script')
-    _last_block_reason = (
-        f'BLOCKED: "{name}" is a shell script, and shell scripts cannot be safety-checked '
-        '(quoting, globbing and eval hide what they run). Rewrite it as a Python script at '
-        '.tmp/<name>.py, using client libraries (urllib/requests) rather than subprocess where '
-        'possible, then run: python .tmp/<name>.py'
-    )
-    return False
-
-
 def _record_missing_script(filename, language):
     global _last_block_reason
     resolved = resolve_against_cwd(filename)

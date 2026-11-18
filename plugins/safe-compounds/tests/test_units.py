@@ -796,26 +796,22 @@ class TestCheckNodeSegment:
 
 
 class TestShellScriptBlocked:
-    def _check(self, seg):
-        from safe_compounds.approve import is_segment_trusted
-        set_config()
-        reset_block_reason()
-        return is_segment_trusted(seg, {'bash', 'sh', 'python'}), get_block_reason()
-
     def test_shell_script_forms_block_with_python_instruction(self):
-        for seg in ('.tmp/x.sh args', './x.sh', 'bash .tmp/x.sh', 'sh x.sh', 'bash -x x.sh a b'):
-            ok, reason = self._check(seg)
-            assert ok is False, seg
-            assert reason is not None and 'BLOCKED' in reason, seg
-            assert '.tmp/<name>.py' in reason, seg
+        for cmd in ('.tmp/x.sh args', './x.sh', 'bash .tmp/x.sh', 'sh x.sh', 'bash -x x.sh a b',
+                    '.TMP/RUN.SH'):
+            reason = enforce_bash(cmd)
+            assert reason is not None and 'BLOCKED' in reason, cmd
+            assert '.tmp/<name>.py' in reason, cmd
 
-    def test_compound_with_sh_beside_py_blocks_whole_command(self):
-        from safe_compounds.approve import is_segment_trusted
-        set_config()
-        reset_block_reason()
-        segs = ['.tmp/w4-dump.sh per3b url', 'python .tmp/w4-links.py db1']
-        assert not all(is_segment_trusted(s, {'python'}) for s in segs)
-        assert 'shell script' in get_block_reason()
+    def test_compound_with_sh_beside_py_blocks_in_either_order(self):
+        for cmd in ('.tmp/w4-dump.sh per3b url ; python .tmp/w4-links.py db1',
+                    'python .tmp/w4-links.py db1 ; .tmp/w4-dump.sh per3b url',
+                    'some-unknown-cmd && .tmp/x.sh'):
+            assert 'shell script' in (enforce_bash(cmd) or ''), cmd
+
+    def test_non_script_mentions_of_sh_pass(self):
+        for cmd in ('cat notes.sh', 'bash -c ls', 'python .tmp/x.py'):
+            assert enforce_bash(cmd) is None, cmd
 
 
 class TestScratchpadTrustedScriptDir:
