@@ -31,6 +31,8 @@ import ipaddress
 import json
 import re
 import socket
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -56,7 +58,9 @@ _LONG_WITH_VALUE = {
     '--data', '--data-raw', '--data-binary', '--data-urlencode',
 }
 _DATA_FLAGS = {'-d', '--data', '--data-raw', '--data-binary', '--data-urlencode'}
-_HEADER_OK = re.compile(r'^(content-type|accept|accept-language|user-agent|origin|referer)\s*:', re.IGNORECASE)
+_URL_UNSAFE = re.compile(r'[\\\[\]{}]')
+_SHELL_EXPANSION = re.compile(r'[$`]|(^|\s)~')
+_HEADER_OK =re.compile(r'^(content-type|accept|accept-language|user-agent|origin|referer)\s*:', re.IGNORECASE)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -84,8 +88,7 @@ def parse_request(tokens):
     while i < len(tokens):
         name, value = _split_option(tokens[i])
         i += 1
-        if name.startswith('-') and not name.startswith('--') and value is None and len(name) > 1 \
-                and name not in _SHORT_WITH_VALUE and set(name[1:]) <= _SHORT_FLAGS:
+        if len(name) > 1 and set(name[1:]) <= _SHORT_FLAGS and name[0] == '-':
             continue
         if name in _LONG_FLAGS and value is None:
             continue
@@ -109,38 +112,75 @@ def parse_request(tokens):
             url = tokens[i - 1]
             continue
         return None
-    if url is None or not bodies and method != 'POST':
-        return None
-    if (method or 'POST') != 'POST':
+    if url is None or (method or ('POST' if bodies else 'GET')) != 'POST':
         return None
     parts = urllib.parse.urlsplit(url)
-    if not parts.hostname or parts.username or parts.password:
+    if not parts.hostname or parts.username or parts.password or _URL_UNSAFE.search(url):
         return None
     return url, bodies
 
 
-def endpoint_key(url, bodies):
-    """host+path with no scheme, query, or trailing slash, plus the body's shape:
-    the sorted field names of a JSON object body, else a digest of the raw body.
-    Approving a read-only POST /search/ never approves /delete/ or a body that
-    carries different fields."""
-    parts = urllib.parse.urlsplit(url)
-    raw = '&'.join(bodies)
+def _shape(obj):
+    """A JSON value with every scalar replaced by a marker, so two bodies match when
+    they have the same fields at every depth and differ only in leaf values."""
+    if isinstance(obj, dict):
+        return {k: _shape(v) for k, v in sorted(obj.items())}
+    if isinstance(obj, list):
+        return sorted({json.dumps(_shape(v), sort_keys=True) for v in obj})
+    return 0
+
+
+def _body_shape(raw):
     try:
-        obj = json.loads(raw)
+        return json.dumps(_shape(json.loads(raw)), sort_keys=True)
     except ValueError:
-        obj = None
-    shape = ','.join(sorted(obj)) if isinstance(obj, dict) else hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return f'{parts.netloc.lower()}{parts.path.rstrip("/")}#{shape}'
+        pass
+    pairs = urllib.parse.parse_qsl(raw, keep_blank_values=True)
+    if pairs:
+        return 'form:' + ','.join(sorted(k for k, _ in pairs))
+    return 'raw:' + hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+
+def endpoint_key(url, bodies):
+    """scheme+host+path plus the query's and the body's field names, never their
+    values. Approving a read-only POST /search/ never approves /delete/, http for
+    https, an added query parameter, or a body with different or nested fields,
+    while paging through new values reuses the verdict."""
+    parts = urllib.parse.urlsplit(url)
+    query = ','.join(sorted(k for k, _ in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)))
+    return (f'{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip("/")}'
+            f'?{query}#{_body_shape("&".join(bodies))}')
 
 
 def _is_public_host(host):
+    """True when every address the host resolves to is global. The lookup runs in a
+    thread because getaddrinfo has no timeout of its own."""
+    result = []
+    worker = threading.Thread(target=lambda: result.extend(_resolve(host)), daemon=True)
+    worker.start()
+    worker.join(_PROBE_TIMEOUT)
+    return bool(result) and all(ipaddress.ip_address(a.split('%')[0]).is_global for a in result)
+
+
+def _resolve(host):
     try:
-        infos = socket.getaddrinfo(host, None)
+        return {info[4][0] for info in socket.getaddrinfo(host, None)}
     except OSError:
-        return False
-    addrs = {info[4][0] for info in infos}
-    return bool(addrs) and all(ipaddress.ip_address(a.split('%')[0]).is_global for a in addrs)
+        return set()
+
+
+def _read_within_deadline(resp):
+    """Up to _PROBE_BYTES of the body, stopping at the overall deadline so a host
+    that drips bytes can't hold the hook open."""
+    deadline = time.monotonic() + _PROBE_TIMEOUT
+    chunks, size = [], 0
+    while size < _PROBE_BYTES and time.monotonic() < deadline:
+        chunk = resp.read(1024)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    return b''.join(chunks).decode('utf-8', errors='replace')
 
 
 def _page_excerpt(html):
@@ -161,21 +201,24 @@ def probe_origin(url):
     origin = f'{parts.scheme}://{parts.netloc}/'
     req = urllib.request.Request(origin, headers={'User-Agent': 'safe-compounds-hook'})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+    redirect = ''
     try:
-        with opener.open(req, timeout=_PROBE_TIMEOUT) as resp:
+        with opener.open(req, timeout=2) as resp:
             status = resp.status
-            body = resp.read(_PROBE_BYTES).decode('utf-8', errors='replace')
+            body = _read_within_deadline(resp)
     except urllib.error.HTTPError as e:
         status = e.code
-        body = e.read(_PROBE_BYTES).decode('utf-8', errors='replace') if e.fp else ''
+        body = _read_within_deadline(e) if e.fp else ''
+        if 300 <= status < 400:
+            redirect = f'\nredirects to: {e.headers.get("Location", "(none)")}'
     except (OSError, ValueError) as e:
         log_debug(f'curl probe failed for {origin}: {type(e).__name__}')
         return None
-    return f'GET {origin} -> HTTP {status}\n{_page_excerpt(body)}'
+    return f'GET {origin} -> HTTP {status}{redirect}\n{_page_excerpt(body)}'
 
 
 def _prompt(segment, evidence):
-    evidence_block = evidence or '(the host could not be fetched; judge from the command alone)'
+    evidence_block = (evidence or '(the host could not be fetched; judge from the command alone)').replace('</', '<\\/')
     command = segment.replace('</', '<\\/')
     return f"""Judge this curl command for safety. Respond with ONLY "SAFE" or "DANGEROUS: <short reason>".
 
@@ -204,7 +247,7 @@ Respond with ONLY "SAFE" or "DANGEROUS: <short reason>":"""
 
 def judge_curl(segment):
     """True when the AI affirmatively judges this write-flagged curl a read-only query."""
-    if len(segment) > _MAX_COMMAND_CHARS:
+    if len(segment) > _MAX_COMMAND_CHARS or _SHELL_EXPANSION.search(segment):
         return False
     parsed = parse_request(shell_tokenize(segment))
     if parsed is None:

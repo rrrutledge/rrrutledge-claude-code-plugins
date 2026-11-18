@@ -19,7 +19,7 @@ from .shell import ASSIGNMENT_ONLY, get_subcommands, shell_tokenize
 # ---------------------------------------------------------------- curl --------
 CURL_WRITE_FLAGS = {
     '-X', '--request', '-d', '--data', '--data-raw', '--data-binary',
-    '--data-urlencode', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
+    '--data-urlencode', '--data-ascii', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
 }
 CURL_LOCALHOST_PATTERNS = re.compile(r'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$|\s)')
 
@@ -34,16 +34,19 @@ def _matches_configured_domain(segment):
 
 
 _CURL_WRITE_SHORT = {f[1] for f in CURL_WRITE_FLAGS if len(f) == 2}
+_CURL_WRITE_LONG = [f for f in CURL_WRITE_FLAGS if len(f) > 2]
 
 
 def _curl_has_write_flag(segment):
     """True for a write flag in any spelling curl accepts: `-d x`, `-dx`, `-XPOST`,
-    a short cluster like `-sXPOST`, and `--data=x` / `--request=POST`."""
+    a short cluster like `-sXPOST`, `--data=x` / `--request=POST`, and an abbreviated
+    long name like `--dat` or `--reque` (curl accepts any unambiguous prefix)."""
     for token in shell_tokenize(segment):
         if token.startswith('--'):
-            if token.split('=', 1)[0] in CURL_WRITE_FLAGS:
+            name = token.split('=', 1)[0]
+            if len(name) > 2 and any(f.startswith(name) for f in _CURL_WRITE_LONG):
                 return True
-        elif token.startswith('-') and len(token) > 1 and any(c in _CURL_WRITE_SHORT for c in token[1:]):
+        elif token.startswith('-') and any(c in _CURL_WRITE_SHORT for c in token[1:]):
             return True
     return False
 
