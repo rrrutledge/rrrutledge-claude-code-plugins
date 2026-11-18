@@ -109,8 +109,8 @@ Some commands are approved based on their *arguments*, not just their name:
   A write-flagged curl to any other host is judged by the AI (`curl_judge.py`), because many search APIs take their query as a POST body.
   The judge reads the command plus the host's front page, fetched with an anonymous GET of the origin root only (public hosts, no redirects), quoted as untrusted data.
   Only a narrow shape reaches the judge: one URL, POST, literal `-d` bodies, harmless flags and headers.
-  File bodies, uploads, redirects, proxies, credentials, extra targets, other methods, an overlong command, or AI off or without credentials fall through to the prompt without a network or AI call.
-  A SAFE verdict is remembered per host+path+body field names in the learned store and never promoted to a PR.
+  File bodies, uploads, redirects, proxies, credentials, shell expansion, extra targets, other methods, a non-public host, an overlong command, or AI off or without credentials fall through to the prompt without a network or AI call.
+  A SAFE verdict is remembered per exact URL plus the body with its numbers masked, in the learned store, and never promoted to a PR.
 - **`cp`, `mv`, `touch`, `ln`, `chmod`** - approved when the destination path is within
   the current git repo (CWD, git worktree, or `settings.json` allowed-edit paths),
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory

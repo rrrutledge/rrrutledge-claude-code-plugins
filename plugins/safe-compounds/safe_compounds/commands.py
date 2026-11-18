@@ -19,7 +19,7 @@ from .shell import ASSIGNMENT_ONLY, get_subcommands, shell_tokenize
 # ---------------------------------------------------------------- curl --------
 CURL_WRITE_FLAGS = {
     '-X', '--request', '-d', '--data', '--data-raw', '--data-binary',
-    '--data-urlencode', '--data-ascii', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
+    '--data-urlencode', '--data-ascii', '--expand-data', '--expand-json', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
 }
 CURL_LOCALHOST_PATTERNS = re.compile(r'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$|\s)')
 
