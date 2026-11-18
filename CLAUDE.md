@@ -63,6 +63,7 @@ For every Bash call:
    3+ pipes, loops, `cd /other/dir && cmd`, etc.) → **BLOCK** with rewrite instruction.
    It also BLOCKs an unbounded `find` from `/`, a drive root, or home, which walks the whole
    disk for hours, and any `sed` in-place flag (`-i`, `--in-place`), which rewrites a file with no undo.
+   It also BLOCKs a command naming a saved tool result (`~/.claude/projects/.../tool-results/`) or a chat attachment (`~/.claude/uploads/`), because Claude Code confirms every `~/.claude` path however the hook decides, and the block asks for a `.tmp/` Python script that opens the path itself.
 2. Split compound command (`a && b | c`) into segments.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.
 4. All segments trusted → **ALLOW**.

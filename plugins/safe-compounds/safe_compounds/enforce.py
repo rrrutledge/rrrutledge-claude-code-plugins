@@ -398,7 +398,7 @@ def detect_plugin_cache_reference(command):
 
 _TOOL_RESULTS_PATTERN = re.compile(
     r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])'
-    r'|\.claude[/\\]uploads(?![\w-])', re.IGNORECASE)
+    r'|(?<![\w.-])\.claude[/\\]uploads(?![\w.~-])', re.IGNORECASE)
 
 
 def detect_tool_results_reference(command):
@@ -665,9 +665,9 @@ def enforce_bash(command):
                 'this Bash command approved.')
 
     if detect_tool_results_reference(command):
-        return ('BLOCKED: Command names a saved tool-result file under '
-                '~/.claude/projects/.../tool-results/ or an attached file under '
-                '~/.claude/uploads/. Claude Code always shows its own '
+        return ('BLOCKED: Command names a file the harness saved under ~/.claude - a tool '
+                'result (~/.claude/projects/.../tool-results/) or a chat attachment '
+                '(~/.claude/uploads/). Claude Code always shows its own '
                 'confirmation for any ~/.claude path, no matter what this hook decides -- it '
                 'can\'t be suppressed here. Write a Python script in .tmp/ that opens that '
                 'path itself and does the copying or filtering (json.load it, write the part '

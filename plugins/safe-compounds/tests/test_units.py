@@ -1152,8 +1152,15 @@ class TestToolResultsBlocking:
         msg = enforce_bash(cmd)
         assert msg and 'Python script in .tmp/' in msg
 
+    def test_detects_uploads_windows_and_bare_forms(self):
+        assert detect_tool_results_reference(r'cat "C:\Users\x\.claude\uploads\a.png"') is True
+        assert detect_tool_results_reference('ls ~/.claude/uploads') is True
+        assert detect_tool_results_reference('ls ~/.CLAUDE/Uploads/') is True
+
     def test_does_not_flag_uploads_lookalike(self):
         assert detect_tool_results_reference('ls ~/.claude/uploads-old/') is False
+        assert detect_tool_results_reference('ls ~/.claude/uploads.bak') is False
+        assert detect_tool_results_reference('ls foo.claude/uploads/') is False
         assert detect_tool_results_reference('ls docs/uploads/') is False
 
     def test_enforce_bash_blocks_with_script_hint(self):
