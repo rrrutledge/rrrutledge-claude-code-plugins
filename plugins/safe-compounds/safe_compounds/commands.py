@@ -7,6 +7,7 @@ import re
 import subprocess
 
 from . import ai, config
+from . import curl_judge
 from .learned import add_learned_command, add_learned_subcommand, learned_subcommands
 from .log import log_debug
 from .paths import (
@@ -35,15 +36,19 @@ def _matches_configured_domain(segment):
 
 def is_curl_safe(segment):
     """Approve curl to localhost or a configured-trusted domain (any method);
-    otherwise allow only read-only (no write flag) requests.
+    otherwise allow read-only (no write flag) requests, and let the AI judge a
+    write-flagged request to an unknown host (see curl_judge).
 
     Rationale: a GET is read-only, and configured corporate domains are treated
-    as trusted for reversible work. Writes to arbitrary public URLs are not
-    auto-approved.
+    as trusted for reversible work. A POST to an arbitrary public URL is approved
+    only when the AI reads it as a read-only query, since many search APIs take
+    their query as a POST body.
     """
     if CURL_LOCALHOST_PATTERNS.search(segment) or _matches_configured_domain(segment):
         return True
-    return not any(token in CURL_WRITE_FLAGS for token in segment.split())
+    if not any(token in CURL_WRITE_FLAGS for token in segment.split()):
+        return True
+    return curl_judge.judge_curl(segment)
 
 
 # ----------------------------------------------------------------- sed --------

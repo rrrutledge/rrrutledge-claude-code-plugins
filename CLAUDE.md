@@ -106,6 +106,9 @@ Some commands are approved based on their *arguments*, not just their name:
 - **`curl`** - approved to `localhost:*` or configured trusted domains (any method);
   approved anywhere for reads (no write flags like `-X POST`, `-d`, `--data`).
   To add a trusted domain: add to `curl_domains` in `~/.claude/safe-compounds-config.json`.
+  A write-flagged curl to any other host is judged by the AI (`curl_judge.py`), because many search APIs take their query as a POST body.
+  The judge reads the command plus the host's front page, fetched with an anonymous GET of the origin root only (public hosts, no redirects), quoted as untrusted data.
+  A SAFE verdict is remembered per host+path in the learned store and never promoted to a PR; anything undecided, an authenticated request, or several hosts falls through to the prompt.
 - **`cp`, `mv`, `touch`, `ln`, `chmod`** - approved when the destination path is within
   the current git repo (CWD, git worktree, or `settings.json` allowed-edit paths),
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory

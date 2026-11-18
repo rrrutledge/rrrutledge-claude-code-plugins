@@ -26,6 +26,10 @@ def _ai_disabled():
     return os.environ.get('SAFE_COMPOUNDS_DISABLE_AI') == '1'
 
 
+def enabled():
+    return not _ai_disabled()
+
+
 def _vertex_token():
     gcloud_path = os.path.join(
         os.path.expanduser('~'),

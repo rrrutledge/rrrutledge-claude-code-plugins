@@ -30,6 +30,7 @@ from safe_compounds.enforce import (  # noqa: E402
 )
 from safe_compounds.scripts import check_node_segment, check_python_segment, get_block_reason, reset_block_reason  # noqa: E402
 from safe_compounds import ai  # noqa: E402
+from safe_compounds import curl_judge  # noqa: E402
 from safe_compounds import workflow  # noqa: E402
 from safe_compounds.workflow import classify_workflow_tool  # noqa: E402
 from safe_compounds.worktree_tool import classify_enter_worktree, classify_exit_worktree  # noqa: E402
@@ -211,17 +212,93 @@ class TestCurl:
         set_config()
         assert is_curl_safe("curl https://example.com") is True
 
-    def test_post_public_blocked(self):
+    def test_post_public_blocked(self, monkeypatch):
         set_config()
+        monkeypatch.setenv("SAFE_COMPOUNDS_DISABLE_AI", "1")
         assert is_curl_safe("curl -X POST https://example.com -d x=1") is False
 
     def test_post_configured_domain_ok(self):
         set_config(curl_domains=["mycorp.example"])
         assert is_curl_safe('curl -X POST https://api.mycorp.example/x ') is True
 
-    def test_post_unconfigured_domain_blocked(self):
+    def test_post_unconfigured_domain_blocked(self, monkeypatch):
         set_config(curl_domains=["mycorp.example"])
+        monkeypatch.setenv("SAFE_COMPOUNDS_DISABLE_AI", "1")
         assert is_curl_safe('curl -X POST https://other.com/x') is False
+
+
+class TestCurlAiJudge:
+    SEARCH = "curl -s -X POST https://api.jobs.example/search/ -H 'Content-Type: application/json' -d '{\"q\":1}'"
+
+    @pytest.fixture(autouse=True)
+    def _isolate(self, monkeypatch, tmp_path):
+        set_config()
+        monkeypatch.delenv("SAFE_COMPOUNDS_DISABLE_AI", raising=False)
+        monkeypatch.setenv("SAFE_COMPOUNDS_LEARNED_JSON", str(tmp_path / "learned.json"))
+        self.prompts = []
+        self.probed = []
+        monkeypatch.setattr(curl_judge, "probe_origin", lambda url: self.probed.append(url) or "title: Jobs")
+        self.verdict = (True, None)
+
+        def fake_ai(prompt):
+            self.prompts.append(prompt)
+            return self.verdict
+        monkeypatch.setattr(ai, "call_ai", fake_ai)
+
+    def test_safe_verdict_approves_and_quotes_evidence(self):
+        assert is_curl_safe(self.SEARCH) is True
+        assert "title: Jobs" in self.prompts[0]
+        assert self.probed == ["https://api.jobs.example/search/"]
+
+    def test_dangerous_verdict_prompts(self):
+        self.verdict = (False, "creates a record")
+        assert is_curl_safe(self.SEARCH) is False
+
+    def test_undecided_prompts(self):
+        self.verdict = (None, None)
+        assert is_curl_safe(self.SEARCH) is False
+
+    def test_safe_verdict_remembered_per_endpoint(self):
+        assert is_curl_safe(self.SEARCH) is True
+        assert is_curl_safe(self.SEARCH) is True
+        assert len(self.prompts) == 1
+        self.verdict = (False, None)
+        assert is_curl_safe(self.SEARCH.replace("/search/", "/delete/")) is False
+        assert len(self.prompts) == 2
+
+    def test_ai_disabled_prompts_without_probing(self, monkeypatch):
+        monkeypatch.setenv("SAFE_COMPOUNDS_DISABLE_AI", "1")
+        assert is_curl_safe(self.SEARCH) is False
+        assert self.probed == []
+
+    def test_authenticated_request_skips_ai(self):
+        cmd = "curl -X POST https://api.jobs.example/search/ -H 'Authorization: Bearer x' -d x=1"
+        assert is_curl_safe(cmd) is False
+        assert is_curl_safe("curl -X POST https://api.jobs.example/s -u me:pw -d x=1") is False
+        assert self.prompts == []
+
+    def test_multiple_hosts_skip_ai(self):
+        assert is_curl_safe("curl -X POST https://a.example/x https://b.example/y -d x=1") is False
+        assert self.prompts == []
+
+    def test_endpoint_key_drops_scheme_query_and_trailing_slash(self):
+        assert curl_judge.endpoint_key("https://API.Jobs.example/search/?a=1") == "api.jobs.example/search"
+
+
+class TestProbeOrigin:
+    def test_private_host_not_fetched(self, monkeypatch):
+        monkeypatch.setattr(curl_judge.socket, "getaddrinfo", lambda h, p: [(2, 1, 6, "", ("10.0.0.5", 0))])
+        monkeypatch.setattr(curl_judge.urllib.request, "build_opener",
+                            lambda *a: pytest.fail("fetched a private host"))
+        assert curl_judge.probe_origin("https://intranet.example/x") is None
+
+    def test_localhost_ip_not_fetched(self, monkeypatch):
+        monkeypatch.setattr(curl_judge.socket, "getaddrinfo", lambda h, p: [(2, 1, 6, "", ("127.0.0.1", 0))])
+        assert curl_judge.probe_origin("https://sneaky.example/x") is None
+
+    def test_page_excerpt_strips_markup_and_scripts(self):
+        out = curl_judge._page_excerpt("<title>Careers</title><script>evil()</script><p>Find  jobs</p>")
+        assert "title: Careers" in out and "Find jobs" in out and "evil" not in out
 
 
 class TestSed:
