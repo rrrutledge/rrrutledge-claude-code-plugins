@@ -446,7 +446,9 @@ function renderShow(parsed) {
   if (files.length) {
     lines.push(`Attachments: ${files.map((a, i) => `${a.filename || `attachment-${i + 1}`} (${a.contentType || 'unknown type'})`).join(' | ')}`);
   }
-  lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
+  // An HTML-only message (an Ariba PO, most transactional mail) renders as its text, never raw markup:
+  // the drainer's triage reads only the first stretch of this dump, which for raw HTML is all <style>.
+  lines.push('\n' + (parsed.text || htmlToPlainText(parsed.html) || '(no body)'));
   return lines.join('\n');
 }
 

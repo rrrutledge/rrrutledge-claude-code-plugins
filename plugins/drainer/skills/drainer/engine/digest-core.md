@@ -120,6 +120,13 @@ Do not append a speculative "things still to do" list assembled from unverified 
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.
 Summarize the recap's gist - what was discussed, the decisions, any date or number worth knowing - and never re-list those action items here, or the same action shows up twice: once as a live worker, once as a phantom digest to-do.
 
+**An fyi whose summary names a next move was misclassified - promote it to needs-you.**
+Once an item is summarized, run triage's next-step test (`engine/triage.md`, "The next-step test") on the summary: when it names a move someone on Russell's side would make (invoice against this PO, pay this bill, countersign this agreement, record this payment), that item was needs-you all along.
+Launch a worker for it right then, through the handoff launcher (`python <skill>/scripts/spawn-handoff.py --title "<short title>" --cwd "<repo>" --brief "<repo>/.tmp/handoff-<slug>.md" --model <worker_model_complex>`), with a brief that names the item's captured files (`items/<id>.json` and its body) and the move to make.
+The situational check above runs first, so a move already done is presented as ✅ already handled, never promoted.
+Present the item under its own **Promoted to needs-you** heading, at the top of the fyi section: one line per item naming the move and the launched session's title, never as an fyi line Russell is left to act on.
+Once its worker launches, take a promoted item off the queue (`node <seen-state.js> queue-clear <runtime_dir> <id>`) without waiting for step 4's go-ahead, because the worker owns it from here and it never rides to another digest.
+
 The same principle applies to outreach: **before framing any item as new**, run the card lookup in worker-core §2's "Also check Trello when the item could be outreach" against `<repo>/trello-boards.yaml` - the lookup only; writing back to the card is a worker's job.
 A match means the item is already tracked: name and link the card, and frame the item as **already tracked** rather than new (optionally noting whether the card is worth updating).
 
@@ -147,7 +154,7 @@ Creating or appending the rule goes through the provider's JUNK-LEARNING section
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries led by any **Promoted to needs-you** items (step 2), and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 
