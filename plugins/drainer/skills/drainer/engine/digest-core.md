@@ -122,8 +122,8 @@ Summarize the recap's gist - what was discussed, the decisions, any date or numb
 
 **An fyi whose summary names a next move the pod can start now was misclassified - promote it to needs-you.**
 Once an item is summarized, run triage's next-step test (`engine/triage.md`, "The next-step test") on the summary.
-A bulletin's action-items list and a recap's next steps are outside it, since the first is that fyi's purpose and the second are already their own workers (above).
-The situational check above runs first, so a move already done is presented as ✅ already handled, never promoted.
+The test's own fyi exceptions apply (`engine/triage.md`).
+The situational check above runs first, so a move already done is presented as ✅ already handled.
 Hand a promoted item off right then, per the Hard rules' "Dispatch execution work", with a brief that names the item's captured files (`items/<id>.json` and its body), the move to make, and `engine/worker-core.md` as the procedure the session follows.
 Present it under its own **Promoted to needs-you** heading, at the top of the fyi section: one line per item naming the move and the launched session's title.
 Step 4 then clears it like any other item.

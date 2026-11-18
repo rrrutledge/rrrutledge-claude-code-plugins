@@ -17,8 +17,8 @@ A step he'd delegate, or one nobody asked of him in words, is still his: on his 
 
 **The next-step test decides needs-you vs. fyi.**
 Name the next move anyone on Russell's side would make because this item arrived.
-If you can name one the pod can start now, the item is **needs-you** (or **auto-handle**, when a standing rule decides it), with that move as its `triageReason` - however automated the sender, however much the mail reads like a notice.
-Two fyi cases below keep a named move and stay fyi: a physical-world action that can't start yet, and a bulletin whose action items the digest pulls out for him.
+If you can name one the pod can start now, the item is **needs-you** (or **auto-handle**, when a standing rule decides it), with that move as its `triageReason` (the content decides, per the envelope bullet below).
+Three fyi cases keep a named move and stay fyi: a physical-world action that can't start yet, a bulletin whose action items the digest pulls out for him, and a meeting recap whose action items are already their own needs-you items.
 Every other item that leaves his side with no next move is fyi or junk.
 
 Answer the question by **reading the item as Russell would** - the world-knowledge below tells you who he is, the people and organizations he's tied to, and the systems he acts in, so you can judge the item the way he would on reading it.
@@ -49,8 +49,7 @@ Whether a sign-in exists doesn't decide it here.
   **New commits someone else pushed to a PR he's on** - as reviewer, participant, or author (a GitHub "@someone pushed 1 commit" notification) - are **needs-you (work)**: when he's on the PR, new changes are his to review, so a worker brings him the new diff.
   This is not status churn; the push is new content awaiting his eyes, however bare the notification reads.
   (Which notifications are on *his own* PRs is a fact about him - his `context.md` names how to tell.)
-- it's **a document that obligates his side to act** - one whose arrival creates a step on his side, something to accept, invoice, fill, sign, pay, or renew - even when no one asks in words.
-  These are **needs-you (work)**: the worker does the step, staging any irreversible final act (a submit, a payment) for Russell.
+- it's **a document that obligates his side to act** - one whose arrival creates a step on his side, something to accept, invoice, fill, sign, pay, or renew - even when no one asks in words; it is **needs-you (work)** whenever the next-step test above names a move the pod can start now.
 - it's **a step in something Russell already set in motion** - either its next scheduled step, which he'd take now, or a step he began and left unfinished, its next move still his to make.
   Carrying it forward is his action, so it's **needs-you**: an interview to attend, or a "you didn't finish," "come back and complete it," or "your application is incomplete" reminder, names that step no matter how automated or marketing-styled the sender.
   He set it in motion; the message is just the queue for a step he already owns.
@@ -161,7 +160,7 @@ When it's genuinely unclear, use `false`.
 
 ## Tie-breakers
 - **Judge a preview with no readable content by its subject and sender.**
-  When the item's text is empty, markup, or boilerplate that never reaches the message itself, a subject naming a document that obligates his side to act (above) is **needs-you**, so the worker reads the full message and does the work.
+  When the item's text is empty, markup, or boilerplate that never reaches the message itself, run the next-step test on the subject and sender; a move it names makes the item **needs-you**, so the worker reads the full message and does the work.
 - **auto-handle** is never a tie-breaker default: pick it ONLY when a provider AUTO-HANDLE rule clearly matches.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).
   Better to ask once than to auto-act on something that wasn't actually a standing decision.
