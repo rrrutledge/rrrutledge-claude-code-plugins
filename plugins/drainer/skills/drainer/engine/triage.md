@@ -49,7 +49,7 @@ Whether a sign-in exists doesn't decide it here.
   **New commits someone else pushed to a PR he's on** - as reviewer, participant, or author (a GitHub "@someone pushed 1 commit" notification) - are **needs-you (work)**: when he's on the PR, new changes are his to review, so a worker brings him the new diff.
   This is not status churn; the push is new content awaiting his eyes, however bare the notification reads.
   (Which notifications are on *his own* PRs is a fact about him - his `context.md` names how to tell.)
-- it's **a document that obligates his side to act** - one whose arrival creates a step on his side, something to accept, invoice, fill, sign, pay, record, or renew - even when no one asks in words.
+- it's **a document that obligates his side to act** - one whose arrival creates a step on his side, something to accept, invoice, fill, sign, pay, or renew - even when no one asks in words.
   These are **needs-you (work)**: the worker does the step, staging any irreversible final act (a submit, a payment) for Russell.
 - it's **a step in something Russell already set in motion** - either its next scheduled step, which he'd take now, or a step he began and left unfinished, its next move still his to make.
   Carrying it forward is his action, so it's **needs-you**: an interview to attend, or a "you didn't finish," "come back and complete it," or "your application is incomplete" reminder, names that step no matter how automated or marketing-styled the sender.
