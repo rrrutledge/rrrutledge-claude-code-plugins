@@ -1164,6 +1164,24 @@ class TestToolResultsBlocking:
     def test_does_not_flag_repo_tool_results_dir(self):
         assert detect_tool_results_reference('ls docs/tool-results/') is False
 
+    def test_detects_cp_from_uploads(self):
+        cmd = ('cp "C:/Users/russe/.claude/uploads/824975cf/744a43bf-image.png" '
+               '.tmp/photos/a.png; ls .tmp/photos')
+        assert detect_tool_results_reference(cmd) is True
+        msg = enforce_bash(cmd)
+        assert msg and 'Python script in .tmp/' in msg
+
+    def test_detects_uploads_windows_and_bare_forms(self):
+        assert detect_tool_results_reference(r'cat "C:\Users\x\.claude\uploads\a.png"') is True
+        assert detect_tool_results_reference('ls ~/.claude/uploads') is True
+        assert detect_tool_results_reference('ls ~/.CLAUDE/Uploads/') is True
+
+    def test_does_not_flag_uploads_lookalike(self):
+        assert detect_tool_results_reference('ls ~/.claude/uploads-old/') is False
+        assert detect_tool_results_reference('ls ~/.claude/uploads.bak') is False
+        assert detect_tool_results_reference('ls foo.claude/uploads/') is False
+        assert detect_tool_results_reference('ls docs/uploads/') is False
+
     def test_enforce_bash_blocks_with_script_hint(self):
         msg = enforce_bash(self.CP)
         assert msg and 'Python script in .tmp/' in msg
