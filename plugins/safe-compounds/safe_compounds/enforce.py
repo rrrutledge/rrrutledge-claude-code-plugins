@@ -397,13 +397,15 @@ def detect_plugin_cache_reference(command):
 
 
 _TOOL_RESULTS_PATTERN = re.compile(
-    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])', re.IGNORECASE)
+    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])'
+    r'|(?<![\w.-])\.claude[/\\]uploads(?![\w.~-])', re.IGNORECASE)
 
 
 def detect_tool_results_reference(command):
     """True if a command segment names a saved tool-result file (the harness
     saves an oversized tool result under
-    ~/.claude/projects/<project>/<session>/tool-results/). Claude Code shows
+    ~/.claude/projects/<project>/<session>/tool-results/) or a file the user
+    attached to the chat (~/.claude/uploads/). Claude Code shows
     its own confirmation for `~/.claude` paths, so any command line naming one
     (cp, jq, cat, or a python run given it as an argument) prompts however the
     hook decides. A python script in `.tmp/` that opens the path itself never
@@ -663,8 +665,9 @@ def enforce_bash(command):
                 'this Bash command approved.')
 
     if detect_tool_results_reference(command):
-        return ('BLOCKED: Command names a saved tool-result file under '
-                '~/.claude/projects/.../tool-results/. Claude Code always shows its own '
+        return ('BLOCKED: Command names a file the harness saved under ~/.claude - a tool '
+                'result (~/.claude/projects/.../tool-results/) or a chat attachment '
+                '(~/.claude/uploads/). Claude Code always shows its own '
                 'confirmation for any ~/.claude path, no matter what this hook decides -- it '
                 'can\'t be suppressed here. Write a Python script in .tmp/ that opens that '
                 'path itself and does the copying or filtering (json.load it, write the part '
