@@ -190,7 +190,8 @@ Text matching, DOM selectors, and URL heuristics can't reliably tell a login wal
 1. **Read the screenshot** with the Read tool.
 2. **Decide visually**:
    - **Logged in** - app shell visible, real content, no login form or sign-up wall → record the CDP port and proceed with the next script.
-   - **Not logged in** - a login form is visible, a wall like "Sign up to see this board" / "Sign in to access X", or the `FINAL_URL` is on an auth provider (e.g. `*.okta.com`, `login.microsoftonline.com`, `accounts.google.com`, `id.atlassian.com`) → ask the user to sign in, per **User Intervention**. The page is left open. Re-run `snapshot-target.js` once they confirm. Once they sign in, the persistent profile preserves the session for all future tasks.
+   - **Not logged in** - no account is signed in: a login form is visible, a wall like "Sign up to see this board" / "Sign in to access X", or the `FINAL_URL` is on an auth provider (e.g. `*.okta.com`, `login.microsoftonline.com`, `accounts.google.com`, `id.atlassian.com`) → ask the user to sign in, per **User Intervention**. The page is left open. Re-run `snapshot-target.js` once they confirm. Once they sign in, the persistent profile preserves the session for all future tasks.
+   - **Wrong account** - signed in, but as a different account than the task needs, or an access-denied page ("You need access", "Request access") that names the account it saw → switch accounts per **Wrong account - switch it yourself**, and re-run `snapshot-target.js` once on the right one.
    - **Ambiguous** (loading spinner, blank page) - re-run `snapshot-target.js` once more; if still ambiguous, ask the user to confirm, per **User Intervention**.
 
 **For slow-hydrating SPAs** where the screenshot-stability loop times out before the app is ready, re-run with `--target-anchor=<css-selector>` pointing at a known app-shell element. Example:
@@ -468,7 +469,7 @@ Sometimes the browser hits a blocker that only a human can resolve. These all fa
 ### What triggers user intervention
 
 - **CAPTCHAs / human verification** - Cloudflare "Verify you are human", Zillow "Press & Hold", reCAPTCHA, hCaptcha, Arkose Labs. Cannot be solved programmatically, so escalate immediately rather than retrying.
-- **Login pages** - the user isn't signed in, or the session expired mid-run. Escalate immediately.
+- **Login pages** - no account is signed in, or the session expired mid-run (a signed-in wrong account is covered by **Wrong account - switch it yourself**). Escalate immediately.
 - **MFA prompts requiring the user's phone or authenticator app** - an SMS code, a push notification, a TOTP app. Nothing you can reach; escalate.
 - **Unresolvable consent/terms walls** - cookie banners or terms pages that can't be auto-dismissed by the overlay dismissal pattern.
 
@@ -492,6 +493,18 @@ The user's own instructions (their global or project `CLAUDE.md`, or the project
 Search the destination mailbox the page names and read the newest matching message.
 
 A code sent anywhere else (SMS, an authenticator app, a phone call, a mailbox with no way to read it from this session) is the unreachable case and escalates.
+
+### Wrong account - switch it yourself, don't escalate
+
+Switch accounts when the page shows the wrong one (see the **Wrong account** bullet in Phase 0 Step 2).
+The task, the brief, or the address a document was shared with names the account to use.
+
+1. Read the account the page shows, from the avatar menu or the access-denied text.
+2. Open the site's own switcher (an avatar menu, an account chooser, a workspace or organization picker) and pick the right account when it is listed.
+   Google also accepts `authuser=<email>` on the URL.
+3. When the right account is not listed, use the switcher's add-account flow and clear each step as in **Email-delivered MFA codes**.
+   The password page is the user's step, and it may be only a saved-passkey confirmation after the username, so name it to the user as "password or passkey".
+4. Reload the target and confirm from a screenshot that the page now shows the right account's access.
 
 ### Required `AskUserQuestion` pattern
 
