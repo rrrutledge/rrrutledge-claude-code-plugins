@@ -35,8 +35,9 @@ harness, not supplied by the model. `action: "keep"` never deletes anything.
 itself refuses when the worktree has uncommitted files or commits that
 never made it onto the original branch, unless `discard_changes: true`
 forces it through -- so plain removal is reversible (everything it deletes
-is already preserved elsewhere) and only the `discard_changes` override,
-which knowingly throws work away, needs a human.
+is already preserved elsewhere). The `discard_changes` override, which
+knowingly throws work away, is blocked with a redirect to `keep` plus
+`git worktree remove`, which does its own uncommitted-files check.
 """
 from .log import log_debug
 
@@ -88,17 +89,35 @@ def classify_enter_worktree(tool_input):
     return False, reason
 
 
+DISCARD_REASON = (
+    'BLOCKED: `discard_changes: true` forces the removal past uncommitted files and commits the tool '
+    'thinks are unmerged (a squash merge always looks that way), and this hook can\'t see whether they landed.\n\n'
+    'Leave the worktree without deleting it, then remove it with git:\n'
+    '  1. ExitWorktree with `action: "keep"`.\n'
+    '  2. Read the worktree path and branch from `git worktree list`.\n'
+    '  3. git worktree remove "<worktree path>"   # refuses a worktree holding uncommitted files\n'
+    '  4. git branch -d <branch>, or `git branch -D <branch>` only once `gh pr view` shows the PR MERGED,\n'
+    '     since -D skips the check that the commits landed.\n\n'
+    'If step 3 refuses over uncommitted files, commit and push them and finish the merge, then rerun step 3 as is.\n'
+    'When the worktree\'s work is no longer needed, revert it with `git -C "<worktree path>" restore .`, '
+    'delete the leftover untracked files that `git -C "<worktree path>" status` lists, then rerun step 3 as is.'
+)
+
+
 def classify_exit_worktree(tool_input):
-    """Return True to auto-allow an ExitWorktree tool call, False to prompt."""
+    """Return (decision, reason) for an ExitWorktree tool call.
+
+    `decision` is 'allow', 'prompt', or 'block'; `reason` is the corrective message for a block.
+    """
     action = tool_input.get('action')
     if action == 'keep':
         log_debug("ExitWorktree: action=keep, approving")
-        return True
+        return 'allow', None
     if action == 'remove':
         if tool_input.get('discard_changes'):
-            log_debug("ExitWorktree: discard_changes=True forces past unsaved work, prompting")
-            return False
+            log_debug("ExitWorktree: discard_changes=True forces past unsaved work, blocking with redirect")
+            return 'block', DISCARD_REASON
         log_debug("ExitWorktree: plain remove (tool self-refuses on unsaved work), approving")
-        return True
+        return 'allow', None
     log_debug(f"ExitWorktree: unrecognized action {action!r}, prompting")
-    return False
+    return 'prompt', None
