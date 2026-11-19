@@ -182,6 +182,21 @@ def detect_inline_script(command):
     return None, None
 
 
+def detect_shell_script(command):
+    """Return the .sh file a segment runs directly or through bash/sh, else None."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens:
+            continue
+        if tokens[0].lower().endswith('.sh'):
+            return tokens[0]
+        if tokens[0] in ('bash', 'sh'):
+            operand = next((t for t in tokens[1:] if not t.startswith('-')), '')
+            if operand.lower().endswith('.sh'):
+                return operand
+    return None
+
+
 def detect_output_redirection(command):
     for seg in split_segments(command):
         # Replace quoted spans with a placeholder (not erase them) so a quoted
@@ -751,6 +766,14 @@ def enforce_bash(command):
         return (f'BLOCKED: Inline script flag "{inline_flag}" can\'t be validated inline. '
                 f'{inline_alternative}')
 
+    shell_script = detect_shell_script(command)
+    if shell_script:
+        return (f'BLOCKED: "{shell_script}" is a shell script, and shell scripts cannot be '
+                'safety-checked (quoting, globbing and eval hide what they run). Rewrite it as a '
+                f'Python script at .tmp/<name>.py (for {shell_script}, port what it does), using '
+                'client libraries (urllib/requests) rather than subprocess where possible, then '
+                'run: python .tmp/<name>.py')
+
     if detect_output_redirection(command):
         return ('BLOCKED: Output redirection (> or >>) detected. Per CLAUDE.md rules, never use output '
                 'redirection. Use the Write tool to create files instead.')
@@ -771,8 +794,7 @@ def enforce_bash(command):
                 'NEVER prepend "cd <dir>" to Bash commands (with &&, ;, or newlines).\n\n'
                 'Instead:\n\n'
                 '  • For scripts: Use absolute or relative paths from the current directory:\n'
-                f'      python {cd_target}/script.py\n'
-                f'      bash {cd_target}/script.sh\n\n'
+                f'      python {cd_target}/script.py\n\n'
                 '  • For git: Use -C to specify the repository:\n'
                 f'      git -C {cd_target} status\n'
                 f'      git -C {cd_target} checkout origin/main -- path/to/file\n\n'

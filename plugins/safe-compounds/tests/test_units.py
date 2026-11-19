@@ -975,6 +975,25 @@ class TestCheckNodeSegment:
         assert "full absolute path" in reason
 
 
+class TestShellScriptBlocked:
+    def test_shell_script_forms_block_with_python_instruction(self):
+        for cmd in ('.tmp/x.sh args', './x.sh', 'bash .tmp/x.sh', 'sh x.sh', 'bash -x x.sh a b',
+                    '.TMP/RUN.SH'):
+            reason = enforce_bash(cmd)
+            assert reason is not None and 'BLOCKED' in reason, cmd
+            assert '.tmp/<name>.py' in reason, cmd
+
+    def test_compound_with_sh_beside_py_blocks_in_either_order(self):
+        for cmd in ('.tmp/w4-dump.sh per3b url ; python .tmp/w4-links.py db1',
+                    'python .tmp/w4-links.py db1 ; .tmp/w4-dump.sh per3b url',
+                    'some-unknown-cmd && .tmp/x.sh'):
+            assert 'shell script' in (enforce_bash(cmd) or ''), cmd
+
+    def test_non_script_mentions_of_sh_pass(self):
+        for cmd in ('cat notes.sh', 'bash -c ls', 'python .tmp/x.py'):
+            assert enforce_bash(cmd) is None, cmd
+
+
 class TestScratchpadTrustedScriptDir:
     def test_session_scratchpad_path_is_trusted(self):
         # Mirrors the harness's actual per-session scratch layout:
@@ -1598,7 +1617,7 @@ class TestCdCompoundBlocking:
         os.environ['CLAUDE_CWD'] = str(tmp_path)
         reason = enforce_bash("cd /other && python script.py")
         assert "python /other/script.py" in reason
-        assert "bash /other/script.sh" in reason
+        assert ".sh" not in reason
 
     def test_block_message_has_git_c_flag(self, tmp_path):
         os.environ['CLAUDE_CWD'] = str(tmp_path)
@@ -1749,7 +1768,7 @@ class TestCdCompoundBlocking:
         os.environ['CLAUDE_CWD'] = str(tmp_path)
         reason = enforce_bash("cd /other && python script.py")
         assert "python /other/script.py" in reason
-        assert "bash /other/script.sh" in reason
+        assert ".sh" not in reason
 
     def test_block_message_has_git_c_flag(self, tmp_path):
         """Block message should show git -C alternative."""
