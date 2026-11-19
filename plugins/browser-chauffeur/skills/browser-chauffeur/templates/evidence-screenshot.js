@@ -9,8 +9,8 @@
 // the content it marks. A text target is split out of its text node and wrapped
 // in an outlined <span>, so the box follows the text through line wraps and
 // reflow; the whole string has to sit in one text node of the main document. A
-// selector target is the first matching element that is visible, ancestors'
-// opacity and visibility included. The target is scrolled to the center of the
+// selector target is the first matching element that is visible: larger than
+// 1px each way, with ancestors' opacity and visibility included. The target is scrolled to the center of the
 // viewport, and the capture waits until its position holds steady (fonts loaded,
 // reflow done) so the box lands on what it marks; a target that still sits
 // outside the viewport is an error.
