@@ -167,7 +167,8 @@ class TestGit:
 
     def test_worktree_force_remove_blocked_with_finish_the_merge_message(self):
         for cmd in ("git worktree remove --force /w", "git worktree remove -f /w",
-                    "git -C /repo worktree remove /w --force", "git worktree remove -ff /w"):
+                    "git -C /repo worktree remove /w --force", "git worktree remove -ff /w",
+                    "git worktree remove --forc /w"):
             reason = enforce_bash(cmd)
             assert reason and "finish the merge" in reason, cmd
         assert enforce_bash("git worktree remove /w") is None

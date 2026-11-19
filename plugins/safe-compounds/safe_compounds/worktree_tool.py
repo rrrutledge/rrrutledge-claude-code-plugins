@@ -91,15 +91,14 @@ def classify_enter_worktree(tool_input):
 
 DISCARD_REASON = (
     'BLOCKED: `discard_changes: true` forces the removal past uncommitted files and commits the tool '
-    'thinks are unmerged (a squash merge always looks that way), so this hook can\'t prove nothing is lost.\n\n'
+    'thinks are unmerged (a squash merge always looks that way), and this hook can\'t see whether they landed.\n\n'
     'Leave the worktree without deleting it, then remove it with git:\n'
     '  1. ExitWorktree with `action: "keep"`.\n'
     '  2. Read the worktree path and branch from `git worktree list`.\n'
     '  3. git worktree remove "<worktree path>"   # refuses a worktree holding uncommitted files\n'
     '  4. git branch -d <branch>, or `git branch -D <branch>` only once `gh pr view` shows the PR MERGED,\n'
     '     since -D skips the check that the commits landed.\n\n'
-    'If step 3 refuses over uncommitted files, commit and push them and finish the merge; '
-    '`--force` on the removal is blocked too.'
+    'If step 3 refuses over uncommitted files, commit and push them and finish the merge, then rerun step 3 as is.'
 )
 
 

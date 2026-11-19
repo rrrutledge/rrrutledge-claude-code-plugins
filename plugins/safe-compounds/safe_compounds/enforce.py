@@ -614,7 +614,8 @@ def detect_git_worktree_force_remove(command):
         sub, args = _extract_subcommand(tokens, GIT_GLOBAL_OPTS_WITH_ARG, 'simple')
         if sub != 'worktree' or not args or args[0] != 'remove':
             continue
-        if any(a == '--force' or (a.startswith('-') and not a.startswith('--') and 'f' in a[1:]) for a in args[1:]):
+        if any((a.startswith('--f') and '--force'.startswith(a))
+               or (a.startswith('-') and not a.startswith('--') and 'f' in a[1:]) for a in args[1:]):
             return True
     return False
 
