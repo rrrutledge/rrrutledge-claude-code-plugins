@@ -62,7 +62,7 @@ For **email** threads, additionally search the whole mailbox in both directions 
 - **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive**, and some older cleared items sit in Deleted Items, so search there too.
 - **gmail**: search All Mail with no `in:` filter - CLEAR archives (not trashes), so everything is in All Mail.
 
-Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to, and in Slack; the rule and its reporting wording are in `../engine/worker-core.md` §2, "Search both mailboxes and Slack before concluding whether something already happened."
+Which sources that search covers, and how to report what it finds, is `../engine/worker-core.md` §2, "Search both mailboxes and Slack before concluding whether something already happened."
 
 A card's last comment can also point to a different channel entirely than the one it's sitting in (a "DM me your X," a "connect A with B" that's really an email intro) - see `../engine/worker-core.md` §2, "An ask can hop channels," which every worker (Trello included) already follows.
 
