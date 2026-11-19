@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / channels (@-mentions included) / unread thread replies (muted conversations skipped), show a message with its permalink, search messages across the workspace, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting runs through the message-draft skill's `slack` mode, which stages with this skill's `--create-draft`; this skill's send posts an already-reviewed body.
+description: Read, mark-read, and (on explicit approval) send in a Slack workspace via the Slack Web API - no browser. Use to list unread DMs / group DMs / channels (@-mentions included) / unread thread replies (muted conversations skipped), show a message with its permalink, mark a conversation or thread read, or send one reviewed message, optionally with attached files, on Russ's explicit per-message say-so (gated by the writing-review receipt). Headless-safe. Reply drafting runs through the message-draft skill's `slack` mode, which stages with this skill's `--create-draft`; this skill's send posts an already-reviewed body.
 ---
 
 # Slack — Read/Mark a Workspace via the Web API
@@ -49,8 +49,8 @@ Under `scripts/` (run with `node`):
     after that day, oldest first, from `search.messages` `from:me`: channel, ts, threadTs, send time, and
     the raw mrkdwn text.
     Read by the send-confidence outcome sweep.
-  - Search: `node slack.js --search=<query> [--top=20] [--json]` - `search.messages` across the workspace, newest first, in Slack's search syntax (`from:@name`, `in:#channel`, `after:YYYY-MM-DD`, keywords).
-    Use it to find whether a matter came up or was settled in Slack.
+  - Search: `node slack.js --search=<query> [--top=20] [--json]` - `search.messages` across every DM, group DM, and channel you can read, newest first.
+    Takes Slack's search syntax.
   - History: `node slack.js --history --channel=<C> [--thread-ts=<tts>] [--limit=50] [--json]` — recent
     messages, oldest first: a whole thread (`conversations.replies`) when `--thread-ts` is given, else
     the channel/DM/group-DM timeline (`conversations.history`). Use this for a situational check — a

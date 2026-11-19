@@ -26,10 +26,14 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # sits. Which fit tiers rank above or below neutral is defined in one place: the trello adapter's
 # _PRIORITY_BAND.
 NEUTRAL_PRIORITY_BAND = 1
+# The two bands above neutral: a started card with an incomplete Due date, and the top band (contact,
+# in-progress, a P1 Director-or-above or well-paid manager). Larger is worked sooner.
+DUE_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 1
+TOP_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 2
 
 
 def band_rank(it):
-    """The cross-source queue order, defined in ONE place: priority band, then level, then referral.
+    """The cross-source queue order, defined in ONE place: priority band, then due rank, level, referral.
     Every drained item (email/Slack, ordinary Trello cards, and job-search cards) is ranked by this
     tuple; only job-search cards carry a non-neutral value in any band (the trello adapter stamps
     `_priority_band`/`_level_band`/`_referral_band` - see its _PRIORITY_BAND, _level_band, _referral_band
@@ -37,8 +41,10 @@ def band_rank(it):
     change the tuple HERE; both sort sites (trello-adapter._enumerate and run-poller's cross-source
     needs-you sort) and the band-ranking test read it, so the policy lives at one spot. Each caller
     appends its own trailing date key (the adapter's `_sort_dt`, the poller's `received`), which breaks
-    the final tie most-recent-first."""
+    the final tie most-recent-first. `_due_rank` is the negated Due epoch seconds of a card in the due
+    band (0 for every other item), so the descending sort puts the soonest Due first within that band."""
     return (it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
+            it.get("_due_rank", 0),
             it.get("_level_band", 0),
             it.get("_referral_band", 0))
 
@@ -366,10 +372,16 @@ claude_agents = bg_session.claude_agents
 # The launch-time duplicate check every launched session gets. The two plugins update separately, so an
 # installed session-mgr older than this builder adds no section rather than breaking every launch.
 duplicate_check_section = getattr(bg_session, "duplicate_check_section", lambda agents, parent_id=None: "")
-# The sessions that closed paused, waiting to be resumed, and the guid each resumed session continues
-# under now; an older session-mgr records neither.
+# The sessions that closed paused, waiting to be resumed, and every session that may now carry a
+# worker's item: the guid its history continues under, then each session it handed its work to. An
+# older session-mgr records no handoffs, or neither.
 paused_sessions = getattr(bg_session, "paused_sessions", lambda agents: {})
-session_resolver = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)
+def _own_chain_only():
+    resolve = getattr(bg_session, "session_resolver", lambda: lambda session_guid: session_guid)()
+    return lambda receipt: [(resolve(receipt), 0)]
+
+
+holder_resolver = getattr(bg_session, "holder_resolver", _own_chain_only)
 
 
 # ---------------------------------------------------------------------------- correspondent identity
@@ -914,3 +926,12 @@ class ProviderBase:
         adapter overrides this: its analog is the set of currently-startable card ids (see its override).
         """
         return None
+
+    def finished_since(self, records):
+        """Optional: `{item id: when it finished}` for each captured item record (`{item id: record}`)
+        whose source object has reached a terminal state that no worker can still act on, the time
+        being when the source last changed. The poller closes a parked worker whose every item is in
+        this map (close_finished_workers). An item whose state
+        can't be read this run is left out. A provider with no terminal state returns {}.
+        """
+        return {}

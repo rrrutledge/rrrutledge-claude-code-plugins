@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 
-from . import ai, config
+from . import ai, config, curl_judge
 from .learned import add_learned_command, add_learned_subcommand, learned_subcommands
 from .log import log_debug
 from .paths import (
@@ -19,7 +19,7 @@ from .shell import ASSIGNMENT_ONLY, get_subcommands, shell_tokenize
 # ---------------------------------------------------------------- curl --------
 CURL_WRITE_FLAGS = {
     '-X', '--request', '-d', '--data', '--data-raw', '--data-binary',
-    '--data-urlencode', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
+    '--data-urlencode', '--data-ascii', '--expand-data', '--expand-json', '-F', '--form', '--form-string', '-T', '--upload-file', '--json',
 }
 CURL_LOCALHOST_PATTERNS = re.compile(r'https?://(localhost|127\.0\.0\.1)(:[0-9]+)?(/|$|\s)')
 
@@ -33,17 +33,39 @@ def _matches_configured_domain(segment):
     return False
 
 
+_CURL_WRITE_SHORT = {f[1] for f in CURL_WRITE_FLAGS if len(f) == 2}
+_CURL_WRITE_LONG = [f for f in CURL_WRITE_FLAGS if len(f) > 2]
+
+
+def _curl_has_write_flag(segment):
+    """True for a write flag in any spelling curl accepts: `-d x`, `-dx`, `-XPOST`,
+    a short cluster like `-sXPOST`, `--data=x` / `--request=POST`, and an abbreviated
+    long name like `--dat` or `--reque` (curl accepts any unambiguous prefix)."""
+    for token in shell_tokenize(segment):
+        if token.startswith('--'):
+            name = token.split('=', 1)[0]
+            if len(name) > 2 and any(f.startswith(name) for f in _CURL_WRITE_LONG):
+                return True
+        elif token.startswith('-') and any(c in _CURL_WRITE_SHORT for c in token[1:]):
+            return True
+    return False
+
+
 def is_curl_safe(segment):
     """Approve curl to localhost or a configured-trusted domain (any method);
-    otherwise allow only read-only (no write flag) requests.
+    otherwise allow read-only (no write flag) requests, and let the AI judge a
+    write-flagged request to an unknown host (see curl_judge).
 
     Rationale: a GET is read-only, and configured corporate domains are treated
-    as trusted for reversible work. Writes to arbitrary public URLs are not
-    auto-approved.
+    as trusted for reversible work. A POST to an arbitrary public URL is approved
+    only when the AI reads it as a read-only query, since many search APIs take
+    their query as a POST body.
     """
     if CURL_LOCALHOST_PATTERNS.search(segment) or _matches_configured_domain(segment):
         return True
-    return not any(token in CURL_WRITE_FLAGS for token in segment.split())
+    if not _curl_has_write_flag(segment):
+        return True
+    return curl_judge.judge_curl(segment)
 
 
 # ----------------------------------------------------------------- sed --------

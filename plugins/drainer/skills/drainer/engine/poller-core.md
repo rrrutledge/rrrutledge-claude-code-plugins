@@ -56,6 +56,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
    Also reads the worker buffer - `target_reviewable` (`DRAINER_TARGET_REVIEWABLE`, default 5) and `max_concurrent` (`DRAINER_MAX_CONCURRENT`, default 18) - the only per-pass throttle in the whole loop (see step 5).
 2. **Reconcile** (`reconcile_unhandled()`) - re-queue any item whose source object is still unhandled with no live worker session on it, for the sources that can report that, so it re-enumerates below.
    See the section after this list for the rule and its guards.
+   Then stop any parked worker whose item already finished at its source ("Close a parked worker whose item already finished").
 3. **Per provider - enumerate everything eligible:** call the provider's enumerate (for outlook-graph, `mail.js --list-inbox --json --top=<ENUMERATE_PAGE_SIZE>` - read+unread, newest-first, no time window).
    There is no per-cycle work cap: every cycle asks every source for everything it currently has to offer (`ENUMERATE_PAGE_SIZE`, a generous constant in `run-poller.py`, bounds only how many rows one API call requests - a technical page size, not a throttle; a backlog bigger than that one page just carries into the next cycle).
    Compute each item's stable id and drop any already in seen-state (`scripts/seen-state.js`).
@@ -82,7 +83,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
     Until then the AI step is skipped outright while the other sources, and items with cached verdicts, dispatch as normal.
     The first cycle after that time makes one call to probe whether the account is back.
 5. **Dispatch** (deterministic) - the feed cycle files fyi and junk items itself and writes needs-you and auto-handle items to the pending list; the dispatch loop's pass then works the list, dropping any item already recorded seen before it decides:
-   - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one, and if a paused worker holds it, hold the item (see "One conversation, one worker" below).
+   - **needs-you, first** → if a live worker already holds this item's conversation, hand the item to that worker instead of launching one, and if a paused worker, or a session its worker handed its work to, holds it, hold the item (see "One conversation, one worker" below).
    - **needs-you** → hold this item if an earlier item from the **same correspondent** is still open (see "Hold by correspondent" below); otherwise, while the worker buffer has room: capture to `items/<id>.json`, spawn a **headless worker** (a `claude --bg --remote-control` background session Russell reaches from the Claude app, phone included, or [claude.ai/code](https://claude.ai/code), so a spawn never steals desktop focus) **with an explicit model chosen by complexity** (`worker_model` for simple, `worker_model_complex` for complex - so a worker never inherits a 1M-context session default the account can't use), record its short id in the item's receipt, then record seen **after** the spawn succeeds.
      The buffer is dynamic: each pass opens up to `target_reviewable` minus the sessions already **waiting for Russell** - anything in `claude agents --json` not actively busy: a blocked or idle background worker, and equally an interactive session he left sitting idle - capped so the TOTAL live-session count never exceeds `max_concurrent`.
      Both counts treat a session's kind (background vs interactive) identically, because the two are indistinguishable to Russell in the Claude app: the cap counts every session there, and dispatch backs off when he already has a lot open or a lot already awaiting him, however each session was started.
@@ -110,7 +111,7 @@ The poller holds a single-instance lock (`<runtime_dir>/keeper.lock`), so a seco
 Before enumerating, each cycle runs `reconcile_unhandled()` - the one place the poller decides whether dispatched work actually finished.
 The rule is a single observable condition:
 
-> An item whose source object is still unhandled, with no live worker session on it, is not handled.
+> An item whose source object is still unhandled, with no live worker session on it (its worker, or a session that worker handed its work to), is not handled.
 > Drop its seen key so it re-enumerates.
 
 The success case needs no signal at all: a worker that finished archived the message, so the message is gone from the inbox and its item is excluded automatically.
@@ -120,8 +121,9 @@ Because the reconcile runs ahead of the enumerate, anything it re-queues is list
 Three guards keep it from re-queuing work that is fine:
 
 - **the digest queue is excluded** - an fyi/junk item is archived at triage (dispatch step 5) so it's normally already gone from the inbox, and it never had a worker session; excluding the queue is the belt-and-suspenders that keeps even an item whose triage-time archive failed - still sitting in the inbox, awaiting the digest by design - from re-queuing on every cycle
-- **a live worker id** (the background session's short id, recorded in `seeds/<id>.prompt.txt.session`, matched against the live background sessions in `claude agents --json`) means a worker is open on the item: being worked, or parked for Russell.
+- **a live worker session**, as the rule above defines one (the worker's id is recorded in `seeds/<id>.prompt.txt.session` and matched against the live background sessions in `claude agents --json`), means a worker is open on the item: being worked, or parked for Russell.
   Liveness is the whole test - a live worker is left alone however long it's up, so there is no timeout.
+  The one live worker the cycle ends is one whose item already finished at its source ("Close a parked worker whose item already finished").
 - **the launch grace** (`orphan_grace_minutes`) covers the window in which a just-dispatched worker hasn't written its `.session` file yet and so briefly looks session-less
 
 Both fail-safes point at reconciling nothing rather than re-queuing live work: a process scan that can't run skips the cycle, and a provider whose inbox listing fails skips that provider (an empty id set would otherwise read as "every item is archived").
@@ -139,7 +141,23 @@ Every cycle records each provider's outcome to `<runtime_dir>/provider-health.js
 Because the poller is headless, this file is how a silently-dead provider becomes visible: the daily digest reads it and surfaces any provider with a sustained failure streak so Russell knows to refresh the credential.
 (Dry-run doesn't write it - it's often run without the live creds.)
 
-**Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended action, including any held at the cap) plus the count of items the reconcile would re-queue, with no spawns, no queueing, no records, no clears, and no re-queues.
+**Dry-run** (`--dry-run`) does steps 1–5 and prints a triage report (counts + per-item bucket + intended action, including any held at the cap) plus the count of items the reconcile would re-queue and of finished workers it would stop, with no spawns, no queueing, no records, no clears, no re-queues, and no stops.
+
+## Close a parked worker whose item already finished
+
+Right after the reconcile, `close_finished_workers()` handles the mirror case: a live worker on an item that is already over at its source.
+Another session can finish the work a worker was parked on, and that worker then sits open with nothing left to do until Russell finds it.
+The cycle stops such a worker with `claude stop`, which keeps its transcript resumable; the orphan-sessions provider leaves a stopped session closed.
+
+A worker is stopped when all three hold:
+
+- **every item it holds has finished at its source**, by its provider's `finished_since()`
+- **each item's last change at its source came after the worker's transcript was last written**, by more than `CLOCK_SKEW` - the change came from outside the worker, so a worker that Russell has written to since, or that is still presenting its own finish, stays open.
+  A worker that finished its own Trello card did so after Russell confirmed the send (`providers/trello-provider.md`, CLEAR), so when another session changes that card later, stopping the worker cuts off nothing Russell still needs from it.
+- **the session is between turns**
+
+Only a source with a terminal state takes part: the poller and the worker clear an email while its work is still open, so an inbox source reports an empty map.
+A provider whose check fails is skipped for the cycle, and a session scan that fails stops nothing.
 
 ## Hold by correspondent: one open item per person, so one worker reads them all
 
@@ -153,7 +171,7 @@ If one matches, the item is left **unrecorded** on the pending list - the same p
 
 "Currently has an open item" is recomputed **every pass from live state**, never a persisted "waiting" flag - a hold that could get stuck waiting forever (a crashed worker, a bug) would be worse than the problem it solves.
 The one stored record is short-lived: a worker launched within the last few minutes holds its correspondent and its conversation by the dispatcher's own launch record (`launch-holds.json`, `LAUNCH_HOLD` in `run-poller.py`) until the session scan lists it, and its slot counts against `max_concurrent` the same way.
-The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when a live `claude --session-id` worker is running on one of their captured items (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
+The signal is the same liveness test `reconcile_unhandled` trusts: a correspondent is held-open when one of their captured items has a live worker session on it, as the reconcile rule above defines one (`open_correspondents`), plus any correspondent already dispatched earlier in the same pass (so even two duplicates on the list together don't both spawn - the first claims the identity, the rest wait).
 If a worker dies without clearing, the hold behind it goes false on the next pass, and reconcile re-queues *its* item within one feed cycle - both read the same liveness signal, not a separate flag.
 Worst case is one feed cycle's delay, never indefinite starvation.
 A live-session scan that fails yields no held-open set, so a hold across passes **fails open** (dispatch proceeds); the same-pass dedup still holds a burst.
@@ -171,6 +189,7 @@ Each card dispatches independently, and a card with an open worker is not dispat
 
 A new needs-you item in a conversation a live worker already holds goes to that worker instead of getting its own, since a message arriving after its conversation's worker launched would otherwise start a second worker.
 When the conversation's worker closed paused, waiting on other work, the item waits unrecorded on the pending list until that worker is resumed, and stops waiting once the pause is three days old.
+When the conversation's worker handed its work to another session, the item waits unrecorded on the pending list while that session runs, since that session is no drainer worker to hand the item to.
 Each provider names the conversation (`conversation_key()`), and `run-poller.py` does the routing and the hand-over (`route_to_live_worker` and the functions it calls); the mechanics are documented there.
 A hand-over that fails launches a worker, so the worst case is a duplicate.
 Same work arriving by another source shares no key; the launch-time duplicate check that session-mgr gives every launched session catches it (`resume-sessions/duplicate-sessions.md`).

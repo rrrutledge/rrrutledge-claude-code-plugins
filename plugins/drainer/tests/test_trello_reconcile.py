@@ -274,5 +274,98 @@ check("and nothing is memoized (the whole provider was skipped)",
       and json.load(open(os.path.join(rt, poller.HANDLED_FILE), encoding="utf-8")).get("trello"),
       None)
 
+# --------------------------------------------------------------------- finished cards close their worker
+class CardUtils(FakeUtils):
+    """FakeUtils plus the per-card GET (with its list inline) finished_since reads."""
+
+    def __init__(self, cards, fail_ids=()):
+        super().__init__({}, {})
+        self.cards_by_id, self.fail_ids = cards, set(fail_ids)
+
+    @staticmethod
+    def _is_terminal_list(name):
+        return any(t in (name or "").lower() for t in ("finished", "abandoned", "adopted", "done", "template"))
+
+    def trello_request(self, method, path, session, params=None):
+        cid = path.rsplit("/", 1)[1]
+        if cid in self.fail_ids:
+            raise RuntimeError("card fetch blew up")
+        return self.cards_by_id[cid]
+
+
+DAY_S = 24 * 3600
+DAY_AGO = _iso_ago(DAY_S).replace("+00:00", "Z")
+C_DONE, C_ARCH, C_OPEN, C_ERR = (f"bbbbbbbb000000000000{n:04d}" for n in range(1, 5))
+FINISHED = {"name": "✅ Finished", "closed": False}
+TODO = {"name": "To Do", "closed": False}
+FIN_CARDS = {C_DONE: {"closed": False, "list": FINISHED, "dateLastActivity": DAY_AGO},
+             C_ARCH: {"closed": True, "list": TODO, "dateLastActivity": DAY_AGO},
+             C_OPEN: {"closed": False, "list": TODO, "dateLastActivity": DAY_AGO}}
+
+
+def rec_for(cid):
+    return {"id": f"trello-{cid}", "source": "trello", "cardId": cid}
+
+
+print("\nfinished_since: Finished-list and archived cards are done; open and unreadable ones are not")
+p = make_provider(CardUtils(FIN_CARDS, fail_ids=[C_ERR]))
+got = p.finished_since({f"trello-{c}": rec_for(c) for c in (C_DONE, C_ARCH, C_OPEN, C_ERR)})
+check("terminal cards reported", sorted(got), sorted(f"trello-{c}" for c in (C_DONE, C_ARCH)))
+
+
+def finished_run(workers, agents, resumed=None):
+    """Run close_finished_workers over `workers` ({guid: (card id, seconds since its transcript was
+    last written)}); `resumed` ({guid: seconds since written}) adds transcripts for sessions a worker
+    continued under. Return the short ids stopped."""
+    rt = workspace({}, {f"trello-{c}": rec_for(c) for c, _ in workers.values()})
+    transcripts = {}
+    for guid, (c, _) in workers.items():
+        write_session(rt, f"trello-{c}", guid)
+    for guid, written_ago in [(g, ago) for g, (_, ago) in workers.items()] + list((resumed or {}).items()):
+        path = os.path.join(rt, f"{guid}.jsonl")
+        open(path, "w").close()
+        os.utime(path, (time.time() - written_ago,) * 2)
+        transcripts[guid] = path
+    stopped, real = [], (poller.bg_session.stop_session, poller.bg_session.transcript_file)
+    poller.bg_session.stop_session = lambda short, cfg_dir: stopped.append(short)
+    poller.bg_session.transcript_file = transcripts.get
+    try:
+        n = poller.close_finished_workers(rt, [make_provider(CardUtils(FIN_CARDS))], agents)
+    finally:
+        poller.bg_session.stop_session, poller.bg_session.transcript_file = real
+    return n, sorted(stopped)
+
+
+def agent(guid, **kw):
+    return {"id": guid[:8], "sessionId": guid, "kind": "background", "pid": 1, "status": "idle", **kw}
+
+
+G = [f"{n}{n}{n}{n}{n}{n}{n}{n}-0000-0000-0000-000000000000" for n in range(1, 4)]
+print("\nclose_finished_workers: stops a parked worker only when someone else finished its card")
+n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S), G[1]: (C_ARCH, 3 * DAY_S), G[2]: (C_OPEN, 3 * DAY_S)},
+                          [agent(g) for g in G[:3]])
+check("the Finished and archived cards' parked workers are stopped", stopped, sorted([G[0][:8], G[1][:8]]))
+n, stopped = finished_run({G[0]: (C_DONE, 60)}, [agent(G[0])])
+check("a worker written to after the finish (it finished the card, or Russell replied) stays open",
+      stopped, [])
+n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0], status="busy")])
+check("an interactive-style busy worker is left running", stopped, [])
+n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0], status=None, state="working")])
+check("a background worker mid-turn is left running", stopped, [])
+n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, None)
+check("a failed session scan stops nothing", (n, stopped), (0, []))
+
+real_resolver = poller.holder_resolver
+try:
+    poller.holder_resolver = lambda: lambda r: [(r, 0), (G[1], 0)]
+    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0]), agent(G[1])],
+                              resumed={G[1]: 3 * DAY_S})
+    check("a resumed worker is stopped under its newest session", stopped, [G[1][:8]])
+    poller.holder_resolver = lambda: lambda r: [(r, 0), (G[2], 1)]
+    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[2])], resumed={G[2]: 3 * DAY_S})
+    check("a session the worker handed off to is never stopped", stopped, [])
+finally:
+    poller.holder_resolver = real_resolver
+
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

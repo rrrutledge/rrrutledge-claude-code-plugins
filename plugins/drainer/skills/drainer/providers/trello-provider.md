@@ -30,8 +30,9 @@ Start is the one date, alongside two labels + a description convention:
   Record `Blocked-by: <upstream-shortlink>[, …]` in the description; optionally attach the upstream card for a human-visible link.
   (The `trello` skill's SKILL.md owns applying this at creation time - it's the mechanics layer every Trello write goes through.)
 
-**Trello's native Due field is a separate, informational date the queue never reads.**
-It's fine to set Due as a plain deadline marker when a card genuinely has one, alongside Start - but setting only Due, expecting it to hold a card back, nudge it, or make it resurface, silently does nothing: the drainer's queue and every nudge/advance operation in this file act on Start alone.
+**Trello's native Due field ranks a card once its Start has arrived.**
+The due-band rule lives in `trello-queue-model.md`.
+Whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
 
 **Unblock has a push and a pull.**
@@ -53,6 +54,16 @@ Only a CLEAR mints a fresh id - the go-live date is part of the id (see the id s
 Bumping it to "claim" the card forges the very id CLEAR is meant to mint later - one seen-state never recorded - so the next cycle reads a brand-new item and spawns a second worker on top of this one.
 The Start date moves only when the work advances (CLEAR), never to mark a card in-flight.
 
+**Match a decided duplicate before any research.**
+The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for.
+A card under "Same item" is a candidate: open it and confirm it is this same request (the same posting, the same ask from the same person) rather than a recurrence of it or a different item sharing a name.
+A confirmed **decided** card already holds the decision: post a dated comment naming and linking it, CLEAR this card the same way it went (**stop** for Abandoned), and close per worker-core §6a.
+A confirmed **open** card means the work belongs on one card, the older of the two, and the newer one stops.
+Carry anything new from the newer card into a dated comment on the older one, and stop the newer card with a comment linking the older.
+When the newer card is this one, close the same way; when it is the other card, carry on with this one.
+The "Same employer or person" cards are context for the research, showing how this employer or contact went before.
+A name the section never searched (a contact in the description, another board's employer) gets the same search by hand.
+
 Read its description + structured comments FIRST; then run INITIATIVE-LOOKUP for program context; act on that before re-discovering anything.
 Write `items/<id>.json`:
 `{ "id","source":"trello","triage":"needs-you","kind":"reply|work","cardId","board","list","name",`
@@ -62,7 +73,7 @@ For **email** threads, additionally search the whole mailbox in both directions 
 - **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive**, and some older cleared items sit in Deleted Items, so search there too.
 - **gmail**: search All Mail with no `in:` filter - CLEAR archives (not trashes), so everything is in All Mail.
 
-Searching beyond the card's own mailbox, and how to report what you find, is `../engine/worker-core.md` §2, "Search both mailboxes and Slack before concluding whether something already happened."
+Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to; the rule is `../engine/worker-core.md` §2, "Search both mailboxes", and the reporting wording is in "Search around before concluding."
 
 A card's last comment can also point to a different channel entirely than the one it's sitting in (a "DM me your X," a "connect A with B" that's really an email intro) - see `../engine/worker-core.md` §2, "An ask can hop channels," which every worker (Trello included) already follows.
 
@@ -135,6 +146,11 @@ Every due card ends in a step taken; outcome 4 below, whose list names every eve
 
 **Check before you decide.**
 Run the checks in `../engine/worker-core.md` §2, "Check before you ask", on each thing the card is waiting on, including a hold condition written on the card.
+
+**A card that prepares for a dated event reaches outcome 1 once that date has passed.**
+When the description names the fixed date of the event the card prepares for, and today is past that date with no later date in its comments, the event is the awaited thing and it has happened.
+With no follow-up open, finish the card, naming the event and its date in the comment, and self-close per `../engine/worker-core.md` §6a.
+A follow-up the event created, open in the card's comments or the contact's thread, becomes the card's next step: advance the card to it, naming the event in the comment.
 
 Then the card ends in exactly one of these:
 

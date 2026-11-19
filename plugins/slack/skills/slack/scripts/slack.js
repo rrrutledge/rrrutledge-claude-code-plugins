@@ -36,9 +36,10 @@
 //                 the send-confidence outcome sweep matches staged drafts against it. Search indexing lags
 //                 a post by a few seconds, so a just-sent message can be missing for a moment)
 // Search:        node slack.js --search=<query> [--top=20] [--json]
-//                (search.messages across the workspace, newest first, in Slack's search syntax:
-//                 `from:@name`, `in:#channel`, `after:YYYY-MM-DD`, keywords. Each hit carries channel,
-//                 channelName, ts, threadTs, from, received, text, and permalink. Read-only)
+//                (search.messages across every DM, group DM, and channel you can read, newest first:
+//                 channel, sender, sent time, text, and permalink. Takes Slack's search syntax, so a
+//                 person's name, a company, or an identifier finds a heads-up wherever it was posted.
+//                 Read-only)
 // Resolve name:  node slack.js --resolve-name=<U|D|C|G id> [--json]
 //                (the person's or channel's display name for an id; a DM resolves to the other member;
 //                 prints the id unchanged when the lookup fails. Read-only)
@@ -593,23 +594,25 @@ async function sentSince() {
 }
 
 async function search() {
-  const top = Math.min(parseInt(args.top || '20', 10), 100);
-  const r = await call('search.messages', {
-    query: String(args.search), sort: 'timestamp', sort_dir: 'desc', count: String(top),
-  });
+  if (typeof args.search !== 'string' || !args.search.trim()) throw new Error('--search takes a query: --search=<query>');
+  const query = args.search;
+  const top = Math.max(1, Math.min(parseInt(args.top, 10) || 20, 100));
+  const r = await call('search.messages', { query, sort: 'timestamp', sort_dir: 'desc', count: String(top) });
+  // An IM hit's channel `name` is the other member's user id.
+  const where = async (c) => (c.is_im ? `a DM with ${await userName(c.name)}` : c.is_mpim ? 'a group DM' : `#${c.name || c.id}`);
   const out = [];
-  for (const hit of (r.messages && r.messages.matches) || []) {
+  for (const hit of (r.messages || {}).matches || []) {
     out.push({
-      channel: (hit.channel && hit.channel.id) || '', channelName: (hit.channel && hit.channel.name) || '',
-      ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.user ? await userName(hit.user) : hit.username || '?',
-      received: tsToIso(hit.ts), text: await messageText(hit), permalink: hit.permalink || '',
+      channel: (hit.channel && hit.channel.id) || '', where: await where(hit.channel || {}),
+      ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.username || hit.user || '',
+      sent: tsToIso(hit.ts), text: hit.text || '', permalink: hit.permalink || '',
     });
   }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
-  console.log(`${out.length} message(s) matching "${args.search}", newest first:`);
+  console.log(`${out.length} message(s) matching ${JSON.stringify(query)}, newest first:`);
   for (const m of out) {
-    const when = new Date(m.received).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-    console.log(`\n--- ${when} | ${m.from} in ${m.channelName || m.channel}\n${m.permalink}`);
+    const local = new Date(m.sent).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    console.log(`\n--- ${local} | ${m.from} in ${m.where} ${m.permalink}`);
     console.log(clean(m.text) || '(no text)');
   }
 }
@@ -1102,7 +1105,7 @@ async function findByDomain() {
   if (args.show) return await show();
   if (args.history) return await history();
   if (args['sent-since']) return await sentSince();
-  if (args.search) return await search();
+  if ('search' in args) return await search();
   if (args.react) return await react();
   if (args.unreact) return await unreact();
   if (args.mark) return await mark();
@@ -1116,5 +1119,5 @@ async function findByDomain() {
   if ('find-channel' in args) return await findChannel();
   if (args['find-by-domain']) return await findByDomain();
   if (args['resolve-name']) return await resolveName();
-  throw new Error('Specify --check, --list-unread, --show, --history, --search, --sent-since, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-channel, --find-by-domain, or --resolve-name');
+  throw new Error('Specify --check, --list-unread, --show, --history, --sent-since, --search, --react, --unreact, --mark, --read-cursor, --send, --list-drafts, --create-draft, --delete-draft, --find-dm, --open-dm, --find-channel, --find-by-domain, or --resolve-name');
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

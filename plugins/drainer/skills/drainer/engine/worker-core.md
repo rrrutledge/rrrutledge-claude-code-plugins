@@ -91,20 +91,28 @@ That changes the right action.
 
 **Check before you ask.**
 Before nudging anyone to make something happen, find out on your own whether it already happened.
-Check each thing the item is waiting on against the system that records it, including both mailboxes and Slack per "Search both mailboxes and Slack before concluding whether something already happened" in this section.
+Check each thing the item is waiting on against the system that records it, searching every system "Search around before concluding" in this section names.
 A dated note on the item saying something is still pending is the claim to check, not the answer: it was true when written and may have changed since.
 When a check can't be run - the page URL is unknown, a sign-in has expired - name what's unchecked and what blocked it, and ask Russell for that instead of drafting a nudge on the old note.
 Only a check showing it really hasn't happened leads to a ping, addressed to whoever owns the next step.
 
 For an unknown mechanism internal to the user's organization, consult the user's designated internal knowledge source first (if their `context.md` names one) before asking the user directly.
-The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
-Work out which system would hold the record before a turn ends on that question.
 
-**Search both mailboxes and Slack before concluding whether something already happened.**
-When the question is whether something already happened or a reply already went out, search the ISC Gmail (All Mail, so Sent is included), personal Outlook (inbox, Sent, Archive), and Slack (`slack.js --search`) before answering, whichever source the item arrived in.
-A thread often runs through one source while the evidence sits in another: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, an order confirmation can land in either mailbox, and a colleague can report in Slack that an emailed matter is settled.
-Search two ways: by sender or platform (a ticketing platform like pretix, a vendor name) and by subject or event name, since one narrow keyword search of one source proves nothing.
-A worker that still finds nothing reports "not found in Gmail, Outlook, or Slack" and names the searches it ran, not "probably not done".
+**Search around before concluding.**
+Before concluding anything about an item's history - that it arrived with no warning, that it already happened, that it was already decided, or that it is new - search every readable system that could hold its record, and act on what the search shows.
+The record often sits on a different system than the one the item arrived on, posted minutes or months before it.
+Search each system by the people's, companies', and platforms' names and by the item's own identifiers (a posting's req id, a document or order number, the subject or event name), since one narrow keyword search of one system proves nothing.
+Every one of these systems is searched:
+- **Both mailboxes**, per "Search both mailboxes" below.
+- **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
+- **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
+
+Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
+A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, or the boards").
+
+**Search both mailboxes.**
+Search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive), whichever mailbox the item arrived in.
+A thread often runs through one mailbox while the evidence sits in the other: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, and an order confirmation can land in either.
 
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
@@ -150,10 +158,11 @@ Two patterns to watch for, on any source:
   Search the mailbox (both directions, per the email guidance above) for an intro before assuming that step hasn't happened.
   An item whose content describes an ask or a next step is only half-read until you've checked the channel that ask actually points to - checking only the channel it arrived on and finding silence there is not the same as confirming nothing happened.
 
-**Also check Trello when the item could be outreach** - an introduction, or a reply from a company or individual who might already be a tracked contact - regardless of which source it arrived on.
-Read `trello-boards.yaml` (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0) for an existing card naming that company or contact.
+**A tracked card is the item's record.**
+The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
+That command matches a card by its whole name, the leading segment of its name, or a posting id in its links, so search the boards by hand for a person or company that sits later in a card's name.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
-No match → treat it as genuinely new.
+The item is new only when the boards and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
@@ -166,6 +175,13 @@ When you stand down for the session that keeps the item, leave a card un-cleared
 Settle with that session before any other work, by the rule in `duplicate-sessions.md`.
 
 **A new item in your own conversation arrives as a message from the drainer; handle it under §2d and §6 like your own.**
+
+**Every turn that follows a wait starts with §2's situational check again.**
+When a message wakes this session after it sat waiting, first run `date` and re-read the item's source as it stands now: for a card, its list, its Start, and its newest comments.
+What you last presented is as old as that wait, so a date you called upcoming may have passed and another session may have finished the work.
+Then do what the waking message asks.
+When it asks nothing beyond the item, and another session has since archived the card or moved it to a terminal list, close per "Close silently".
+When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
@@ -201,17 +217,17 @@ What still must not slip: anything this session doesn't finish before ending nee
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
 
 ## Close silently
-Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
+Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), an item already over at its source when you wake from a wait (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), or you stood down for the session that keeps the item (§2).
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), you stood down for the session that keeps the item (§2), or the item is a Trello card that already sits on a terminal list or is archived.
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
 3. **Queue the digest entry:**
    `node <skill>/scripts/seen-state.js queue-add <runtime_dir> <source> <id> <path to items/<id>.json>`
    (`<runtime_dir>` is the parent of the `items/` folder).
-   A situational no-op close and a stand-down queue nothing: there is nothing for the digest to report.
+   A situational no-op close, a stand-down, and an item already over at its source when you wake from a wait queue nothing: there is nothing for the digest to report.
 4. **Close your browser tabs** if you opened any, now, with browser-chauffeur's `chauffeur.py --close-owned`: a silent close leaves no human step for them to wait on.
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.
@@ -376,6 +392,7 @@ Instead, hand that other session the instruction to resume you when its work is 
   **Leave the card un-cleared and its Start untouched** (`providers/trello-provider.md`, CAPTURE): the work isn't done, and the resumed session is what CLEARs it once it finishes.
   Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
+  **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
 If the next step is something only Russell can produce - content only he has the judgment or standing to write, a decision only he can make - filing a card for it and moving on leaves it unfinished; see step 3, "you drive the keyboard."

@@ -7,14 +7,15 @@ This file ONLY classifies - what the poller DOES with each bucket (own worker vs
 
 ## The question
 
-For every inbound item ask: **is there something for Russell to do?**
+For every inbound item ask: **is there something to do - for Russell, or for the pod working on his behalf?**
 If there is, now is the time - do it immediately, or kick it off in a worker session.
-Everything Russell is going to do, he does right now.
+Everything Russell is going to do, he does right now, and the pod does every step it can carry out for him.
+When the item implies work of any kind, that work is something to do.
 
 Answer it by **reading the item as Russell would** - the world-knowledge below tells you who he is, the people and organizations he's tied to, and the systems he acts in, so you can judge the item the way he would on reading it.
 That knowledge informs your judgment.
 The cases it lists are illustrations of the one question - when an item fits no listed case, reason from the question anyway.
-A novel item with no rule to its name is still decided by "would Russell act on this?".
+A novel item with no rule to its name is still decided by the question above.
 Never drop an item to junk merely because nothing here named it.
 
 Answering that is the whole of triage, and the answer is one of four buckets - two when there's something to do, two when there isn't.
@@ -30,7 +31,7 @@ Whether a sign-in exists doesn't decide it here.
 
 **Then, for the content in front of you, there's something to do when:**
 
-- it's **an action Russell himself would take** - not what the sender wants him to do, but what he'd decide to act on: a reply to write, a form to return, a survey to fill, an RSVP, a decision to make, work to kick off (code, a doc, a ticket, a lookup, a system update…), or delegating it to the team.
+- it's **an action Russell or the pod would take** - not what the sender wants him to do, but what he'd decide to act on: a reply to write, a form to return, a survey to fill, an RSVP, a decision to make, work to kick off (code, a doc, a ticket, a lookup, a system update…), or delegating it to the team.
   A training deadline he'd complete is an action; a security alert for a failed login he already knows about is not - reading it changes nothing he'd do.
   An **automated notification that something he owns is broken or failing** - a failed build or CI run on a repo he maintains, a monitor/health alert on a service he runs, a **service/integration notice that something he (or an organization he runs) configured has stopped working or needs reconnecting** (a dropped integration, disconnected social accounts, an expired connection, e.g. a Hootsuite "social networks disconnected" notice), a job-failure or broken-link report - is work to do (go fix it), the same as any other work he'd kick off; a passing, routine, subscription-digest, or already-known-good status is not.
   A **CI or Actions FAILURE on a pull request he authored** is his to fix (go fix the failure): the failure itself is the signal, and it stays needs-you even when the same repo's routine success notices and subscription mail are fyi/junk; use the failure-vs-success distinction, not the repo, to sort GitHub notification mail.
@@ -70,8 +71,8 @@ Whether a sign-in exists doesn't decide it here.
 
 **When there is something to do, it's one of two buckets:**
 
-- **needs-you** - Russell acts on it now, in its own worker session.
-  This is the default for anything he'd do.
+- **needs-you** - it gets acted on now, in its own worker session, by Russell or by the pod for him.
+  This is the default for anything either would do.
   It's ONE bucket on purpose; don't split reply-vs-work here.
   Record a hint: **"reply"** when a message is the whole response (an answer, an acknowledgment), **"work"** when the action is the whole of it, and **"work-then-reply"** when the sender asks for something the pod can carry out itself (the asks `worker-core.md` step 3 covers) and a reply then reports it done.
   The verdict's reason (the item's `triageReason`) names that ask as the worker's task ("fill the sender's form, then reply done"), because the worker carries it out itself (`worker-core.md` step 3).
@@ -82,7 +83,7 @@ Whether a sign-in exists doesn't decide it here.
 
 **When there's nothing to do, it's one of the other two:**
 
-- **fyi** - Russell may want to know, but there's nothing to act on; no worker opens and the digest surfaces it.
+- **fyi** - Russell may want to know, but there's nothing for him or the pod to act on; no worker opens and the digest surfaces it.
   Common cases that land here:
   - **Delivery-failure bounces** (MAILER-DAEMON / Postmaster) - **needs-you** when someone Russell was actually trying to reach didn't get it: a primary **To** recipient, especially a lone address (e.g. a Google Docs comment bounced from `comments-noreply@docs.google.com`), which he now has to deliver another way. fyi when the failed address wasn't the real target - a CC, or one of many on a mailing list - so the message still reached who it was for.
   - **Completed-event notices** - an automated notification that something already finished (a token regenerated, a password changed, a setting updated, a sign-in confirmed, a new device or app or passkey added, a payment method changed); reading it changes nothing Russell would do.
@@ -152,4 +153,5 @@ When it's genuinely unclear, use `false`.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).
   Better to ask once than to auto-act on something that wasn't actually a standing decision.
 - Unsure whether there's something to do → treat it as **needs-you** (prefer acting).
+  An item whose text you couldn't read (an empty body, or one that is only HTML markup with no readable text) counts as unsure.
 - Nothing to do, unsure between **fyi** and **junk** → **fyi** (prefer keeping eyes on it).

@@ -54,6 +54,9 @@ instructions: |-
   `trello_request(method, path, session, params=?, body=?)` directly, which still carries the shared
   session, base URL, and timeout.
 
+  `python <path-to-skill>/scripts/trello_utils.py related --board <id> [--board <id> ...] --name <text> [--desc <text>]` finds the cards on the same item or the same employer or person.
+  Pass the item's employer, person, or title as `--name` and any text carrying its links as `--desc`.
+
   ### update-trello-from-transcript.py
 
   Batch-update cards based on meeting transcript follow-ups. See the script's docstring for the full
@@ -129,14 +132,14 @@ instructions: |-
   - **`start`** is the one date the drainer's queue reads (see the drainer's `trello-provider.md` for the
     full model) - it's the "work-on-it / resurface" day. Every reschedule (a nudge, a hold-back, an
     advance, a Russell-requested date change) means setting `start`.
-  - **`due`** is a separate, purely informational deadline. Nothing in this system reads it to decide when
-    a card resurfaces. Set it alongside `start` when a card genuinely has an external deadline worth
-    displaying, but setting `due` alone and expecting the card to nudge, hold back, or resurface on that
-    date does nothing - the queue never looks at it.
+  - **`due`** is a separate deadline that ranks a card once its Start has arrived: a card with an
+    incomplete `due` and a `start` in the past is worked soonest-due first, ahead of ordinary cards.
+    It never decides when a card resurfaces, so a card with only `due` set (no `start`) is not ranked
+    by it. Set `due` alongside `start` when a card has an external deadline.
 
   ```python
   update_card(card_id, {'start': '2026-08-28'}, session)  # reschedules when it resurfaces
-  update_card(card_id, {'due': '2026-08-28'}, session)     # cosmetic only - does not reschedule anything
+  update_card(card_id, {'due': '2026-08-28'}, session)     # ranks the card by this deadline once its start has arrived
   ```
 
   ---

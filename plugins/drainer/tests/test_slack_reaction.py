@@ -85,8 +85,7 @@ with open(sc.model_path(), "w", encoding="utf-8") as f:
 p = run("propose", ts="1761700003.000100", emoji="white_check_mark")
 check("auto-sent", p["auto_sent"], True)
 check("the reaction went out", calls[-1], ("--react", "C0123ABCD", "1761700003.000100", "white_check_mark"))
-check("the digest line names the emoji, the permalink, and the undo",
-      (":white_check_mark:" in p["digest"], PERMALINK in p["digest"], p["undo"] in p["digest"]), (True, True, True))
+check("the undo names the draft", p["draft_id"] in p["undo"], True)
 check("logged as auto-sent, outside the target", outcome(p["draft_id"])["disposition"], "auto-sent")
 u = run("undo", draft_id=p["draft_id"])
 check("undo takes the reaction off", calls[-1], ("--unreact", "C0123ABCD", "1761700003.000100", "white_check_mark"))

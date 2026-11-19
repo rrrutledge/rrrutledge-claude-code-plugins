@@ -30,7 +30,8 @@ new session's work: it appends the instruction to resume the launching session (
 schedule-resume.py prints, for $CLAUDE_CODE_SESSION_ID in the current directory) to the end of the
 brief, so the launcher's last step is to close paused. It also writes a wake note beside the brief
 (`<brief>.resume-note.md`) saying the launched session's work is done, and the command hands that
-note to the resume as --prompt-file. A resume with a follow-up continues the launcher under a new
+note to the resume as --prompt-file, after its --report-file adds the report the launched session
+wrote in its own working directory. A resume with a follow-up continues the launcher under a new
 session id (its old id leaves the live-session registry) and queues the note as its first prompt;
 a bare resume would wake it in place with nothing queued, so it would never learn why it woke.
 See resume-on-completion.md.
@@ -44,9 +45,12 @@ session records it (launch_marker.py) so the Stop hook can hold the session to i
     (no flag)     the new session takes over: close this session now (the default)
     --resume-me   this session's next step waits on the new work: close paused (above)
     --keep-open   a side quest: this session carries on with its own work and stays open
+The first two hand this session's work over, so they also record a handoff link to the new session
+(bg_session.record_handoff): a drainer worker's item stays held by the new session while it runs.
 
 A fresh launch needs --model and a name (--title, or the --summary-file text). A resume keeps the
-session's own model and name unless --model/--title override them.
+session's own model, and the name typed on its launch, unless --model/--title override them, and keeps the worktree guard off
+when the session's own launch turned it off.
 
 Prints the new session's short id (the handle `claude attach/logs/stop` take) and full guid, and
 writes the guid to `<FILE>.session` beside the brief or prompt file - the receipt peek.py reads.
@@ -59,7 +63,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bg_session import (DUPLICATE_CHECK_HEADING, claude_agents, duplicate_check_section, launch,  # noqa: E402
-                        paused_record, session_name)
+                        paused_record, record_handoff, session_name)
 import launch_marker  # noqa: E402
 import worker_job  # noqa: E402
 
@@ -74,9 +78,9 @@ RESUME_ME = """
 """ + RESUME_ME_HEADING + """
 
 The session that launched you closed paused; its own next step waits on this work.
-Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first append a report to `{note}` under a `## Report` heading: a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
+Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first write a report to `{report}` in your own working directory (your worktree, when you entered one): a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
 Leave out the steps you took and your internal details.
-The launcher reads that note when it wakes, with its own history but not yours, so the report is how it learns what happened.
+The command adds that report to the launcher's wake note, which the launcher reads when it wakes, with its own history but not yours, so the report is how it learns what happened.
 Then run this via the Bash tool without waiting to be asked, and tell Russell in one line which session you resumed:
 
     {command}
@@ -93,20 +97,23 @@ def _schedule_resume():
 def _append_resume_me(brief, session_id, cwd, done_title):
     """Write the wake note beside the brief and append the resume-the-launcher instruction to the
     brief, once. The resume command passes the note as the launcher's follow-up prompt, so the
-    launcher wakes knowing the work it waited on (done_title) is done. Returns the command, or None
-    when no launcher can be found to resume with."""
+    launcher wakes knowing the work it waited on (done_title) is done. The launched session writes its
+    report in its own working directory, since its worktree guard refuses edits in the launcher's
+    checkout, and the command's --report-file adds it to the note. Returns the command, or None when
+    no launcher can be found to resume with."""
     schedule_resume = _schedule_resume()
     note = brief + ".resume-note.md"
     command = schedule_resume.resume_command(session_id, cwd, note_file=note)
     if not command:
         return None
+    report = ".tmp/" + os.path.basename(brief) + ".report.md"
+    command += f' --report-file "{report}"'
     schedule_resume.write_wake_note(note, done_title)
-    fwd_note = schedule_resume.fwd(note)
     with open(brief, encoding="utf-8") as f:
         body = f.read()
     if RESUME_ME_HEADING not in body:
         with open(brief, "w", encoding="utf-8") as f:
-            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command, note=fwd_note))
+            f.write(body.rstrip() + "\n" + RESUME_ME.format(command=command, report=report))
     return command
 
 def _append_duplicate_check(brief):
@@ -180,6 +187,22 @@ def _worker_seed_file(folder, slug, anchor, job):
     return path
 
 
+def _add_report(prompt_file, report_file):
+    """End the wake note with the launched session's report under a `## Report` heading, replacing
+    the one a failed earlier attempt added, so a retried resume carries the latest report once. A
+    missing report still lets the resume run, on a note that says the work is done."""
+    try:
+        with open(report_file, encoding="utf-8") as f:
+            report = f.read().strip()
+    except OSError:
+        print(f"spawn-session: no report at {os.path.abspath(report_file)}; resuming without one.")
+        return
+    with open(prompt_file, encoding="utf-8") as f:
+        note = f.read().split("\n## Report\n", 1)[0]
+    with open(prompt_file, "w", encoding="utf-8") as f:
+        f.write(note + "\n## Report\n\n" + report + "\n")
+
+
 def _read_summary(path):
     """The one-line lead from --summary-file, or "" when there is none. A missing or unreadable file
     only costs the descriptive lead, never the launch."""
@@ -203,6 +226,8 @@ def main(argv=None):
     seed.add_argument("--prompt-file", help="instructions file the session opens and follows")
     ap.add_argument("--summary-file", help="one-line summary that leads a --prompt-file seed and names the session")
     ap.add_argument("--resume", help="full guid of an existing session to continue in the background")
+    ap.add_argument("--report-file", help="with --resume and --prompt-file: a report to append to the "
+                    "prompt file first, deleted once the launch succeeds (the command --resume-me builds names it)")
     ap.add_argument("--model", help="explicit model id, per handoffs.md's model-choice rule")
     ap.add_argument("--worker-of", metavar="JOB_FOLDER",
                     help="launch this session as a worker of the coordinator whose job folder "
@@ -278,11 +303,15 @@ def main(argv=None):
         else:
             prompt_file = seed_file
 
+    if a.report_file and a.resume and prompt_file:
+        _add_report(prompt_file, a.report_file)
     short_id, receipt = launch(cwd=a.cwd, model=a.model, name=name, brief=brief,
                                prompt_file=prompt_file, lead=summary, resume=a.resume)
     if not short_id:
         print("spawn-session: `claude --bg` launch failed or returned no session id; nothing was launched.")
         return 1
+    if a.report_file and a.resume and prompt_file and os.path.isfile(a.report_file):
+        os.remove(a.report_file)  # consumed, so a later run of a brief with the same name never picks it up
     if slug:
         worker_job.register_worker(folder, slug, short_id)
         print(f"Registered worker {slug} ({short_id}); its result goes to {worker_job.result_path(folder, slug)}.")
@@ -294,16 +323,27 @@ def main(argv=None):
               "Leave the paper trail (a drainer worker: a dated comment on its card, with the card in an "
               "active list and its Start set to when to check back), then close this "
               "session paused this turn: session-mgr:close with --pause (a drainer worker: close-session.py --pause).")
-    _record_launch(a, short_id, name or summary, bool(resume_me), bool(slug))
+    _record_launch(a, short_id, receipt, name or summary, bool(resume_me), bool(slug))
     return 0
 
 
-def _record_launch(a, short_id, title, resume_me, is_worker):
+def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
     """Record the launch for the Stop hook and print what this session does next. A resume of an
     existing session, a coordinator's worker, and a launch from outside any session are not a handoff
-    from a session that then has to decide, so they record nothing."""
+    from a session that then has to decide, so they record nothing for the Stop hook.
+
+    A fresh launch that carries this session's work (any but a keep-open side quest, a coordinator's
+    worker included) is also recorded as a handoff link, so the drainer reads the new session as
+    holding this session's item while it runs."""
     session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
-    if a.resume or is_worker or not session_id:
+    if a.resume or not session_id:
+        return
+    if not a.keep_open:
+        try:
+            record_handoff(session_id, receipt)
+        except Exception:  # best-effort, like the duplicate check: a bad record never fails a done launch
+            pass
+    if is_worker:
         return
     mode = "resume" if resume_me else "keep-open" if a.keep_open else "handoff"
     if not launch_marker.write(session_id, mode, title or "", short_id):

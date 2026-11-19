@@ -110,7 +110,7 @@ def test_successor_from_job_record():
     bg_session._wake_account = lambda guid: False
     bg_session.session_guid = lambda short, agents=None: None
     bg_session.transcript_account = lambda guid: None
-    bg_session.find_job = lambda short: (None, {"sessionId": C})
+    bg_session.find_job = lambda short, session_guid=None: (None, {"sessionId": C})
     try:
         bg_session.spawn_bg("seed", None, TMP, None, resume=A)
     finally:
@@ -148,6 +148,90 @@ def test_resume_cwd_defaults_to_paused_record():
             os.environ["CLAUDE_CODE_SESSION_ID"] = saved
     check("launched", rc == 0, rc)
     check("in the paused session's cwd", seen and seen[0]["cwd"] == repo, seen)
+
+
+def test_handoff_launch_records_link():
+    print("test: a handoff or resume-me launch from a session links it to the new session; a side quest doesn't")
+    reset()
+    spawn_session = load("spawn-session")
+    D, E, F = "dddddddd-0000-0000-0000-000000000004", "eeeeeeee", "ffffffff-0000-0000-0000-000000000006"
+    launched = iter([B, D, F])
+    spawn_session.launch = lambda **kw: ("short", next(launched))
+    spawn_session.claude_agents = lambda: None
+    spawn_session.launch_marker.write = lambda *a, **kw: True
+    spawn_session._append_resume_me = lambda brief, sid, cwd, title: "resume command"
+    brief = os.path.join(TMP, "handoff.md")
+    saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    try:
+        for sid, extra in ((A, []), (C, ["--keep-open"]), (E, ["--resume-me"])):
+            open(brief, "w").close()
+            os.environ["CLAUDE_CODE_SESSION_ID"] = sid
+            spawn_session.main(["--title", "Apply", "--model", "opus", "--cwd", TMP, "--brief", brief] + extra)
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    holders = bg_session.holder_resolver()
+    short = A.split("-", 1)[0]
+    check("a handoff reaches the new session", holders(A) == [(A, 0), (B, 1)], holders(A))
+    check("a short-id receipt reaches it too", holders(short) == [(short, 0), (B, 1)], holders(short))
+    check("a keep-open side quest records no link", holders(C) == [(C, 0)], holders(C))
+    check("a resume-me launch records a link", holders(E) == [(E, 0), (F, 1)], holders(E))
+    bg_session.record_resume(A, continued_as=D)
+    check("a resumed launcher keeps its earlier link", bg_session.holder_resolver()(A) == [(A, 0), (D, 0), (B, 1)],
+          bg_session.holder_resolver()(A))
+    old = datetime.datetime.now(datetime.timezone.utc) - bg_session.HANDOFF_KEEP - datetime.timedelta(minutes=1)
+    bg_session._update_paused(lambda d: d["handoffs"][A][0].__setitem__("at", old.isoformat()))
+    check("a link past the keep bound is dropped", bg_session.holder_resolver()(A) == [(A, 0), (D, 0)])
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:  # a hand edit, past _update_paused's prune
+        json.dump({"handoffs": {C: "not a list"}}, f)
+    spawn_session.launch = lambda **kw: ("short", F)
+    os.environ["CLAUDE_CODE_SESSION_ID"] = C
+    try:
+        open(brief, "w").close()
+        rc = spawn_session.main(["--title", "Apply", "--model", "opus", "--cwd", TMP, "--brief", brief])
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    check("a malformed record never fails a launch that already happened", rc == 0, rc)
+    check("a malformed entry is replaced by the new link", bg_session.holder_resolver()(C) == [(C, 0), (F, 1)],
+          bg_session.holder_resolver()(C))
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": {C: 5, A: [{"at": "x"}]}}, f)
+    check("a malformed record still resolves", bg_session.holder_resolver()(C) == [(C, 0)])
+    bg_session.record_pause(B, "x", TMP)
+    check("and never blocks a pause write", B in bg_session.paused_sessions([]))
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": ["not", "a", "map"]}, f)
+    check("a handoffs list instead of a map reads as empty", bg_session.holder_resolver()(C) == [(C, 0)])
+    with open(bg_session.PAUSED_PATH, "w", encoding="utf-8") as f:
+        json.dump({"handoffs": {C: [{"to": ["x"], "at": "2026-11-16T10:00:00+00:00"},
+                                    {"to": D, "at": "2026-11-16T10:00:00"}]}}, f)
+    check("an unhashable link target is skipped", bg_session.holder_resolver()(C)[0] == (C, 0))
+    bg_session.record_pause(B, "x", TMP)
+    check("a naive timestamp never blocks a write", B in bg_session.paused_sessions([]))
+
+    print("test: a launch declared keep-open after the fact drops its handoff link")
+    reset()
+    bg_session.record_handoff(A, B)
+    bg_session.record_handoff(A, E)
+    marker = load("launch_marker")
+    marker.read = lambda sid: {"mode": "handoff", "title": "Apply", "short_id": B.split("-", 1)[0]}
+    marker.write = lambda *a: True
+    saved = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    os.environ["CLAUDE_CODE_SESSION_ID"] = A
+    try:
+        marker.main(["keep-open"])
+    finally:
+        if saved is None:
+            os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        else:
+            os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+    check("only that launch's link is dropped", bg_session.holder_resolver()(A) == [(A, 0), (E, 1)],
+          bg_session.holder_resolver()(A))
 
 
 def test_end_session_records_pause():
@@ -190,6 +274,7 @@ if __name__ == "__main__":
     test_successor_from_job_record()
     test_duplicate_check_lists_paused()
     test_resume_cwd_defaults_to_paused_record()
+    test_handoff_launch_records_link()
     test_end_session_records_pause()
     print(f"\n{'ALL PASS' if not failures else f'{len(failures)} FAILED: {failures}'}")
     sys.exit(1 if failures else 0)

@@ -18,7 +18,7 @@ Carry the dropped ones as a one-line count; the rest are your batch.
 
 Read each ready row's `message`, and open the thread at its link when the message leans on earlier context.
 Put each row in the first of these groups that fits.
-Before testing a row against **Already resolved**, run the searches in worker-core §2's "Check before you ask" and "Search both mailboxes and Slack before concluding whether something already happened" on the matter the person is waiting on.
+Before testing a row against **Already resolved**, run the searches in worker-core §2's "Check before you ask" and "Search around before concluding" on the matter the person is waiting on.
 When part of that search can't run, pass the row over **Already resolved**, sort it into the next group that fits, and name what went unchecked in its entry.
 
 - **Yours to write** - a deeply personal message, by worker-core §4's "Deeply personal messages" test.

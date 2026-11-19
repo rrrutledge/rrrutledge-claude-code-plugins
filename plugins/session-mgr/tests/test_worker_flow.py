@@ -14,7 +14,11 @@ import types
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.abspath(os.path.join(HERE, "..", "skills", "resume-sessions", "scripts"))
 sys.path.insert(0, SCRIPTS)
+import bg_session  # noqa: E402
 import worker_job  # noqa: E402
+
+bg_session.PAUSED_PATH = os.path.join(tempfile.mkdtemp(), "paused.json")  # handoff links stay off the machine's record
+COORDINATOR = "cccccccc-1111-2222-3333-444444444444"
 
 
 def load(name, filename):
@@ -90,8 +94,9 @@ def test_spawn_worker_registers_and_appends_contract():
             seen.setdefault("brief", kw["brief"])
             return "deadbeef", "receipt"
 
-        real = spawn_session.launch
+        real, saved = spawn_session.launch, os.environ.get("CLAUDE_CODE_SESSION_ID")
         spawn_session.launch = fake_launch
+        os.environ["CLAUDE_CODE_SESSION_ID"] = COORDINATOR
         try:
             rc = spawn_session.main(["--title", "Invite members", "--cwd", tmp, "--brief", brief,
                                      "--model", "m", "--worker-of", folder])
@@ -99,6 +104,12 @@ def test_spawn_worker_registers_and_appends_contract():
                                       "--model", "m", "--worker-of", folder])
         finally:
             spawn_session.launch = real
+            if saved is None:
+                os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+            else:
+                os.environ["CLAUDE_CODE_SESSION_ID"] = saved
+        check("a fan-out worker carries its coordinator's work",
+              ("receipt", 1) in bg_session.holder_resolver()(COORDINATOR), bg_session.holder_resolver()(COORDINATOR))
         job = worker_job.read_job(folder)
         check("exit 0", rc == 0 and rc2 == 0, f"{rc} {rc2}")
         check("registered both workers with distinct slugs",

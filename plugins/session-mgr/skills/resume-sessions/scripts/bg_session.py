@@ -231,8 +231,9 @@ def _flags_whole(flags):
     return "--remote-control" in flags and manual
 
 
-def find_job(short_id):
-    """`(config_dir, state)` of the background job `short_id` across every account, or `(False, None)`."""
+def find_job(short_id, session_guid=None):
+    """`(config_dir, state)` of the background job `short_id` across every account, or `(False, None)`.
+    With `session_guid`, only a job whose session is that guid counts."""
     for d in account_config_dirs():
         root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
         try:
@@ -240,7 +241,7 @@ def find_job(short_id):
                 state = json.load(f)
         except (OSError, ValueError):
             continue
-        if isinstance(state, dict):
+        if isinstance(state, dict) and session_guid in (None, state.get("sessionId")):
             return d, state
     return False, None
 
@@ -276,18 +277,8 @@ def _wake_account(session_guid):
     a job that a bare `claude --bg --resume <guid>` can wake in place, or False when there is no such
     job. Waking reuses the job's saved launch flags, so it only qualifies when those already carry
     the two a launch can't do without: `--remote-control` and `--permission-mode manual`."""
-    short = session_guid.split("-", 1)[0]
-    for d in account_config_dirs():
-        root = os.path.expanduser(d or DEFAULT_CONFIG_DIR)
-        try:
-            with open(os.path.join(root, "jobs", short, "state.json"), encoding="utf-8") as f:
-                state = json.load(f)
-        except (OSError, ValueError):
-            continue
-        if not isinstance(state, dict) or state.get("sessionId") != session_guid:
-            continue
-        return d if _flags_whole(state.get("respawnFlags")) else False
-    return False
+    d, state = find_job(session_guid.split("-", 1)[0], session_guid)
+    return d if state and _flags_whole(state.get("respawnFlags")) else False
 
 
 def claude_agents():
@@ -421,9 +412,10 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         copied) saves no flags, so it is stopped and the session continued as below.
       - Anything else - an interactive session, a follow-up seed, or saved flags missing
         --remote-control - starts a continuation under a new session id, because any flag on the
-        command makes the service copy the job rather than continue it. The resumed guid then leaves
-        the live-session registry (forget_session); its history lives on in the new session, which
-        registers itself.
+        command makes the service copy the job rather than continue it. The continuation is launched
+        under the name typed on the session's launch (unless the caller passes one) and keeps the worktree guard off
+        when its saved launch turned it off (_resumed_identity). The resumed guid then leaves the live-session registry
+        (forget_session); its history lives on in the new session, which registers itself.
     A resume of a guid that an earlier resume already continued under a new one continues the newest
     (latest_session), and a successful resume clears the session's paused record (record_resume).
     """
@@ -449,6 +441,9 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         owner = transcript_account(resume)
         if owner is not False:
             env = _account_env(owner, env)
+        saved_name, saved_scratch_only = _resumed_identity(resume)
+        name = name or saved_name
+        scratch_only = scratch_only or saved_scratch_only
     if name:
         args += ["--name", name]
     if model:
@@ -471,6 +466,26 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
         new_guid = session_guid(m.group(1)) or (find_job(m.group(1))[1] or {}).get("sessionId")
         record_resume(resume, continued_as=new_guid)
     return m.group(1) if m else None
+
+
+def _resumed_identity(session_guid):
+    """`(name, scratch_only)` the session `session_guid` ran under: the name typed on its job's launch
+    (its paused record's when it has no job), and whether its saved launch settings turned the worktree guard off. A
+    continuation passes both again, because the service names a continuation from its first prompt
+    and saves only the flags typed on it, so without them a resumed worker comes back named after its
+    wake note and with the guard on, refused the `.tmp/` writes it was launched to make in place.
+    Only a name typed on the launch (`nameSource` user) is carried forward."""
+    state = find_job(session_guid.split("-", 1)[0], session_guid)[1] or {}
+    if state:  # the paused record copies the job's name, so it is no fallback for an auto name
+        name = state.get("name") if state.get("nameSource") == "user" else None
+    else:
+        name = (paused_record(session_guid) or {}).get("name")
+    flags = [str(x) for x in state.get("respawnFlags") or []]
+    try:
+        settings = json.loads(flags[flags.index("--settings") + 1])
+        return name, settings.get("worktree", {}).get("bgIsolation") == "none"
+    except (ValueError, IndexError, AttributeError):
+        return name, False
 
 
 def _wake(session_guid, config_dir, cwd):
@@ -575,11 +590,16 @@ def record_wake(session_guid):
 # the only way to tell the two apart. `paused`: guid -> when it paused, its name and cwd, dropped when
 # the session is resumed. `successors`: resumed guid -> the guid it continued under, since a resume
 # with a follow-up starts a new session id, and a later resume of the old guid would fork the history
-# from before that continuation's work.
+# from before that continuation's work. `handoffs`: launching guid -> the sessions it handed its work
+# to (spawn-session.py), so a drainer item stays held by the session now working it after its worker
+# closes.
 PAUSED_PATH = os.path.expanduser("~/.claude/session-mgr/paused.json")
 # How long a paused record counts. A paused session is meant to be resumed, but one whose resume never
 # comes must not hold its work forever.
 PAUSE_HOLD = datetime.timedelta(days=3)
+# How long a handoff link is kept. The link only carries a hold while the session it names is live, so
+# this bounds the record's size, not how long anything is held.
+HANDOFF_KEEP = datetime.timedelta(days=30)
 
 
 def _load_paused():
@@ -589,24 +609,35 @@ def _load_paused():
     except (OSError, ValueError):
         data = {}
     data = data if isinstance(data, dict) else {}
-    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {})}
+    # The poller reads the handoff links every cycle, unattended, so a hand-edited link is dropped here,
+    # once, and never reaches a reader or a write.
+    handoffs = data.get("handoffs") if isinstance(data.get("handoffs"), dict) else {}
+    handoffs = {g: [e for e in kids if isinstance(e, dict) and isinstance(e.get("to"), str) and e["to"]]
+                for g, kids in handoffs.items() if isinstance(kids, list)}
+    return {"paused": dict(data.get("paused") or {}), "successors": dict(data.get("successors") or {}),
+            "handoffs": handoffs}
 
 
-def _paused_at(entry):
+def _iso_at(entry, key):
+    """The aware datetime in `entry[key]`, or None when it is missing, unparseable, or naive."""
     try:
-        return datetime.datetime.fromisoformat(entry["pausedAt"])
+        stamp = datetime.datetime.fromisoformat(entry[key])
     except (KeyError, TypeError, ValueError):
         return None
+    return stamp if stamp.tzinfo else None
 
 
 def _update_paused(mutate):
     """Apply `mutate` to the record and write it back, dropping pauses past PAUSE_HOLD, which no
-    longer count. Best effort, like the wake log."""
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
+    longer count, and handoff links past HANDOFF_KEEP. Best effort, like the wake log."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cutoff, keep = now - PAUSE_HOLD, now - HANDOFF_KEEP
     for _ in range(5):
         data = _load_paused()
         mutate(data)
-        data["paused"] = {g: e for g, e in data["paused"].items() if (_paused_at(e) or cutoff) > cutoff}
+        data["paused"] = {g: e for g, e in data["paused"].items() if (_iso_at(e, "pausedAt") or cutoff) > cutoff}
+        handoffs = {g: [e for e in kids if (_iso_at(e, "at") or keep) > keep] for g, kids in data["handoffs"].items()}
+        data["handoffs"] = {g: kids for g, kids in handoffs.items() if kids}
         try:
             os.makedirs(os.path.dirname(PAUSED_PATH), exist_ok=True)
             tmp_path = PAUSED_PATH + f".tmp.{os.getpid()}"
@@ -651,6 +682,55 @@ def session_resolver():
     return lambda session_guid: latest_session(session_guid, successors)
 
 
+def record_handoff(session_guid, handed_to):
+    """Record that `session_guid` handed its work to the session `handed_to` (its launch receipt: the
+    full guid, or the short id when the launch couldn't resolve it)."""
+    entry = {"to": handed_to, "at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"] != handed_to]
+        d["handoffs"][session_guid] = kids + [entry]
+    _update_paused(mutate)
+
+
+def drop_handoff(session_guid, short_id):
+    """Remove the link `session_guid` recorded to the session whose short id is `short_id`, for a launch
+    declared a side quest after the fact (launch_marker.py keep-open)."""
+    def mutate(d):
+        kids = [e for e in d["handoffs"].get(session_guid) or [] if e["to"].split("-", 1)[0] != short_id]
+        d["handoffs"][session_guid] = kids
+    _update_paused(mutate)
+
+
+def holder_resolver():
+    """Over one read of the record: a function from a session receipt (full guid or short id) to
+    `[(session id, handoffs away)]` for every session that may now be carrying its work. Depth 0 is the
+    session itself and each guid a resume continued it under; each session any of those handed off to
+    comes next at depth 1, followed through its own resumes and handoffs in turn. Both maps are also
+    keyed by short id, so a short-id receipt follows them too. A caller tests the ids against its live
+    sessions, so a link to a session that has ended holds nothing."""
+    data = _load_paused()
+    successors, kids = {}, {}
+    for guid, nxt in data["successors"].items():
+        successors[guid] = nxt
+        successors.setdefault(guid.split("-", 1)[0], nxt)
+    for parent, entries in data["handoffs"].items():
+        for key in {parent, parent.split("-", 1)[0]}:
+            kids.setdefault(key, []).extend(e["to"] for e in entries)
+
+    def holders(receipt):
+        out, seen, queue = [], set(), [(receipt, 0)]
+        while queue:
+            ident, depth = queue.pop(0)
+            while ident and ident not in seen:
+                seen.add(ident)
+                out.append((ident, depth))
+                queue.extend((k, depth + 1) for k in kids.get(ident, []))
+                ident = successors.get(ident)
+        return out
+    return holders
+
+
 def paused_record(session_guid):
     """The paused record of the session `session_guid` continues under now, or None."""
     return _load_paused()["paused"].get(latest_session(session_guid))
@@ -662,7 +742,7 @@ def paused_sessions(agents):
     cutoff = datetime.datetime.now(datetime.timezone.utc) - PAUSE_HOLD
     running = {a.get("sessionId") for a in agents or [] if a.get("pid")}
     return {guid: entry for guid, entry in _load_paused()["paused"].items()
-            if guid not in running and (_paused_at(entry) or cutoff) > cutoff}
+            if guid not in running and (_iso_at(entry, "pausedAt") or cutoff) > cutoff}
 
 
 def forget_session(session_guid):
