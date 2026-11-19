@@ -253,6 +253,79 @@ def test_resume_copies_when_wake_does_not_fit():
             check(f"{label}: no wake logged", not bg_session.load_wakes(), bg_session.load_wakes())
 
 
+def test_continuation_keeps_name_and_guard_setting():
+    print("test: a continuation passes the session's own name and its worktree-guard setting again, "
+          "unless the caller overrides the name")
+    scratch = json.dumps({"env": {"CLAUDE_HOST_PID": ""}, "worktree": {"bgIsolation": "none"}})
+    flags = ("--remote-control", "--permission-mode", "manual", "--name", "Trello: Grafana", "--settings", scratch)
+    with sandbox() as s:
+        write_transcript(s.main)
+        job = os.path.join(s.main, "jobs", SHORT)
+        os.makedirs(job)
+        with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"sessionId": GUID, "name": "Trello: Grafana", "nameSource": "user",
+                       "respawnFlags": list(flags)}, f)
+        bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        bg_session.spawn_bg("follow up", None, s.tmp, "New title", resume=GUID)
+        kept, renamed = s.calls[0][0], s.calls[1][0]
+        check("own name passed again", flag_value(kept, "--name") == "Trello: Grafana", kept)
+        settings = json.loads(flag_value(kept, "--settings"))
+        check("guard stays off", settings.get("worktree") == {"bgIsolation": "none"}, settings)
+        check("--title overrides the name", flag_value(renamed, "--name") == "New title", renamed)
+    with sandbox() as s:
+        write_transcript(s.main)
+        bg_session.record_pause(GUID, "Paused title", s.tmp)
+        try:
+            bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        finally:
+            bg_session.record_resume(GUID)
+        args = s.calls[0][0]
+        check("no job -> the paused record's name", flag_value(args, "--name") == "Paused title", args)
+        check("no job -> guard on", "worktree" not in json.loads(flag_value(args, "--settings")), args)
+    with sandbox() as s:
+        write_transcript(s.main)
+        job = os.path.join(s.main, "jobs", SHORT)
+        os.makedirs(job)
+        with open(os.path.join(job, "state.json"), "w", encoding="utf-8") as f:
+            json.dump({"sessionId": GUID, "name": "x resume note", "nameSource": "auto"}, f)
+        bg_session.record_pause(GUID, "x resume note", s.tmp)  # the paused record copies the job's name
+        try:
+            bg_session.spawn_bg("follow up", None, s.tmp, None, resume=GUID)
+        finally:
+            bg_session.record_resume(GUID)
+        check("a service-generated name is not carried forward", "--name" not in s.calls[0][0], s.calls[0][0])
+
+
+def test_resume_adds_report_to_note():
+    print("test: a resume's --report-file is appended to its --prompt-file under ## Report; a missing one "
+          "still resumes")
+    with sandbox() as s:
+        write_transcript(s.main)
+        note = os.path.join(s.tmp, "handoff-x.md.resume-note.md")
+        with open(note, "w", encoding="utf-8") as f:
+            f.write("Your wait is over.\n")
+        report = os.path.join(s.tmp, "handoff-x.md.report.md")
+        with open(report, "w", encoding="utf-8") as f:
+            f.write("Russell replied to Jagannathan.\n")
+        rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note, "--report-file", report])
+        check("resume -> 0", rc == 0, f"rc {rc}")
+        with open(note, encoding="utf-8") as f:
+            body = f.read()
+        check("report appended under ## Report",
+              body == "Your wait is over.\n\n## Report\n\nRussell replied to Jagannathan.\n", body)
+        check("report consumed after the launch", not os.path.exists(report))
+        with open(report, "w", encoding="utf-8") as f:
+            f.write("A retry's report.\n")
+        spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note, "--report-file", report])
+        with open(note, encoding="utf-8") as f:
+            body = f.read()
+        check("a retried resume carries only the latest report",
+              body.count("## Report") == 1 and "A retry's report." in body, body)
+        rc = spawn_session.main(["--resume", GUID, "--cwd", s.tmp, "--prompt-file", note,
+                                 "--report-file", report + ".missing"])
+        check("missing report -> still resumes", rc == 0 and len(s.calls) == 3, f"rc {rc}")
+
+
 def test_wake_that_copies_the_job_is_replaced():
     print("test: a wake that comes back as a new job with no saved flags is stopped and the session "
           "continued with every flag")
@@ -461,6 +534,8 @@ if __name__ == "__main__":
     test_resume_forgets_old_registry_entry()
     test_resume_wakes_background_job_in_place()
     test_resume_copies_when_wake_does_not_fit()
+    test_continuation_keeps_name_and_guard_setting()
+    test_resume_adds_report_to_note()
     test_wake_that_copies_the_job_is_replaced()
     test_respawn_session_runs_claude_respawn()
     test_failed_wake_returns_none()

@@ -2064,8 +2064,8 @@ def close_finished_workers(runtime_dir, providers, agents, dry_run=False):
     rule in engine/poller-core.md, "Close a parked worker whose item already finished". Returns how
     many workers it stopped (or would stop, under `dry_run`)."""
     held = {}
-    for receipt, rec in _worker_items(runtime_dir, live_session_ids(agents)):
-        agent = _live_agent(receipt, agents)
+    for hits, rec in _worker_items(runtime_dir, live_session_ids(agents)):
+        agent = next(filter(None, (_live_agent(i, agents) for i, depth in reversed(hits) if not depth)), None)
         if agent and agent.get("sessionId") and rec.get("id"):
             held.setdefault(agent["sessionId"], (agent, {}))[1][rec["id"]] = rec
     finished = {}

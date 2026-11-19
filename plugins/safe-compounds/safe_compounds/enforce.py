@@ -182,6 +182,21 @@ def detect_inline_script(command):
     return None, None
 
 
+def detect_shell_script(command):
+    """Return the .sh file a segment runs directly or through bash/sh, else None."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens:
+            continue
+        if tokens[0].lower().endswith('.sh'):
+            return tokens[0]
+        if tokens[0] in ('bash', 'sh'):
+            operand = next((t for t in tokens[1:] if not t.startswith('-')), '')
+            if operand.lower().endswith('.sh'):
+                return operand
+    return None
+
+
 def detect_output_redirection(command):
     for seg in split_segments(command):
         # Replace quoted spans with a placeholder (not erase them) so a quoted
@@ -397,13 +412,15 @@ def detect_plugin_cache_reference(command):
 
 
 _TOOL_RESULTS_PATTERN = re.compile(
-    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])', re.IGNORECASE)
+    r'\.claude[/\\]projects[/\\][^/\\\s"\']+[/\\][^/\\\s"\']+[/\\]tool-results(?![\w-])'
+    r'|(?<![\w.-])\.claude[/\\]uploads(?![\w.~-])', re.IGNORECASE)
 
 
 def detect_tool_results_reference(command):
     """True if a command segment names a saved tool-result file (the harness
     saves an oversized tool result under
-    ~/.claude/projects/<project>/<session>/tool-results/). Claude Code shows
+    ~/.claude/projects/<project>/<session>/tool-results/) or a file the user
+    attached to the chat (~/.claude/uploads/). Claude Code shows
     its own confirmation for `~/.claude` paths, so any command line naming one
     (cp, jq, cat, or a python run given it as an argument) prompts however the
     hook decides. A python script in `.tmp/` that opens the path itself never
@@ -663,8 +680,9 @@ def enforce_bash(command):
                 'this Bash command approved.')
 
     if detect_tool_results_reference(command):
-        return ('BLOCKED: Command names a saved tool-result file under '
-                '~/.claude/projects/.../tool-results/. Claude Code always shows its own '
+        return ('BLOCKED: Command names a file the harness saved under ~/.claude - a tool '
+                'result (~/.claude/projects/.../tool-results/) or a chat attachment '
+                '(~/.claude/uploads/). Claude Code always shows its own '
                 'confirmation for any ~/.claude path, no matter what this hook decides -- it '
                 'can\'t be suppressed here. Write a Python script in .tmp/ that opens that '
                 'path itself and does the copying or filtering (json.load it, write the part '
@@ -748,6 +766,14 @@ def enforce_bash(command):
         return (f'BLOCKED: Inline script flag "{inline_flag}" can\'t be validated inline. '
                 f'{inline_alternative}')
 
+    shell_script = detect_shell_script(command)
+    if shell_script:
+        return (f'BLOCKED: "{shell_script}" is a shell script, and shell scripts cannot be '
+                'safety-checked (quoting, globbing and eval hide what they run). Rewrite it as a '
+                f'Python script at .tmp/<name>.py (for {shell_script}, port what it does), using '
+                'client libraries (urllib/requests) rather than subprocess where possible, then '
+                'run: python .tmp/<name>.py')
+
     if detect_output_redirection(command):
         return ('BLOCKED: Output redirection (> or >>) detected. Per CLAUDE.md rules, never use output '
                 'redirection. Use the Write tool to create files instead.')
@@ -768,8 +794,7 @@ def enforce_bash(command):
                 'NEVER prepend "cd <dir>" to Bash commands (with &&, ;, or newlines).\n\n'
                 'Instead:\n\n'
                 '  • For scripts: Use absolute or relative paths from the current directory:\n'
-                f'      python {cd_target}/script.py\n'
-                f'      bash {cd_target}/script.sh\n\n'
+                f'      python {cd_target}/script.py\n\n'
                 '  • For git: Use -C to specify the repository:\n'
                 f'      git -C {cd_target} status\n'
                 f'      git -C {cd_target} checkout origin/main -- path/to/file\n\n'

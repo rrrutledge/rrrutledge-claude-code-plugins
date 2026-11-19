@@ -91,20 +91,28 @@ That changes the right action.
 
 **Check before you ask.**
 Before nudging anyone to make something happen, find out on your own whether it already happened.
-Check each thing the item is waiting on against the system that records it, including both mailboxes per "Search both mailboxes before concluding anything about email" in this section.
+Check each thing the item is waiting on against the system that records it, searching every system "Search around before concluding" in this section names.
 A dated note on the item saying something is still pending is the claim to check, not the answer: it was true when written and may have changed since.
 When a check can't be run - the page URL is unknown, a sign-in has expired - name what's unchecked and what blocked it, and ask Russell for that instead of drafting a nudge on the old note.
 Only a check showing it really hasn't happened leads to a ping, addressed to whoever owns the next step.
 
 For an unknown mechanism internal to the user's organization, consult the user's designated internal knowledge source first (if their `context.md` names one) before asking the user directly.
-The same goes for any question of whether something already happened or already exists: when a readable system records the answer, check there and act on what it shows, and ask the user only when no readable system holds it.
-Work out which system would hold the record before a turn ends on that question.
 
-**Search both mailboxes before concluding anything about email.**
-When the question is whether something already happened or a reply already went out, search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive) before answering, whichever mailbox the item arrived in.
+**Search around before concluding.**
+Before concluding anything about an item's history - that it arrived with no warning, that it already happened, that it was already decided, or that it is new - search every readable system that could hold its record, and act on what the search shows.
+The record often sits on a different system than the one the item arrived on, posted minutes or months before it.
+Search each system by the people's, companies', and platforms' names and by the item's own identifiers (a posting's req id, a document or order number, the subject or event name), since one narrow keyword search of one system proves nothing.
+Every one of these systems is searched:
+- **Both mailboxes**, per "Search both mailboxes" below.
+- **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
+- **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
+
+Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
+A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, or the boards").
+
+**Search both mailboxes.**
+Search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive), whichever mailbox the item arrived in.
 A thread often runs through one mailbox while the evidence sits in the other: an ISC card's reply thread can live in Gmail while the item was captured from Outlook, and an order confirmation can land in either.
-Search two ways: by sender or platform (a ticketing platform like pretix, a vendor name) and by subject or event name, since one narrow keyword search of one mailbox proves nothing.
-A worker that still finds nothing reports "not found in Gmail or Outlook" and names the searches it ran, not "probably not done".
 
 **Read the whole thread, for any source - not just the one message captured.**
 A captured item's `url`/ `ts` is a pointer into a conversation, not the conversation itself, whichever source it's from (email, Slack, Teams, a Trello card's linked message).
@@ -150,10 +158,11 @@ Two patterns to watch for, on any source:
   Search the mailbox (both directions, per the email guidance above) for an intro before assuming that step hasn't happened.
   An item whose content describes an ask or a next step is only half-read until you've checked the channel that ask actually points to - checking only the channel it arrived on and finding silence there is not the same as confirming nothing happened.
 
-**Also check Trello when the item could be outreach** - an introduction, or a reply from a company or individual who might already be a tracked contact - regardless of which source it arrived on.
-Read `trello-boards.yaml` (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0) for an existing card naming that company or contact.
+**A tracked card is the item's record.**
+The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
+That command matches a card by its whole name, the leading segment of its name, or a posting id in its links, so search the boards by hand for a person or company that sits later in a card's name.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
-No match → treat it as genuinely new.
+The item is new only when the boards and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
@@ -383,6 +392,7 @@ Instead, hand that other session the instruction to resume you when its work is 
   **Leave the card un-cleared and its Start untouched** (`providers/trello-provider.md`, CAPTURE): the work isn't done, and the resumed session is what CLEARs it once it finishes.
   Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
+  **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
 If the next step is something only Russell can produce - content only he has the judgment or standing to write, a decision only he can make - filing a card for it and moving on leaves it unfinished; see step 3, "you drive the keyboard."
