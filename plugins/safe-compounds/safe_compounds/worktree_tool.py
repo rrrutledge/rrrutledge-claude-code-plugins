@@ -98,7 +98,7 @@ DISCARD_REASON = (
     '  3. git worktree remove "<worktree path>"   # refuses a worktree holding uncommitted files\n'
     '  4. git branch -d <branch>, or `git branch -D <branch>` only once `gh pr view` shows the PR MERGED,\n'
     '     since -D skips the check that the commits landed.\n\n'
-    'When Russell has said to throw away uncommitted work, ask him to run `git worktree remove --force` himself.'
+    'Add `--force` to the removal only when Russell has said to throw away uncommitted work.'
 )
 
 

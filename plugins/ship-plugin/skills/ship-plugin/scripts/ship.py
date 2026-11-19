@@ -247,16 +247,19 @@ def delete_remote_branch(branch):
 def clean_up_local(repo, branch):
     """Remove each clean worktree still on the merged branch, then the local branch. A worktree with
     changes in it stays, and is reported."""
+    kept = False
     for entry in worktree_entries(git('worktree', 'list', '--porcelain', cwd=str(repo)) or '')[1:]:
         if entry['branch'] != branch:
             continue
         if git('-C', entry['path'], 'status', '--porcelain'):
             print(f'kept: worktree {entry["path"]} has uncommitted changes')
+            kept = True
         elif git('worktree', 'remove', entry['path'], cwd=str(repo)) is not None:
             print(f'removed: worktree {entry["path"]}')
         else:
             print(f'kept: worktree {entry["path"]} could not be removed')
-    if git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}', cwd=str(repo)):
+            kept = True
+    if not kept and git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}', cwd=str(repo)):
         if git('branch', '-D', branch, cwd=str(repo)) is None:
             print(f'kept: local branch {branch} could not be deleted')
 
