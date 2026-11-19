@@ -256,7 +256,7 @@ class WholeChain(Base):
                           in_worktree=True)
         code, out = self.run_ship()
         self.assertEqual(code, ship.EXIT_WORKTREE, out)
-        self.assertIn('EXIT_WORKTREE remove', out)
+        self.assertIn('EXIT_WORKTREE keep', out)
         self.assertTrue(fake.ran(['gh', 'pr', 'merge', '7']))
         self.assertFalse(fake.ran(['git', 'pull']))
 

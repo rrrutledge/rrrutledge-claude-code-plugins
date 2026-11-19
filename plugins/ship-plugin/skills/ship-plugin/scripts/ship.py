@@ -12,9 +12,9 @@ Every step checks the PR's current state first, so rerunning after any stop resu
   4. Squash-merge (falling back to `--auto` when branch protection holds it), wait for the merge, and
      delete the remote branch.
   5. From inside a worktree, stop with exit code 3 and an `EXIT_WORKTREE` line: the pull writes to the
-     main checkout, which a worktree-isolated session leaves to be rerun from there. The line says
-     `remove` when the worktree is on the merged branch and `keep` when it's on any other branch.
-  6. Remove any other clean worktree on the merged branch and the local branch itself.
+     main checkout, which a worktree-isolated session leaves to be rerun from there. The line is
+     always `keep`: the session leaves without deleting anything, and step 6 removes the worktree.
+  6. Remove each clean worktree on the merged branch and the local branch itself.
   7. Wait for the version-bump run on the merge commit, then fast-forward `main` in the main checkout.
   8. Refresh the marketplace and `claude plugin update` every installed plugin at its recorded scope,
      then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher) and
@@ -460,8 +460,7 @@ def ship(number, repo_arg, admin):
     delete_remote_branch(pr['headRefName'])
 
     if in_worktree:
-        action = 'remove' if in_worktree == pr['headRefName'] else 'keep'
-        print(f'EXIT_WORKTREE {action}')
+        print('EXIT_WORKTREE keep')
         print(f'then rerun: python "{os.path.abspath(__file__)}" --pr {pr["number"]}')
         return EXIT_WORKTREE
 
