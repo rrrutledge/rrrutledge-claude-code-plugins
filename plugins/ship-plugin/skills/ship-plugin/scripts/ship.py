@@ -496,7 +496,7 @@ def utf8_output():
 
 def main(argv=None):
     utf8_output()
-    p =argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--pr', type=int, help='PR number (default: the open PR for the current branch)')
     p.add_argument('--repo', help='path to a checkout of the plugins repo (default: from cwd)')
     p.add_argument('--admin', action='store_true', help='override branch protection when merging')
