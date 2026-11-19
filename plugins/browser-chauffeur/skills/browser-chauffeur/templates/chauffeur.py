@@ -518,19 +518,20 @@ def close_owned_tabs(only: str | None = None) -> int:
     owner = _resolve_owner_pid()
     if owner is None:
         print("No CLAUDE_PID set (not running under a Claude session) - nothing owned to close.")
-        return 0
+        return 0 if only is None else 1
 
     state = load_state()
     if not state or not is_cdp_alive(state["port"]):
         print("No live browser - nothing to close.")
-        return 0
+        return 0 if only is None else 1
     port = state["port"]
 
     try:
         resp = urlopen(f"http://localhost:{port}/json", timeout=5)
         targets = json.loads(resp.read())
     except (URLError, OSError, json.JSONDecodeError):
-        return 0
+        print("The browser's /json endpoint did not answer.")
+        return 0 if only is None else 1
     live = {t["id"] for t in targets if t.get("type") == "page" and "id" in t}
     open_count = len(live)
 
@@ -556,12 +557,16 @@ def close_owned_tabs(only: str | None = None) -> int:
         closed += 1
         open_count -= 1
 
-    if only is not None and not matched:
-        print(f"Tab {only} is not recorded to this session (already closed, or another session's).")
-        return 1
-    if only is not None and only in live and not closed:
-        print(f"Tab {only} stayed open (the browser's last page, or the close failed).")
-        return 1
+    if only is not None:
+        if only not in live:
+            print(f"Tab {only} is already closed.")
+            return 0
+        if not matched:
+            print(f"Tab {only} is not recorded to this session - left open.")
+            return 1
+        if not closed:
+            print(f"Tab {only} stayed open (the browser's last page, or the close failed).")
+            return 1
     print(f"Closed {closed} tab(s) owned by this session.")
     return 0
 
@@ -603,14 +608,6 @@ def started(session: dict) -> str:
         return "unknown"
 
 
-def live_targets(port: int) -> dict | None:
-    try:
-        resp = urlopen(f"http://localhost:{port}/json", timeout=5)
-        return {t["id"]: t for t in json.loads(resp.read()) if "id" in t}
-    except (URLError, OSError, json.JSONDecodeError):
-        return None
-
-
 def hung_tab_owners(target_ids: list[str]) -> int:
     """Report who owns each tab a connect timeout named.
 
@@ -630,8 +627,10 @@ def hung_tab_owners(target_ids: list[str]) -> int:
         return 1
     port = state["port"]
     sweep_tabs(port)
-    targets = live_targets(port)
-    if targets is None:
+    try:
+        resp = urlopen(f"http://localhost:{port}/json", timeout=5)
+        targets = {t["id"]: t for t in json.loads(resp.read()) if "id" in t}
+    except (URLError, OSError, json.JSONDecodeError):
         print("The browser's /json endpoint did not answer.")
         return 1
 
@@ -641,16 +640,16 @@ def hung_tab_owners(target_ids: list[str]) -> int:
     reported = set()
     for tid in target_ids:
         t = targets.get(tid)
-        while t and t.get("type") == "iframe" and t.get("parentId"):
-            tid, t = t["parentId"], targets.get(t["parentId"])
+        if not t:
+            print(f"CLOSED {tid} - the tab is gone; retry the script.")
+            continue
+        while t.get("type") == "iframe" and t.get("parentId") in targets:
+            tid, t = t["parentId"], targets[t["parentId"]]
         if tid in reported:
             continue
         reported.add(tid)
-        if not t or t.get("type") != "page":
-            print(f"CLOSED {tid} - the tab is gone; retry the script.")
-            continue
         label = f'"{t.get("title") or "(untitled)"}" ({t.get("url", "")}, target {tid})'
-        owner = owners.get(tid)
+        owner = owners.get(tid) if t.get("type") == "page" else None
         if owner is not None and owner == me:
             print(f"YOURS {label} - close it, then retry the script:")
             print(f'  python "{CHAUFFEUR_PY}" --close-tab {tid}')

@@ -32,7 +32,8 @@ You are operating the browser on the user's behalf. You are the chauffeur - you 
 
 ## How it works
 
-Every task uses the same flow: ensure a persistent Edge or Chrome browser is running with CDP enabled, validate that the target page loads, write or run a Node.js script that connects through `connectBrowser(cdpPort)` (**Resilient Connection**), watch the output, and recover autonomously if anything fails. The persistent browser keeps its profile across tasks, so logins and sessions survive - the user signs in once, and all subsequent tasks reuse those sessions.
+Every task uses the same flow: ensure a persistent Edge or Chrome browser is running with CDP enabled, validate that the target page loads, write or run a Node.js script that connects through `connectBrowser(cdpPort)` (**Resilient Connection**), watch the output, and recover autonomously if anything fails.
+The persistent browser keeps its profile across tasks, so logins and sessions survive - the user signs in once, and all subsequent tasks reuse those sessions.
 
 ## Two usage modes
 
@@ -239,7 +240,7 @@ It gives each tab one verdict, and the verdict decides the next step:
 - **`OWNER RUNNING`** - another Claude session opened the tab.
   Send that session the printed message with `SendMessage`, addressed to the printed session name, and wait for its reply.
   When `ListAgents` lists more than one session under that name, address the one whose start time matches the printed one by its `[ref]`.
-  It goes to a Claude session rather than a person, so send it without asking the user.
+  It goes to a Claude session, so send it without asking the user.
   When the owner replies that the tab is closed, retry the script.
 - **`NO OWNER`** - no running Claude session opened the tab (the user opened it, or a script opened it outside the helpers); escalate per **User Intervention**, naming the tab's title, URL, and target id so the user decides whether to close it.
 
@@ -578,7 +579,8 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
    - **UI changed** (different label, restructured DOM, new element) → inspect the current page state to find the new selector, update the script, re-run.
    - **New required step** (e.g., a consent prompt, a "What's new" tour) → add handling for it, re-run.
    - **Selector timing issues** (element not yet visible), **elements scrolled out of view**, or **the expected element is in a different frame** → take a fresh screenshot, read it, find the correct selector or frame.
-   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → a tab's renderer is wedged or the profile is overloaded. Follow **Resilient Connection** from the error's list of hung tabs.
+   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → a tab's renderer is wedged or the profile is overloaded.
+     Follow **Resilient Connection** with the error's output.
    - **Media still playing** - if the script's stuck-detection fired but the page has active audio/video (`!audio.paused && !audio.ended && audio.duration > 1`), the page isn't stuck - narration is in progress. Wait for the media's remaining duration plus a buffer before re-evaluating. Only declare genuinely stuck when both conditions are true: no advance button AND no active media.
    - **None of the above looks right** → the failure may be a known anti-pattern. **Read `anti-patterns.md`**; its index lists each symptom, and each entry has a tested fix.
 

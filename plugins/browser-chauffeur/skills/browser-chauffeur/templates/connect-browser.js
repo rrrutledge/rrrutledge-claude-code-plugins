@@ -20,8 +20,11 @@ const CONNECT_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 const CHAUFFEUR_PY = path.join(__dirname, 'chauffeur.py').replace(/\\/g, '/');
 
+// The calling script's project copy first, as the script itself would resolve
+// it, then the shared install.
 function loadChromium() {
-  try { return require('playwright-core').chromium; }
+  const paths = [require.main && require.main.path, process.cwd()].filter(Boolean);
+  try { return require(require.resolve('playwright-core', { paths })).chromium; }
   catch { return require(path.join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')).chromium; }
 }
 
@@ -45,18 +48,20 @@ async function probeTarget(target) {
 }
 
 // Every page and out-of-process iframe that fails to answer a trivial evaluate
-// in time. Only targets open before the connect began are probed: the stalled
+// in time, split by whether it was open before the connect began. The stalled
 // connect auto-attaches with waitForDebuggerOnStart, so a target created since
-// can sit paused and would read as hung.
+// can sit paused rather than hung; those are named apart and left out of the
+// owner lookup.
 async function findHungTargets(cdpPort, knownIds) {
   const targets = (await httpJson(`http://localhost:${cdpPort}/json`))
-    .filter(t => (t.type === 'page' || t.type === 'iframe') && t.webSocketDebuggerUrl)
-    .filter(t => !knownIds || knownIds.has(t.id));
+    .filter(t => (t.type === 'page' || t.type === 'iframe') && t.webSocketDebuggerUrl);
   const alive = await Promise.all(targets.map(probeTarget));
-  return targets
-    .filter((_, i) => !alive[i])
-    .map(t => ({ id: t.id, title: t.title, url: t.url }));
+  const silent = targets.filter((_, i) => !alive[i]);
+  const isOld = t => !knownIds || knownIds.has(t.id);
+  return { hung: silent.filter(isOld), opened: silent.filter(t => !isOld(t)) };
 }
+
+const describe = ts => ts.map(t => `  - ${t.title || '(untitled)'} ${t.url} [${t.id}]`).join('\n');
 
 async function connectBrowser(cdpPort = '9222') {
   const knownIds = httpJson(`http://localhost:${cdpPort}/json`)
@@ -70,18 +75,19 @@ async function connectBrowser(cdpPort = '9222') {
   // A connect that completes after we gave up would hold the process open.
   connecting.then(b => b.close().catch(() => {}), () => {});
 
-  const hungTargets = await findHungTargets(cdpPort, await knownIds).catch(() => null);
+  const found = await findHungTargets(cdpPort, await knownIds).catch(() => null);
   const head = `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}.`;
   let finding;
-  if (hungTargets == null) {
+  if (found == null) {
     finding = `The browser's /json endpoint did not answer, so no tab could be probed.`;
-  } else if (hungTargets.length) {
-    finding = `Unresponsive tab(s):\n` +
-      hungTargets.map(t => `  - ${t.title || '(untitled)'} ${t.url} [${t.id}]`).join('\n') +
-      `\nFind each one's owning session with:\n` +
-      `  python "${CHAUFFEUR_PY}" --hung-tabs ${hungTargets.map(t => t.id).join(' ')}`;
+  } else if (found.hung.length) {
+    finding = `Unresponsive tab(s):\n${describe(found.hung)}\nFind each one's owning session with:\n` +
+      `  python "${CHAUFFEUR_PY}" --hung-tabs ${found.hung.map(t => t.id).join(' ')}`;
   } else {
-    finding = `Every tab answered the probe; the stall may come from the tab count or a worker.`;
+    finding = `Every tab open before the connect answered the probe; the stall may come from the tab count or a worker.`;
+  }
+  if (found && found.opened.length) {
+    finding += `\nOpened during the connect and silent, possibly only paused by it:\n${describe(found.opened)}`;
   }
   throw new Error(`${head} ${finding}\nFollow SKILL.md Resilient Connection.`);
 }

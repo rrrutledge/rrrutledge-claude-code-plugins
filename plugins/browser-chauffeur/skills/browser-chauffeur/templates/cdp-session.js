@@ -40,7 +40,7 @@ function loadWebSocket() {
 // responsive while a renderer is wedged; the timeout still bounds a browser
 // that is itself unresponsive.
 function httpJson(url, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
+  return withTimeout(new Promise((resolve, reject) => {
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
@@ -52,7 +52,7 @@ function httpJson(url, timeoutMs = 10000) {
     });
     req.on('timeout', () => req.destroy(new Error(`${url} did not answer within ${timeoutMs}ms`)));
     req.on('error', reject);
-  });
+  }), timeoutMs, `${url} did not finish within ${timeoutMs}ms`);
 }
 
 function withTimeout(promise, ms, message) {
@@ -82,6 +82,12 @@ class CDPSession {
       } else if (m.method) {
         for (const l of this.listeners) l(m);
       }
+    });
+    // A closed socket answers nothing more, so every request still waiting
+    // fails now rather than at its caller's timeout.
+    this.ws.on('close', () => {
+      for (const { reject } of this.pending.values()) reject(new Error('CDP socket closed'));
+      this.pending.clear();
     });
   }
 
