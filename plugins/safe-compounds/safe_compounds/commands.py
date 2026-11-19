@@ -320,8 +320,15 @@ def _git_reset_ok(args):
 
 def _git_read_tree_ok(args):
     # Rewriting the index and working tree stays inside the repo; --index-output
-    # writes the index to an arbitrary path, which can land outside it.
-    return not any(a.startswith('--index-output') for a in args)
+    # writes the index to an arbitrary path, which can land outside it. Git
+    # accepts the flag with a space before its value and as an abbreviation, so
+    # every spelling of it is refused. Unlike `reset --hard`, in-repo loss is
+    # accepted for any target, so --reset carries no origin/ restriction.
+    for a in args:
+        name = a.split('=', 1)[0]
+        if name.startswith('--i') and '--index-output'.startswith(name):
+            return False
+    return True
 
 
 GIT_SPEC = {
