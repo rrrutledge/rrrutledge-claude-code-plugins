@@ -13,7 +13,8 @@ Decision order (preserved from the original single-file hook):
                        permission-root confirmation for any relocation can't be suppressed
                        by any hook)
   ExitWorktree     -> worktree_tool.classify_exit_worktree (keep, or a remove the
-                       tool itself won't force past unsaved work)
+                       tool itself won't force past unsaved work; a forced
+                       discard is denied with a redirect to git worktree remove)
   Bash             -> enforce.enforce_bash (deny), then per-segment trust (allow)
   anything else    -> defer (no output)
 
@@ -178,9 +179,13 @@ def dispatch(data):
         deny(reason)
 
     if tool == 'ExitWorktree':
-        if classify_exit_worktree(tool_input):
+        decision, reason = classify_exit_worktree(tool_input)
+        if decision == 'allow':
             log_debug(f"DECISION: Allow ExitWorktree action={tool_input.get('action')}")
             allow()
+        if decision == 'block':
+            log_debug("DECISION: Deny ExitWorktree discard_changes, redirecting to git worktree remove")
+            deny(reason)
         defer()
 
     if tool != 'Bash':
