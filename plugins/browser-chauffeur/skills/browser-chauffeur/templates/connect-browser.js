@@ -7,7 +7,7 @@
 // `timeout` option bounds only the socket connect, not the enumeration. So the
 // connect is raced against a hard timeout.
 //
-// When the timeout fires, each page target is probed over its own WebSocket with
+// When the timeout fires, each page and iframe target is probed over its own WebSocket with
 // a trivial Runtime.evaluate; a tab that cannot answer within PROBE_TIMEOUT_MS is
 // the wedged one. The window is wide because a sleeping (Edge) or discarded tab
 // takes seconds to wake on its first attach, and a narrow one reports it as hung. The thrown error (code CDP_CONNECT_TIMEOUT) lists those tabs in
@@ -41,10 +41,11 @@ async function probeTarget(target) {
   }
 }
 
-// Every page target that fails to answer a trivial evaluate in time.
+// Every page and out-of-process iframe that fails to answer a trivial evaluate
+// in time.
 async function findHungTargets(cdpPort) {
   const targets = (await httpJson(`http://localhost:${cdpPort}/json`))
-    .filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
+    .filter(t => (t.type === 'page' || t.type === 'iframe') && t.webSocketDebuggerUrl);
   const alive = await Promise.all(targets.map(probeTarget));
   return targets
     .filter((_, i) => !alive[i])
@@ -61,16 +62,20 @@ async function connectBrowser(cdpPort = '9222') {
   // A connect that completes after we gave up would hold the process open.
   connecting.then(b => b.close().catch(() => {}), () => {});
 
-  const hungTargets = await findHungTargets(cdpPort).catch(() => []);
+  const hungTargets = await findHungTargets(cdpPort).catch(() => null);
   const head = `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}.`;
-  const message = hungTargets.length
-    ? `${head} Unresponsive tab(s), left open because they may be another session's work:\n` +
-      hungTargets.map(t => `  - ${t.title || '(untitled)'} ${t.url} [${t.id}]`).join('\n') +
-      `\nFollow SKILL.md Resilient Connection.`
-    : `${head} Every tab answered a probe, so the profile likely has too many open tabs. Follow SKILL.md Resilient Connection.`;
-  const err = new Error(message);
+  let finding;
+  if (hungTargets == null) {
+    finding = `The browser's /json endpoint did not answer, so no tab could be probed.`;
+  } else if (hungTargets.length) {
+    finding = `Unresponsive tab(s), left open because they may be another session's work:\n` +
+      hungTargets.map(t => `  - ${t.title || '(untitled)'} ${t.url} [${t.id}]`).join('\n');
+  } else {
+    finding = `Every tab answered the probe; the stall may come from the tab count or a worker.`;
+  }
+  const err = new Error(`${head} ${finding}\nFollow SKILL.md Resilient Connection.`);
   err.code = 'CDP_CONNECT_TIMEOUT';
-  err.hungTargets = hungTargets;
+  err.hungTargets = hungTargets || [];
   throw err;
 }
 

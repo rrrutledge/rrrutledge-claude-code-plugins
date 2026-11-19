@@ -8,7 +8,7 @@
 // The box is a CSS outline, which takes no layout space, so marking never moves
 // the content it marks. A text target is split out of its text node and wrapped
 // in an outlined <span>, so the box follows the text through line wraps and
-// reflow. A selector target is the first matching element that is rendered. The
+// reflow. A selector target is the first matching element that is visible. The
 // target is scrolled to the center of the viewport, and the capture waits until
 // its position holds steady (fonts loaded, reflow done) so the box lands on what
 // it marks.
@@ -25,7 +25,11 @@
 
 // Runs in the page. Returns false when the target is not found.
 function markTarget({ selector, text }) {
-  const rendered = el => el.getClientRects().length > 0;
+  const rendered = (el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 1 && r.height > 1 && s.visibility !== 'hidden' && Number(s.opacity) > 0;
+  };
   let state = null;
   if (selector) {
     const el = [...document.querySelectorAll(selector)].find(rendered);
@@ -104,7 +108,7 @@ async function captureEvidence(page, target, outPath, { padding = 80 } = {}) {
   if (!args.selector && !args.text) throw new Error('captureEvidence: target needs a selector or text');
   await page.evaluate(unmark);
   if (!await page.evaluate(markTarget, args)) {
-    throw new Error(`captureEvidence: ${args.selector ? `no rendered element matches ${args.selector}` : `no visible text "${args.text}"`}`);
+    throw new Error(`captureEvidence: ${args.selector ? `no visible element matches ${args.selector}` : `no visible text "${args.text}"`}`);
   }
   try {
     const clip = await page.evaluate(settledClip, args);

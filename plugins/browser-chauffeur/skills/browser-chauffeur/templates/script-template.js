@@ -64,6 +64,7 @@ async function run() {
     } else {
       console.error(`Verification FAILED - ${failCount} errors remain`);
       results.failed.forEach(item => console.error('  -', item));
+      process.exitCode = 1;
     }
   } catch (e) {
     await screenshotOnFailure(context, 'run-failed');
@@ -77,4 +78,4 @@ async function run() {
   }
 }
 
-run().then(() => exitAfterFlush(0), e => { console.error(e.message); exitAfterFlush(1); });
+run().then(() => exitAfterFlush(process.exitCode || 0), e => { console.error(e.message); exitAfterFlush(1); });

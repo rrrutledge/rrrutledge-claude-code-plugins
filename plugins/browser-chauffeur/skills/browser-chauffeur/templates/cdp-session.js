@@ -97,8 +97,16 @@ class CDPSession {
   send(method, params = {}) {
     const id = ++this.id;
     return new Promise((resolve, reject) => {
+      if (this.ws.readyState !== this.ws.OPEN) {
+        reject(new Error(`${method}: CDP socket is not open`));
+        return;
+      }
       this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
+      this.ws.send(JSON.stringify({ id, method, params }), (err) => {
+        if (!err) return;
+        this.pending.delete(id);
+        reject(err);
+      });
     });
   }
 

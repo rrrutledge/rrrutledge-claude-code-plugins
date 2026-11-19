@@ -173,7 +173,7 @@ Confirm the browser can actually reach the target app, not an expired-session lo
 node plugins/browser-chauffeur/skills/browser-chauffeur/templates/snapshot-target.js --cdp-port=<port> --url=<target-url>
 ```
 
-The script navigates, waits for URL stability (handles transient SSO redirects like Okta's "Verifying your identity" page), waits for network idle and DOM stability, then saves a screenshot. It outputs:
+The script saves a screenshot once the page settles, and outputs:
 
 ```
 SNAPSHOT_READY
@@ -181,7 +181,7 @@ SCREENSHOT: .tmp/snapshot-target-<timestamp>.png
 FINAL_URL: <where the browser actually landed>
 ```
 
-When a hung tab blocks the connect, the output also carries the connect error naming the hung tabs, for the escalation in **Resilient Connection**.
+When the output opens with the connect-timeout error, the snapshot came from a direct tab; write the task's scripts per **Resilient Connection**.
 
 **The script makes no decision - you do, from the screenshot alone**, at the start of a flow and mid-flow alike.
 Text matching, DOM selectors, and URL heuristics can't reliably tell a login wall, an SSO transit page, an MFA challenge, and a slow-hydrating SPA apart across providers; a screenshot read by the session can, with no patterns to maintain.
@@ -224,7 +224,7 @@ This ensures the AI is always watching the road, not just handing off directions
 
 ## Resilient Connection
 
-`chromium.connectOverCDP(...)` auto-attaches to **every** open CDP target to build its context/page tree. On the persistent profile - which accumulates tabs across sessions - a large target set, or a **single wedged renderer**, can make that handshake hang **indefinitely**. Playwright's own `{ timeout }` option does not help: it bounds only the socket connect, not the post-connect target enumeration.
+One hung tab or a large tab count can stall `connectOverCDP` indefinitely (`templates/connect-browser.js` explains why).
 
 Two layers keep this reliable:
 
@@ -232,11 +232,9 @@ Two layers keep this reliable:
    So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
 
 2. **Backstop - fail fast and name the hung tab.** Scripts connect with `connectBrowser(cdpPort)` (`script-quality-standards.md` **Browser Connection**), so a wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
-   The error lists each tab that failed a responsiveness probe.
 
 **When the connect times out:** run the task in a fresh tab of your own with `openDirectTab(cdpPort, url)` (`HELPERS.md` **openDirectTab**).
-The direct tab is driven over its own connection, so the hung tab can't block it, and the task carries on without the user.
-Phase 0's `snapshot-target.js` makes this switch itself.
+The task carries on in that tab without the user.
 `HELPERS.md` **openDirectTab** lists the calls a direct tab supports; a flow that needs any call beyond that list re-runs `chauffeur.py` and retries the Playwright script once.
 If that still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention** with the hung tabs the error named, so the user decides whether to close them.
 
@@ -276,7 +274,7 @@ Before touching anything:
    Other Claude sessions may be working in parallel - possibly on the very same URL.
    Targeting by index is unreliable, and a bare `context.pages().find(...)` would hand you whichever session's tab matched first, so you could navigate another session's tab out from under it.
    **Get a tab with `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own.**
-   `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab created any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count.
+   `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab Playwright creates any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count.
    `findTab` is owner-scoped so it can only ever return your own tab.
    After a hung-tab connect timeout, a script gets its tab with `openDirectTab(cdpPort, url)` instead, which registers it the same way (**Resilient Connection**).
    Save the page object reference and reuse it throughout the script.

@@ -20,8 +20,9 @@
 //
 // When the connect times out on a hung tab (connect-browser.js), the snapshot
 // is taken through a fresh direct tab instead (direct-tab.js), with the same
-// waits, and the output adds the connect error naming the hung tab(s). The
-// direct tab is left open and registered, like the Playwright one.
+// URL-stability and render waits but no network-idle wait, and the output adds
+// the connect error naming the hung tab(s). The direct tab is left open and
+// registered, like the Playwright one.
 
 const { connectBrowser, openDirectTab, registerTab, touchTab, exitAfterFlush } = (() => {
   try { return require('browser-chauffeur-helpers'); }
@@ -102,9 +103,13 @@ async function snapshotDirect(connectError) {
   const navStart = Date.now();
   const tab = await openDirectTab(cdpPort, targetUrl);
   try {
-    // An evaluate that lands while a redirect commits fails; that reads as the
-    // URL still changing.
-    const finalUrl = await waitForUrlStable(() => tab.evaluate('location.href').catch(() => null));
+    // A read that fails or stalls while a redirect commits counts as the URL
+    // still changing; the 2s cap keeps waitForUrlStable's own limit real.
+    const readUrl = () => Promise.race([
+      tab.evaluate('location.href').catch(() => null),
+      new Promise(r => setTimeout(() => r(null), 2000)),
+    ]);
+    const settledUrl = await waitForUrlStable(readUrl);
     await waitForRender(async () => {
       const deadline = Date.now() + 8000;
       while (Date.now() < deadline) {
@@ -118,7 +123,7 @@ async function snapshotDirect(connectError) {
     }, () => tab.screenshot());
     const screenshotPath = `.tmp/snapshot-target-${Date.now()}.png`;
     await tab.screenshot({ path: screenshotPath });
-    report(screenshotPath, finalUrl, Date.now() - navStart);
+    report(screenshotPath, (await readUrl()) || settledUrl, Date.now() - navStart);
   } finally {
     tab.session.close();
   }

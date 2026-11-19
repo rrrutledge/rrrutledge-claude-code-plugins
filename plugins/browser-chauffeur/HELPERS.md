@@ -75,7 +75,7 @@ Marks a tab **you own** active (the lower-level primitive `findTab` uses). Call 
 
 ### `connectBrowser(cdpPort)`
 
-Connects to the persistent browser with Playwright's `connectOverCDP`, bounded at 30 seconds.
+Connects to the persistent browser with Playwright's `connectOverCDP`, giving up after 30 seconds and then probing the tabs for up to 20 seconds more before it throws.
 On a timeout it throws an error with `code` `CDP_CONNECT_TIMEOUT` whose message and `hungTargets` (`{ id, title, url }` each) name the tabs that failed a responsiveness probe.
 What to do next: SKILL.md **Resilient Connection**.
 
@@ -91,7 +91,7 @@ The returned tab supports these calls, with Playwright's signatures where Playwr
 - **`goto(url)`** - navigate and wait for the new document's DOMContentLoaded
 - **`evaluate(fn, arg)`** - run a function or expression string in the page and return its value
 - **`screenshot({ path, clip })`** - viewport capture, `clip` in viewport CSS pixels
-- **`click(selector)`** - a trusted mouse click at the center of the first rendered element the selector matches
+- **`click(selector)`** - a trusted mouse click at the center of the first visible element the selector matches; it throws when another element covers that point
 - **`type(text)`** - inserts text into the focused element; input events fire, key events don't, so a handler that listens for keys (autocomplete, Enter to submit) needs a Playwright tab
 - **`close()`** - close and unregister, or park on `about:blank` when it is the browser's last tab
 

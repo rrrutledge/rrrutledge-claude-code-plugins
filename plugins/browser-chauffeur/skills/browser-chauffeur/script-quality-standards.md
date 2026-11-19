@@ -119,13 +119,14 @@ What counts as evidence that a mutation succeeded is SKILL.md Key Rules, **Verif
 
 Every script - a quick one-off as much as one built from the full template - must guarantee its process exits when its work ends. A script connects to the browser over a live CDP socket, and that open socket keeps Node's event loop alive: if a step throws or hangs, `browser.close()` never runs, the socket stays open, and the process lingers as an orphan (with the shell and console host that launched it) until the browser closes hours later. Accumulate a session's worth of these and they exhaust memory.
 
-Wrap the whole body in `try { ... } finally { await closeTab(page); await browser.close().catch(() => {}); }`, and end the file with the guaranteed-exit line, which exits on success as well as on a rejection:
+Wrap the whole body in `try { ... } finally { ... }`, closing the script's tabs the way SKILL.md Phase 3 **Tab cleanup** says and the browser with `browser.close().catch(() => {})` when the script connected one.
+End the file with the guaranteed-exit line, which exits on success as well as on a rejection:
 
 ```javascript
-run().then(() => exitAfterFlush(0), e => { console.error(e.message); exitAfterFlush(1); });
+run().then(() => exitAfterFlush(process.exitCode || 0), e => { console.error(e.message); exitAfterFlush(1); });
 ```
 
-`exitAfterFlush` from `browser-chauffeur-helpers` exits once the script's output has flushed.
+`exitAfterFlush` from `browser-chauffeur-helpers` exits once the script's output has flushed, with the `process.exitCode` a failed verification set.
 The success exit matters after a connect timeout: the timed-out `connectOverCDP` stays pending on its own open socket, so a script that finished its task in a direct tab would otherwise wait out the watchdog.
 A bare `(async () => { ... })()` IIFE with no top-level handler fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive.
 Either use the `run()` shape above, or attach the same `.then(...)` to the IIFE's own promise.
