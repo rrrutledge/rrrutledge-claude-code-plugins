@@ -55,8 +55,8 @@ A digest ends when the snapshot it opened with is handled, not when the live que
   An entry tagged `help-needed` is a stale gate record (gates live in the worker's open tab, per `engine/browser-gate.md`): `queue-clear` it silently (`node <seen-state.js> queue-clear <runtime_dir> <id>`, no provider CLEAR) and leave it out of the digest.
 - For richer fyi summaries, read each item's captured body when the provider wrote one (its capture writes the body alongside `items/<id>.json`) - don't summarize from the snippet alone when the full body is right there.
 
-If the queue is empty AND no provider is stuck (step 0), tell Russell there's nothing to digest and stop.
-A stuck provider alone is still worth reporting - surface it even when the queue is otherwise empty.
+If the queue is empty AND no provider is stuck (step 0) AND the Sent without you block (step 1c) reads "nothing", tell Russell there's nothing to digest and stop.
+A stuck provider or a send that went out without him is still worth reporting on its own - surface it even when the queue is otherwise empty.
 
 ## 1b. Backlog depth - the read-only "how much is left" barometer
 
@@ -71,6 +71,12 @@ When a source reads "unavailable this run", say so plainly and move on - a listi
 The barometer is a per-machine toggle (`show_backlog_depth` in `drainer.local.md`, on by default).
 When the runtime facts say it's turned off, skip this step and leave the section out of the digest entirely - no heading, no placeholder.
 Stuck-provider health (step 0) is separate and always runs.
+
+## 1c. Sent without you - every send that went out on its own
+
+Your launcher built a **Sent without you** block from send-confidence's log and handed it to you in the runtime facts: one line for each send that went out on the model's say-so since the last digest, with its undo command, or a note that it was undone since.
+Present the block verbatim as its own section, at the spot step 4 places it, including when it reads "nothing".
+When the block names queue items as already shown, leave those items out of the Auto-handled section (step 2b) and `queue-clear` them with the rest on Russell's OK.
 
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)
 
@@ -148,7 +154,7 @@ Creating or appending the rule goes through the provider's JUNK-LEARNING section
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Sent without you** section (step 1c), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 

@@ -192,9 +192,9 @@ finally:
 
 with tempfile.TemporaryDirectory() as rt:
     seed_cfg = {"local_dir": rt}
-    with open(digest.write_seed(rt, "repo", seed_cfg, rendered), encoding="utf-8") as f:
+    with open(digest.write_seed(rt, "repo", seed_cfg, rendered, ""), encoding="utf-8") as f:
         on_seed = f.read()
-    with open(digest.write_seed(rt, "repo", seed_cfg, None), encoding="utf-8") as f:
+    with open(digest.write_seed(rt, "repo", seed_cfg, None, ""), encoding="utf-8") as f:
         off_seed = f.read()
 check("on: the seed carries the measured block", "Grand total: 3 pending" in on_seed, True)
 check("off: the seed carries no counts", "pending" in off_seed, False)

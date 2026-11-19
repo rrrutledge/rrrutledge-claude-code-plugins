@@ -28,6 +28,8 @@ from drainer_config import read_config, provider_search_dirs, ensure_main_worktr
 from provider_base import (run_node, spawn_bg, prompt_seed, write_receipt, load_providers,  # noqa: E402
                            ProviderError, load_seen)  # shared subprocess + background-session launch + adapter loader + seen-state reader
 import ack_sweep  # noqa: E402  (the once-a-day acknowledgement sweep)
+import auto_sent  # noqa: E402  (the digest's fixed "Sent without you" section)
+import slack_reaction  # noqa: E402  (the send-confidence loader and the reaction undo command)
 
 SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 # Page-size ceiling for each provider's own list call when the backlog barometer counts pending items -
@@ -35,12 +37,22 @@ SEEN_STATE = os.path.join(SCRIPT_DIR, "seen-state.js")
 ENUMERATE_PAGE_SIZE = 500
 
 
-def write_seed(runtime_dir, repo, cfg, backlog_block):
+def measure_auto_sent(runtime_dir):
+    """The rendered "Sent without you" block and the time it runs through. A failure renders as an
+    unavailable line with no time, so the watermark stays put and the next digest lists these sends."""
+    try:
+        return auto_sent.section(slack_reaction.send_confidence(), runtime_dir, _load_queue(runtime_dir),
+                                 slack_reaction.undo_command)
+    except Exception as e:
+        return f"Sent without you since the last digest: unavailable this run ({e}).", None
+
+
+def write_seed(runtime_dir, repo, cfg, backlog_block, auto_sent_block):
     """Write the digest session's prompt file: a pointer to digest-core.md plus the few runtime
-    facts it can't infer (where the queue/state live, the providers dir), and the pre-computed
+    facts it can't infer (where the queue/state live, the providers dir), the pre-computed
     backlog-depth barometer the launcher measured for this run (so the session presents real numbers
-    rather than recomputing them). A None `backlog_block` means the barometer is toggled off, and the
-    seed says so instead."""
+    rather than recomputing them), and the "Sent without you" block built from send-confidence's log.
+    A None `backlog_block` means the barometer is toggled off, and the seed says so instead."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
     prompt_file = os.path.join(seeds, "digest.prompt.txt")
@@ -65,6 +77,8 @@ def write_seed(runtime_dir, repo, cfg, backlog_block):
             f"- provider-health file: `{os.path.join(runtime_dir, 'provider-health.json')}` - read it FIRST "
             "(digest-core step 0) and surface any stuck provider; missing/empty means all healthy.\n"
             + backlog_fact +
+            "- Sent without you, built from send-confidence's log (digest-core step 1c - present it "
+            f"verbatim):\n{auto_sent_block}\n\n"
             "Present the digest to Russell and clear NOTHING until he approves. Never send or post from "
             "this session: a reply goes to the session the work is handed off to (digest-core's Hard "
             "rules). When the queue is emptied (or Russell defers) and you are done, stop.\n"
@@ -227,6 +241,7 @@ def print_brief(runtime_dir, cfg, repo):
         print(f"    [{(it.get('triage') or '?'):4}] {e.get('id')}\n"
               f"        {it.get('from')} | {it.get('subject')}")
     print(measure_backlog(runtime_dir, cfg) or "Backlog depth: turned off (show_backlog_depth: false).")
+    print(measure_auto_sent(runtime_dir)[0])
     try:
         due = ack_sweep.daily_sweep(ack_sweep.Review(repo), dry_run=True)
         print(f"  Acknowledgements due: {len(due)} conversation(s)"
@@ -254,7 +269,8 @@ def main():
         print_brief(runtime_dir, cfg, repo)
         return
 
-    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg))
+    auto_sent_block, auto_sent_through = measure_auto_sent(runtime_dir)
+    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg), auto_sent_block)
     # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
     # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
     # kept in a sibling summary file, the way a worker's is.
@@ -269,6 +285,8 @@ def main():
         print("run-digest: headless `claude --bg` launch returned no id; the digest did not start.")
         sys.exit(1)
     receipt = write_receipt(prompt_file, bg_id)
+    if auto_sent_through:
+        auto_sent.write_watermark(runtime_dir, auto_sent_through)
     print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
           f"for {runtime_dir}.")
     launch_ack_review(runtime_dir, repo, cfg)
