@@ -15,19 +15,14 @@
 // (direct-tab.js), which drives a fresh tab of its own without enumerating the
 // others. The hung tab is left open: it may be another live session's work.
 
-const { CDPSession, httpJson } = require('./cdp-session');
+const { CDPSession, httpJson, withTimeout } = require('./cdp-session');
 
+const CONNECT_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 
 function loadChromium() {
   try { return require('playwright-core').chromium; }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')).chromium; }
-}
-
-function withTimeout(promise, ms, message) {
-  let timer;
-  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function probeTarget(target) {
@@ -57,10 +52,10 @@ async function findHungTargets(cdpPort) {
     .map(t => ({ id: t.id, title: t.title, url: t.url }));
 }
 
-async function connectBrowser(cdpPort = '9222', { timeoutMs = 30000 } = {}) {
+async function connectBrowser(cdpPort = '9222') {
   const connecting = loadChromium().connectOverCDP(`http://localhost:${cdpPort}`);
   try {
-    return await withTimeout(connecting, timeoutMs, 'connect timeout');
+    return await withTimeout(connecting, CONNECT_TIMEOUT_MS, 'connect timeout');
   } catch (e) {
     if (e.message !== 'connect timeout') throw e;
   }
@@ -68,13 +63,12 @@ async function connectBrowser(cdpPort = '9222', { timeoutMs = 30000 } = {}) {
   connecting.then(b => b.close().catch(() => {}), () => {});
 
   const hungTargets = await findHungTargets(cdpPort).catch(() => []);
-  const head = `connectOverCDP did not complete within ${timeoutMs}ms on port ${cdpPort}.`;
+  const head = `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}.`;
   const message = hungTargets.length
     ? `${head} Unresponsive tab(s), left open because they may be another session's work:\n` +
       hungTargets.map(t => `  - ${t.title || '(untitled)'} ${t.url} [${t.id}]`).join('\n') +
-      `\nDrive a fresh tab with openDirectTab(cdpPort, url) from browser-chauffeur-helpers instead (SKILL.md Resilient Connection).`
-    : `${head} Every tab answered a probe, so the profile likely has too many open tabs. ` +
-      `Re-run chauffeur.py to sweep orphaned tabs, then retry once; if it still times out, drive a fresh tab with openDirectTab(cdpPort, url).`;
+      `\nFollow SKILL.md Resilient Connection.`
+    : `${head} Every tab answered a probe, so the profile likely has too many open tabs. Follow SKILL.md Resilient Connection.`;
   const err = new Error(message);
   err.code = 'CDP_CONNECT_TIMEOUT';
   err.hungTargets = hungTargets;

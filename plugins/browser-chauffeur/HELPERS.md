@@ -17,7 +17,7 @@ The shim looks up the active plugin version each time it is required - from the 
 ## Usage
 
 Start every script from `skills/browser-chauffeur/templates/script-template.js`.
-It resolves `playwright-core` and the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
+It resolves the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
 
 ## Available Helpers
 
@@ -42,7 +42,7 @@ Takes a diagnostic screenshot when automation fails. Useful in catch blocks.
 ### `openTab(context, url)`
 
 Opens a new tab, registers it in the shared tab registry under the current Claude session, and navigates to `url` if provided.
-It is how every script creates a tab (SKILL.md Phase 1, **Getting a tab**).
+It is how every Playwright script creates a tab (SKILL.md Phase 1, **Getting a tab**).
 It also attaches a page-scoped `popup` listener, so any tab this page later spawns itself (`target="_blank"`, `window.open`, ctrl-click) is registered under the same session automatically - capture it with `await page.waitForEvent('popup')` around the click if you need to drive it.
 
 - **Parameters**: `context` - Playwright browser context; `url` - optional URL to navigate to
@@ -73,13 +73,13 @@ Marks a tab **you own** active (the lower-level primitive `findTab` uses). Call 
 - **Parameters**: `context` - Playwright browser context; `page` - the Playwright page
 - **Returns**: Promise<void>
 
-### `connectBrowser(cdpPort, { timeoutMs })`
+### `connectBrowser(cdpPort)`
 
-Connects to the persistent browser with Playwright's `connectOverCDP`, bounded by `timeoutMs` (default 30000).
+Connects to the persistent browser with Playwright's `connectOverCDP`, bounded at 30 seconds.
 On a timeout it throws an error with `code` `CDP_CONNECT_TIMEOUT` whose message and `hungTargets` (`{ id, title, url }` each) name the tabs that failed a responsiveness probe.
 What to do next: SKILL.md **Resilient Connection**.
 
-- **Parameters**: `cdpPort` - the port Phase 0 printed; `timeoutMs` - optional
+- **Parameters**: `cdpPort` - the port Phase 0 printed
 - **Returns**: Promise<Browser>
 
 ### `openDirectTab(cdpPort, url)`
@@ -88,22 +88,21 @@ Opens a fresh tab and drives it over that tab's own CDP WebSocket, so a hung tab
 The tab is registered to the current session like an `openTab` tab.
 The returned tab supports these calls, with Playwright's signatures where Playwright has them:
 
-- **`goto(url)` and `url()`** - navigate and wait for the load event; read the current URL
+- **`goto(url)`** - navigate and wait for the new document's DOMContentLoaded
 - **`evaluate(fn, arg)`** - run a function or expression string in the page and return its value
 - **`screenshot({ path, clip })`** - viewport capture, `clip` in viewport CSS pixels
-- **`click(selector)` and `type(text)`** - trusted mouse and keyboard input at the element the selector matches, then into the focused element
+- **`click(selector)`** - a trusted mouse click at the center of the first rendered element the selector matches
+- **`type(text)`** - inserts text into the focused element; input events fire, key events don't, so a handler that listens for keys (autocomplete, Enter to submit) needs a Playwright tab
 - **`close()`** - close and unregister, or park on `about:blank` when it is the browser's last tab
 
 - **Parameters**: `cdpPort`; `url` - optional URL to load
 - **Returns**: Promise<DirectTab>
 
-### `captureEvidence(page, target, outPath, { padding, keepMark })`
+### `captureEvidence(page, target, outPath, { padding })`
 
-Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.
-A text target is wrapped in an outlined span, so the box follows the text across line wraps.
-When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
+Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
 
-- **Parameters**: `page` - a Playwright page or a direct tab; `target` - `{ text }` for the first visible occurrence of a string, or `{ selector }` for an element; `outPath` - the PNG path; `padding` - CSS pixels of context around the target (default 80); `keepMark` - leave the box on the page for the user to see (default false)
+- **Parameters**: `page` - a Playwright page or a direct tab; `target` - `{ text }` for the first visible occurrence of a string, or `{ selector }` for an element; `outPath` - the PNG path; `padding` - CSS pixels of context around the target (default 80)
 - **Returns**: Promise<string> - `outPath`
 
 ### `cancelScriptWatchdog()`

@@ -123,18 +123,16 @@ Adjust `plugins/browser-chauffeur/...` to the actual path where the skill is mou
 **Every ad-hoc script goes in the project's `.tmp/`.**
 The shared `~/.claude/browser-chauffeur/` directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share.
 Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find.
-**Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
+**Resolve `browser-chauffeur-helpers` with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
 
 ```js
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-const { openTab, findTab, closeTab } = (() => {
+const { connectBrowser, openTab, findTab, closeTab } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
 ```
+
+A script that calls `chromium` itself resolves `playwright-core` the same way, with `'playwright-core'` in place of the helpers name.
 
 ---
 
@@ -183,7 +181,7 @@ SCREENSHOT: .tmp/snapshot-target-<timestamp>.png
 FINAL_URL: <where the browser actually landed>
 ```
 
-When a hung tab blocks the connect, the output also carries the connect error and a `DIRECT_TAB:` line (**Resilient Connection**).
+When a hung tab blocks the connect, the output also carries the connect error naming the hung tabs, for the escalation in **Resilient Connection**.
 
 **The script makes no decision - you do, from the screenshot alone**, at the start of a flow and mid-flow alike.
 Text matching, DOM selectors, and URL heuristics can't reliably tell a login wall, an SSO transit page, an MFA challenge, and a slow-hydrating SPA apart across providers; a screenshot read by the session can, with no patterns to maintain.
@@ -240,7 +238,7 @@ Two layers keep this reliable:
 **When the connect times out:** run the task in a fresh tab of your own with `openDirectTab(cdpPort, url)` (`HELPERS.md` **openDirectTab**).
 The direct tab is driven over its own connection, so the hung tab can't block it, and the task carries on without the user.
 Phase 0's `snapshot-target.js` makes this switch itself.
-A direct tab covers reading, screenshots, clicks, and typing; a flow that needs Playwright's own machinery (locator waits, frames, popups) re-runs `chauffeur.py` and retries the Playwright script once.
+A direct tab covers reading, screenshots, clicks, and text entry (`HELPERS.md` **openDirectTab** lists its calls); a flow that needs Playwright's own machinery (locator waits, key events, frames, popups) re-runs `chauffeur.py` and retries the Playwright script once.
 If that still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention** with the hung tabs the error named, so the user decides whether to close them.
 
 ---
@@ -281,6 +279,7 @@ Before touching anything:
    **Get a tab with `openTab(context, url)` for a fresh one you own, or `findTab(context, predicate)` to reuse one you already own.**
    `openTab` bundles registration so the tab is tracked and reclaimable (see **Resilient Connection**) and navigates for you; a tab created any other way (`context.newPage()`, a fresh page you `goto()` yourself) is unregistered, escapes the orphan sweep, and lingers until the TTL/count backstop reaps it or the browser crashes under the accumulated count.
    `findTab` is owner-scoped so it can only ever return your own tab.
+   After a hung-tab connect timeout, a script gets its tab with `openDirectTab(cdpPort, url)` instead, which registers it the same way (**Resilient Connection**).
    Save the page object reference and reuse it throughout the script.
 
    **Tabs a click spawns are owned automatically.**
@@ -342,7 +341,7 @@ const title  = await evalIn(session, ctxId, 'document.title');
 `playwright-core/lib/utilsBundle` exports the `ws` package, so no extra `npm install` is needed.
 
 **How to click in the iframe - use `Runtime.evaluate`** (`anti-patterns.md` Anti-Patterns 6 and 9 show why coordinates and the Tab key fail there).
-This DOM `.click()` is the one exception to actions through the locator API (`script-quality-standards.md` **Actions Through the Locator API**).
+This DOM `.click()` is one of the exceptions to actions through the locator API (`script-quality-standards.md` **Actions Through the Locator API**).
 Popup and dialog buttons often have `id=""`, where `getElementById('')` returns `null` and the click silently does nothing, so match those by visible text or `aria-label`.
 
 ```javascript
@@ -408,6 +407,7 @@ Some SPAs (Articulate Rise, OpenSesame, content platforms) load page sections as
    }
    // Tabs you FOUND (didn't create) are never passed to closeTab - leave them open.
    ```
+   A direct tab from `openDirectTab` closes with its own `tab.close()` in the same `finally`.
    **Why:** Other Claude sessions may be using other tabs. The user may need to review the results. Only close tabs you explicitly created for this specific task. `openTab`/`closeTab` bundle registration so it can't be forgotten: if this script crashes before `finally`, the Phase 0 **Automatic tab sweep** reclaims the orphaned tab once its session ends. `closeTab` also parks on `about:blank` instead of closing when it's the last tab, so it never exits the persistent browser. The `script-template.js` reference already wires this in.
    
    **When to leave tabs open:**
@@ -614,8 +614,8 @@ Fix without asking: a violation is always wrong.
 **Screenshot on Failure** - Scripts save screenshots to `.tmp/diag-*.png` on failure so the recovery loop can read them. The `screenshotOnFailure(context, label)` helper in `templates/screenshot-on-failure.js` saves them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
 
 **Evidence Screenshots** - A screenshot that shows the user a problem comes from the live page where they would see that problem, so the image matches what they find when they go look.
-Capture each one with `captureEvidence(page, { text } | { selector }, outPath)` from `browser-chauffeur-helpers`; it crops to the target, draws a red box around it, and waits for layout to settle first.
-Aim the box at the smallest target that is the problem itself: the exact misspelled words, the one broken control.
+Capture each one with `captureEvidence(page, { text } | { selector }, outPath)` from `browser-chauffeur-helpers`, which draws a red box around the target.
+Aim the box at the smallest target that is the problem itself.
 Take one image per problem, and Read each before handing it over to confirm the box sits on the problem.
 
 **Virtualized Grid Scrolling** - To render off-screen rows in a virtualized grid/list (Vaadin Grid, react-window, ag-grid, and similar - they mount only visible rows and recycle DOM nodes as you scroll), call the component's own scroll-to API directly via `page.evaluate()`: `grid.scrollToIndex(n)` for Vaadin Grid, or the analogous method on whichever virtualization library the page uses. Verify the target content actually appears in `document.body.innerText` afterward before moving on. Scroll, locate the row's control, and click it with a locator all in the same script run - a virtualized grid's scroll position and recycled row contents can shift between runs, so measuring a position in one script and clicking it in the next can land on a different row than intended. When the resulting action is destructive or hard to undo, read back its confirmation dialog (or resulting state) to confirm it names the item you meant before proceeding.

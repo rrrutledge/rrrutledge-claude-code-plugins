@@ -69,10 +69,11 @@ Use `page.evaluate` to *read* DOM state.
 A native `element.click()` inside `evaluate` bypasses framework synthetic event handlers (React, Fluent UI): the UI may update while no API call fires, and the change vanishes on refresh (`anti-patterns.md` Anti-Pattern 2).
 
 **Two exceptions drive a target over its own CDP WebSocket instead.**
-- **An out-of-process iframe.**
+
+- **A cross-origin, out-of-process iframe.**
   The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
-- **A direct tab after a hung-tab connect timeout.**
-  A script that `connectBrowser` failed on runs its task in a tab from `openDirectTab`, acting through that tab's `click` and `type`, which send trusted input events (SKILL.md **Resilient Connection**).
+- **A direct tab after connect timeout.**
+  A script that `connectBrowser` failed on runs its task in a tab from `openDirectTab`, acting through that tab's `click` and `type` (`HELPERS.md` **openDirectTab**; SKILL.md **Resilient Connection**).
 
 ## ✅ REQUIRED: Visibility Checks, Not Presence
 
@@ -81,9 +82,9 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 
 ## ✅ REQUIRED: Tabs and Packages
 
-- Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**), or through `openDirectTab` after a hung-tab connect timeout (SKILL.md **Resilient Connection**).
-- Close the tabs the script opened in a `finally`: `closeTab(page)` for a Playwright tab, `tab.close()` for a direct tab (SKILL.md Phase 3, **Tab cleanup**).
-- Resolve `playwright-core` and `browser-chauffeur-helpers` with the try/catch fallback (SKILL.md **Prerequisite Check**).
+- Get every tab the way SKILL.md Phase 1, **Getting a tab** says.
+- Close the tabs the script opened in a `finally`, the way SKILL.md Phase 3, **Tab cleanup** says.
+- Resolve `browser-chauffeur-helpers`, and `playwright-core` when the script calls `chromium` itself, with the try/catch fallback (SKILL.md **Prerequisite Check**).
 
 ## ✅ REQUIRED: Browser Connection
 
@@ -118,13 +119,14 @@ What counts as evidence that a mutation succeeded is SKILL.md Key Rules, **Verif
 
 Every script - a quick one-off as much as one built from the full template - must guarantee its process exits when its work ends. A script connects to the browser over a live CDP socket, and that open socket keeps Node's event loop alive: if a step throws or hangs, `browser.close()` never runs, the socket stays open, and the process lingers as an orphan (with the shell and console host that launched it) until the browser closes hours later. Accumulate a session's worth of these and they exhaust memory.
 
-Wrap the whole body in `try { ... } finally { await closeTab(page); await browser.close().catch(() => {}); }`, and end the file with the guaranteed-exit line so a rejection can never leave the process hanging:
+Wrap the whole body in `try { ... } finally { await closeTab(page); await browser.close().catch(() => {}); }`, and end the file with the guaranteed-exit line, which exits on success as well as on a rejection:
 
 ```javascript
-run().catch(e => { console.error(e.message); process.exit(1); });
+run().then(() => process.exit(0), e => { console.error(e.message); process.exit(1); });
 ```
 
-A bare `(async () => { ... })()` IIFE with no top-level `.catch()` fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()`-plus-`.catch()` shape above, or attach `.catch(e => { console.error(e.message); process.exit(1); })` to the IIFE's own promise.
+The success exit matters after a connect timeout: the timed-out `connectOverCDP` stays pending on its own open socket, so a script that finished its task in a direct tab would otherwise wait out the watchdog.
+A bare `(async () => { ... })()` IIFE with no top-level handler fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()` shape above, or attach the same `.then(...)` to the IIFE's own promise.
 
 The helpers' process guard is a backstop behind this rule, not a substitute for it; `HELPERS.md` **Process guard** covers it, including how a long-running script extends its watchdog window.
 

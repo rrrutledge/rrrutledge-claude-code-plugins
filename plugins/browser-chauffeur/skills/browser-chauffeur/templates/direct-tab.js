@@ -16,7 +16,7 @@
 //   finally { await tab.close(); }
 
 const fs = require('fs');
-const { CDPSession, httpText, httpJson } = require('./cdp-session');
+const { CDPSession, httpText, httpJson, withTimeout } = require('./cdp-session');
 const { recordTarget, unregisterTab } = require('./tab-registry');
 
 const CALL_TIMEOUT_MS = 30000;
@@ -25,19 +25,12 @@ class DirectTab {
   constructor(cdpPort, target) {
     this.cdpPort = cdpPort;
     this.targetId = target.id;
-    this.currentUrl = target.url;
     this.session = new CDPSession(target.webSocketDebuggerUrl);
   }
 
   send(method, params) {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${method} did not answer within ${CALL_TIMEOUT_MS}ms`)), CALL_TIMEOUT_MS);
-    });
-    return Promise.race([this.session.send(method, params), timeout]).finally(() => clearTimeout(timer));
+    return withTimeout(this.session.send(method, params), CALL_TIMEOUT_MS, `${method} did not answer within ${CALL_TIMEOUT_MS}ms`);
   }
-
-  url() { return this.currentUrl; }
 
   async evaluate(fn, arg) {
     const expression = typeof fn === 'function' ? `(${fn})(${JSON.stringify(arg)})` : fn;
@@ -48,25 +41,35 @@ class DirectTab {
     return r.result.value;
   }
 
-  // Waits on the load event rather than polling readyState, which reads the old
-  // document's 'complete' until the navigation commits.
+  // Waits for DOMContentLoaded of this navigation's own document, matched by its
+  // loaderId, so a late event from an earlier navigation can't end the wait. The
+  // event can arrive before Page.navigate answers, so every one is collected
+  // from the start. A same-document (hash) navigation has no loaderId and no new
+  // document to wait for.
   async goto(url) {
     await this.send('Page.enable');
-    let timer;
-    let onLoad;
-    const loaded = new Promise((resolve, reject) => {
-      onLoad = resolve;
-      timer = setTimeout(() => reject(new Error(`${url} did not load within ${CALL_TIMEOUT_MS}ms`)), CALL_TIMEOUT_MS);
-    });
-    this.session.on(m => { if (m.method === 'Page.loadEventFired') onLoad(); });
+    await this.send('Page.setLifecycleEventsEnabled', { enabled: true });
+    const seen = new Set();
+    let notify = () => {};
+    const listener = m => {
+      if (m.method === 'Page.lifecycleEvent' && m.params.name === 'DOMContentLoaded') {
+        seen.add(m.params.loaderId);
+        notify();
+      }
+    };
+    this.session.on(listener);
     try {
-      const { errorText } = await this.send('Page.navigate', { url });
+      const { errorText, loaderId } = await this.send('Page.navigate', { url });
       if (errorText) throw new Error(`navigation to ${url} failed: ${errorText}`);
-      await loaded;
+      if (!loaderId) return;
+      const ready = new Promise(resolve => {
+        notify = () => { if (seen.has(loaderId)) resolve(); };
+        notify();
+      });
+      await withTimeout(ready, CALL_TIMEOUT_MS, `${url} did not load within ${CALL_TIMEOUT_MS}ms`);
     } finally {
-      clearTimeout(timer);
+      this.session.off(listener);
     }
-    this.currentUrl = await this.evaluate('location.href');
   }
 
   // clip is in viewport CSS pixels, as in Playwright; CDP's clip is in document
@@ -79,24 +82,31 @@ class DirectTab {
     }
     const { data } = await this.send('Page.captureScreenshot', params);
     const buffer = Buffer.from(data, 'base64');
-    if (path) fs.writeFileSync(path, buffer);
+    if (path) {
+      fs.mkdirSync(require('path').dirname(path), { recursive: true });
+      fs.writeFileSync(path, buffer);
+    }
     return buffer;
   }
 
+  // Clicks the center of the first rendered match. The scroll is instant, so the
+  // position read right after it is where the element ends up.
   async click(selector) {
     const box = await this.evaluate((sel) => {
-      const el = document.querySelector(sel);
+      const el = [...document.querySelectorAll(sel)].find(e => e.getClientRects().length > 0);
       if (!el) return null;
-      el.scrollIntoView({ block: 'center', inline: 'center' });
+      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     }, selector);
-    if (!box) throw new Error(`click: no element matches ${selector}`);
-    for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) {
+    if (!box) throw new Error(`click: no rendered element matches ${selector}`);
+    await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, button: 'none' });
+    for (const type of ['mousePressed', 'mouseReleased']) {
       await this.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
     }
   }
 
+  // Inserts text into the focused element: input events fire, key events don't.
   async type(text) {
     await this.send('Input.insertText', { text });
   }
@@ -133,4 +143,4 @@ async function openDirectTab(cdpPort, url) {
   return tab;
 }
 
-module.exports = { openDirectTab, DirectTab };
+module.exports = { openDirectTab };

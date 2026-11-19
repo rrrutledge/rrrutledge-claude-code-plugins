@@ -21,7 +21,7 @@
 //
 // When the connect times out on a hung tab (connect-browser.js), the snapshot
 // is taken through a fresh direct tab instead (direct-tab.js) and the output
-// adds DIRECT_TAB: <targetId> plus the connect error naming the hung tab(s).
+// adds the connect error naming the hung tab(s).
 // The direct tab is left open and registered, like the Playwright one.
 
 const { connectBrowser, openDirectTab, registerTab, touchTab } = (() => {
@@ -51,20 +51,23 @@ if (!targetUrl) {
 // after `maxMs` total. Captures the destination URL after any client-side
 // redirect chain - SSO handshakes, region/locale routing, AB-test
 // redirects - instead of screenshotting an in-flight redirect.
-async function waitForUrlStable(page, settleMs = 2500, maxMs = 15000) {
+// Resolves to the settled URL. getUrl is async so the direct-tab path can read
+// location.href through evaluate.
+async function waitForUrlStable(getUrl, settleMs = 2500, maxMs = 15000) {
   const start = Date.now();
-  let lastUrl = page.url();
+  let lastUrl = await getUrl();
   let lastChange = Date.now();
   while (Date.now() - start < maxMs) {
     await new Promise(r => setTimeout(r, 200));
-    const url = page.url();
+    const url = await getUrl();
     if (url !== lastUrl) {
       lastUrl = url;
       lastChange = Date.now();
     } else if (Date.now() - lastChange >= settleMs) {
-      return;
+      break;
     }
   }
+  return lastUrl;
 }
 
 function report(screenshotPath, finalUrl, elapsedMs) {
@@ -76,24 +79,17 @@ function report(screenshotPath, finalUrl, elapsedMs) {
   console.log('Read the screenshot with the Read tool to see what is on the page.');
 }
 
-// The direct-tab path: the same URL-stability wait, read through evaluate, then
-// a viewport screenshot.
 async function snapshotDirect(connectError) {
   console.log(connectError.message);
   const navStart = Date.now();
   const tab = await openDirectTab(cdpPort, targetUrl);
   try {
-    let lastUrl = await tab.evaluate('location.href');
-    let lastChange = Date.now();
-    while (Date.now() - navStart < 15000 && Date.now() - lastChange < 2500) {
-      await new Promise(r => setTimeout(r, 200));
-      const url = await tab.evaluate('location.href');
-      if (url !== lastUrl) { lastUrl = url; lastChange = Date.now(); }
-    }
+    // An evaluate that lands while a redirect commits fails; that reads as the
+    // URL still changing.
+    const finalUrl = await waitForUrlStable(() => tab.evaluate('location.href').catch(() => null));
     const screenshotPath = `.tmp/snapshot-target-${Date.now()}.png`;
     await tab.screenshot({ path: screenshotPath });
-    console.log(`DIRECT_TAB: ${tab.targetId}`);
-    report(screenshotPath, lastUrl, Date.now() - navStart);
+    report(screenshotPath, finalUrl, Date.now() - navStart);
   } finally {
     tab.session.close();
   }
@@ -125,7 +121,7 @@ async function snapshot() {
     const navStart = Date.now();
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    await waitForUrlStable(page, 2500, 15000);
+    await waitForUrlStable(async () => page.url());
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
     if (targetAnchor) {
@@ -169,4 +165,4 @@ async function snapshot() {
   }
 }
 
-snapshot().catch(e => { console.error(e.message); process.exit(1); });
+snapshot().then(() => process.exit(0), e => { console.error(e.message); process.exit(1); });

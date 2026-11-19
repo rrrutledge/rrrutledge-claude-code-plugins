@@ -78,6 +78,8 @@ class CDPSession {
 
   on(fn) { this.listeners.push(fn); }
 
+  off(fn) { this.listeners = this.listeners.filter(l => l !== fn); }
+
   send(method, params = {}) {
     const id = ++this.id;
     return new Promise((resolve, reject) => {
@@ -110,4 +112,10 @@ async function waitForContext(ctxs, predicate) {
   }
 }
 
-module.exports = { CDPSession, httpText, httpJson, evalIn, waitForContext };
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+module.exports = { CDPSession, httpText, httpJson, evalIn, waitForContext, withTimeout };
