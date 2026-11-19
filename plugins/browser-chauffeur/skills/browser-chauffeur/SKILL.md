@@ -503,6 +503,7 @@ The task, the brief, or the address a document was shared with names the account
 2. Open the site's own switcher (an avatar menu, an account chooser, a workspace or organization picker) and pick the right account when it is listed.
    Google also accepts `authuser=<email>` on the URL.
 3. When the right account is not listed, use the switcher's add-account flow and clear each step as in **Email-delivered MFA codes**.
+   The password page is the user's step, and it may be only a saved-passkey confirmation after the username, so name it to the user as "password or passkey".
 4. Reload the target and confirm from a screenshot that the page now shows the right account's access.
 
 ### Required `AskUserQuestion` pattern
