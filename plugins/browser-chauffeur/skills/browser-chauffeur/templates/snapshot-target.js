@@ -17,14 +17,13 @@
 // indefinitely (so screenshot diffing never settles) but expose a stable
 // app-shell element (e.g. '[data-app-section="CalendarModuleSurface"]' for
 // Outlook calendar).
-
 //
 // When the connect times out on a hung tab (connect-browser.js), the snapshot
-// is taken through a fresh direct tab instead (direct-tab.js) and the output
-// adds the connect error naming the hung tab(s).
-// The direct tab is left open and registered, like the Playwright one.
+// is taken through a fresh direct tab instead (direct-tab.js), with the same
+// waits, and the output adds the connect error naming the hung tab(s). The
+// direct tab is left open and registered, like the Playwright one.
 
-const { connectBrowser, openDirectTab, registerTab, touchTab } = (() => {
+const { connectBrowser, openDirectTab, registerTab, touchTab, exitAfterFlush } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -48,26 +47,45 @@ if (!targetUrl) {
 }
 
 // Resolves once the URL stops changing for `settleMs` consecutive ms, or
-// after `maxMs` total. Captures the destination URL after any client-side
-// redirect chain - SSO handshakes, region/locale routing, AB-test
-// redirects - instead of screenshotting an in-flight redirect.
-// Resolves to the settled URL. getUrl is async so the direct-tab path can read
-// location.href through evaluate.
+// after `maxMs` total, to the last URL actually read. Captures the destination
+// URL after any client-side redirect chain - SSO handshakes, region/locale
+// routing, AB-test redirects - instead of screenshotting an in-flight redirect.
+// getUrl is async so the direct-tab path can read location.href through
+// evaluate; a null from it (a read that failed mid-redirect) counts as a change.
 async function waitForUrlStable(getUrl, settleMs = 2500, maxMs = 15000) {
   const start = Date.now();
   let lastUrl = await getUrl();
+  let lastRead = lastUrl;
   let lastChange = Date.now();
   while (Date.now() - start < maxMs) {
     await new Promise(r => setTimeout(r, 200));
     const url = await getUrl();
-    if (url !== lastUrl) {
+    if (url != null) lastRead = url;
+    if (url !== lastUrl || url == null) {
       lastUrl = url;
       lastChange = Date.now();
     } else if (Date.now() - lastChange >= settleMs) {
       break;
     }
   }
-  return lastUrl;
+  return lastRead;
+}
+
+// With an anchor, waits for it to show (waitForAnchor); otherwise takes
+// screenshots until two consecutive captures are byte-identical (the page has
+// stopped rendering) or attempts run out. shoot returns a PNG buffer.
+async function waitForRender(waitForAnchor, shoot) {
+  if (targetAnchor) {
+    await waitForAnchor().catch(() => {});
+    return;
+  }
+  let previous = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = await shoot();
+    if (previous && Buffer.compare(current, previous) === 0) return;
+    previous = current;
+    if (attempt < 4) await new Promise(r => setTimeout(r, 1000));
+  }
 }
 
 function report(screenshotPath, finalUrl, elapsedMs) {
@@ -87,6 +105,17 @@ async function snapshotDirect(connectError) {
     // An evaluate that lands while a redirect commits fails; that reads as the
     // URL still changing.
     const finalUrl = await waitForUrlStable(() => tab.evaluate('location.href').catch(() => null));
+    await waitForRender(async () => {
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        const shown = await tab.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          return !!el && el.getClientRects().length > 0;
+        }, targetAnchor).catch(() => false);
+        if (shown) return;
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }, () => tab.screenshot());
     const screenshotPath = `.tmp/snapshot-target-${Date.now()}.png`;
     await tab.screenshot({ path: screenshotPath });
     report(screenshotPath, finalUrl, Date.now() - navStart);
@@ -124,27 +153,10 @@ async function snapshot() {
     await waitForUrlStable(async () => page.url());
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 
-    if (targetAnchor) {
-      await page.locator(targetAnchor).first()
-        .waitFor({ state: 'visible', timeout: 8000 })
-        .catch(() => {});
-    } else {
-      // Screenshot-diff stability: take screenshots until two consecutive
-      // captures are byte-identical (page has stopped rendering) or attempts run out.
-      let previousScreenshot = null;
-      let stabilized = false;
-      const maxAttempts = 5;
-      for (let attempt = 0; attempt < maxAttempts && !stabilized; attempt++) {
-        const currentScreenshot = await page.screenshot();
-        if (previousScreenshot) {
-          stabilized = Buffer.compare(currentScreenshot, previousScreenshot) === 0;
-          if (!stabilized && attempt < maxAttempts - 1) {
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-        previousScreenshot = currentScreenshot;
-      }
-    }
+    await waitForRender(
+      () => page.locator(targetAnchor).first().waitFor({ state: 'visible', timeout: 8000 }),
+      () => page.screenshot(),
+    );
 
     const screenshotPath = `.tmp/snapshot-target-${Date.now()}.png`;
     await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -165,4 +177,4 @@ async function snapshot() {
   }
 }
 
-snapshot().then(() => process.exit(0), e => { console.error(e.message); process.exit(1); });
+snapshot().then(() => exitAfterFlush(0), e => { console.error(e.message); exitAfterFlush(1); });

@@ -122,11 +122,13 @@ Every script - a quick one-off as much as one built from the full template - mus
 Wrap the whole body in `try { ... } finally { await closeTab(page); await browser.close().catch(() => {}); }`, and end the file with the guaranteed-exit line, which exits on success as well as on a rejection:
 
 ```javascript
-run().then(() => process.exit(0), e => { console.error(e.message); process.exit(1); });
+run().then(() => exitAfterFlush(0), e => { console.error(e.message); exitAfterFlush(1); });
 ```
 
+`exitAfterFlush` from `browser-chauffeur-helpers` exits once the script's output has flushed.
 The success exit matters after a connect timeout: the timed-out `connectOverCDP` stays pending on its own open socket, so a script that finished its task in a direct tab would otherwise wait out the watchdog.
-A bare `(async () => { ... })()` IIFE with no top-level handler fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive. Either use the `run()` shape above, or attach the same `.then(...)` to the IIFE's own promise.
+A bare `(async () => { ... })()` IIFE with no top-level handler fails this: a throw anywhere inside leaves the rejection unhandled while the socket keeps the process alive.
+Either use the `run()` shape above, or attach the same `.then(...)` to the IIFE's own promise.
 
 The helpers' process guard is a backstop behind this rule, not a substitute for it; `HELPERS.md` **Process guard** covers it, including how a long-running script extends its watchdog window.
 

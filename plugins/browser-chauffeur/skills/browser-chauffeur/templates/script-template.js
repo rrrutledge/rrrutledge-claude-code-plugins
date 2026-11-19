@@ -3,7 +3,7 @@
 // validated via --cdp-port, opens its own tab with openTab, and closes it with
 // closeTab when done (SKILL.md Phase 1 and Phase 3 hold the tab rules).
 
-const { connectBrowser, dismissOverlays, openTab, closeTab, screenshotOnFailure } = (() => {
+const { connectBrowser, dismissOverlays, openTab, closeTab, screenshotOnFailure, exitAfterFlush } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -77,4 +77,4 @@ async function run() {
   }
 }
 
-run().then(() => process.exit(0), e => { console.error(e.message); process.exit(1); });
+run().then(() => exitAfterFlush(0), e => { console.error(e.message); exitAfterFlush(1); });

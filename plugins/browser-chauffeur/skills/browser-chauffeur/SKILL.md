@@ -233,12 +233,11 @@ Two layers keep this reliable:
 
 2. **Backstop - fail fast and name the hung tab.** Scripts connect with `connectBrowser(cdpPort)` (`script-quality-standards.md` **Browser Connection**), so a wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
    The error lists each tab that failed a responsiveness probe.
-   Those tabs stay open, because they may be another session's live work.
 
 **When the connect times out:** run the task in a fresh tab of your own with `openDirectTab(cdpPort, url)` (`HELPERS.md` **openDirectTab**).
 The direct tab is driven over its own connection, so the hung tab can't block it, and the task carries on without the user.
 Phase 0's `snapshot-target.js` makes this switch itself.
-A direct tab covers reading, screenshots, clicks, and text entry (`HELPERS.md` **openDirectTab** lists its calls); a flow that needs Playwright's own machinery (locator waits, key events, frames, popups) re-runs `chauffeur.py` and retries the Playwright script once.
+`HELPERS.md` **openDirectTab** lists the calls a direct tab supports; a flow that needs any call beyond that list re-runs `chauffeur.py` and retries the Playwright script once.
 If that still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention** with the hung tabs the error named, so the user decides whether to close them.
 
 ---

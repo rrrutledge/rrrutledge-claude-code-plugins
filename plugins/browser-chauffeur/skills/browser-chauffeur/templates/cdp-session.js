@@ -25,12 +25,15 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 
-let WebSocket;
-try {
-  ({ ws: WebSocket } = require('playwright-core/lib/utilsBundle'));
-} catch {
-  const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
-  ({ ws: WebSocket } = require(path.join(pwPath, 'lib', 'utilsBundle')));
+// Loaded on first use, so requiring the helpers never depends on resolving
+// playwright-core.
+function loadWebSocket() {
+  try {
+    return require('playwright-core/lib/utilsBundle').ws;
+  } catch {
+    const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
+    return require(path.join(pwPath, 'lib', 'utilsBundle')).ws;
+  }
 }
 
 // The browser's HTTP endpoints (/json, /json/new, /json/close) answer from the
@@ -41,7 +44,11 @@ function httpText(url, { method = 'GET', timeoutMs = 10000 } = {}) {
     const req = http.request(url, { method, timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
-      res.on('end', () => resolve(data));
+      res.on('error', reject);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
+        else reject(new Error(`${method} ${url} answered ${res.statusCode}: ${data}`));
+      });
     });
     req.on('timeout', () => req.destroy(new Error(`${method} ${url} did not answer within ${timeoutMs}ms`)));
     req.on('error', reject);
@@ -55,6 +62,7 @@ async function httpJson(url, opts) {
 
 class CDPSession {
   constructor(wsUrl) {
+    const WebSocket = loadWebSocket();
     this.ws = new WebSocket(wsUrl);
     this.id = 0;
     this.pending = new Map();
@@ -73,6 +81,12 @@ class CDPSession {
       } else if (m.method) {
         for (const l of this.listeners) l(m);
       }
+    });
+    // A closed socket (tab closed, renderer crashed) answers nothing more, so
+    // every request still waiting fails now rather than at its timeout.
+    this.ws.on('close', () => {
+      for (const { reject } of this.pending.values()) reject(new Error('CDP socket closed'));
+      this.pending.clear();
     });
   }
 

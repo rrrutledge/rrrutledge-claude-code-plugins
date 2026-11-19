@@ -74,6 +74,12 @@ function cancelScriptWatchdog() {
   }
 }
 
+// Exit once stdout and stderr have flushed. A piped stdout is asynchronous on
+// macOS, so a bare process.exit can cut off the last lines a script printed.
+function exitAfterFlush(code) {
+  process.stdout.write('', () => process.stderr.write('', () => process.exit(code)));
+}
+
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION - exiting:', (reason && reason.stack) || reason);
   process.exit(1);
@@ -91,6 +97,7 @@ module.exports = {
   registerTab,
   unregisterTab,
   cancelScriptWatchdog,
+  exitAfterFlush,
   captureFullPageScreenshot,
   captureEvidence,
   connectBrowser,

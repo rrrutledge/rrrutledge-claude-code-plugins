@@ -11,9 +11,8 @@
 // a trivial Runtime.evaluate; a tab that cannot answer within PROBE_TIMEOUT_MS is
 // the wedged one. The window is wide because a sleeping (Edge) or discarded tab
 // takes seconds to wake on its first attach, and a narrow one reports it as hung. The thrown error (code CDP_CONNECT_TIMEOUT) lists those tabs in
-// `hungTargets` and in its message, and points the caller at openDirectTab
-// (direct-tab.js), which drives a fresh tab of its own without enumerating the
-// others. The hung tab is left open: it may be another live session's work.
+// `hungTargets` and in its message, and points the caller at SKILL.md Resilient
+// Connection. The hung tab is left open: it may be another live session's work.
 
 const { CDPSession, httpJson, withTimeout } = require('./cdp-session');
 

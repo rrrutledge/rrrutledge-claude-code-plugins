@@ -3,7 +3,7 @@
 ## [1.19.0] - 2026-11-18
 
 ### Added
-- **A hung tab no longer stops the run.**
+- **A run carries on past a hung tab.**
   `connectBrowser(cdpPort)` moves into `browser-chauffeur-helpers`; on a timeout its error names each tab that failed a responsiveness probe.
   `openDirectTab(cdpPort, url)` runs the task in a fresh tab driven over its own CDP WebSocket, which the hung tab can't block, and `snapshot-target.js` switches to it on its own.
   See **Resilient Connection** in `SKILL.md`.

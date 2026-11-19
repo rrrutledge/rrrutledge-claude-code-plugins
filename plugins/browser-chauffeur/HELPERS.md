@@ -100,10 +100,19 @@ The returned tab supports these calls, with Playwright's signatures where Playwr
 
 ### `captureEvidence(page, target, outPath, { padding })`
 
-Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
+Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.
+When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
 
 - **Parameters**: `page` - a Playwright page or a direct tab; `target` - `{ text }` for the first visible occurrence of a string, or `{ selector }` for an element; `outPath` - the PNG path; `padding` - CSS pixels of context around the target (default 80)
 - **Returns**: Promise<string> - `outPath`
+
+### `exitAfterFlush(code)`
+
+Exits the process with `code` once stdout and stderr have flushed, so the last lines a script printed always reach whoever is reading its output.
+Where a script calls it: `skills/browser-chauffeur/script-quality-standards.md` **Guaranteed Process Exit**.
+
+- **Parameters**: `code` - the exit code
+- **Returns**: void
 
 ### `cancelScriptWatchdog()`
 

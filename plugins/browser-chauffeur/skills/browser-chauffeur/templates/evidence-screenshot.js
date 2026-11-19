@@ -46,18 +46,20 @@ function markTarget({ selector, text }) {
   }
   if (!state) return false;
   window.__bcEvidence = state;
-  state.el.style.outline = '3px solid red';
-  state.el.style.outlineOffset = '2px';
+  // !important, so a page rule like `* { outline: none !important }` can't hide it.
+  state.el.style.setProperty('outline', '3px solid red', 'important');
+  state.el.style.setProperty('outline-offset', '2px', 'important');
   state.el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   return true;
 }
 
 // Runs in the page. Resolves the padded, viewport-clamped clip once the marked
 // element's box has held still across consecutive reads, or null when the page
-// re-rendered the mark away. setTimeout rather than requestAnimationFrame, which
+// re-rendered or navigated the mark away. setTimeout rather than requestAnimationFrame, which
 // stalls in a background tab.
 async function settledClip({ padding }) {
   const el = window.__bcEvidence && window.__bcEvidence.el;
+  if (!el || !el.isConnected) return null;
   await document.fonts.ready;
   const read = () => JSON.stringify(el.getBoundingClientRect());
   const deadline = Date.now() + 3000;
@@ -106,7 +108,7 @@ async function captureEvidence(page, target, outPath, { padding = 80 } = {}) {
   }
   try {
     const clip = await page.evaluate(settledClip, args);
-    if (!clip) throw new Error('captureEvidence: the page re-rendered the target while it was being measured');
+    if (!clip) throw new Error('captureEvidence: the page re-rendered or navigated away from the target while it was being measured');
     await page.screenshot({ path: outPath, clip });
   } finally {
     await page.evaluate(unmark).catch(() => {});
