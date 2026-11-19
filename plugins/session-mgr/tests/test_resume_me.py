@@ -91,8 +91,10 @@ def test_command_carries_wake_note():
         body = open(note, encoding="utf-8").read() if os.path.isfile(note) else ""
         check("note names the launched session and says the wait is over",
               "Fill form" in body and "your wait is over" in body, body)
-        check("brief tells the launched session to report into the note",
-              "## Report" in text and note.replace(chr(92), "/") in text, text)
+        report = ".tmp/handoff-form.md.report.md"
+        check("brief tells the launched session to write its report in its own working directory",
+              f"`{report}`" in text, text)
+        check("resume command adds that report to the note", f'--report-file "{report}"' in text, text)
         check("resume command passes the note as the follow-up prompt",
               f'--prompt-file "{note.replace(chr(92), "/")}"' in text, text)
 

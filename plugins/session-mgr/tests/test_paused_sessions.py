@@ -110,7 +110,7 @@ def test_successor_from_job_record():
     bg_session._wake_account = lambda guid: False
     bg_session.session_guid = lambda short, agents=None: None
     bg_session.transcript_account = lambda guid: None
-    bg_session.find_job = lambda short: (None, {"sessionId": C})
+    bg_session.find_job = lambda short, session_guid=None: (None, {"sessionId": C})
     try:
         bg_session.spawn_bg("seed", None, TMP, None, resume=A)
     finally:
