@@ -162,7 +162,11 @@ The one gap: a command that needs its own working directory to actually *be* the
 ExitWorktree takes no path - it only ever acts on the one worktree the current session entered via EnterWorktree, tracked internally by the harness rather than supplied by the model.
 `action: "keep"` is always approved (nothing is deleted).
 `action: "remove"` mirrors `git branch -d`: the tool itself refuses when the worktree has uncommitted files or commits that never landed on the original branch, so a plain remove is approved.
-Only `discard_changes: true`, which forces the removal through and knowingly throws away unsaved work, falls through to a manual prompt.
+`discard_changes: true`, which forces the removal through and knowingly throws away unsaved work, is BLOCKed with a redirect: leave with `keep`, then `git worktree remove` (a trusted git subcommand that refuses a worktree holding uncommitted files), then delete the branch.
+A squash merge makes the tool see the branch's commits as unmerged.
+`git worktree remove` checks only for uncommitted files, so the commits-landed check comes from `gh pr view` showing the PR MERGED before a `git branch -D`.
+`git worktree remove --force` (or `-f`) is BLOCKed too, with "commit, push, and finish the merge" as the way to make a plain remove succeed, because it deletes untracked files no reflog can restore.
+`git branch -D` is approved, since the deleted branch's commits remain in the reflog.
 
 ### Learned → source promotion (`tools/sync_learned.py`)
 
@@ -230,6 +234,6 @@ are promoted back to the plugin source via a GitHub PR on a rolling branch
 | `plugins/safe-compounds/safe_compounds/learned.py` | Machine-local learned store read/write |
 | `plugins/safe-compounds/safe_compounds/workflow.py` | Classifies Workflow tool calls: `workflow_blanket_names` for saved workflows, AI content check for inline scripts |
 | `plugins/safe-compounds/safe_compounds/writes.py` | Write/Edit decisions: the blocked `~/.claude` dirs, `.tmp/` and repo allows, trusted destination dirs, and the home-root creation block |
-| `plugins/safe-compounds/safe_compounds/worktree_tool.py` | Classifies EnterWorktree (approved only when creating fresh with no path; any explicit path is denied with a redirect to work the worktree directly via `git -C`/absolute paths instead - see §7) and ExitWorktree (`keep` and plain `remove` approved, `discard_changes` prompts) tool calls |
+| `plugins/safe-compounds/safe_compounds/worktree_tool.py` | Classifies EnterWorktree (approved only when creating fresh with no path; any explicit path is denied with a redirect to work the worktree directly via `git -C`/absolute paths instead - see §7) and ExitWorktree (`keep` and plain `remove` approved, `discard_changes` denied with a redirect to `keep` plus `git worktree remove`) tool calls |
 | `plugins/safe-compounds/tools/sync_learned.py` | Promotes learned approvals to a GitHub PR |
 | `plugins/safe-compounds/safe_compounds/config.py` | Config file schema + loader |

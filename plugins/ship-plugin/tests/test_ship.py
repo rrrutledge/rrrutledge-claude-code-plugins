@@ -224,6 +224,15 @@ class AfterTheMerge(Base):
         with contextlib.redirect_stdout(io.StringIO()):
             ship.clean_up_local(Path('/r'), 'feature')
         self.assertEqual(fake.ran(['git', 'worktree', 'remove']), [['git', 'worktree', 'remove', '/r/w2']])
+        self.assertFalse(fake.ran(['git', 'branch', '-D', 'feature']))
+
+    def test_clean_up_deletes_the_branch_once_its_worktrees_are_gone(self):
+        porcelain = 'worktree /r\nbranch refs/heads/main\n\nworktree /r/w1\nbranch refs/heads/feature\n'
+        fake = self.fake([(['git', 'worktree', 'list'], done(porcelain)),
+                          (['git', '-C', '/r/w1', 'status'], done('')),
+                          (['git', 'rev-parse', '--verify'], done('sha'))])
+        with contextlib.redirect_stdout(io.StringIO()):
+            ship.clean_up_local(Path('/r'), 'feature')
         self.assertTrue(fake.ran(['git', 'branch', '-D', 'feature']))
 
 
@@ -256,7 +265,7 @@ class WholeChain(Base):
                           in_worktree=True)
         code, out = self.run_ship()
         self.assertEqual(code, ship.EXIT_WORKTREE, out)
-        self.assertIn('EXIT_WORKTREE remove', out)
+        self.assertIn('EXIT_WORKTREE keep', out)
         self.assertTrue(fake.ran(['gh', 'pr', 'merge', '7']))
         self.assertFalse(fake.ran(['git', 'pull']))
 
