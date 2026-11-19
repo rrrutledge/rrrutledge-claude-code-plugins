@@ -392,6 +392,7 @@ Instead, hand that other session the instruction to resume you when its work is 
   **Leave the card un-cleared and its Start untouched** (`providers/trello-provider.md`, CAPTURE): the work isn't done, and the resumed session is what CLEARs it once it finishes.
   Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
+  **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.
 
 **Anything that isn't waiting on a third party is still work-for-us, and a card doesn't discharge it.**
 If the next step is something only Russell can produce - content only he has the judgment or standing to write, a decision only he can make - filing a card for it and moving on leaves it unfinished; see step 3, "you drive the keyboard."
