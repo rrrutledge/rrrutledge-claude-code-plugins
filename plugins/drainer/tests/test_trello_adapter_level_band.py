@@ -104,10 +104,54 @@ def test_sort_key_orders_level_within_band():
 def test_band_rank_is_priority_then_level_then_referral():
     print("test: band_rank returns (priority, level, referral) - the one place the queue order is defined")
     it = {"_priority_band": 5, "_level_band": -1, "_referral_band": 1}
-    check("band_rank orders priority, then level, then referral", provider_base.band_rank(it) == (5, -1, 1),
+    check("band_rank orders priority, due rank, level, then referral", provider_base.band_rank(it) == (5, 0, -1, 1),
           provider_base.band_rank(it))
     check("missing bands fall back to neutral", provider_base.band_rank({}) ==
-          (provider_base.NEUTRAL_PRIORITY_BAND, 0, 0), provider_base.band_rank({}))
+          (provider_base.NEUTRAL_PRIORITY_BAND, 0, 0, 0), provider_base.band_rank({}))
+
+
+def test_due_band():
+    print("test: due band - an incomplete Due on a started card sits between the top band and neutral, soonest Due first")
+    from datetime import datetime, timezone, timedelta
+    Provider = adapter_mod.Provider
+    now = datetime(2026, 11, 17, tzinfo=timezone.utc)
+    start = now - timedelta(days=1)
+    def due(days, complete=False, has_start=True):
+        c = card()
+        c["due"] = (now + timedelta(days=days)).isoformat().replace("+00:00", "Z")
+        c["dueComplete"] = complete
+        return Provider._due_dt(c, start if has_start else None)
+    check("incomplete Due on a started card counts", due(3) is not None)
+    check("a completed Due does not count", due(3, complete=True) is None)
+    check("a card with no Start does not enter the due band", due(3, has_start=False) is None)
+    check("no Due field -> None", Provider._due_dt(card(), start) is None)
+    top, dueb, neutral = (provider_base.TOP_PRIORITY_BAND, provider_base.DUE_PRIORITY_BAND,
+                          provider_base.NEUTRAL_PRIORITY_BAND)
+    check("bands run top > due > neutral > P2 > P3", top > dueb > neutral > adapter_mod._PRIORITY_BAND[2]
+          > adapter_mod._PRIORITY_BAND[3])
+    d = due(2)
+    p1, p3 = [{"name": "🎯 P1"}], [{"name": "🎯 P3"}]
+    check("a due card takes the due band", Provider._priority_band(card(), due_dt=d) == dueb)
+    check("a plain P1 or a P3 with a Due moves up into the due band",
+          Provider._priority_band(card(labels=p1), due_dt=d) == dueb
+          and Provider._priority_band(card(labels=p3), due_dt=d) == dueb)
+    check("a Contact card with a Due stays in the top band",
+          Provider._priority_band(card(labels=[{"name": "👤 Contact"}]), due_dt=d) == top)
+    check("an in-progress card with a Due stays in the top band",
+          Provider._priority_band(card(), in_progress=True, due_dt=d) == top)
+    check("no Due keeps neutral", Provider._priority_band(card()) == neutral)
+    check("due rank is 0 outside the due band", Provider._due_rank(top, d) == 0 and Provider._due_rank(neutral, None) == 0)
+
+    def stamped(name, days, dt="2026-11-01"):
+        dd = due(days) if days is not None else None
+        band = Provider._priority_band(card(), due_dt=dd)
+        return {"name": name, "_priority_band": band, "_due_rank": Provider._due_rank(band, dd),
+                "_level_band": 0, "_referral_band": 0, "_sort_dt": dt}
+    items = [stamped("due later", 9), stamped("plain", None, "2026-11-16"), stamped("due soon", -2),
+             stamped("due mid", 4)]
+    ranked = [it["name"] for it in sorted(items, key=SORT_KEY, reverse=True)]
+    check("due band soonest first (overdue leads), then neutral", ranked ==
+          ["due soon", "due mid", "due later", "plain"], ranked)
 
 
 def test_level_leads_referral_within_band():
@@ -178,7 +222,7 @@ def test_priority_band_still_leads_level_band():
 def test_priority_band_above_inbox_pins():
     print("test: _priority_band - in-progress, P1 Director-or-above, and P1 $250K+ people-manager cards rank above neutral")
     Provider = adapter_mod.Provider
-    above = provider_base.NEUTRAL_PRIORITY_BAND + 1
+    above = provider_base.TOP_PRIORITY_BAND
     p1 = [{"name": "🎯 P1"}]
     p2 = [{"name": "🎯 P2"}]
     p3 = [{"name": "🎯 P3"}]
@@ -255,6 +299,7 @@ if __name__ == "__main__":
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_priority_then_level_then_referral()
+    test_due_band()
     test_sort_key_orders_level_within_band()
     test_level_leads_referral_within_band()
     test_startable_gate_start_is_the_only_date()

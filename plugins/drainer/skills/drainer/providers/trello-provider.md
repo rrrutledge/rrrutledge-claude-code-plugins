@@ -30,8 +30,9 @@ Start is the one date, alongside two labels + a description convention:
   Record `Blocked-by: <upstream-shortlink>[, …]` in the description; optionally attach the upstream card for a human-visible link.
   (The `trello` skill's SKILL.md owns applying this at creation time - it's the mechanics layer every Trello write goes through.)
 
-**Trello's native Due field is a separate, informational date the queue never reads.**
-It's fine to set Due as a plain deadline marker when a card genuinely has one, alongside Start - but setting only Due, expecting it to hold a card back, nudge it, or make it resurface, silently does nothing: the drainer's queue and every nudge/advance operation in this file act on Start alone.
+**Trello's native Due field ranks a card once its Start has arrived.**
+The due-band rule lives in `trello-queue-model.md`.
+Whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
 
 **Unblock has a push and a pull.**

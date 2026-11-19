@@ -26,10 +26,14 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # sits. Which fit tiers rank above or below neutral is defined in one place: the trello adapter's
 # _PRIORITY_BAND.
 NEUTRAL_PRIORITY_BAND = 1
+# The two bands above neutral: a started card with an incomplete Due date, and the top band (contact,
+# in-progress, a P1 Director-or-above or well-paid manager). Larger is worked sooner.
+DUE_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 1
+TOP_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 2
 
 
 def band_rank(it):
-    """The cross-source queue order, defined in ONE place: priority band, then level, then referral.
+    """The cross-source queue order, defined in ONE place: priority band, then due rank, level, referral.
     Every drained item (email/Slack, ordinary Trello cards, and job-search cards) is ranked by this
     tuple; only job-search cards carry a non-neutral value in any band (the trello adapter stamps
     `_priority_band`/`_level_band`/`_referral_band` - see its _PRIORITY_BAND, _level_band, _referral_band
@@ -37,8 +41,10 @@ def band_rank(it):
     change the tuple HERE; both sort sites (trello-adapter._enumerate and run-poller's cross-source
     needs-you sort) and the band-ranking test read it, so the policy lives at one spot. Each caller
     appends its own trailing date key (the adapter's `_sort_dt`, the poller's `received`), which breaks
-    the final tie most-recent-first."""
+    the final tie most-recent-first. `_due_rank` is the negated Due epoch seconds of a card in the due
+    band (0 for every other item), so the descending sort puts the soonest Due first within that band."""
     return (it.get("_priority_band", NEUTRAL_PRIORITY_BAND),
+            it.get("_due_rank", 0),
             it.get("_level_band", 0),
             it.get("_referral_band", 0))
 
