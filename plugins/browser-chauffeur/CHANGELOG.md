@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.20.0] - 2026-11-19
+
+### Added
+- **A connect timeout names the hung tab and gets its owner to close it.**
+  `connectBrowser(cdpPort)` is now a shared helper in `browser-chauffeur-helpers`, used by `script-template.js` and `snapshot-target.js`.
+  When the connect times out it probes each tab, and its error names each unresponsive tab with the `chauffeur.py --hung-tabs` command that finds the tab's owning Claude session.
+  `--hung-tabs` gives each tab a verdict (closed, yours, owner running, no owner), and for a running owner prints the session's name and the message to send it.
+  `chauffeur.py --close-tab <targetId>` closes one tab the calling session owns; the message to the owner carries that command.
+  `SKILL.md` **Resilient Connection** gives the next step for each verdict.
+- **`cdp-session.js` gains timeouts and lazy loading.**
+  It exports `withTimeout`, its `httpJson` times out and checks the status, and it loads `ws` on first use.
+
 ## [1.19.0] - 2026-11-19
 
 ### Added

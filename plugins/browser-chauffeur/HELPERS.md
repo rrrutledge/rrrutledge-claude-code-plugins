@@ -17,9 +17,17 @@ The shim looks up the active plugin version each time it is required - from the 
 ## Usage
 
 Start every script from `skills/browser-chauffeur/templates/script-template.js`.
-It resolves `playwright-core` and the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
+It resolves the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
 
 ## Available Helpers
+
+### `connectBrowser(cdpPort)`
+
+Connects to the persistent browser with Playwright's `connectOverCDP`, giving up after 30 seconds and then listing and probing the tabs, each step bounded, before it throws.
+What to do with the error: SKILL.md **Resilient Connection**.
+
+- **Parameters**: `cdpPort` - the port Phase 0 printed
+- **Returns**: Promise<Browser>
 
 ### `dismissOverlays(page)`
 

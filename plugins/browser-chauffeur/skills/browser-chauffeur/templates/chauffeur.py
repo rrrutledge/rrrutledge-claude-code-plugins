@@ -499,39 +499,50 @@ def save_state(pid: int, port: int, profile_dir: str) -> None:
         json.dump({"pid": pid, "port": port, "profile_dir": profile_dir}, f)
 
 
-def close_owned_tabs() -> int:
+def close_owned_tabs(only: str | None = None) -> int:
     """Close every tab owned by the current session - level-1 self-cleanup.
 
     A session's final courtesy: close its own browser tabs when it's genuinely
     done with them, so they never reach the sweep. Matches tabs whose recorded
     owner is this session's CLAUDE_PID - the session's own claude process, the same
     owner the open path (tab-registry.js ownerInfo) records. Uses the raw CDP HTTP
-    endpoint (never auto-attaches, can't hang), only ever touches this session's
-    own tabs, and never closes the browser's last remaining page. Best-effort.
+    endpoint (never auto-attaches, can't hang, and closes a tab whose renderer is
+    wedged), only ever touches this session's own tabs, and never closes the
+    browser's last remaining page. Best-effort.
+
+    `only` (--close-tab) narrows it to one target id: the owner's side of a
+    hung-tab request, whose message carries this exact command so the owner
+    needs nothing else loaded. It exits 1 when that tab is not this session's
+    or stays open.
     """
     owner = _resolve_owner_pid()
     if owner is None:
         print("No CLAUDE_PID set (not running under a Claude session) - nothing owned to close.")
-        return 0
+        return 0 if only is None else 1
 
     state = load_state()
     if not state or not is_cdp_alive(state["port"]):
         print("No live browser - nothing to close.")
-        return 0
+        return 0 if only is None else 1
     port = state["port"]
 
     try:
         resp = urlopen(f"http://localhost:{port}/json", timeout=5)
         targets = json.loads(resp.read())
     except (URLError, OSError, json.JSONDecodeError):
-        return 0
+        print("The browser's /json endpoint did not answer.")
+        return 0 if only is None else 1
     live = {t["id"] for t in targets if t.get("type") == "page" and "id" in t}
     open_count = len(live)
 
     closed = 0
+    matched = False
     for rec in read_tabs():
         if rec.owner_pid != owner:
             continue  # another session's tab, or one nobody claimed
+        if only is not None and rec.target_id != only:
+            continue
+        matched = True
         if rec.target_id not in live:
             rec.remove()  # my tab, already gone
             continue
@@ -546,7 +557,120 @@ def close_owned_tabs() -> int:
         closed += 1
         open_count -= 1
 
+    if only is not None:
+        if only not in live:
+            print(f"Tab {only} is already closed.")
+            return 0
+        if not matched:
+            print(f"Tab {only} is not recorded to this session - left open.")
+            return 1
+        if not closed:
+            print(f"Tab {only} stayed open (the browser's last page, or the close failed).")
+            return 1
     print(f"Closed {closed} tab(s) owned by this session.")
+    return 0
+
+
+# Claude Code keeps one file per running session here, named by the session's
+# pid (the same CLAUDE_PID a tab records as its owner), holding its `name` - the
+# title SendMessage addresses it by - and `procStart`, its process creation time.
+SESSIONS_DIR = Path.home() / ".claude" / "sessions"
+CHAUFFEUR_PY = Path(__file__).resolve().as_posix()
+
+
+def claude_session(pid: int) -> dict | None:
+    """The running Claude session whose process is `pid`, or None.
+
+    A session file can outlive its process, and Windows recycles PIDs, so the
+    file counts only when its recorded process start matches the live process
+    holding that PID.
+    """
+    try:
+        with open(SESSIONS_DIR / f"{pid}.json", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict) or not data.get("name"):
+        return None
+    try:
+        recorded = int(data.get("procStart"))
+    except (TypeError, ValueError):
+        recorded = None
+    return None if owner_has_ended(pid, recorded) else data
+
+
+def started(session: dict) -> str:
+    """A session's start time in local time, which tells apart sessions that
+    share a title."""
+    try:
+        return time.strftime("%Y-%m-%d %I:%M %p %Z", time.localtime(session["startedAt"] / 1000))
+    except (KeyError, TypeError, ValueError, OverflowError, OSError):
+        return "unknown"
+
+
+def hung_tab_owners(target_ids: list[str]) -> int:
+    """Report who owns each tab a connect timeout named.
+
+    Sweeps first, so a tab whose owning session has ended is already closed by
+    the time it is reported. Each tab gets one verdict:
+      CLOSED         - the target is gone
+      YOURS          - recorded to this session's CLAUDE_PID
+      OWNER RUNNING  - recorded to another live Claude session; the report
+                       carries its name and the message to send it
+      NO OWNER       - no live Claude session is recorded for it
+    An iframe target is reported through the page that holds it. The next step
+    for OWNER RUNNING and NO OWNER: SKILL.md Resilient Connection.
+    """
+    state = load_state()
+    if not state or not is_cdp_alive(state["port"]):
+        print("No live browser - nothing to look up.")
+        return 1
+    port = state["port"]
+    sweep_tabs(port)
+    try:
+        resp = urlopen(f"http://localhost:{port}/json", timeout=5)
+        targets = {t["id"]: t for t in json.loads(resp.read()) if "id" in t}
+    except (URLError, OSError, json.JSONDecodeError):
+        print("The browser's /json endpoint did not answer.")
+        return 1
+
+    owners = {r.target_id: r.owner_pid for r in read_tabs() if r.owner_pid is not None}
+    me = _resolve_owner_pid()
+    asker = claude_session(me) if me is not None else None
+    reported = set()
+    for tid in target_ids:
+        t = targets.get(tid)
+        if not t:
+            print(f"CLOSED {tid} - the tab is gone; retry the script.")
+            continue
+        while t.get("type") == "iframe" and t.get("parentId") in targets:
+            tid, t = t["parentId"], targets[t["parentId"]]
+        if tid in reported:
+            continue
+        reported.add(tid)
+        label = f'"{t.get("title") or "(untitled)"}" ({t.get("url", "")}, target {tid})'
+        owner = owners.get(tid) if t.get("type") == "page" else None
+        if owner is not None and owner == me:
+            print(f"YOURS {label} - close it, then retry the script:")
+            print(f'  python "{CHAUFFEUR_PY}" --close-tab {tid}')
+            continue
+        session = claude_session(owner) if owner is not None else None
+        if session is None:
+            why = ("no running Claude session owns this tab" if t.get("type") == "page"
+                   else "the tab holding this frame could not be found")
+            print(f"NO OWNER {label} - {why}.")
+            continue
+        reply_to = (f"the '{asker['name']}' session (started {started(asker)})" if asker
+                    else "the session that sent this")
+        print(f"OWNER RUNNING {label}")
+        print(f"  session: {session['name']} ({session.get('kind', 'unknown')}, "
+              f"started {started(session)})")
+        print("  message:")
+        print(f"    Your browser-chauffeur tab {label} is not responding, and it blocks "
+              f"every Claude session's browser connect on this machine. Please close it "
+              f"by running:")
+        print(f'      python "{CHAUFFEUR_PY}" --close-tab {tid}')
+        print(f"    and reply to {reply_to} once it's closed, or say so if you can't close it.")
     return 0
 
 
@@ -652,10 +776,18 @@ def main() -> int:
                    help="Profile directory (--fresh only; auto-generated if omitted)")
     p.add_argument("--close-owned", action="store_true",
                    help="Close all tabs owned by this session (its CLAUDE_PID) and exit")
+    p.add_argument("--hung-tabs", nargs="+", metavar="TARGET_ID",
+                   help="Report the owning session of each tab a connect timeout named, and exit")
+    p.add_argument("--close-tab", metavar="TARGET_ID",
+                   help="Close one tab this session (its CLAUDE_PID) owns, and exit")
     args = p.parse_args()
 
     if args.close_owned:
         return close_owned_tabs()
+    if args.hung_tabs:
+        return hung_tab_owners(args.hung_tabs)
+    if args.close_tab:
+        return close_owned_tabs(only=args.close_tab)
 
     if args.fresh:
         if args.port is None:

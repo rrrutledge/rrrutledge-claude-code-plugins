@@ -18,11 +18,7 @@
 // app-shell element (e.g. '[data-app-section="CalendarModuleSurface"]' for
 // Outlook calendar).
 
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-const { registerTab, touchTab } = (() => {
+const { connectBrowser, registerTab, touchTab } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -66,7 +62,7 @@ async function waitForUrlStable(page, settleMs = 2500, maxMs = 15000) {
 }
 
 async function snapshot() {
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+  const browser = await connectBrowser(cdpPort);
   // Prefer contexts that already have a real http page - Edge sometimes launches
   // a welcome popup window as a separate context and it may sort before the main window.
   const contexts = browser.contexts();

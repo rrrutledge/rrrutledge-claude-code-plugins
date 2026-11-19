@@ -25,26 +25,49 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 
-let WebSocket;
-try {
-  ({ ws: WebSocket } = require('playwright-core/lib/utilsBundle'));
-} catch {
-  const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
-  ({ ws: WebSocket } = require(path.join(pwPath, 'lib', 'utilsBundle')));
+// Loaded on first use, so requiring the helpers never depends on resolving
+// playwright-core.
+function loadWebSocket() {
+  try {
+    return require('playwright-core/lib/utilsBundle').ws;
+  } catch {
+    const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
+    return require(path.join(pwPath, 'lib', 'utilsBundle')).ws;
+  }
 }
 
-function httpJson(url) {
+// The browser's /json endpoint answers from the browser process, so it stays
+// responsive while a renderer is wedged; the timeout still bounds a browser
+// that is itself unresponsive.
+function httpJson(url, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-    }).on('error', reject);
+      res.on('error', reject);
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error(`${url} answered ${res.statusCode}: ${data}`));
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error(`${url} did not answer within ${timeoutMs}ms`)));
+    req.on('error', reject);
+    // The idle timeout above misses a response that trickles in, so a total
+    // deadline ends the request too.
+    const deadline = setTimeout(() => req.destroy(new Error(`${url} did not finish within ${timeoutMs}ms`)), timeoutMs);
+    req.on('close', () => clearTimeout(deadline));
   });
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 class CDPSession {
   constructor(wsUrl) {
+    const WebSocket = loadWebSocket();
     this.ws = new WebSocket(wsUrl);
     this.id = 0;
     this.pending = new Map();
@@ -63,6 +86,12 @@ class CDPSession {
       } else if (m.method) {
         for (const l of this.listeners) l(m);
       }
+    });
+    // A closed socket answers nothing more, so every request still waiting
+    // fails now rather than at its caller's timeout.
+    this.ws.on('close', () => {
+      for (const { reject } of this.pending.values()) reject(new Error('CDP socket closed'));
+      this.pending.clear();
     });
   }
 
@@ -100,4 +129,4 @@ async function waitForContext(ctxs, predicate) {
   }
 }
 
-module.exports = { CDPSession, httpJson, evalIn, waitForContext };
+module.exports = { CDPSession, httpJson, evalIn, waitForContext, withTimeout };
