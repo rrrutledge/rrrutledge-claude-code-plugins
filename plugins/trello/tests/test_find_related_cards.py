@@ -97,6 +97,25 @@ def test_tiers():
           all(c["url"] != "u/other" for c in same + head))
 
 
+def test_link_ids():
+    print("test: only posting-shaped numbers in links count as posting ids")
+    ids = trello_utils._link_ids(
+        "Posting: https://careers.example.com/jobs/251065. "
+        "https://www.linkedin.com/jobs/view/4012345678 "
+        "https://www.linkedin.com/comm/jobs/search?jobAlertId=1234567&geoId=103644278 "
+        "https://acme.zoom.us/s/88812345 https://github.com/o/r/issues/12345")
+    check("a trailing period is not part of the id; a view id counts", ids == {"251065", "4012345678"}, ids)
+
+
+def test_lookup_by_name_alone():
+    print("test: a lookup with no card id leaves older unknown")
+    trello_utils.trello_request = fake_request(CARDS, [])
+    same, _head = trello_utils.find_related_cards({"id": "", "name": "H-E-B", "desc": CARDS[0]["desc"]},
+                                                  trello_utils.get_board_snapshot("B1", ("k", "t")))
+    check("matches come back", bool(same))
+    check("older is None for every match", all(c["older"] is None for c in same))
+
+
 def test_paging():
     print("test: the snapshot pages past Trello's per-response cap")
     old_page = trello_utils._CARDS_PAGE
@@ -131,6 +150,8 @@ def test_paging_stops_when_the_cursor_does_not_move():
 
 if __name__ == "__main__":
     test_tiers()
+    test_link_ids()
+    test_lookup_by_name_alone()
     test_paging()
     test_paging_stops_when_the_cursor_does_not_move()
     print()

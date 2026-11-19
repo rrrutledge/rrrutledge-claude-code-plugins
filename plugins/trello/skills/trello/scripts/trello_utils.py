@@ -263,15 +263,16 @@ def find_card_by_name(board_id, name, session):
     return None
 
 
-_NAME_HEAD_SPLIT_RE = re.compile('\\s+[\N{EM DASH}\N{EN DASH}/|-]\\s+')
+_NAME_HEAD_SPLIT_RE = re.compile('\\s+[\N{EM DASH}\N{EN DASH}/|-]\\s+|\\s*[:,]\\s+')
 _URL_RE = re.compile(r'https?://[^\s)\]>]+')
 _LINK_ID_RE = re.compile(r'^\d{5,}$')
-# A number after one of these path segments names a company, a meeting, a group, or a person, which
-# many cards share; a query value counts only under a key that names a posting.
-_LINK_ID_SKIP_SEGMENTS = {'company', 'companies', 'j', 'groups', 'school', 'in', 'meeting'}
-_LINK_ID_QUERY_KEY_RE = re.compile(r'job|req|posting|jid|jk', re.IGNORECASE)
+# A posting id rides as the path segment after one of these, or as the value of one of these query
+# keys; numbers anywhere else in a link (meetings, companies, issues, tracking) are shared by many cards.
+_LINK_ID_PATH_PARENTS = {'jobs', 'job', 'view', 'postings', 'posting', 'positions', 'position',
+                         'requisitions', 'openings', 'opening', 'details'}
+_LINK_ID_QUERY_KEY_RE = re.compile(r'^(job_?id|jobid|currentjobid|req(_?id)?|requisition_?id|posting_?id|gh_jid|jk)$',
+                                   re.IGNORECASE)
 _CARDS_PAGE = 1000  # Trello's cap on one board-cards response
-_CARDS_MAX_PAGES = 50
 
 
 def _squash(text):
@@ -287,26 +288,22 @@ def _name_head(name):
 
 def _link_ids(desc):
     """The posting ids in a description's links - how a job posting's req id rides, whichever job
-    board sourced the card: an all-digit path segment of 5+ digits, or an all-digit query value
-    under a posting-named key. Digits embedded in a longer token (a profile slug) are left out."""
+    board sourced the card: an all-digit 5+ digit path segment after a posting-named segment, or
+    an all-digit query value under a posting-named key."""
     ids = set()
     for url in _URL_RE.findall(desc or ''):
-        parts = urllib.parse.urlsplit(url)
+        parts = urllib.parse.urlsplit(url.rstrip('.,;:!?\'"'))
         segments = parts.path.split('/')
         ids.update(s for i, s in enumerate(segments)
-                   if _LINK_ID_RE.match(s) and (i == 0 or segments[i - 1].lower() not in _LINK_ID_SKIP_SEGMENTS))
+                   if i and _LINK_ID_RE.match(s) and segments[i - 1].lower() in _LINK_ID_PATH_PARENTS)
         ids.update(v for k, v in urllib.parse.parse_qsl(parts.query)
                    if _LINK_ID_RE.match(v) and _LINK_ID_QUERY_KEY_RE.search(k))
     return ids
 
 
 def _created_at(card_id):
-    """A Trello id opens with its creation time as 8 hex digits; 0 for a card with no id (a lookup
-    from the command line, by name alone)."""
-    try:
-        return int(card_id[:8], 16)
-    except (TypeError, ValueError):
-        return 0
+    """A Trello id opens with its creation time as 8 hex digits."""
+    return int(card_id[:8], 16)
 
 
 def get_board_snapshot(board_id, session):
@@ -316,7 +313,7 @@ def get_board_snapshot(board_id, session):
     lists = {l['id']: {'name': l['name'], 'closed': bool(l.get('closed'))} for l in
              trello_request('GET', f'/boards/{board_id}/lists', session, params={'filter': 'all'})}
     cards, before = [], None
-    for _ in range(_CARDS_MAX_PAGES):
+    while True:
         params = {'fields': 'name,desc,idList,shortUrl,closed,isTemplate', 'limit': str(_CARDS_PAGE)}
         if before:
             params['before'] = before
@@ -338,7 +335,8 @@ def find_related_cards(card, snapshot):
     case are dropped, or a link sharing one of the card's link ids.
     `same_head` holds the rest of the cards whose name opens with the same employer or person.
     Each entry is `{name, list, url, closed, decided, older, why}`: `decided` when the card or its
-    list is archived or the list is terminal, `older` when it was created before `card`.
+    list is archived or the list is terminal, `older` when it was created before `card` (None when
+    `card` has no id).
     """
     lists, others = snapshot
     name, head = _squash(card.get('name')), _squash(_name_head(card.get('name')))
@@ -352,7 +350,7 @@ def find_related_cards(card, snapshot):
             why, bucket = f"shares link id {', '.join(shared)}", same_item
         elif name and _squash(other.get('name')) == name:
             why, bucket = 'same name', same_item
-        elif len(head) >= 3 and _squash(_name_head(other.get('name'))) == head:
+        elif len(head) >= 2 and _squash(_name_head(other.get('name'))) == head:
             why, bucket = 'same name head', same_head
         else:
             continue
@@ -360,7 +358,8 @@ def find_related_cards(card, snapshot):
         closed = bool(other.get('closed'))
         bucket.append({'name': other.get('name', ''), 'list': lst['name'], 'url': other.get('shortUrl', ''),
                        'closed': closed, 'decided': closed or lst['closed'] or _is_terminal_list(lst['name']),
-                       'older': _created_at(other['id']) < _created_at(card.get('id')), 'why': why})
+                       'older': _created_at(other['id']) < _created_at(card['id']) if card.get('id') else None,
+                       'why': why})
     return same_item, same_head
 
 
@@ -568,9 +567,12 @@ def _main(argv=None):
     session = get_trello_session()
     out = {}
     for board in args.board:
-        same, head = find_related_cards({'id': '', 'name': args.name, 'desc': args.desc},
-                                        get_board_snapshot(board, session))
-        out[board] = {'same_item': same, 'same_head': head}
+        try:
+            same, head = find_related_cards({'id': '', 'name': args.name, 'desc': args.desc},
+                                            get_board_snapshot(board, session))
+            out[board] = {'same_item': same, 'same_head': head}
+        except Exception as e:
+            out[board] = {'error': str(e)}
     sys.stdout.reconfigure(encoding='utf-8')
     print(json.dumps(out, indent=2, ensure_ascii=False))
 

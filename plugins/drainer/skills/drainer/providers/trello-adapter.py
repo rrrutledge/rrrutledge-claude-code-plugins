@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 # scripts/ is on sys.path (the poller inserts it); fall back to a relative add when run standalone.
@@ -94,6 +95,7 @@ _DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 class Provider(ProviderBase):
     name = "trello"
+    SNAPSHOT_TTL_S = 600
 
     def __init__(self):
         self._utils = self._import_trello_utils()
@@ -118,7 +120,8 @@ class Provider(ProviderBase):
         self.board_in_progress_lists = {}
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
-        # Board id -> trello_utils.get_board_snapshot, filled lazily by capture's related-cards lookup.
+        # Board id -> (monotonic fetch time, trello_utils.get_board_snapshot), filled lazily by capture's
+        # related-cards lookup.
         self._snapshots = {}
 
     # --------------------------------------------------------------- locate the trello-outreach helper
@@ -699,13 +702,16 @@ class Provider(ProviderBase):
         if not hasattr(self._utils, "get_board_snapshot"):
             return "(not looked up: the installed trello plugin predates the related-cards lookup; update it)"
         try:
-            bid = item["boardId"]
-            # One snapshot per board per process: every card captured from a board in this cycle
-            # reads the same board-wide fetch.
-            if bid not in self._snapshots:
-                self._snapshots[bid] = self._utils.get_board_snapshot(bid, self.session)
+            # An item queued before captures carried boardId names its board only by name.
+            bid = item.get("boardId") or next(b["id"] for b in self.boards if b.get("name") == item.get("board"))
+            # Cards captured from one board within a few minutes share one board-wide fetch; the keeper
+            # process lives for days, so an older snapshot is refetched.
+            fetched, snapshot = self._snapshots.get(bid, (0, None))
+            if time.monotonic() - fetched > self.SNAPSHOT_TTL_S:
+                snapshot = self._utils.get_board_snapshot(bid, self.session)
+                self._snapshots[bid] = (time.monotonic(), snapshot)
             same, head = self._utils.find_related_cards(
-                {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")}, self._snapshots[bid])
+                {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")}, snapshot)
         except Exception as e:
             return f"(lookup failed: {e})"
 
@@ -715,13 +721,14 @@ class Provider(ProviderBase):
             age = "older" if c["older"] else "newer"
             return f"- [{c['name']}]({c['url']}) - {where} - {state}, {age} than this card - {c['why']}"
 
-        out = ["Same item (same name ignoring punctuation, or a shared link id):"]
-        out += [line(c) for c in same] or ["- none"]
-        out += ["", f"Same employer or person ({len(head)}):"]
-        out += [line(c) for c in head[:10]] or ["- none"]
-        if len(head) > 10:
-            out.append(f"- ...and {len(head) - 10} more")
-        return "\n".join(out)
+        def block(title, cards):
+            # Open cards first, then newest, so a capped list keeps the cards a decision turns on.
+            cards = sorted(cards, key=lambda c: (c["decided"], c["older"]))
+            rows = [f"{title} ({len(cards)}):"] + ([line(c) for c in cards[:10]] or ["- none"])
+            return rows + ([f"- ...and {len(cards) - 10} more"] if len(cards) > 10 else [])
+
+        return "\n".join(block("Same item (same name ignoring punctuation, or a shared posting id)", same)
+                         + [""] + block("Same employer or person", head))
 
     def _fetch_comments(self, card_id):
         try:

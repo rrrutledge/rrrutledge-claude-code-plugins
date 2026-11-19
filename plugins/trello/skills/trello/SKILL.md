@@ -54,7 +54,7 @@ instructions: |-
   `trello_request(method, path, session, params=?, body=?)` directly, which still carries the shared
   session, base URL, and timeout.
 
-  `python <path-to-skill>/scripts/trello_utils.py related --board <id> [--board <id> ...] --name <text> [--desc <text>]` prints JSON listing, per board, the cards on the same item (`same_item`) and the cards opening with the same employer or person (`same_head`), archived cards and Abandoned/Finished lists included.
+  `python <path-to-skill>/scripts/trello_utils.py related --board <id> [--board <id> ...] --name <text> [--desc <text>]` finds the cards on the same item or the same employer or person.
   Pass the item's employer, person, or title as `--name` and any text carrying its links as `--desc`.
 
   ### update-trello-from-transcript.py

@@ -104,7 +104,7 @@ The record often sits on a different system than the one the item arrived on, po
 Search each system by the people's, companies', and platforms' names and by the item's own identifiers (a posting's req id, a document or order number, the subject or event name), since one narrow keyword search of one system proves nothing.
 Every one of these systems is searched:
 - **Both mailboxes**, per "Search both mailboxes" below.
-- **All of Slack**, every DM and channel at once, with the slack provider's search (`providers/slack-provider.md`, SITUATIONAL-CHECK).
+- **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
 - **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
 
 Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
@@ -159,7 +159,8 @@ Two patterns to watch for, on any source:
   An item whose content describes an ask or a next step is only half-read until you've checked the channel that ask actually points to - checking only the channel it arrived on and finding silence there is not the same as confirming nothing happened.
 
 **A tracked card is the item's record.**
-The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); look there for an existing card naming the item's company or contact, or carrying its identifiers, archived cards and the Abandoned and Finished lists included, with the `trello` skill's `trello_utils.py related` command run over every board in the registry.
+The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
+That command matches a card by its whole name, the leading segment of its name, or a posting id in its links, so search the boards by hand for a person or company that sits later in a card's name.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
 The item is new only when the boards and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
