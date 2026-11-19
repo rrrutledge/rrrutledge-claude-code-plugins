@@ -696,6 +696,8 @@ class Provider(ProviderBase):
         """The capture's "Related cards on this board" section: other cards on the board, archived and
         Abandoned/Finished included, that are the same item or open with the same employer or person
         (trello_utils.find_related_cards). A failed lookup says so, so the worker searches by hand."""
+        if not hasattr(self._utils, "get_board_snapshot"):
+            return "(not looked up: the installed trello plugin predates the related-cards lookup; update it)"
         try:
             bid = item["boardId"]
             # One snapshot per board per process: every card captured from a board in this cycle

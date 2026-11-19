@@ -54,11 +54,12 @@ Bumping it to "claim" the card forges the very id CLEAR is meant to mint later -
 The Start date moves only when the work advances (CLEAR), never to mark a card in-flight.
 
 **Match a decided duplicate before any research.**
-The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for, already run over every card on the board, archived and Abandoned/Finished included.
+The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for.
 A card under "Same item" is a candidate: open it and confirm it is this same request (the same posting, the same ask from the same person) rather than a recurrence of it or a different item sharing a name.
 A confirmed **decided** card already holds the decision: post a dated comment naming and linking it, CLEAR this card the same way it went (**stop** for Abandoned), and close per worker-core §6a.
-A confirmed **open** card means the work belongs on one card, the older of the two.
-When the open card is older, carry anything new from this card into a dated comment on it, stop this card with a comment linking it, and close the same way; when this card is the older one, carry on with it, leaving the newer card for its own worker to stop.
+A confirmed **open** card means the work belongs on one card, the older of the two, and the newer one stops.
+Carry anything new from the newer card into a dated comment on the older one, and stop the newer card with a comment linking the older.
+When the newer card is this one, close the same way; when it is the other card, carry on with this one.
 The "Same employer or person" cards are context for the research, showing how this employer or contact went before.
 A name the section never searched (a contact in the description, another board's employer) gets the same search by hand.
 
@@ -71,7 +72,7 @@ For **email** threads, additionally search the whole mailbox in both directions 
 - **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive**, and some older cleared items sit in Deleted Items, so search there too.
 - **gmail**: search All Mail with no `in:` filter - CLEAR archives (not trashes), so everything is in All Mail.
 
-Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to; the rule and its reporting wording are in `../engine/worker-core.md` §2, "Search around before concluding."
+Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to; the rule is `../engine/worker-core.md` §2, "Search both mailboxes", and the reporting wording is in "Search around before concluding."
 
 A card's last comment can also point to a different channel entirely than the one it's sitting in (a "DM me your X," a "connect A with B" that's really an email intro) - see `../engine/worker-core.md` §2, "An ask can hop channels," which every worker (Trello included) already follows.
 

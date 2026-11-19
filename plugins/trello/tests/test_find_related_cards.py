@@ -26,7 +26,7 @@ def cid(created, n):
 
 NEW = cid(200, 1)
 LISTS = [{"id": "L-id", "name": "Identified"}, {"id": "L-ab", "name": "Abandoned"},
-         {"id": "L-tp", "name": "📋 Templates"}]
+         {"id": "L-tp", "name": "📋 Templates"}, {"id": "L-old", "name": "Interested", "closed": True}]
 CARDS = [
     {"id": NEW, "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-id",
      "closed": False, "shortUrl": "u/new",
@@ -44,6 +44,12 @@ CARDS = [
      "closed": False, "shortUrl": "u/template", "desc": "", "isTemplate": True},
     {"id": cid(80, 7), "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-tp",
      "closed": False, "shortUrl": "u/templist", "desc": ""},
+    {"id": cid(90, 8), "name": "Globex — Platform Lead", "idList": "L-id", "closed": False,
+     "shortUrl": "u/shared-noise",
+     "desc": "https://careers.example.com/jobs/251065x https://www.linkedin.com/company/251065 "
+             "https://zoom.us/j/251065 https://www.linkedin.com/jobs/search?geoId=251065"},
+    {"id": cid(95, 9), "name": "HEB — Platform Lead", "idList": "L-old", "closed": False,
+     "shortUrl": "u/oldlist", "desc": "https://boards.example.com/apply?gh_jid=251065"},
 ]
 
 
@@ -83,6 +89,10 @@ def test_tiers():
     check("another role at the same employer is a sibling", [c["url"] for c in head] == ["u/sibling"])
     check("digits inside a profile slug are not a shared link id", sib.get("why") == "same name head", sib)
     check("an archived card on an open list is decided", sib.get("decided") is True, sib)
+    check("company, meeting, and search-filter numbers are not a shared link id", "u/shared-noise" not in by_url)
+    oldlist = by_url.get("u/oldlist", {})
+    check("a posting id under a posting-named query key is shared", oldlist.get("why") == "shares link id 251065")
+    check("an open card on an archived list is decided", oldlist.get("decided") is True, oldlist)
     check("a card only mentioning the employer in its description is not matched",
           all(c["url"] != "u/other" for c in same + head))
 
@@ -97,13 +107,32 @@ def test_paging():
         _lists, cards = trello_utils.get_board_snapshot("B1", ("k", "t"))
     finally:
         trello_utils._CARDS_PAGE = old_page
-    check("every non-template card comes back", len(cards) == 5, len(cards))
+    check("every non-template card comes back", len(cards) == 7, len(cards))
     check("later pages ask for cards before the oldest one seen", any("before" in c for c in calls))
+
+
+def test_paging_stops_when_the_cursor_does_not_move():
+    print("test: a server that ignores the paging cursor ends the loop instead of spinning")
+    old_page = trello_utils._CARDS_PAGE
+    trello_utils._CARDS_PAGE = 2
+    calls = []
+
+    def stuck(method, path, session, params=None, body=None):
+        calls.append(path)
+        return LISTS if path.endswith("/lists") else CARDS[:2]
+
+    try:
+        trello_utils.trello_request = stuck
+        trello_utils.get_board_snapshot("B1", ("k", "t"))
+    finally:
+        trello_utils._CARDS_PAGE = old_page
+    check("it stops after the repeated page", calls.count("/boards/B1/cards/all") == 2, len(calls))
 
 
 if __name__ == "__main__":
     test_tiers()
     test_paging()
+    test_paging_stops_when_the_cursor_does_not_move()
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

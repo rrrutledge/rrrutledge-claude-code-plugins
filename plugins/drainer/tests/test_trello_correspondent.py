@@ -50,6 +50,7 @@ def make_provider():
     p.name = "trello"
     p._fetch_comments = lambda card_id: "(none)"
     p._snapshots = {}
+    p._utils = object()  # no trello_utils: capture's related-cards lookup reports it was skipped
     return p
 
 
@@ -130,6 +131,8 @@ def test_capture_writes_related_cards():
 
     p._utils, p._snapshots = Broken, {}
     check("a failed lookup is reported, not raised", p._related_cards(it) == "(lookup failed: boom)")
+    p._utils = object()
+    check("an older trello plugin is named as the cause", "predates the related-cards lookup" in p._related_cards(it))
 
 
 if __name__ == "__main__":

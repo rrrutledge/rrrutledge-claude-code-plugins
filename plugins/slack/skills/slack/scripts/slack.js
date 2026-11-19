@@ -598,12 +598,16 @@ async function search() {
   const query = args.search;
   const top = Math.max(1, Math.min(parseInt(args.top, 10) || 20, 100));
   const r = await call('search.messages', { query, sort: 'timestamp', sort_dir: 'desc', count: String(top) });
-  const where = (c) => (c.is_im ? 'a DM' : c.is_mpim ? 'a group DM' : `#${c.name || c.id}`);
-  const out = ((r.messages || {}).matches || []).map(hit => ({
-    channel: (hit.channel && hit.channel.id) || '', where: where(hit.channel || {}),
-    ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.username || hit.user || '',
-    sent: tsToIso(hit.ts), text: hit.text || '', permalink: hit.permalink || '',
-  }));
+  // An IM hit's channel `name` is the other member's user id.
+  const where = async (c) => (c.is_im ? `a DM with ${await userName(c.name)}` : c.is_mpim ? 'a group DM' : `#${c.name || c.id}`);
+  const out = [];
+  for (const hit of (r.messages || {}).matches || []) {
+    out.push({
+      channel: (hit.channel && hit.channel.id) || '', where: await where(hit.channel || {}),
+      ts: hit.ts, threadTs: permalinkThreadTs(hit.permalink), from: hit.username || hit.user || '',
+      sent: tsToIso(hit.ts), text: hit.text || '', permalink: hit.permalink || '',
+    });
+  }
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   console.log(`${out.length} message(s) matching ${JSON.stringify(query)}, newest first:`);
   for (const m of out) {
@@ -1101,7 +1105,7 @@ async function findByDomain() {
   if (args.show) return await show();
   if (args.history) return await history();
   if (args['sent-since']) return await sentSince();
-  if (args.search) return await search();
+  if ('search' in args) return await search();
   if (args.react) return await react();
   if (args.unreact) return await unreact();
   if (args.mark) return await mark();
