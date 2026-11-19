@@ -231,6 +231,6 @@ are promoted back to the plugin source via a GitHub PR on a rolling branch
 | `plugins/safe-compounds/safe_compounds/learned.py` | Machine-local learned store read/write |
 | `plugins/safe-compounds/safe_compounds/workflow.py` | Classifies Workflow tool calls: `workflow_blanket_names` for saved workflows, AI content check for inline scripts |
 | `plugins/safe-compounds/safe_compounds/writes.py` | Write/Edit decisions: the blocked `~/.claude` dirs, `.tmp/` and repo allows, trusted destination dirs, and the home-root creation block |
-| `plugins/safe-compounds/safe_compounds/worktree_tool.py` | Classifies EnterWorktree (approved only when creating fresh with no path; any explicit path is denied with a redirect to work the worktree directly via `git -C`/absolute paths instead - see §7) and ExitWorktree (`keep` and plain `remove` approved, `discard_changes` prompts) tool calls |
+| `plugins/safe-compounds/safe_compounds/worktree_tool.py` | Classifies EnterWorktree (approved only when creating fresh with no path; any explicit path is denied with a redirect to work the worktree directly via `git -C`/absolute paths instead - see §7) and ExitWorktree (`keep` and plain `remove` approved, `discard_changes` denied with a redirect to `keep` plus `git worktree remove`) tool calls |
 | `plugins/safe-compounds/tools/sync_learned.py` | Promotes learned approvals to a GitHub PR |
 | `plugins/safe-compounds/safe_compounds/config.py` | Config file schema + loader |

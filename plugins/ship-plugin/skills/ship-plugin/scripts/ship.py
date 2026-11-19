@@ -254,8 +254,11 @@ def clean_up_local(repo, branch):
             print(f'kept: worktree {entry["path"]} has uncommitted changes')
         elif git('worktree', 'remove', entry['path'], cwd=str(repo)) is not None:
             print(f'removed: worktree {entry["path"]}')
+        else:
+            print(f'kept: worktree {entry["path"]} could not be removed')
     if git('rev-parse', '--verify', '--quiet', f'refs/heads/{branch}', cwd=str(repo)):
-        git('branch', '-D', branch, cwd=str(repo))
+        if git('branch', '-D', branch, cwd=str(repo)) is None:
+            print(f'kept: local branch {branch} could not be deleted')
 
 
 def bump_run(sha):
