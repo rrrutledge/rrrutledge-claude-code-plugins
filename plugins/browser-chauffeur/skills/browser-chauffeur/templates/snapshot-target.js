@@ -18,11 +18,13 @@
 // app-shell element (e.g. '[data-app-section="CalendarModuleSurface"]' for
 // Outlook calendar).
 
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-const { registerTab, touchTab } = (() => {
+//
+// When the connect times out on a hung tab (connect-browser.js), the snapshot
+// is taken through a fresh direct tab instead (direct-tab.js) and the output
+// adds DIRECT_TAB: <targetId> plus the connect error naming the hung tab(s).
+// The direct tab is left open and registered, like the Playwright one.
+
+const { connectBrowser, openDirectTab, registerTab, touchTab } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -65,8 +67,46 @@ async function waitForUrlStable(page, settleMs = 2500, maxMs = 15000) {
   }
 }
 
+function report(screenshotPath, finalUrl, elapsedMs) {
+  console.log('SNAPSHOT_READY');
+  console.log(`SCREENSHOT: ${screenshotPath}`);
+  console.log(`FINAL_URL: ${finalUrl}`);
+  console.log(`ELAPSED_MS: ${elapsedMs}`);
+  console.log('');
+  console.log('Read the screenshot with the Read tool to see what is on the page.');
+}
+
+// The direct-tab path: the same URL-stability wait, read through evaluate, then
+// a viewport screenshot.
+async function snapshotDirect(connectError) {
+  console.log(connectError.message);
+  const navStart = Date.now();
+  const tab = await openDirectTab(cdpPort, targetUrl);
+  try {
+    let lastUrl = await tab.evaluate('location.href');
+    let lastChange = Date.now();
+    while (Date.now() - navStart < 15000 && Date.now() - lastChange < 2500) {
+      await new Promise(r => setTimeout(r, 200));
+      const url = await tab.evaluate('location.href');
+      if (url !== lastUrl) { lastUrl = url; lastChange = Date.now(); }
+    }
+    const screenshotPath = `.tmp/snapshot-target-${Date.now()}.png`;
+    await tab.screenshot({ path: screenshotPath });
+    console.log(`DIRECT_TAB: ${tab.targetId}`);
+    report(screenshotPath, lastUrl, Date.now() - navStart);
+  } finally {
+    tab.session.close();
+  }
+}
+
 async function snapshot() {
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+  let browser;
+  try {
+    browser = await connectBrowser(cdpPort);
+  } catch (e) {
+    if (e.code !== 'CDP_CONNECT_TIMEOUT') throw e;
+    return snapshotDirect(e);
+  }
   // Prefer contexts that already have a real http page - Edge sometimes launches
   // a welcome popup window as a separate context and it may sort before the main window.
   const contexts = browser.contexts();
@@ -119,12 +159,7 @@ async function snapshot() {
     // registered above against the pre-navigation about:blank.
     await touchTab(context, page);
 
-    console.log('SNAPSHOT_READY');
-    console.log(`SCREENSHOT: ${screenshotPath}`);
-    console.log(`FINAL_URL: ${finalUrl}`);
-    console.log(`ELAPSED_MS: ${elapsedMs}`);
-    console.log('');
-    console.log('Read the screenshot with the Read tool to see what is on the page.');
+    report(screenshotPath, finalUrl, elapsedMs);
   } finally {
     // Leave the tab open - it's registered above, so the caller can find it
     // again later via findTab even after this script's own process has exited.

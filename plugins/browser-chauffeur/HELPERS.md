@@ -73,6 +73,39 @@ Marks a tab **you own** active (the lower-level primitive `findTab` uses). Call 
 - **Parameters**: `context` - Playwright browser context; `page` - the Playwright page
 - **Returns**: Promise<void>
 
+### `connectBrowser(cdpPort, { timeoutMs })`
+
+Connects to the persistent browser with Playwright's `connectOverCDP`, bounded by `timeoutMs` (default 30000).
+On a timeout it throws an error with `code` `CDP_CONNECT_TIMEOUT` whose message and `hungTargets` (`{ id, title, url }` each) name the tabs that failed a responsiveness probe.
+What to do next: SKILL.md **Resilient Connection**.
+
+- **Parameters**: `cdpPort` - the port Phase 0 printed; `timeoutMs` - optional
+- **Returns**: Promise<Browser>
+
+### `openDirectTab(cdpPort, url)`
+
+Opens a fresh tab and drives it over that tab's own CDP WebSocket, so a hung tab elsewhere in the browser can't block it.
+The tab is registered to the current session like an `openTab` tab.
+The returned tab supports these calls, with Playwright's signatures where Playwright has them:
+
+- **`goto(url)` and `url()`** - navigate and wait for the load event; read the current URL
+- **`evaluate(fn, arg)`** - run a function or expression string in the page and return its value
+- **`screenshot({ path, clip })`** - viewport capture, `clip` in viewport CSS pixels
+- **`click(selector)` and `type(text)`** - trusted mouse and keyboard input at the element the selector matches, then into the focused element
+- **`close()`** - close and unregister, or park on `about:blank` when it is the browser's last tab
+
+- **Parameters**: `cdpPort`; `url` - optional URL to load
+- **Returns**: Promise<DirectTab>
+
+### `captureEvidence(page, target, outPath, { padding, keepMark })`
+
+Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.
+A text target is wrapped in an outlined span, so the box follows the text across line wraps.
+When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
+
+- **Parameters**: `page` - a Playwright page or a direct tab; `target` - `{ text }` for the first visible occurrence of a string, or `{ selector }` for an element; `outPath` - the PNG path; `padding` - CSS pixels of context around the target (default 80); `keepMark` - leave the box on the page for the user to see (default false)
+- **Returns**: Promise<string> - `outPath`
+
 ### `cancelScriptWatchdog()`
 
 Cancels the process watchdog that requiring the helpers installs (see **Process guard** below). Call it only in a script that legitimately needs to run past the watchdog window - for example, one that waits out a long media playback.

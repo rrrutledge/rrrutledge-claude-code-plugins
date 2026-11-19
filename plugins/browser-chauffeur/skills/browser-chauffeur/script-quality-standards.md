@@ -68,8 +68,11 @@ Perform every action that should trigger a server call or framework event throug
 Use `page.evaluate` to *read* DOM state.
 A native `element.click()` inside `evaluate` bypasses framework synthetic event handlers (React, Fluent UI): the UI may update while no API call fires, and the change vanishes on refresh (`anti-patterns.md` Anti-Pattern 2).
 
-**The one exception: an out-of-process iframe.**
-The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
+**Two exceptions drive a target over its own CDP WebSocket instead.**
+- **An out-of-process iframe.**
+  The locator API reaches only the page target `connectOverCDP` attached to, so content inside a cross-origin iframe is clicked with a DOM `.click()` through `Runtime.evaluate` on a `CDPSession` attached to the iframe's own target (SKILL.md Phase 1, **Out-of-process iframes**).
+- **A direct tab after a hung-tab connect timeout.**
+  A script that `connectBrowser` failed on runs its task in a tab from `openDirectTab`, acting through that tab's `click` and `type`, which send trusted input events (SKILL.md **Resilient Connection**).
 
 ## ✅ REQUIRED: Visibility Checks, Not Presence
 
@@ -78,8 +81,8 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 
 ## ✅ REQUIRED: Tabs and Packages
 
-- Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**).
-- Close the tabs the script opened with `closeTab` in a `finally` (SKILL.md Phase 3, **Tab cleanup**).
+- Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**), or through `openDirectTab` after a hung-tab connect timeout (SKILL.md **Resilient Connection**).
+- Close the tabs the script opened in a `finally`: `closeTab(page)` for a Playwright tab, `tab.close()` for a direct tab (SKILL.md Phase 3, **Tab cleanup**).
 - Resolve `playwright-core` and `browser-chauffeur-helpers` with the try/catch fallback (SKILL.md **Prerequisite Check**).
 
 ## ✅ REQUIRED: Browser Connection
@@ -87,7 +90,7 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 Scripts receive `--cdp-port=<port>` from Claude, validated during Phase 0.
 Phase 0 also owns browser launch and the login check, so a script carries no browser detection or login validation of its own.
 
-Connect with the hardened `connectBrowser()` from `script-template.js` (SKILL.md **Resilient Connection** gives the reason).
+Connect with `connectBrowser(cdpPort)` from `browser-chauffeur-helpers`, as `script-template.js` does (SKILL.md **Resilient Connection** gives the reason and what to do when it times out).
 
 ## ✅ REQUIRED: Navigation
 

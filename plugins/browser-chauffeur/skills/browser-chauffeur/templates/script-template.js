@@ -3,12 +3,7 @@
 // validated via --cdp-port, opens its own tab with openTab, and closes it with
 // closeTab when done (SKILL.md Phase 1 and Phase 3 hold the tab rules).
 
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-
-const { dismissOverlays, openTab, closeTab, screenshotOnFailure } = (() => {
+const { connectBrowser, dismissOverlays, openTab, closeTab, screenshotOnFailure } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -26,35 +21,10 @@ function argValue(flag) {
 
 const cdpPort = argValue('cdp-port') || '9222';
 
-// connectOverCDP auto-attaches to EVERY open target to build its page tree. On a
-// persistent profile that has accumulated many tabs - or has a single wedged
-// renderer - that enumeration can hang indefinitely (Playwright's own `timeout`
-// option only bounds the socket connect, not post-connect target enumeration).
-// Race it against a hard timeout so a wedged browser fails fast with an
-// actionable error instead of hanging forever.
-const CONNECT_TIMEOUT_MS = 30000;
-
-async function connectBrowser() {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(
-        `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}. ` +
-        `The persistent profile likely has too many open tabs or a wedged renderer. ` +
-        `Re-run chauffeur.py to sweep orphaned tabs, then retry once; if it still times out, ask the user before any reset.`
-      )),
-      CONNECT_TIMEOUT_MS,
-    );
-  });
-  try {
-    return await Promise.race([chromium.connectOverCDP(`http://localhost:${cdpPort}`), timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function run() {
-  const browser = await connectBrowser();
+  // Bounded connect: a hung tab fails fast with an error naming it
+  // (connect-browser.js) instead of hanging the script.
+  const browser = await connectBrowser(cdpPort);
   const contexts = browser.contexts();
   const context = contexts.length > 1
     ? (contexts.find(ctx => ctx.pages().some(p => p.url().startsWith('http'))) ?? contexts[0])

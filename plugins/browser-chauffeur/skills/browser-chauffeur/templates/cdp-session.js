@@ -33,14 +33,24 @@ try {
   ({ ws: WebSocket } = require(path.join(pwPath, 'lib', 'utilsBundle')));
 }
 
-function httpJson(url) {
+// The browser's HTTP endpoints (/json, /json/new, /json/close) answer from the
+// browser process, so they stay responsive while a renderer is wedged; the
+// timeout still bounds a browser that is itself unresponsive.
+function httpText(url, { method = 'GET', timeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
+    const req = http.request(url, { method, timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-    }).on('error', reject);
+      res.on('end', () => resolve(data));
+    });
+    req.on('timeout', () => req.destroy(new Error(`${method} ${url} did not answer within ${timeoutMs}ms`)));
+    req.on('error', reject);
+    req.end();
   });
+}
+
+async function httpJson(url, opts) {
+  return JSON.parse(await httpText(url, opts));
 }
 
 class CDPSession {
@@ -100,4 +110,4 @@ async function waitForContext(ctxs, predicate) {
   }
 }
 
-module.exports = { CDPSession, httpJson, evalIn, waitForContext };
+module.exports = { CDPSession, httpText, httpJson, evalIn, waitForContext };

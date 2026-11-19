@@ -183,6 +183,8 @@ SCREENSHOT: .tmp/snapshot-target-<timestamp>.png
 FINAL_URL: <where the browser actually landed>
 ```
 
+When a hung tab blocks the connect, the output also carries the connect error and a `DIRECT_TAB:` line (**Resilient Connection**).
+
 **The script makes no decision - you do, from the screenshot alone**, at the start of a flow and mid-flow alike.
 Text matching, DOM selectors, and URL heuristics can't reliably tell a login wall, an SSO transit page, an MFA challenge, and a slow-hydrating SPA apart across providers; a screenshot read by the session can, with no patterns to maintain.
 `HELPERS.md` **Login detection** has the snippet a script uses to screenshot a mid-flow check. Always:
@@ -231,11 +233,15 @@ Two layers keep this reliable:
 1. **Root cause - keep the tab count low.** Every tab a script opens is registered to its session (Phase 1, **Getting a tab**), and the Phase 0 **Automatic tab sweep** reclaims the rest.
    So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
 
-2. **Backstop - fail fast.** Scripts connect through the hardened `connectBrowser()` (`script-quality-standards.md` **Browser Connection**), so a still-wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
+2. **Backstop - fail fast and name the hung tab.** Scripts connect with `connectBrowser(cdpPort)` (`script-quality-standards.md` **Browser Connection**), so a wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
+   The error lists each tab that failed a responsiveness probe.
+   Those tabs stay open, because they may be another session's live work.
 
-**If the connect times out anyway:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once.
-If it still times out, the overload is from tabs the sweep won't touch - an active session's tabs or the user's own.
-Leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.
+**When the connect times out:** run the task in a fresh tab of your own with `openDirectTab(cdpPort, url)` (`HELPERS.md` **openDirectTab**).
+The direct tab is driven over its own connection, so the hung tab can't block it, and the task carries on without the user.
+Phase 0's `snapshot-target.js` makes this switch itself.
+A direct tab covers reading, screenshots, clicks, and typing; a flow that needs Playwright's own machinery (locator waits, frames, popups) re-runs `chauffeur.py` and retries the Playwright script once.
+If that still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention** with the hung tabs the error named, so the user decides whether to close them.
 
 ---
 
@@ -555,7 +561,7 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
    - **UI changed** (different label, restructured DOM, new element) → inspect the current page state to find the new selector, update the script, re-run.
    - **New required step** (e.g., a consent prompt, a "What's new" tour) → add handling for it, re-run.
    - **Selector timing issues** (element not yet visible), **elements scrolled out of view**, or **the expected element is in a different frame** → take a fresh screenshot, read it, find the correct selector or frame.
-   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → the persistent profile is overloaded or has a wedged renderer. Follow **Resilient Connection**, "If the connect times out anyway".
+   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → a tab in the shared browser is hung, or the profile is overloaded. Follow **Resilient Connection**, "When the connect times out".
    - **Media still playing** - if the script's stuck-detection fired but the page has active audio/video (`!audio.paused && !audio.ended && audio.duration > 1`), the page isn't stuck - narration is in progress. Wait for the media's remaining duration plus a buffer before re-evaluating. Only declare genuinely stuck when both conditions are true: no advance button AND no active media.
    - **None of the above looks right** → the failure may be a known anti-pattern. **Read `anti-patterns.md`**; its index lists each symptom, and each entry has a tested fix.
 
@@ -606,6 +612,11 @@ Fix without asking: a violation is always wrong.
 **Overlay Dismissal** - A fresh browser profile will show first-run overlays - Edge sync prompts ("We are now syncing your browsing data"), cookie consent banners, "What's new" modals. These block the real UI and cause element waits to time out. The `dismissOverlays(page)` helper in `templates/overlay-dismissal.js` clears them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
 
 **Screenshot on Failure** - Scripts save screenshots to `.tmp/diag-*.png` on failure so the recovery loop can read them. The `screenshotOnFailure(context, label)` helper in `templates/screenshot-on-failure.js` saves them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
+
+**Evidence Screenshots** - A screenshot that shows the user a problem comes from the live page where they would see that problem, so the image matches what they find when they go look.
+Capture each one with `captureEvidence(page, { text } | { selector }, outPath)` from `browser-chauffeur-helpers`; it crops to the target, draws a red box around it, and waits for layout to settle first.
+Aim the box at the smallest target that is the problem itself: the exact misspelled words, the one broken control.
+Take one image per problem, and Read each before handing it over to confirm the box sits on the problem.
 
 **Virtualized Grid Scrolling** - To render off-screen rows in a virtualized grid/list (Vaadin Grid, react-window, ag-grid, and similar - they mount only visible rows and recycle DOM nodes as you scroll), call the component's own scroll-to API directly via `page.evaluate()`: `grid.scrollToIndex(n)` for Vaadin Grid, or the analogous method on whichever virtualization library the page uses. Verify the target content actually appears in `document.body.innerText` afterward before moving on. Scroll, locate the row's control, and click it with a locator all in the same script run - a virtualized grid's scroll position and recycled row contents can shift between runs, so measuring a position in one script and clicking it in the next can land on a different row than intended. When the resulting action is destructive or hard to undo, read back its confirmation dialog (or resulting state) to confirm it names the item you meant before proceeding.
 

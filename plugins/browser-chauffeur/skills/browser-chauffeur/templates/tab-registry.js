@@ -217,6 +217,16 @@ async function registerTab(context, page) {
   }
 }
 
+// Record a tab opened outside Playwright (openDirectTab, direct-tab.js), whose
+// targetId is already known. Best-effort, like registerTab.
+function recordTarget(targetId, url) {
+  try {
+    writeTab(ownerInfo().ownerPid, targetId, { url });
+  } catch {
+    // recording must never break the automation
+  }
+}
+
 // Mark a tab THIS SESSION OWNS active, so the sweep doesn't treat it as idle
 // while you're using it. Only refreshes a tab already recorded to this session;
 // it never adopts an unrecorded tab or claims one owned by another session (that
@@ -362,4 +372,4 @@ async function closeTab(page) {
   }
 }
 
-module.exports = { openTab, closeTab, findTab, touchTab, registerTab, unregisterTab, TABS_DIR };
+module.exports = { openTab, closeTab, findTab, touchTab, registerTab, recordTarget, unregisterTab, TABS_DIR };
