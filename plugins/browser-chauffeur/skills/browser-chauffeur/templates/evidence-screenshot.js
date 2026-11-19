@@ -25,11 +25,12 @@
 // The marked nodes are kept on window.__bcEvidence between the page.evaluate
 // calls.
 
-const PADDING = 80;
-
 // Runs in the page. Returns false when the target is not found.
 function markTarget({ selector, text }) {
-  const visible = (el) => el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 1 && r.height > 1 && el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  };
   let state = null;
   if (selector) {
     const el = [...document.querySelectorAll(selector)].find(visible);
@@ -58,13 +59,13 @@ function markTarget({ selector, text }) {
 }
 
 // Runs in the page. Resolves the padded, viewport-clamped clip once the marked
-// element's box has held still across consecutive reads; null when the page
-// re-rendered or navigated the mark away, or 'offscreen' when the target never
-// reached the viewport. setTimeout rather than requestAnimationFrame, which
-// stalls in a background tab.
-async function settledClip(padding) {
+// element's box has held still across consecutive reads. Polls on setTimeout,
+// which keeps firing in a background tab.
+async function settledClip() {
+  const padding = 80;
+  const gone = 'captureEvidence: the page re-rendered or navigated away from the target while it was being measured';
   const el = window.__bcEvidence && window.__bcEvidence.el;
-  if (!el || !el.isConnected) return null;
+  if (!el || !el.isConnected) throw new Error(gone);
   await document.fonts.ready;
   const read = () => JSON.stringify(el.getBoundingClientRect());
   const deadline = Date.now() + 3000;
@@ -72,13 +73,15 @@ async function settledClip(padding) {
   let steady = 0;
   while (steady < 2 && Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 100));
-    if (!el.isConnected) return null;
+    if (!el.isConnected) throw new Error(gone);
     const now = read();
     steady = now === last ? steady + 1 : 0;
     last = now;
   }
   const r = el.getBoundingClientRect();
-  if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) return 'offscreen';
+  if (r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight) {
+    throw new Error('captureEvidence: the target could not be scrolled into the viewport');
+  }
   const x = Math.max(0, r.left - padding);
   const y = Math.max(0, r.top - padding);
   return {
@@ -113,10 +116,7 @@ async function captureEvidence(page, target, outPath) {
     throw new Error(`captureEvidence: ${args.selector ? `no visible element matches ${args.selector}` : `no visible text "${args.text}"`}`);
   }
   try {
-    const clip = await page.evaluate(settledClip, PADDING);
-    if (!clip) throw new Error('captureEvidence: the page re-rendered or navigated away from the target while it was being measured');
-    if (clip === 'offscreen') throw new Error('captureEvidence: the target could not be scrolled into the viewport');
-    await page.screenshot({ path: outPath, clip });
+    await page.screenshot({ path: outPath, clip: await page.evaluate(settledClip) });
   } finally {
     await page.evaluate(unmark).catch(() => {});
   }

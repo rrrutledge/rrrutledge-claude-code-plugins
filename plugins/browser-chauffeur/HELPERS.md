@@ -75,7 +75,7 @@ Marks a tab **you own** active (the lower-level primitive `findTab` uses). Call 
 
 ### `captureEvidence(page, target, outPath)`
 
-Screenshots one problem on the live page: scrolls the target into view, draws a red box around it, waits for layout to settle, and saves a crop around it.
+Screenshots one problem on the live page, cropped to it with a red box around the target.
 When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
 
 - **Parameters**: `page` - a Playwright page; `target` - `{ text }` for the first visible occurrence of a string that sits whole in one text node of the main document, or `{ selector }` for the first visible element that matches; `outPath` - the PNG path
