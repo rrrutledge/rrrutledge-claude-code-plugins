@@ -602,6 +602,23 @@ def detect_raw_trello_write(command):
     return False
 
 
+def detect_git_worktree_force_remove(command):
+    """True if a segment is `git worktree remove` with --force or -f, which
+    deletes uncommitted and untracked files that no reflog can bring back.
+    Finishing the merge makes a plain remove succeed, so it is blocked outright
+    with a pointer to that path rather than left to a manual prompt."""
+    for seg in split_segments(command):
+        tokens = shell_tokenize(seg.strip())
+        if not tokens or tokens[0] != 'git':
+            continue
+        sub, args = _extract_subcommand(tokens, GIT_GLOBAL_OPTS_WITH_ARG, 'simple')
+        if sub != 'worktree' or not args or args[0] != 'remove':
+            continue
+        if any(a == '--force' or (a.startswith('-') and not a.startswith('--') and 'f' in a[1:]) for a in args[1:]):
+            return True
+    return False
+
+
 def detect_git_force_push(command):
     """True if a segment is a force `git push`. Rewriting pushed history is
     never needed here: a new commit on top fixes the same problem and keeps
@@ -658,6 +675,13 @@ def enforce_bash(command):
                 'trello_request for anything without one -- e.g. add_comment for a card comment) and '
                 'run it with `python .tmp/script.py`. See the `trello` skill\'s SKILL.md for the '
                 'import pattern.')
+
+    if detect_git_worktree_force_remove(command):
+        return ('BLOCKED: `git worktree remove --force` deletes uncommitted and untracked files that '
+                'nothing can bring back. Skip the force: commit and push the work, finish the merge '
+                '(the ship-plugin skill merges the PR and removes the worktree), and a plain '
+                '`git worktree remove "<path>"` then succeeds. If Russell has said to throw the work '
+                'away, he runs the forced removal himself.')
 
     if detect_git_force_push(command):
         return ('BLOCKED: Force push (--force, -f, --force-with-lease, or a +ref refspec) rewrites '

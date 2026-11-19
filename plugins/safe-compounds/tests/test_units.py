@@ -165,6 +165,15 @@ class TestGit:
         assert enforce_bash("git push origin feature") is None
         assert enforce_bash("git push origin --delete feature") is None
 
+    def test_worktree_force_remove_blocked_with_finish_the_merge_message(self):
+        for cmd in ("git worktree remove --force /w", "git worktree remove -f /w",
+                    "git -C /repo worktree remove /w --force", "git worktree remove -ff /w"):
+            reason = enforce_bash(cmd)
+            assert reason and "finish the merge" in reason, cmd
+        assert enforce_bash("git worktree remove /w") is None
+        assert enforce_bash("git worktree add -f /w branch") is None
+        assert enforce_bash("git worktree list") is None
+
     def test_reset_hard_blocked(self):
         assert is_git_command_safe("git reset --hard") is False
 

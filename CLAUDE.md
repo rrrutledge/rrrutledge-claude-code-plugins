@@ -165,7 +165,8 @@ ExitWorktree takes no path - it only ever acts on the one worktree the current s
 `discard_changes: true`, which forces the removal through and knowingly throws away unsaved work, is BLOCKed with a redirect: leave with `keep`, then `git worktree remove` (a trusted git subcommand that refuses a worktree holding uncommitted files), then delete the branch.
 A squash merge makes the tool see the branch's commits as unmerged, which is why the forced flag was tempting.
 `git worktree remove` checks only for uncommitted files, so the commits-landed check comes from `gh pr view` showing the PR MERGED before a `git branch -D`.
-The redirect is guidance, not a lock: `git worktree remove --force` and `git branch -D` are themselves auto-approved.
+`git worktree remove --force` (or `-f`) is BLOCKed too, with "commit, push, and finish the merge" as the way to make a plain remove succeed, because it deletes untracked files no reflog can restore.
+`git branch -D` stays approved, since the deleted branch's commits remain in the reflog.
 
 ### Learned → source promotion (`tools/sync_learned.py`)
 
