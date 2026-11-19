@@ -53,6 +53,14 @@ Only a CLEAR mints a fresh id - the go-live date is part of the id (see the id s
 Bumping it to "claim" the card forges the very id CLEAR is meant to mint later - one seen-state never recorded - so the next cycle reads a brand-new item and spawns a second worker on top of this one.
 The Start date moves only when the work advances (CLEAR), never to mark a card in-flight.
 
+**Match a decided duplicate before any research.**
+The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for, already run over every card on the board, archived and Abandoned/Finished included.
+A card under "Same item" is this same thing, re-sourced.
+When that card sits on a terminal list, the decision is already made: post a dated comment naming and linking the decided card, CLEAR this card the same way it went (**stop** for Abandoned), and close per worker-core §6a.
+When that card is still open, the work lives on one card: carry anything new from this card into a dated comment on the open one, stop this card with a comment linking it, and close the same way.
+The "Same employer or person" cards are context for the research, showing how this employer or contact went before.
+A name the section never searched (a contact in the description, another board's employer) gets the same search by hand.
+
 Read its description + structured comments FIRST; then run INITIATIVE-LOOKUP for program context; act on that before re-discovering anything.
 Write `items/<id>.json`:
 `{ "id","source":"trello","triage":"needs-you","kind":"reply|work","cardId","board","list","name",`
@@ -62,7 +70,7 @@ For **email** threads, additionally search the whole mailbox in both directions 
 - **outlook-rest / outlook-graph**: search inbox + Archive + Deleted Items (paginated) - CLEAR moves handled messages to **Archive**, and some older cleared items sit in Deleted Items, so search there too.
 - **gmail**: search All Mail with no `in:` filter - CLEAR archives (not trashes), so everything is in All Mail.
 
-Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to; the rule and its reporting wording are in `../engine/worker-core.md` §2, "Search both mailboxes before concluding anything about email."
+Run that search in both the ISC Gmail and personal Outlook, whichever mailbox the card's link points to; the rule and its reporting wording are in `../engine/worker-core.md` §2, "Search around before concluding."
 
 A card's last comment can also point to a different channel entirely than the one it's sitting in (a "DM me your X," a "connect A with B" that's really an email intro) - see `../engine/worker-core.md` §2, "An ask can hop channels," which every worker (Trello included) already follows.
 

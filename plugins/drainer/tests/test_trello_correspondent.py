@@ -89,10 +89,44 @@ def test_capture_persists_the_stamped_identity():
           rec.get("correspondent"))
 
 
+def test_capture_writes_related_cards():
+    print("test: capture writes the related-cards lookup, and a failed lookup says so")
+    p = make_provider()
+    row = {"name": "HEB — Same role", "list": "Abandoned", "url": "u/dup", "closed": True,
+           "why": "shares link id 251065"}
+    sib = {"name": "HEB — Other role", "list": "Identified", "url": "u/sib", "closed": False,
+           "why": "same name head"}
+
+    class Utils:
+        @staticmethod
+        def find_related_cards(board_id, card, session):
+            return [row], [sib] * 12
+
+    p._utils, p._session = Utils, ("k", "t")
+    it = dict(card_item("5f0000000000000000000001"), boardId="B1")
+    with tempfile.TemporaryDirectory() as rt:
+        with open(json.load(open(p.capture(it, "trello-x-000001-nodue", rt), encoding="utf-8"))["bodyFile"],
+                  encoding="utf-8") as f:
+            body = f.read()
+    check("the section is present", "## Related cards on this board" in body)
+    check("the same-item card shows its list, archived state, and reason",
+          "- [HEB — Same role](u/dup) - Abandoned, archived - shares link id 251065" in body, body)
+    check("siblings are counted and capped", "Same employer or person (12):" in body and "...and 2 more" in body)
+
+    class Broken:
+        @staticmethod
+        def find_related_cards(board_id, card, session):
+            raise RuntimeError("boom")
+
+    p._utils = Broken
+    check("a failed lookup is reported, not raised", p._related_cards(it) == "(lookup failed: boom)")
+
+
 if __name__ == "__main__":
     test_cards_on_one_board_get_different_identities()
     test_same_card_same_identity()
     test_capture_persists_the_stamped_identity()
+    test_capture_writes_related_cards()
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

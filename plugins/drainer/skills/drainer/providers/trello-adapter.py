@@ -531,6 +531,7 @@ class Provider(ProviderBase):
                 who = ", ".join(contacts) if contacts else bname
                 items.append({
                     "cardId": card["id"],
+                    "boardId": board["id"],
                     "board": bname,
                     "list": list_name,
                     "name": card.get("name", ""),
@@ -656,6 +657,7 @@ class Provider(ProviderBase):
         os.makedirs(items_dir, exist_ok=True)
         body_file = os.path.join(items_dir, f"{iid}.trello.md")
         comments = self._fetch_comments(item["cardId"])
+        related = self._related_cards(item)
         with open(body_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('name')}\n\n"
                     f"Board: {item.get('board')} / List: {item.get('list')}\n"
@@ -664,7 +666,8 @@ class Provider(ProviderBase):
                     f"Contacts: {', '.join(item.get('contacts') or []) or '(none)'}\n"
                     f"Initiative: {item.get('initiative') or '(none)'}\n"
                     f"Link: {item.get('url')}\nCardId: {item['cardId']}\n\n"
-                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n")
+                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n\n"
+                    f"## Related cards on this board\n\n{related}\n")
         record = {
             "id": iid, "source": self.name, "triage": item.get("_bucket", "needs-you"),
             # messageId == the stable_id: it is the handle the reconcile checks against
@@ -686,6 +689,33 @@ class Provider(ProviderBase):
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
         return json_file
+
+    RELATED_HEAD_CAP = 10
+
+    def _related_cards(self, item):
+        """The capture's "Related cards on this board" section: other cards on the board, archived and
+        Abandoned/Finished included, that are the same item or open with the same employer or person
+        (trello_utils.find_related_cards). A failed lookup says so, so the worker searches by hand."""
+        if not item.get("boardId"):
+            return "(not looked up: no board id on the item)"
+        try:
+            same, head = self._utils.find_related_cards(
+                item["boardId"], {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")},
+                self.session)
+        except Exception as e:
+            return f"(lookup failed: {e})"
+
+        def line(c):
+            where = f"{c['list']}, archived" if c["closed"] else c["list"]
+            return f"- [{c['name']}]({c['url']}) - {where} - {c['why']}"
+
+        out = ["Same item (same name ignoring punctuation, or a shared link id):"]
+        out += [line(c) for c in same] or ["- none"]
+        out += ["", f"Same employer or person ({len(head)}):"]
+        out += [line(c) for c in head[:self.RELATED_HEAD_CAP]] or ["- none"]
+        if len(head) > self.RELATED_HEAD_CAP:
+            out.append(f"- ...and {len(head) - self.RELATED_HEAD_CAP} more")
+        return "\n".join(out)
 
     def _fetch_comments(self, card_id):
         try:

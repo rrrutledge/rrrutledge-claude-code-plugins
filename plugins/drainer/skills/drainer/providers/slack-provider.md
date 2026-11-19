@@ -47,6 +47,8 @@ Re-read the full surrounding context with `node slack.js --history --channel=<C>
 `--history` surfaces everything posted since, in both directions: the counterparty may have already replied, or - easy to miss - Russell may have posted his own follow-up that's still unanswered, which means the item is blocked on them, not ready to act on.
 Then apply worker-core §2's done test (an acknowledgement doesn't count, per "An acknowledgement is not a reply") and reply only to what is still open.
 
+To search all of Slack at once, as worker-core §2's "Search around before concluding" requires for an item from any source, run `node slack.js --search=<query>` once per name and identifier; it reaches every DM and channel Russell can read.
+
 A Slack item's body carries the **full unread span** (every unread message since Russell's last read, not just the newest), so apply worker-core §2's group-then-handle model to it: read the whole span and decide how many distinct asks it holds before you draft.
 
 ## READ-IN-CONTEXT (triage, the worker, and the digest all follow this)

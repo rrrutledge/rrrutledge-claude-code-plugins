@@ -263,6 +263,62 @@ def find_card_by_name(board_id, name, session):
     return None
 
 
+_NAME_HEAD_SPLIT_RE = re.compile(r'\s+[—–/|-]\s+')
+_URL_RE = re.compile(r'https?://[^\s)\]>]+')
+_LINK_ID_RE = re.compile(r'\d{5,}')
+
+
+def _squash(text):
+    """Lowercase letters and digits only, so "HEB" and "H-E-B" compare equal."""
+    return re.sub(r'[^a-z0-9]', '', (text or '').lower())
+
+
+def _name_head(name):
+    """The leading segment of a card name: "H-E-B" of "H-E-B — Staff Engineer", "Acme Corp" of
+    "Acme Corp / Jane Doe" - the employer or person the card is about."""
+    return _NAME_HEAD_SPLIT_RE.split(name or '', maxsplit=1)[0].strip()
+
+
+def _link_ids(desc):
+    """Every run of 5+ digits inside a link in a description - how a job posting's req id rides,
+    whichever job board sourced the card."""
+    return {num for url in _URL_RE.findall(desc or '') for num in _LINK_ID_RE.findall(url)}
+
+
+def find_related_cards(board_id, card, session):
+    """Return `(same_item, same_head)` for `card` (a dict with `id`, `name`, `desc`).
+
+    `same_item` holds every other card on the board that is the same thing: the same name once
+    punctuation and case are dropped, or a link sharing one of the card's link ids.
+    `same_head` holds the rest of the cards whose name opens with the same employer or person.
+    Archived cards and cards on Abandoned/Finished lists are included, since a card already decided
+    there is the record a new card on the same thing has to match.
+    Each entry is `{name, list, url, closed, why}`.
+    """
+    name, head = _squash(card.get('name')), _squash(_name_head(card.get('name')))
+    ids = _link_ids(card.get('desc'))
+    lists = {l['id']: l['name'] for l in
+             trello_request('GET', f'/boards/{board_id}/lists', session, params={'filter': 'all'})}
+    others = trello_request('GET', f'/boards/{board_id}/cards/all', session,
+                            params={'fields': 'name,desc,idList,shortUrl,closed'})
+    same_item, same_head = [], []
+    for other in others:
+        if other['id'] == card.get('id'):
+            continue
+        shared = sorted(ids & _link_ids(other.get('desc')))
+        if shared:
+            why, bucket = f"shares link id {', '.join(shared)}", same_item
+        elif name and _squash(other.get('name')) == name:
+            why, bucket = 'same name', same_item
+        elif len(head) >= 3 and _squash(_name_head(other.get('name'))) == head:
+            why, bucket = 'same name head', same_head
+        else:
+            continue
+        bucket.append({'name': other.get('name', ''), 'list': lists.get(other.get('idList'), '?'),
+                       'url': other.get('shortUrl', ''), 'closed': bool(other.get('closed')), 'why': why})
+    return same_item, same_head
+
+
 def create_card_from_template(list_id, template_card_id, name, session, keep='checklists'):
     """Create a card copying content from a template/source card.
 
