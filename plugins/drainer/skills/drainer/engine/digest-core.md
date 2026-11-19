@@ -55,8 +55,8 @@ A digest ends when the snapshot it opened with is handled, not when the live que
   An entry tagged `help-needed` is a stale gate record (gates live in the worker's open tab, per `engine/browser-gate.md`): `queue-clear` it silently (`node <seen-state.js> queue-clear <runtime_dir> <id>`, no provider CLEAR) and leave it out of the digest.
 - For richer fyi summaries, read each item's captured body when the provider wrote one (its capture writes the body alongside `items/<id>.json`) - don't summarize from the snippet alone when the full body is right there.
 
-If the queue is empty AND no provider is stuck (step 0), tell Russell there's nothing to digest and stop.
-A stuck provider alone is still worth reporting - surface it even when the queue is otherwise empty.
+If the queue is empty AND no provider is stuck (step 0) AND the Sent without you block (step 1c) reads "nothing.", tell Russell there's nothing to digest and stop.
+Any other Sent without you block, an unavailable one included, and any stuck provider are each worth reporting on their own - surface them even when the queue is otherwise empty.
 
 ## 1b. Backlog depth - the read-only "how much is left" barometer
 
@@ -72,10 +72,18 @@ The barometer is a per-machine toggle (`show_backlog_depth` in `drainer.local.md
 When the runtime facts say it's turned off, skip this step and leave the section out of the digest entirely - no heading, no placeholder.
 Stuck-provider health (step 0) is separate and always runs.
 
+## 1c. Sent without you - every send that went out on its own
+
+Your launcher handed you a **Sent without you** block in the runtime facts, listing the sends that went out on send-confidence's say-so.
+Present the block verbatim as its own section, at the spot step 4 places it, including when it reads "nothing".
+When Russell asks to take back a send the block lists, run the Undo command printed beside it.
+Once Russell has replied to the digest, run the Sent without you reported command from the runtime facts, when they carry one, so the next digest lists only sends Russell hasn't seen.
+
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)
 
 Items a worker resolved autonomously - either under a provider **AUTO-HANDLE** rule (e.g. an approved Slack workspace invite) or by finishing a needs-you item's work and self-closing it (§6a of worker-core, re-tagged `auto-handle` on the way into the queue).
 The action and the source-clear are **already done** - this section is so Russell *sees* what happened, not to ask him to act, though he may choose to pick up a briefing.
+Leave out any item the Sent without you block (step 1c) names as repeating its sends, and `queue-clear` it with the rest on Russell's OK.
 
 Each item carries a `disposition` its worker stamped (`abandoned` | `advanced` | `nudged` | `briefed`, defined in `engine/auto-handle.md` step 4) and a one-line `dispositionReason`.
 Your job here is only to split on that disposition and print each item's reason verbatim, so you need the split rule, not the value definitions.
@@ -148,7 +156,7 @@ Creating or appending the rule goes through the provider's JUNK-LEARNING section
 
 ## 4. Present, then clear ONLY on Russell's review
 
-Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
+Present the whole digest in your reply - any stuck-provider health alerts (step 0) at the very top, then the **Backlog depth** barometer (step 1b, when it's turned on), the **Sent without you** section (step 1c), the **Auto-handled** section (step 2b), fyi summaries, and grouped junk with stop-proposals - in one readable pass.
 Then **wait for Russell's go-ahead.**
 Nothing is disposed of silently.
 
