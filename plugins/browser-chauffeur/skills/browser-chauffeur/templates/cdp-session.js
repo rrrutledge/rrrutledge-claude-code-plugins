@@ -40,7 +40,7 @@ function loadWebSocket() {
 // responsive while a renderer is wedged; the timeout still bounds a browser
 // that is itself unresponsive.
 function httpJson(url, timeoutMs = 10000) {
-  return withTimeout(new Promise((resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const req = http.get(url, { timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
@@ -52,7 +52,11 @@ function httpJson(url, timeoutMs = 10000) {
     });
     req.on('timeout', () => req.destroy(new Error(`${url} did not answer within ${timeoutMs}ms`)));
     req.on('error', reject);
-  }), timeoutMs, `${url} did not finish within ${timeoutMs}ms`);
+    // The idle timeout above misses a response that trickles in, so a total
+    // deadline ends the request too.
+    const deadline = setTimeout(() => req.destroy(new Error(`${url} did not finish within ${timeoutMs}ms`)), timeoutMs);
+    req.on('close', () => clearTimeout(deadline));
+  });
 }
 
 function withTimeout(promise, ms, message) {

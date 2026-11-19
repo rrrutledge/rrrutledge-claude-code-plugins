@@ -23,7 +23,7 @@ It resolves the helpers, connects, opens and closes its tab, and exits, the way 
 
 ### `connectBrowser(cdpPort)`
 
-Connects to the persistent browser with Playwright's `connectOverCDP`, giving up after 30 seconds and then spending up to 20 seconds more listing and probing the tabs before it throws.
+Connects to the persistent browser with Playwright's `connectOverCDP`, giving up after 30 seconds and then listing and probing the tabs, each step bounded, before it throws.
 What to do with the error: SKILL.md **Resilient Connection**.
 
 - **Parameters**: `cdpPort` - the port Phase 0 printed

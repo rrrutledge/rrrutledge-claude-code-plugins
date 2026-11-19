@@ -229,14 +229,14 @@ Two layers keep this reliable:
 1. **Root cause - keep the tab count low.** Every tab a script opens is registered to its session (Phase 1, **Getting a tab**), and the Phase 0 **Automatic tab sweep** reclaims the rest.
    So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
 
-2. **Backstop - fail fast and name the hung tab.** Scripts connect through `connectBrowser(cdpPort)` from `browser-chauffeur-helpers` (`script-quality-standards.md` **Browser Connection**), so a wedged tab produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
+2. **Backstop - fail fast and name the hung tab.**
+   Scripts connect through `connectBrowser(cdpPort)` from `browser-chauffeur-helpers` (`script-quality-standards.md` **Browser Connection**), so a wedged tab produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
    The error lists each tab that failed a responsiveness probe, followed by the `chauffeur.py --hung-tabs` command that finds each one's owning session.
 
 **If the error names hung tabs:** run the `--hung-tabs` command it printed.
-It gives each tab one verdict, and the verdict decides the next step:
+It gives each tab one verdict.
+For `CLOSED` and `YOURS`, follow the step printed with it; the other two need you:
 
-- **`CLOSED`** - the tab is gone; retry the script.
-- **`YOURS`** - this session opened the tab; run the `--close-tab` command printed with it, then retry the script.
 - **`OWNER RUNNING`** - another Claude session opened the tab.
   Send that session the printed message with `SendMessage`, addressed to the printed session name, and wait for its reply.
   When `ListAgents` lists more than one session under that name, address the one whose start time matches the printed one by its `[ref]`.
@@ -244,7 +244,7 @@ It gives each tab one verdict, and the verdict decides the next step:
   When the owner replies that the tab is closed, retry the script.
 - **`NO OWNER`** - no running Claude session opened the tab (the user opened it, or a script opened it outside the helpers); escalate per **User Intervention**, naming the tab's title, URL, and target id so the user decides whether to close it.
 
-Escalate per **User Intervention** too when the owner replies that it can't close the tab, or the retry still times out.
+Escalate per **User Intervention** too when the owner replies that it can't close the tab, sends no reply within 10 minutes, or the retry still times out.
 
 **If the error names no hung tab:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once.
 If it still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.

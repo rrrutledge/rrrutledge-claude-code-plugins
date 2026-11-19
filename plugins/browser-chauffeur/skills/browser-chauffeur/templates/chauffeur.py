@@ -619,7 +619,7 @@ def hung_tab_owners(target_ids: list[str]) -> int:
                        carries its name and the message to send it
       NO OWNER       - no live Claude session is recorded for it
     An iframe target is reported through the page that holds it. The next step
-    for each verdict: SKILL.md Resilient Connection.
+    for OWNER RUNNING and NO OWNER: SKILL.md Resilient Connection.
     """
     state = load_state()
     if not state or not is_cdp_alive(state["port"]):
@@ -656,7 +656,9 @@ def hung_tab_owners(target_ids: list[str]) -> int:
             continue
         session = claude_session(owner) if owner is not None else None
         if session is None:
-            print(f"NO OWNER {label} - no running Claude session owns this tab.")
+            why = ("no running Claude session owns this tab" if t.get("type") == "page"
+                   else "the tab holding this frame could not be found")
+            print(f"NO OWNER {label} - {why}.")
             continue
         reply_to = (f"the '{asker['name']}' session (started {started(asker)})" if asker
                     else "the session that sent this")

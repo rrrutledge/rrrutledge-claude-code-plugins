@@ -10,8 +10,8 @@
 // (Edge) or discarded tab takes seconds to wake on its first attach, and a
 // narrow one reports it as hung. The thrown error lists those tabs along with
 // the chauffeur.py command that finds each tab's owning session, and points the
-// caller at SKILL.md Resilient Connection. The hung tab is left open: it may be
-// another live session's work, and only its owner closes it.
+// caller at SKILL.md Resilient Connection. The hung tab stays open for its owner
+// to close, since it may be another live session's work.
 
 const path = require('path');
 const { CDPSession, httpJson, withTimeout } = require('./cdp-session');
@@ -28,10 +28,11 @@ function loadChromium() {
   catch { return require(path.join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')).chromium; }
 }
 
+// A socket that can't be created (the ws library missing) throws out of here,
+// so the caller reports the probe itself as failed.
 async function probeTarget(target) {
-  let session;
+  const session = new CDPSession(target.webSocketDebuggerUrl);
   try {
-    session = new CDPSession(target.webSocketDebuggerUrl);
     await withTimeout(
       session.ready.then(() => session.send('Runtime.evaluate', { expression: '1', returnByValue: true })),
       PROBE_TIMEOUT_MS,
@@ -39,11 +40,11 @@ async function probeTarget(target) {
     );
     return true;
   } catch (e) {
-    // Only silence marks a tab as hung; a refused or closing socket says
-    // nothing about the renderer.
+    // A probe that times out marks the tab hung; a refused or closing socket
+    // counts as answering, since it tells nothing about the renderer.
     return e.message !== 'probe timed out';
   } finally {
-    try { session && session.close(); } catch { /* already closed */ }
+    try { session.close(); } catch { /* already closed */ }
   }
 }
 
@@ -79,7 +80,7 @@ async function connectBrowser(cdpPort = '9222') {
   const head = `connectOverCDP did not complete within ${CONNECT_TIMEOUT_MS}ms on port ${cdpPort}.`;
   let finding;
   if (found == null) {
-    finding = `The browser's /json endpoint did not answer, so no tab could be probed.`;
+    finding = `The tabs could not be listed or probed.`;
   } else if (found.hung.length) {
     finding = `Unresponsive tab(s):\n${describe(found.hung)}\nFind each one's owning session with:\n` +
       `  python "${CHAUFFEUR_PY}" --hung-tabs ${found.hung.map(t => t.id).join(' ')}`;
