@@ -32,7 +32,7 @@ You are operating the browser on the user's behalf. You are the chauffeur - you 
 
 ## How it works
 
-Every task uses the same flow: ensure a persistent Edge or Chrome browser is running with CDP enabled, validate that the target page loads, write or run a Node.js script that connects via `playwright.chromium.connectOverCDP(...)`, watch the output, and recover autonomously if anything fails. The persistent browser keeps its profile across tasks, so logins and sessions survive - the user signs in once, and all subsequent tasks reuse those sessions.
+Every task uses the same flow: ensure a persistent Edge or Chrome browser is running with CDP enabled, validate that the target page loads, write or run a Node.js script that connects through `connectBrowser(cdpPort)` (**Resilient Connection**), watch the output, and recover autonomously if anything fails. The persistent browser keeps its profile across tasks, so logins and sessions survive - the user signs in once, and all subsequent tasks reuse those sessions.
 
 ## Two usage modes
 
@@ -234,11 +234,11 @@ Two layers keep this reliable:
 **If the error names hung tabs:** run the `--hung-tabs` command it printed.
 It gives each tab one verdict, and the verdict decides the next step:
 
-- **`CLOSED`** - the tab is gone (its owning session had ended, so the sweep closed it); retry the script.
+- **`CLOSED`** - the tab is gone; retry the script.
 - **`YOURS`** - this session opened the tab; run the `--close-tab` command printed with it, then retry the script.
 - **`OWNER RUNNING`** - another Claude session opened the tab.
   Send that session the printed message with `SendMessage`, addressed to the printed session name, and wait for its reply.
-  The message names the tab, says it blocks every session's browser connect, and carries the `--close-tab` command, so the owner needs nothing else loaded.
+  When `ListAgents` lists more than one session under that name, address the one whose start time matches the printed one by its `[ref]`.
   It goes to a Claude session rather than a person, so send it without asking the user.
   When the owner replies that the tab is closed, retry the script.
 - **`NO OWNER`** - no running Claude session opened the tab (the user opened it, or a script opened it outside the helpers); escalate per **User Intervention**, naming the tab's title, URL, and target id so the user decides whether to close it.

@@ -9,7 +9,7 @@
   `--hung-tabs` gives each tab a verdict (closed, yours, owner running, no owner), and for a running owner prints the session's name and the message to send it.
   `chauffeur.py --close-tab <targetId>` closes one tab the calling session owns; the message to the owner carries that command.
   `SKILL.md` **Resilient Connection** gives the next step for each verdict.
-- **`cdp-session.js` exports `httpText` and `withTimeout`**, its HTTP calls time out and check the status, and it loads `ws` on first use.
+- **`cdp-session.js` exports `withTimeout`**, its `httpJson` times out and checks the status, and it loads `ws` on first use.
 
 ## [1.18.1] - 2026-11-13
 

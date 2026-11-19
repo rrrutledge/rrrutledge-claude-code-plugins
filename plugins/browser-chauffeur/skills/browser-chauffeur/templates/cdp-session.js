@@ -36,28 +36,23 @@ function loadWebSocket() {
   }
 }
 
-// The browser's HTTP endpoints (/json, /json/new, /json/close) answer from the
-// browser process, so they stay responsive while a renderer is wedged; the
-// timeout still bounds a browser that is itself unresponsive.
-function httpText(url, { method = 'GET', timeoutMs = 10000 } = {}) {
+// The browser's /json endpoint answers from the browser process, so it stays
+// responsive while a renderer is wedged; the timeout still bounds a browser
+// that is itself unresponsive.
+function httpJson(url, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    const req = http.request(url, { method, timeout: timeoutMs }, (res) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
       res.on('error', reject);
       res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
-        else reject(new Error(`${method} ${url} answered ${res.statusCode}: ${data}`));
+        if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error(`${url} answered ${res.statusCode}: ${data}`));
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
       });
     });
-    req.on('timeout', () => req.destroy(new Error(`${method} ${url} did not answer within ${timeoutMs}ms`)));
+    req.on('timeout', () => req.destroy(new Error(`${url} did not answer within ${timeoutMs}ms`)));
     req.on('error', reject);
-    req.end();
   });
-}
-
-async function httpJson(url, opts) {
-  return JSON.parse(await httpText(url, opts));
 }
 
 function withTimeout(promise, ms, message) {
@@ -124,4 +119,4 @@ async function waitForContext(ctxs, predicate) {
   }
 }
 
-module.exports = { CDPSession, httpText, httpJson, evalIn, waitForContext, withTimeout };
+module.exports = { CDPSession, httpJson, evalIn, waitForContext, withTimeout };
