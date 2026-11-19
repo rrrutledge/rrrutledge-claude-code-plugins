@@ -263,6 +263,106 @@ def find_card_by_name(board_id, name, session):
     return None
 
 
+_NAME_HEAD_SPLIT_RE = re.compile('\\s+[\N{EM DASH}\N{EN DASH}/|-]\\s+|\\s*[:,]\\s+')
+_URL_RE = re.compile(r'https?://[^\s)\]>]+')
+_LINK_ID_RE = re.compile(r'^\d{5,}$')
+# A posting id rides as the path segment after one of these, or as the value of one of these query
+# keys; numbers anywhere else in a link (meetings, companies, issues, tracking) are shared by many cards.
+_LINK_ID_PATH_PARENTS = {'jobs', 'job', 'view', 'postings', 'posting', 'positions', 'position',
+                         'requisitions', 'openings', 'opening', 'details'}
+_LINK_ID_QUERY_KEY_RE = re.compile(r'^(job_?id|jobid|currentjobid|req(_?id)?|requisition_?id|posting_?id|gh_jid|jk)$',
+                                   re.IGNORECASE)
+_CARDS_PAGE = 1000  # Trello's cap on one board-cards response
+
+
+def _squash(text):
+    """Lowercase letters and digits only, so "HEB" and "H-E-B" compare equal."""
+    return re.sub(r'[^a-z0-9]', '', (text or '').lower())
+
+
+def _name_head(name):
+    """The leading segment of a card name: "H-E-B" of "H-E-B - Staff Engineer", "Acme Corp" of
+    "Acme Corp / Jane Doe" - the employer or person the card is about."""
+    return _NAME_HEAD_SPLIT_RE.split(name or '', maxsplit=1)[0].strip()
+
+
+def _link_ids(desc):
+    """The posting ids in a description's links - how a job posting's req id rides, whichever job
+    board sourced the card: an all-digit 5+ digit path segment after a posting-named segment, or
+    an all-digit query value under a posting-named key."""
+    ids = set()
+    for url in _URL_RE.findall(desc or ''):
+        parts = urllib.parse.urlsplit(url.rstrip('.,;:!?\'"'))
+        segments = parts.path.split('/')
+        ids.update(s for i, s in enumerate(segments)
+                   if i and _LINK_ID_RE.match(s) and segments[i - 1].lower() in _LINK_ID_PATH_PARENTS)
+        ids.update(v for k, v in urllib.parse.parse_qsl(parts.query)
+                   if _LINK_ID_RE.match(v) and _LINK_ID_QUERY_KEY_RE.search(k))
+    return ids
+
+
+def _created_at(card_id):
+    """A Trello id opens with its creation time as 8 hex digits."""
+    return int(card_id[:8], 16)
+
+
+def get_board_snapshot(board_id, session):
+    """Return `(lists_by_id, cards)` for every list and card on the board, archived ones included,
+    paging past Trello's per-response cap. `lists_by_id` maps a list id to `{name, closed}`.
+    Template cards are left out: they are patterns, not work."""
+    lists = {l['id']: {'name': l['name'], 'closed': bool(l.get('closed'))} for l in
+             trello_request('GET', f'/boards/{board_id}/lists', session, params={'filter': 'all'})}
+    cards, before = [], None
+    while True:
+        params = {'fields': 'name,desc,idList,shortUrl,closed,isTemplate', 'limit': str(_CARDS_PAGE)}
+        if before:
+            params['before'] = before
+        page = trello_request('GET', f'/boards/{board_id}/cards/all', session, params=params)
+        cards += [c for c in page if not c.get('isTemplate')
+                  and 'template' not in lists.get(c.get('idList'), {}).get('name', '').lower()]
+        oldest = min((c['id'] for c in page), default=None)
+        if len(page) < _CARDS_PAGE or (before and oldest >= before):
+            break
+        before = oldest
+    return lists, cards
+
+
+def find_related_cards(card, snapshot):
+    """Return `(same_item, same_head)` for `card` (a dict with `id`, `name`, `desc`) against a
+    `get_board_snapshot` of its board.
+
+    `same_item` holds every other card that is the same thing: the same name once punctuation and
+    case are dropped, or a link sharing one of the card's link ids.
+    `same_head` holds the rest of the cards whose name opens with the same employer or person.
+    Each entry is `{name, list, url, closed, decided, older, why}`: `decided` when the card or its
+    list is archived or the list is terminal, `older` when it was created before `card` (None when
+    `card` has no id).
+    """
+    lists, others = snapshot
+    name, head = _squash(card.get('name')), _squash(_name_head(card.get('name')))
+    ids = _link_ids(card.get('desc'))
+    same_item, same_head = [], []
+    for other in others:
+        if other['id'] == card.get('id'):
+            continue
+        shared = sorted(ids & _link_ids(other.get('desc')))
+        if shared:
+            why, bucket = f"shares link id {', '.join(shared)}", same_item
+        elif name and _squash(other.get('name')) == name:
+            why, bucket = 'same name', same_item
+        elif len(head) >= 2 and _squash(_name_head(other.get('name'))) == head:
+            why, bucket = 'same name head', same_head
+        else:
+            continue
+        lst = lists.get(other.get('idList'), {'name': '?', 'closed': False})
+        closed = bool(other.get('closed'))
+        bucket.append({'name': other.get('name', ''), 'list': lst['name'], 'url': other.get('shortUrl', ''),
+                       'closed': closed, 'decided': closed or lst['closed'] or _is_terminal_list(lst['name']),
+                       'older': _created_at(other['id']) < _created_at(card['id']) if card.get('id') else None,
+                       'why': why})
+    return same_item, same_head
+
+
 def create_card_from_template(list_id, template_card_id, name, session, keep='checklists'):
     """Create a card copying content from a template/source card.
 
@@ -448,3 +548,34 @@ def sweep_unblock(board_ids, session,
         update_card(card['id'], {'start': today}, session)
         unblocked.append(card['id'])
     return unblocked
+
+
+def _main(argv=None):
+    """`python trello_utils.py related --board <id> [--board <id> ...] --name <text> [--desc <text>]`
+    prints, per board, the `find_related_cards` result for a card that would carry this name and
+    description, as JSON - the same board-wide lookup a Trello capture runs, for an item from any
+    source."""
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(prog='trello_utils.py')
+    sub = parser.add_subparsers(dest='command', required=True)
+    related = sub.add_parser('related', help='find cards on the same item or employer/person, archived included')
+    related.add_argument('--board', action='append', required=True)
+    related.add_argument('--name', required=True)
+    related.add_argument('--desc', default='')
+    args = parser.parse_args(argv)
+    session = get_trello_session()
+    out = {}
+    for board in args.board:
+        try:
+            same, head = find_related_cards({'id': '', 'name': args.name, 'desc': args.desc},
+                                            get_board_snapshot(board, session))
+            out[board] = {'same_item': same, 'same_head': head}
+        except Exception as e:
+            out[board] = {'error': str(e)}
+    sys.stdout.reconfigure(encoding='utf-8')
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    _main()

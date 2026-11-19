@@ -129,8 +129,8 @@ Do not append a speculative "things still to do" list assembled from unverified 
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.
 Summarize the recap's gist - what was discussed, the decisions, any date or number worth knowing - and never re-list those action items here, or the same action shows up twice: once as a live worker, once as a phantom digest to-do.
 
-The same principle applies to outreach: **before framing any item as new**, run the card lookup in worker-core §2's "Also check Trello when the item could be outreach" against `<repo>/trello-boards.yaml` - the lookup only; writing back to the card is a worker's job.
-A match means the item is already tracked: name and link the card, and frame the item as **already tracked** rather than new (optionally noting whether the card is worth updating).
+The same principle applies to outreach: **before framing any item as new**, run the searches in worker-core §2's "Search around before concluding", the card lookup against `<repo>/trello-boards.yaml` included - the lookups only; writing back to the card is a worker's job.
+A match means the item already has a record: name and link it (the card, thread, or message), and frame the item as **already tracked** rather than new (optionally noting whether a card is worth updating).
 
 Before calling a Slack item context-free, apply READ-IN-CONTEXT in `providers/slack-provider.md`.
 
