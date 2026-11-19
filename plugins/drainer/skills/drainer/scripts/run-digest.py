@@ -38,8 +38,8 @@ ENUMERATE_PAGE_SIZE = 500
 
 
 def measure_auto_sent(runtime_dir):
-    """The rendered "Sent without you" block and the time it runs through. A failure renders as an
-    unavailable line with no time, so the watermark stays put and the next digest lists these sends."""
+    """The rendered "Sent without you" block and the newest send it lists (None when it lists none).
+    A failure renders as an unavailable line listing nothing, so the next digest lists these sends."""
     try:
         return auto_sent.section(slack_reaction.send_confidence(), runtime_dir, _load_queue(runtime_dir),
                                  slack_reaction.undo_command)
@@ -47,11 +47,12 @@ def measure_auto_sent(runtime_dir):
         return f"Sent without you since the last digest: unavailable this run ({e}).", None
 
 
-def write_seed(runtime_dir, repo, cfg, backlog_block, auto_sent_block):
+def write_seed(runtime_dir, repo, cfg, backlog_block, auto_sent_block, auto_sent_through):
     """Write the digest session's prompt file: a pointer to digest-core.md plus the few runtime
     facts it can't infer (where the queue/state live, the providers dir), the pre-computed
     backlog-depth barometer the launcher measured for this run (so the session presents real numbers
-    rather than recomputing them), and the "Sent without you" block built from send-confidence's log.
+    rather than recomputing them), and the "Sent without you" block built from send-confidence's log,
+    with the command that records it as seen when it lists any send.
     A None `backlog_block` means the barometer is toggled off, and the seed says so instead."""
     seeds = os.path.join(runtime_dir, "seeds")
     os.makedirs(seeds, exist_ok=True)
@@ -63,6 +64,11 @@ def write_seed(runtime_dir, repo, cfg, backlog_block, auto_sent_block):
     else:
         backlog_fact = ("- Backlog depth measured by the launcher for this run (digest-core step 1b - present "
                         f"it verbatim as the read-only barometer, do not recompute):\n{backlog_block}\n\n")
+    reported_fact = ""
+    if auto_sent_through:
+        reported_fact = (f"- Sent without you reported command (digest-core step 1c): `python "
+                         f"\"{os.path.join(SCRIPT_DIR, 'auto_sent.py')}\" reported \"{runtime_dir}\" "
+                         f"{auto_sent_through}`\n\n")
     with open(prompt_file, "w", encoding="utf-8") as f:
         f.write(
             "You are the drainer EOD digest session. Read `~/.claude/CLAUDE.md`, then follow the "
@@ -79,6 +85,7 @@ def write_seed(runtime_dir, repo, cfg, backlog_block, auto_sent_block):
             + backlog_fact +
             "- Sent without you, built from send-confidence's log (digest-core step 1c - present it "
             f"verbatim):\n{auto_sent_block}\n\n"
+            + reported_fact +
             "Present the digest to Russell and clear NOTHING until he approves. Never send or post from "
             "this session: a reply goes to the session the work is handed off to (digest-core's Hard "
             "rules). When the queue is emptied (or Russell defers) and you are done, stop.\n"
@@ -270,7 +277,8 @@ def main():
         return
 
     auto_sent_block, auto_sent_through = measure_auto_sent(runtime_dir)
-    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg), auto_sent_block)
+    prompt_file = write_seed(runtime_dir, repo, cfg, measure_backlog(runtime_dir, cfg), auto_sent_block,
+                             auto_sent_through)
     # The digest is a background session named "Drainer EOD digest", so it reads recognizably in the
     # /resume picker and the Claude app's session list on the phone. The same text leads the seed and is
     # kept in a sibling summary file, the way a worker's is.
@@ -285,8 +293,6 @@ def main():
         print("run-digest: headless `claude --bg` launch returned no id; the digest did not start.")
         sys.exit(1)
     receipt = write_receipt(prompt_file, bg_id)
-    if auto_sent_through:
-        auto_sent.write_watermark(runtime_dir, auto_sent_through)
     print(f"Launched the digest as background session {receipt} (model {cfg['digest_model']}) "
           f"for {runtime_dir}.")
     launch_ack_review(runtime_dir, repo, cfg)

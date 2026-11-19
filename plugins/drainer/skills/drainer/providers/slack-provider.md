@@ -145,8 +145,8 @@ Which message gets a reaction, and which emoji, is the worker's call per REACT a
 python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of the message> --emoji=<name> --permalink=<message permalink> [--thread-ts=<threadTs>]
 ```
 
-- **`auto_sent` true:** the model's auto-send test passed, and the script already added the reaction and logged it for the digest's "Sent without you" section (`engine/digest-core.md` step 1c).
-  Carry on with the item as for any finished action.
+- **`auto_sent` true:** the model's auto-send test passed, and the script already added the reaction.
+  Close out per worker-core §6a, recording the printed `draft_id` per `engine/auto-handle.md` step 4's `autoSent` list.
 - **`auto_sent` false:** present the reaction to Russell like a staged draft, with the emoji and the message's permalink, and wait for his answer.
   When more than one emoji fits, propose the best one and name the others as alternatives he can pick.
   Record his answer with the printed `draft_id`:
@@ -155,4 +155,4 @@ python <skill>/scripts/slack_reaction.py propose --channel=<channel> --ts=<ts of
   - **He declines:** `slack_reaction.py discard --draft-id=<id> --reason="<why, in one phrase>"`, adding `--moot` when he answered the matter some other way.
   - **No `draft_id` printed:** the reaction wasn't staged (the printed `staged` says why); on approval, run `approve` with the same `--channel`, `--ts`, and `--emoji` in place of `--draft-id`.
 
-The undo command the digest lists beside an auto-sent reaction, `slack_reaction.py undo --draft-id=<id>`, takes the reaction off and records the undo as a discard, so the model counts it against reactions like that one.
+To take back an auto-sent reaction, run the undo command the digest lists beside it.
