@@ -486,7 +486,16 @@ def ship(number, repo_arg, admin):
     return 1 if conclusion != 'success' or any(s.startswith('ERR') for _, _, s in rows) else 0
 
 
+def utf8_output():
+    """A PR title or commit message can hold any character, but a Windows console or pipe defaults to a
+    legacy code page that cannot print an emoji, so write UTF-8 and replace what still cannot encode."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
+
+
 def main(argv=None):
+    utf8_output()
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--pr', type=int, help='PR number (default: the open PR for the current branch)')
     p.add_argument('--repo', help='path to a checkout of the plugins repo (default: from cwd)')
