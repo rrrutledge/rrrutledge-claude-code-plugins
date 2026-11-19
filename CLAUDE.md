@@ -162,7 +162,8 @@ The one gap: a command that needs its own working directory to actually *be* the
 ExitWorktree takes no path - it only ever acts on the one worktree the current session entered via EnterWorktree, tracked internally by the harness rather than supplied by the model.
 `action: "keep"` is always approved (nothing is deleted).
 `action: "remove"` mirrors `git branch -d`: the tool itself refuses when the worktree has uncommitted files or commits that never landed on the original branch, so a plain remove is approved.
-Only `discard_changes: true`, which forces the removal through and knowingly throws away unsaved work, falls through to a manual prompt.
+`discard_changes: true`, which forces the removal through and knowingly throws away unsaved work, is BLOCKed with a redirect: leave with `keep`, then `git worktree remove` (a trusted git subcommand that refuses a worktree holding uncommitted files), then delete the branch.
+A squash merge makes the tool see the branch's commits as unmerged, which is why the forced flag was tempting, but git's own check covers that case without it.
 
 ### Learned → source promotion (`tools/sync_learned.py`)
 
