@@ -25,26 +25,50 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 
-let WebSocket;
-try {
-  ({ ws: WebSocket } = require('playwright-core/lib/utilsBundle'));
-} catch {
-  const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
-  ({ ws: WebSocket } = require(path.join(pwPath, 'lib', 'utilsBundle')));
+// Loaded on first use, so requiring the helpers never depends on resolving
+// playwright-core.
+function loadWebSocket() {
+  try {
+    return require('playwright-core/lib/utilsBundle').ws;
+  } catch {
+    const pwPath = path.join(os.homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core');
+    return require(path.join(pwPath, 'lib', 'utilsBundle')).ws;
+  }
 }
 
-function httpJson(url) {
+// The browser's HTTP endpoints (/json, /json/new, /json/close) answer from the
+// browser process, so they stay responsive while a renderer is wedged; the
+// timeout still bounds a browser that is itself unresponsive.
+function httpText(url, { method = 'GET', timeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
-    http.get(url, (res) => {
+    const req = http.request(url, { method, timeout: timeoutMs }, (res) => {
       let data = '';
       res.on('data', d => data += d);
-      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-    }).on('error', reject);
+      res.on('error', reject);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(data);
+        else reject(new Error(`${method} ${url} answered ${res.statusCode}: ${data}`));
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error(`${method} ${url} did not answer within ${timeoutMs}ms`)));
+    req.on('error', reject);
+    req.end();
   });
+}
+
+async function httpJson(url, opts) {
+  return JSON.parse(await httpText(url, opts));
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 class CDPSession {
   constructor(wsUrl) {
+    const WebSocket = loadWebSocket();
     this.ws = new WebSocket(wsUrl);
     this.id = 0;
     this.pending = new Map();
@@ -100,4 +124,4 @@ async function waitForContext(ctxs, predicate) {
   }
 }
 
-module.exports = { CDPSession, httpJson, evalIn, waitForContext };
+module.exports = { CDPSession, httpText, httpJson, evalIn, waitForContext, withTimeout };

@@ -80,14 +80,14 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 
 - Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**).
 - Close the tabs the script opened with `closeTab` in a `finally` (SKILL.md Phase 3, **Tab cleanup**).
-- Resolve `playwright-core` and `browser-chauffeur-helpers` with the try/catch fallback (SKILL.md **Prerequisite Check**).
+- Resolve `browser-chauffeur-helpers`, and `playwright-core` when the script calls it directly, with the try/catch fallback (SKILL.md **Prerequisite Check**).
 
 ## ✅ REQUIRED: Browser Connection
 
 Scripts receive `--cdp-port=<port>` from Claude, validated during Phase 0.
 Phase 0 also owns browser launch and the login check, so a script carries no browser detection or login validation of its own.
 
-Connect with the hardened `connectBrowser()` from `script-template.js` (SKILL.md **Resilient Connection** gives the reason).
+Connect with `connectBrowser(cdpPort)` from `browser-chauffeur-helpers`, as `script-template.js` does (SKILL.md **Resilient Connection** gives the reason and what to do when it times out).
 
 ## ✅ REQUIRED: Navigation
 

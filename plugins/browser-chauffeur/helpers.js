@@ -17,6 +17,7 @@ const { cleanupStaleState } = require('./skills/browser-chauffeur/templates/clea
 const { verifyAfterMutation } = require('./skills/browser-chauffeur/templates/verify-after-mutation');
 const { openTab, closeTab, findTab, touchTab, registerTab, unregisterTab } = require('./skills/browser-chauffeur/templates/tab-registry');
 const { captureFullPageScreenshot } = require('./skills/browser-chauffeur/templates/fullpage-screenshot');
+const { connectBrowser } = require('./skills/browser-chauffeur/templates/connect-browser');
 
 // --- Process guard (installed on require) ---
 // A chauffeur script connects to the browser over a live CDP WebSocket, and that
@@ -77,6 +78,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 module.exports = {
+  connectBrowser,
   dismissOverlays,
   screenshotOnFailure,
   cleanupStaleState,

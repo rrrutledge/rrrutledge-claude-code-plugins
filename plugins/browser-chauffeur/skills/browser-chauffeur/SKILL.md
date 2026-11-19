@@ -122,15 +122,11 @@ Adjust `plugins/browser-chauffeur/...` to the actual path where the skill is mou
 
 **Every ad-hoc script goes in the project's `.tmp/`.**
 The shared `~/.claude/browser-chauffeur/` directory only exists to hold the fallback `node_modules`; it is not a script workspace, and dropping scripts there breaks the calling project's permission-auto-approval (which is scoped to the project directory) and clutters a directory other sessions share.
-Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` or `require('playwright-core')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find.
-**Resolve both packages with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install:
+Because Node's module resolution walks up from the *requiring file's own directory* - not from the current working directory - a script sitting in `.tmp/` cannot resolve a bare `require('browser-chauffeur-helpers')` against the fallback install; there is no `node_modules` between `.tmp/` and the shared directory for Node to find.
+**Resolve the helpers with the try/catch fallback pattern from `templates/script-template.js`**, which resolves from the project's own `node_modules` first and falls back to the shared install (a script that calls `playwright-core` directly resolves it the same way):
 
 ```js
-const { chromium } = (() => {
-  try { return require('playwright-core'); }
-  catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'playwright-core')); }
-})();
-const { openTab, findTab, closeTab } = (() => {
+const { connectBrowser, openTab, findTab, closeTab } = (() => {
   try { return require('browser-chauffeur-helpers'); }
   catch { return require(require('path').join(require('os').homedir(), '.claude', 'browser-chauffeur', 'node_modules', 'browser-chauffeur-helpers')); }
 })();
@@ -232,11 +228,25 @@ Two layers keep this reliable:
 1. **Root cause - keep the tab count low.** Every tab a script opens is registered to its session (Phase 1, **Getting a tab**), and the Phase 0 **Automatic tab sweep** reclaims the rest.
    So a healthy profile stays small and `connectOverCDP` stays fast - this is what makes it reliable, not just recoverable.
 
-2. **Backstop - fail fast.** Scripts connect through the hardened `connectBrowser()` (`script-quality-standards.md` **Browser Connection**), so a still-wedged profile produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
+2. **Backstop - fail fast and name the hung tab.** Scripts connect through `connectBrowser(cdpPort)` from `browser-chauffeur-helpers` (`script-quality-standards.md` **Browser Connection**), so a wedged tab produces a `connectOverCDP did not complete within ...ms` error instead of a hang.
+   The error lists each tab that failed a responsiveness probe, followed by the `chauffeur.py --hung-tabs` command that finds each one's owning session.
 
-**If the connect times out anyway:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once.
-If it still times out, the overload is from tabs the sweep won't touch - an active session's tabs or the user's own.
-Leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.
+**If the error names hung tabs:** run the `--hung-tabs` command it printed.
+It gives each tab one verdict, and the verdict decides the next step:
+
+- **`CLOSED`** - the tab is gone (its owning session had ended, so the sweep closed it); retry the script.
+- **`YOURS`** - this session opened the tab; run the `--close-tab` command printed with it, then retry the script.
+- **`OWNER RUNNING`** - another Claude session opened the tab.
+  Send that session the printed message with `SendMessage`, addressed to the printed session name, and wait for its reply.
+  The message names the tab, says it blocks every session's browser connect, and carries the `--close-tab` command, so the owner needs nothing else loaded.
+  It goes to a Claude session rather than a person, so send it without asking the user.
+  When the owner replies that the tab is closed, retry the script.
+- **`NO OWNER`** - no running Claude session opened the tab (the user opened it, or a script opened it outside the helpers); escalate per **User Intervention**, naming the tab's title, URL, and target id so the user decides whether to close it.
+
+Escalate per **User Intervention** too when the owner replies that it can't close the tab, or the retry still times out.
+
+**If the error names no hung tab:** re-run `chauffeur.py` (it sweeps orphans), then retry the script once.
+If it still times out, leave the shared browser running (Phase 3, **Leave the browser running**) and escalate per **User Intervention**, so the user decides whether to close tabs or reset.
 
 ---
 
@@ -568,7 +578,7 @@ When errors are detected, **you are the debugger**. Do not show the user an erro
    - **UI changed** (different label, restructured DOM, new element) → inspect the current page state to find the new selector, update the script, re-run.
    - **New required step** (e.g., a consent prompt, a "What's new" tour) → add handling for it, re-run.
    - **Selector timing issues** (element not yet visible), **elements scrolled out of view**, or **the expected element is in a different frame** → take a fresh screenshot, read it, find the correct selector or frame.
-   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → the persistent profile is overloaded or has a wedged renderer. Follow **Resilient Connection**, "If the connect times out anyway".
+   - **connectOverCDP timeout** - output contains `connectOverCDP did not complete within ...ms` → a tab's renderer is wedged or the profile is overloaded. Follow **Resilient Connection** from the error's list of hung tabs.
    - **Media still playing** - if the script's stuck-detection fired but the page has active audio/video (`!audio.paused && !audio.ended && audio.duration > 1`), the page isn't stuck - narration is in progress. Wait for the media's remaining duration plus a buffer before re-evaluating. Only declare genuinely stuck when both conditions are true: no advance button AND no active media.
    - **None of the above looks right** → the failure may be a known anti-pattern. **Read `anti-patterns.md`**; its index lists each symptom, and each entry has a tested fix.
 

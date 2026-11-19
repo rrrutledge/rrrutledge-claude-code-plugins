@@ -17,9 +17,18 @@ The shim looks up the active plugin version each time it is required - from the 
 ## Usage
 
 Start every script from `skills/browser-chauffeur/templates/script-template.js`.
-It resolves `playwright-core` and the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
+It resolves the helpers, connects, opens and closes its tab, and exits, the way `skills/browser-chauffeur/script-quality-standards.md` requires; the helpers below are what it imports.
 
 ## Available Helpers
+
+### `connectBrowser(cdpPort)`
+
+Connects to the persistent browser with Playwright's `connectOverCDP`, giving up after 30 seconds and then probing each tab for up to 10 seconds more before it throws.
+The timeout error has `code` `CDP_CONNECT_TIMEOUT`; its message and `hungTargets` (`{ id, type, title, url }` each) name the tabs that failed the probe, and the message carries the `chauffeur.py --hung-tabs` command that finds their owners.
+What to do with it: SKILL.md **Resilient Connection**.
+
+- **Parameters**: `cdpPort` - the port Phase 0 printed
+- **Returns**: Promise<Browser>
 
 ### `dismissOverlays(page)`
 
