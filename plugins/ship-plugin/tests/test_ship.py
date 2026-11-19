@@ -337,5 +337,24 @@ class Sync(Base):
         self.assertEqual(installed, [repo / 'plugins' / 'rooted'])
 
 
+class NonAsciiOutput(Base):
+    def test_emoji_title_prints_under_a_cp1252_stdout(self):
+        title = 'drainer: \U0001f4b0 Money label'
+        data = dict(pr_data(state='CLOSED'), title=title)
+        self.fake([(['gh', 'pr', 'view'], done(json.dumps(data)))])
+        raw = io.BytesIO()
+        saved = ship.sys.stdout, ship.sys.stderr
+        ship.sys.stdout = io.TextIOWrapper(raw, encoding='cp1252', errors='strict')
+        ship.sys.stderr = io.TextIOWrapper(io.BytesIO(), encoding='cp1252', errors='strict')
+        try:
+            code = ship.main(['--pr', '7', '--repo', 'unused'])
+            ship.sys.stdout.flush()
+            printed = raw.getvalue().decode('utf-8')
+        finally:
+            ship.sys.stdout, ship.sys.stderr = saved
+        self.assertEqual(code, 1)
+        self.assertIn(title, printed)
+
+
 if __name__ == '__main__':
     unittest.main()
