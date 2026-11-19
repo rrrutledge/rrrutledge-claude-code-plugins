@@ -74,7 +74,7 @@ Stuck-provider health (step 0) is separate and always runs.
 
 ## 1c. Sent without you - every send that went out on its own
 
-Your launcher handed you a **Sent without you** block in the runtime facts, covering every send that went out on send-confidence's say-so since the last digest.
+Your launcher handed you a **Sent without you** block in the runtime facts, listing the sends that went out on send-confidence's say-so.
 Present the block verbatim as its own section, at the spot step 4 places it, including when it reads "nothing".
 When Russell asks to take back a send the block lists, run the Undo command printed beside it.
 Once Russell has replied to the digest, run the Sent without you reported command from the runtime facts, when they carry one, so the next digest lists only sends Russell hasn't seen.
@@ -85,7 +85,7 @@ Items a worker resolved autonomously - either under a provider **AUTO-HANDLE** r
 The action and the source-clear are **already done** - this section is so Russell *sees* what happened, not to ask him to act, though he may choose to pick up a briefing.
 Leave out any item the Sent without you block (step 1c) names as repeating its sends, and `queue-clear` it with the rest on Russell's OK.
 
-Each item carries a `disposition` its worker stamped (`abandoned` | `advanced` | `nudged` | `briefed`, defined in `engine/auto-handle.md` step 4) and a one-line `dispositionReason`, empty only on an item whose whole action was an auto-send.
+Each item carries a `disposition` its worker stamped (`abandoned` | `advanced` | `nudged` | `briefed`, defined in `engine/auto-handle.md` step 4) and a one-line `dispositionReason`.
 Your job here is only to split on that disposition and print each item's reason verbatim, so you need the split rule, not the value definitions.
 Present one distinct **"Auto-handled"** section (separate from fyi), split three ways:
 - **Briefings (read these)** - the `briefed` items, first in the section.

@@ -44,7 +44,7 @@ def collect(sc, reported):
     """Each send logged auto-sent and not yet reported, oldest first, with whether it was undone since."""
     events = sc.load_events()
     drafts = sc.fold_drafts(events)
-    out = {}
+    out = []
     for e in events:
         did = e.get("draft_id")
         if e.get("event") != "outcome" or e.get("disposition") != "auto-sent" or not did or did in reported:
@@ -54,9 +54,9 @@ def collect(sc, reported):
         except (TypeError, ValueError):
             continue
         d = drafts.get(did) or {}
-        out[did] = {"draft_id": did, "ts": ts, "scored": d.get("scored") or {},
-                    "undone": (d.get("outcome") or {}).get("disposition") == "discarded"}
-    return sorted(out.values(), key=lambda s: s["ts"])
+        out.append({"draft_id": did, "ts": ts, "scored": d.get("scored") or {},
+                    "undone": (d.get("outcome") or {}).get("disposition") == "discarded"})
+    return sorted(out, key=lambda s: s["ts"])
 
 
 def describe(sent, undo_command):
@@ -75,7 +75,8 @@ def describe(sent, undo_command):
 
 
 def covered_queue_ids(queue):
-    """The queued auto-handle items whose only action was a send this section lists."""
+    """The queued auto-handle items whose only action was a send, which this section or an earlier one
+    lists."""
     return [entry.get("id") for entry in queue
             if (entry.get("item") or {}).get("triage") == "auto-handle" and entry["item"].get("autoSent")
             and not (entry["item"].get("dispositionReason") or "").strip()]
@@ -89,7 +90,8 @@ def section(sc, runtime_dir, queue, undo_command):
     lines += ["    " + describe(s, undo_command) for s in sends]
     covered = covered_queue_ids(queue)
     if covered:
-        lines.append("    Queue items repeating these sends: " + ", ".join(covered))
+        lines.append("    Queue items that only repeat a send listed here or in an earlier digest: "
+                     + ", ".join(covered))
     return "\n".join(lines), [s["draft_id"] for s in sends]
 
 

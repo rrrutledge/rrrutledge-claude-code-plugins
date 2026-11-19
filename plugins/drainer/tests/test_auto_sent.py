@@ -113,7 +113,7 @@ queue = [
     {"id": "fyi-1", "item": {"triage": "fyi", "autoSent": [later["draft_id"]]}},
 ]
 block = section(rt, queue)[0]
-check("the repeat is named, its send already reported or not", "Queue items repeating these sends: slack-repeat" in block,
+check("the repeat is named, its send already reported or not", "in an earlier digest: slack-repeat" in block,
       True)
 check("an item that did more, an unrelated item, and an fyi are not",
       [i for i in ("slack-more", "slack-other", "fyi-1") if i in block], [])

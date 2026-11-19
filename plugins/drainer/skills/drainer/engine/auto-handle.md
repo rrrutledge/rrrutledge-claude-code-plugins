@@ -17,7 +17,7 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
    Then **CLEAR the source item** per your provider's CLEAR op (mark read / advance), so it doesn't resurface.
    If executing the action hits a gate only Russell can clear, stop there and follow `engine/browser-gate.md` instead of step 4 below - a browser gate means this item now needs Russell, so treat it as needs-you rather than closing up as if the rule ran clean.
 4. **Stamp the disposition, then queue a digest entry** describing what you did, so the daily digest shows it under "Auto-handled" with the right framing:
-   1. **Record the disposition** on `items/<id>.json` (Edit tool) before queuing - a `disposition` field naming which kind of outcome this was, plus a one-line `dispositionReason` in the terms Russell would want to read (empty when an auto-send, below, was the whole action).
+   1. **Record the disposition** on `items/<id>.json` (Edit tool) before queuing - a `disposition` field naming which kind of outcome this was, plus a one-line `dispositionReason` in the terms Russell would want to read.
       The canonical values are shared across every source:
       - `abandoned` - terminal: the item is finished and will not recur (a dead/closed job req, a request withdrawn, a thread that ended).
         A real signal, always worth a glance.
@@ -32,7 +32,7 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
       The digest prints every item with this reason, `nudged` items included, in separate groups, so a closed-req abandon reads as "Abandoned - req closed", never as a deferral.
       A nudge example: "they replied Sep 30 and Russell answered Oct 1, restarting the 1-week cadence; Start moved to Oct 8 2026".
       Make the entry self-explanatory on its own - if the action revealed a detail worth recording (the invitee, the requester), put it in `dispositionReason` rather than leaving it to the captured body.
-      A send that went out on send-confidence's say-so goes in an `autoSent` list of its printed `draft_id`s, since the digest lists it in its own Sent without you section (`engine/digest-core.md` step 1c); `dispositionReason` carries the item's other actions.
+      A send that went out on send-confidence's say-so goes in an `autoSent` list of its printed `draft_id`s, since the digest lists it in its own Sent without you section (`engine/digest-core.md` step 1c); `dispositionReason` carries the item's other actions, and stays empty when the send was the whole action.
    2. **Queue it and close up**, per worker-core's "Close silently" steps 3-5 (the captured item already carries `triage: "auto-handle"`, so there's nothing to re-tag).
       There is **no presentation and no wait-for-acknowledgment**, because nothing was put in front of Russell - the digest is how he learns it happened.
       An auto-handle item has no one to wait for, so anything left open just sits there reading "finished" until Russell checks it by hand - exactly the interruption auto-handle exists to avoid.
