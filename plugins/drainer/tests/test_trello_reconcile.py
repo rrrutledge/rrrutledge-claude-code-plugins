@@ -319,7 +319,7 @@ def finished_run(workers, agents, resumed=None):
     continued under. Return the short ids stopped."""
     rt = workspace({}, {f"trello-{c}": rec_for(c) for c, _ in workers.values()})
     transcripts = {}
-    for guid, (c, written_ago) in workers.items():
+    for guid, (c, _) in workers.items():
         write_session(rt, f"trello-{c}", guid)
     for guid, written_ago in [(g, ago) for g, (_, ago) in workers.items()] + list((resumed or {}).items()):
         path = os.path.join(rt, f"{guid}.jsonl")
@@ -362,7 +362,7 @@ try:
                               resumed={G[1]: 3 * DAY_S})
     check("a resumed worker is stopped under its newest session", stopped, [G[1][:8]])
     poller.holder_resolver = lambda: lambda r: [(r, 0), (G[2], 1)]
-    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[2])])
+    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[2])], resumed={G[2]: 3 * DAY_S})
     check("a session the worker handed off to is never stopped", stopped, [])
 finally:
     poller.holder_resolver = real_resolver
