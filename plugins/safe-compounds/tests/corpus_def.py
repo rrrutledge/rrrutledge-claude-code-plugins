@@ -39,6 +39,8 @@ CASES = [
     {"id": "git_reset_hard_origin", "tool": "Bash", "command": "git reset --hard origin/main", "expect": "ALLOW"},
     {"id": "git_reset_hard_head", "tool": "Bash", "command": "git reset --hard HEAD", "expect": "PROMPT"},
     {"id": "git_reset_hard_pathspec", "tool": "Bash", "command": "git reset --hard -- origin/main", "expect": "PROMPT"},
+    {"id": "git_read_tree_reset_origin", "tool": "Bash", "command": "git -C .claude/worktrees/x read-tree -u --reset origin/main", "expect": "ALLOW"},
+    {"id": "git_read_tree_plain", "tool": "Bash", "command": "git read-tree HEAD", "expect": "ALLOW"},
     {"id": "git_checkout_dot", "tool": "Bash", "command": "git checkout .", "expect": "ALLOW"},
     {"id": "git_branch_delete", "tool": "Bash", "command": "git branch -D old", "expect": "ALLOW"},
     {"id": "git_rebase_not_listed", "tool": "Bash", "command": "git rebase main", "expect": "ALLOW"},
