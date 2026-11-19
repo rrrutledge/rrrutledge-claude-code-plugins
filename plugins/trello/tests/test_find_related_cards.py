@@ -1,4 +1,5 @@
-"""Test for scripts/trello_utils.py's find_related_cards - the board-wide lookup for a card on the same thing.
+"""Test for scripts/trello_utils.py's get_board_snapshot and find_related_cards - the board-wide lookup
+for a card on the same thing.
 
 The case it exists for: a job card re-sourced from a second job board while an already-decided card for
 the same posting sat in Abandoned, under a differently spelled employer ("HEB" vs "H-E-B").
@@ -17,18 +18,32 @@ import trello_utils  # noqa: E402
 
 failures = []
 
-LISTS = [{"id": "L-id", "name": "Identified"}, {"id": "L-ab", "name": "Abandoned"}]
+
+def cid(created, n):
+    """A Trello-shaped id: 8 hex digits of creation time, then a serial."""
+    return f"{created:08x}{n:016x}"
+
+
+NEW = cid(200, 1)
+LISTS = [{"id": "L-id", "name": "Identified"}, {"id": "L-ab", "name": "Abandoned"},
+         {"id": "L-tp", "name": "📋 Templates"}]
 CARDS = [
-    {"id": "new", "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-id", "closed": False,
-     "shortUrl": "u/new", "desc": "[posting](https://careers.example.com/jobs/251065?lang=en-us)"},
-    {"id": "dup", "name": "HEB — Staff Software Engineer-Web Platform (onsite)", "idList": "L-ab",
+    {"id": NEW, "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-id",
+     "closed": False, "shortUrl": "u/new",
+     "desc": "[posting](https://careers.example.com/jobs/251065?lang=en-us) "
+             "referrer https://www.linkedin.com/in/jane-doe-4b211223"},
+    {"id": cid(100, 2), "name": "HEB — Staff Software Engineer-Web Platform (onsite)", "idList": "L-ab",
      "closed": False, "shortUrl": "u/dup", "desc": "https://www.indeed.com/viewjob?jk=ab12&req=251065"},
-    {"id": "renamed", "name": "H.E.B — staff software engineer web platform", "idList": "L-ab",
-     "closed": True, "shortUrl": "u/renamed", "desc": ""},
-    {"id": "sibling", "name": "HEB — Sr Network Engineer", "idList": "L-id", "closed": False,
-     "shortUrl": "u/sibling", "desc": "https://careers.example.com/jobs/777777"},
-    {"id": "other", "name": "Acme — Staff Engineer", "idList": "L-id", "closed": False,
+    {"id": cid(300, 3), "name": "H.E.B — staff software engineer web platform", "idList": "L-id",
+     "closed": False, "shortUrl": "u/twin", "desc": ""},
+    {"id": cid(50, 4), "name": "HEB — Sr Network Engineer", "idList": "L-id", "closed": True,
+     "shortUrl": "u/sibling", "desc": "https://www.linkedin.com/in/jane-doe-4b211223"},
+    {"id": cid(60, 5), "name": "Acme — Staff Engineer", "idList": "L-id", "closed": False,
      "shortUrl": "u/other", "desc": "mentions H-E-B in passing"},
+    {"id": cid(70, 6), "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-id",
+     "closed": False, "shortUrl": "u/template", "desc": "", "isTemplate": True},
+    {"id": cid(80, 7), "name": "H-E-B — Staff Software Engineer-Web Platform", "idList": "L-tp",
+     "closed": False, "shortUrl": "u/templist", "desc": ""},
 ]
 
 
@@ -39,32 +54,56 @@ def check(name, condition, detail=""):
         failures.append(name)
 
 
-def fake_request(method, path, session, params=None, body=None):
-    if path.endswith("/lists"):
-        return LISTS
-    if path.endswith("/cards/all"):
-        return CARDS
-    raise AssertionError(f"unexpected request {method} {path}")
+def fake_request(cards, calls):
+    def request(method, path, session, params=None, body=None):
+        calls.append(dict(params or {}))
+        if path.endswith("/lists"):
+            return LISTS
+        if path.endswith("/cards/all"):
+            before = (params or {}).get("before")
+            page = sorted((c for c in cards if not before or c["id"] < before), key=lambda c: c["id"], reverse=True)
+            return page[:int(params["limit"])]
+        raise AssertionError(f"unexpected request {method} {path}")
+    return request
 
 
 def test_tiers():
     print("test: a shared link id or same squashed name is the same item; a same employer is a sibling")
-    trello_utils.trello_request = fake_request
-    same, head = trello_utils.find_related_cards("B1", CARDS[0], ("k", "t"))
-    by_id = {c["url"]: c for c in same}
-    check("the abandoned re-sourced card is the same item", "u/dup" in by_id)
-    check("it says which link id it shares", by_id.get("u/dup", {}).get("why") == "shares link id 251065")
-    check("its list is named", by_id.get("u/dup", {}).get("list") == "Abandoned")
-    check("an archived card with the same name ignoring punctuation is the same item", "u/renamed" in by_id)
-    check("the archived card is marked closed", by_id.get("u/renamed", {}).get("closed") is True)
-    check("the card itself is left out", "u/new" not in by_id and all(c["url"] != "u/new" for c in head))
+    trello_utils.trello_request = fake_request(CARDS, [])
+    same, head = trello_utils.find_related_cards(CARDS[0], trello_utils.get_board_snapshot("B1", ("k", "t")))
+    by_url = {c["url"]: c for c in same}
+    dup, twin = by_url.get("u/dup", {}), by_url.get("u/twin", {})
+    check("the abandoned re-sourced card is the same item", dup.get("why") == "shares link id 251065", dup)
+    check("it is decided and older", dup.get("decided") is True and dup.get("older") is True, dup)
+    check("an open card with the same name ignoring punctuation is the same item", twin.get("why") == "same name")
+    check("it is open and newer", twin.get("decided") is False and twin.get("older") is False, twin)
+    check("template cards and Templates-list cards are left out",
+          not {"u/template", "u/templist"} & {c["url"] for c in same + head})
+    sib = head[0] if head else {}
     check("another role at the same employer is a sibling", [c["url"] for c in head] == ["u/sibling"])
+    check("digits inside a profile slug are not a shared link id", sib.get("why") == "same name head", sib)
+    check("an archived card on an open list is decided", sib.get("decided") is True, sib)
     check("a card only mentioning the employer in its description is not matched",
           all(c["url"] != "u/other" for c in same + head))
 
 
+def test_paging():
+    print("test: the snapshot pages past Trello's per-response cap")
+    old_page = trello_utils._CARDS_PAGE
+    trello_utils._CARDS_PAGE = 3
+    calls = []
+    try:
+        trello_utils.trello_request = fake_request(CARDS, calls)
+        _lists, cards = trello_utils.get_board_snapshot("B1", ("k", "t"))
+    finally:
+        trello_utils._CARDS_PAGE = old_page
+    check("every non-template card comes back", len(cards) == 5, len(cards))
+    check("later pages ask for cards before the oldest one seen", any("before" in c for c in calls))
+
+
 if __name__ == "__main__":
     test_tiers()
+    test_paging()
     print()
     if failures:
         print(f"{len(failures)} FAILED: {failures}")

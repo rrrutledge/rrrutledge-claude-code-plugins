@@ -594,8 +594,9 @@ async function sentSince() {
 }
 
 async function search() {
-  const query = String(args.search);
-  const top = Math.min(parseInt(args.top, 10) || 20, 100);
+  if (typeof args.search !== 'string' || !args.search.trim()) throw new Error('--search takes a query: --search=<query>');
+  const query = args.search;
+  const top = Math.max(1, Math.min(parseInt(args.top, 10) || 20, 100));
   const r = await call('search.messages', { query, sort: 'timestamp', sort_dir: 'desc', count: String(top) });
   const where = (c) => (c.is_im ? 'a DM' : c.is_mpim ? 'a group DM' : `#${c.name || c.id}`);
   const out = ((r.messages || {}).matches || []).map(hit => ({
@@ -606,7 +607,8 @@ async function search() {
   if (args.json) { console.log(JSON.stringify(out, null, 2)); return; }
   console.log(`${out.length} message(s) matching ${JSON.stringify(query)}, newest first:`);
   for (const m of out) {
-    console.log(`\n--- ${m.sent.slice(0, 16)} | ${m.from} in ${m.where} ${m.permalink}`);
+    const local = new Date(m.sent).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+    console.log(`\n--- ${local} | ${m.from} in ${m.where} ${m.permalink}`);
     console.log(clean(m.text) || '(no text)');
   }
 }

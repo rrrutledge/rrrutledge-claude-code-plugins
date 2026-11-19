@@ -55,9 +55,10 @@ The Start date moves only when the work advances (CLEAR), never to mark a card i
 
 **Match a decided duplicate before any research.**
 The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for, already run over every card on the board, archived and Abandoned/Finished included.
-A card under "Same item" is this same thing, re-sourced.
-When that card sits on a terminal list, the decision is already made: post a dated comment naming and linking the decided card, CLEAR this card the same way it went (**stop** for Abandoned), and close per worker-core §6a.
-When that card is still open, the work lives on one card: carry anything new from this card into a dated comment on the open one, stop this card with a comment linking it, and close the same way.
+A card under "Same item" is a candidate: open it and confirm it is this same request (the same posting, the same ask from the same person) rather than a recurrence of it or a different item sharing a name.
+A confirmed **decided** card already holds the decision: post a dated comment naming and linking it, CLEAR this card the same way it went (**stop** for Abandoned), and close per worker-core §6a.
+A confirmed **open** card means the work belongs on one card, the older of the two.
+When the open card is older, carry anything new from this card into a dated comment on it, stop this card with a comment linking it, and close the same way; when this card is the older one, carry on with it, leaving the newer card for its own worker to stop.
 The "Same employer or person" cards are context for the research, showing how this employer or contact went before.
 A name the section never searched (a contact in the description, another board's employer) gets the same search by hand.
 

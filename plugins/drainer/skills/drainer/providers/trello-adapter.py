@@ -118,6 +118,8 @@ class Provider(ProviderBase):
         self.board_in_progress_lists = {}
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
+        # Board id -> trello_utils.get_board_snapshot, filled lazily by capture's related-cards lookup.
+        self._snapshots = {}
 
     # --------------------------------------------------------------- locate the trello-outreach helper
     @staticmethod
@@ -690,31 +692,33 @@ class Provider(ProviderBase):
             json.dump(record, f, indent=2)
         return json_file
 
-    RELATED_HEAD_CAP = 10
-
     def _related_cards(self, item):
         """The capture's "Related cards on this board" section: other cards on the board, archived and
         Abandoned/Finished included, that are the same item or open with the same employer or person
         (trello_utils.find_related_cards). A failed lookup says so, so the worker searches by hand."""
-        if not item.get("boardId"):
-            return "(not looked up: no board id on the item)"
         try:
+            bid = item["boardId"]
+            # One snapshot per board per process: every card captured from a board in this cycle
+            # reads the same board-wide fetch.
+            if bid not in self._snapshots:
+                self._snapshots[bid] = self._utils.get_board_snapshot(bid, self.session)
             same, head = self._utils.find_related_cards(
-                item["boardId"], {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")},
-                self.session)
+                {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")}, self._snapshots[bid])
         except Exception as e:
             return f"(lookup failed: {e})"
 
         def line(c):
             where = f"{c['list']}, archived" if c["closed"] else c["list"]
-            return f"- [{c['name']}]({c['url']}) - {where} - {c['why']}"
+            state = "decided" if c["decided"] else "open"
+            age = "older" if c["older"] else "newer"
+            return f"- [{c['name']}]({c['url']}) - {where} - {state}, {age} than this card - {c['why']}"
 
         out = ["Same item (same name ignoring punctuation, or a shared link id):"]
         out += [line(c) for c in same] or ["- none"]
         out += ["", f"Same employer or person ({len(head)}):"]
-        out += [line(c) for c in head[:self.RELATED_HEAD_CAP]] or ["- none"]
-        if len(head) > self.RELATED_HEAD_CAP:
-            out.append(f"- ...and {len(head) - self.RELATED_HEAD_CAP} more")
+        out += [line(c) for c in head[:10]] or ["- none"]
+        if len(head) > 10:
+            out.append(f"- ...and {len(head) - 10} more")
         return "\n".join(out)
 
     def _fetch_comments(self, card_id):

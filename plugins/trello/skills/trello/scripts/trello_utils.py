@@ -263,9 +263,10 @@ def find_card_by_name(board_id, name, session):
     return None
 
 
-_NAME_HEAD_SPLIT_RE = re.compile(r'\s+[—–/|-]\s+')
+_NAME_HEAD_SPLIT_RE = re.compile('\\s+[\u2014\u2013/|-]\\s+')
 _URL_RE = re.compile(r'https?://[^\s)\]>]+')
-_LINK_ID_RE = re.compile(r'\d{5,}')
+_LINK_ID_RE = re.compile(r'^\d{5,}$')
+_CARDS_PAGE = 1000  # Trello's cap on one board-cards response
 
 
 def _squash(text):
@@ -274,33 +275,62 @@ def _squash(text):
 
 
 def _name_head(name):
-    """The leading segment of a card name: "H-E-B" of "H-E-B — Staff Engineer", "Acme Corp" of
+    """The leading segment of a card name: "H-E-B" of "H-E-B - Staff Engineer", "Acme Corp" of
     "Acme Corp / Jane Doe" - the employer or person the card is about."""
     return _NAME_HEAD_SPLIT_RE.split(name or '', maxsplit=1)[0].strip()
 
 
 def _link_ids(desc):
-    """Every run of 5+ digits inside a link in a description - how a job posting's req id rides,
-    whichever job board sourced the card."""
-    return {num for url in _URL_RE.findall(desc or '') for num in _LINK_ID_RE.findall(url)}
+    """Every all-digit path segment or query value of 5+ digits in a link in a description - how a
+    job posting's req id rides, whichever job board sourced the card. Digits embedded in a longer
+    token (a profile slug, a document id) are left out."""
+    ids = set()
+    for url in _URL_RE.findall(desc or ''):
+        parts = urllib.parse.urlsplit(url)
+        values = parts.path.split('/') + [v for _, v in urllib.parse.parse_qsl(parts.query)]
+        ids.update(v for v in values if _LINK_ID_RE.match(v))
+    return ids
 
 
-def find_related_cards(board_id, card, session):
-    """Return `(same_item, same_head)` for `card` (a dict with `id`, `name`, `desc`).
+def _created_at(card_id):
+    """A Trello id opens with its creation time as 8 hex digits; 0 for an id that doesn't."""
+    try:
+        return int(card_id[:8], 16)
+    except (TypeError, ValueError):
+        return 0
 
-    `same_item` holds every other card on the board that is the same thing: the same name once
-    punctuation and case are dropped, or a link sharing one of the card's link ids.
-    `same_head` holds the rest of the cards whose name opens with the same employer or person.
-    Archived cards and cards on Abandoned/Finished lists are included, since a card already decided
-    there is the record a new card on the same thing has to match.
-    Each entry is `{name, list, url, closed, why}`.
-    """
-    name, head = _squash(card.get('name')), _squash(_name_head(card.get('name')))
-    ids = _link_ids(card.get('desc'))
+
+def get_board_snapshot(board_id, session):
+    """Return `(lists_by_id, cards)` for every list and card on the board, archived ones included,
+    paging past Trello's per-response cap. Template cards are left out: they are patterns, not work."""
     lists = {l['id']: l['name'] for l in
              trello_request('GET', f'/boards/{board_id}/lists', session, params={'filter': 'all'})}
-    others = trello_request('GET', f'/boards/{board_id}/cards/all', session,
-                            params={'fields': 'name,desc,idList,shortUrl,closed'})
+    cards, before = [], None
+    while True:
+        params = {'fields': 'name,desc,idList,shortUrl,closed,isTemplate', 'limit': str(_CARDS_PAGE)}
+        if before:
+            params['before'] = before
+        page = trello_request('GET', f'/boards/{board_id}/cards/all', session, params=params)
+        cards += [c for c in page if not c.get('isTemplate')
+                  and 'template' not in lists.get(c.get('idList'), '').lower()]
+        if len(page) < _CARDS_PAGE:
+            return lists, cards
+        before = min(page, key=lambda c: c['id'])['id']
+
+
+def find_related_cards(card, snapshot):
+    """Return `(same_item, same_head)` for `card` (a dict with `id`, `name`, `desc`) against a
+    `get_board_snapshot` of its board.
+
+    `same_item` holds every other card that is the same thing: the same name once punctuation and
+    case are dropped, or a link sharing one of the card's link ids.
+    `same_head` holds the rest of the cards whose name opens with the same employer or person.
+    Each entry is `{name, list, url, closed, decided, older, why}`: `decided` when the card is
+    archived or on a terminal list, `older` when it was created before `card`.
+    """
+    lists, others = snapshot
+    name, head = _squash(card.get('name')), _squash(_name_head(card.get('name')))
+    ids = _link_ids(card.get('desc'))
     same_item, same_head = [], []
     for other in others:
         if other['id'] == card.get('id'):
@@ -314,8 +344,11 @@ def find_related_cards(board_id, card, session):
             why, bucket = 'same name head', same_head
         else:
             continue
-        bucket.append({'name': other.get('name', ''), 'list': lists.get(other.get('idList'), '?'),
-                       'url': other.get('shortUrl', ''), 'closed': bool(other.get('closed')), 'why': why})
+        list_name = lists.get(other.get('idList'), '?')
+        closed = bool(other.get('closed'))
+        bucket.append({'name': other.get('name', ''), 'list': list_name, 'url': other.get('shortUrl', ''),
+                       'closed': closed, 'decided': closed or _is_terminal_list(list_name),
+                       'older': _created_at(other['id']) < _created_at(card.get('id')), 'why': why})
     return same_item, same_head
 
 
