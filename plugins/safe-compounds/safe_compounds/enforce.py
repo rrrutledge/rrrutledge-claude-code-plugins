@@ -681,8 +681,9 @@ def enforce_bash(command):
         return ('BLOCKED: `git worktree remove --force` deletes uncommitted and untracked files that '
                 'nothing can bring back. Skip the force: commit and push the work, finish the merge '
                 '(the ship-plugin skill merges the PR and removes the worktree), and a plain '
-                '`git worktree remove "<path>"` then succeeds. If Russell has said to throw the work '
-                'away, he runs the forced removal himself.')
+                '`git worktree remove "<path>"` then succeeds. When the work is no longer needed, '
+                'revert it with `git -C "<path>" restore .`, delete the leftover untracked files that '
+                '`git -C "<path>" status` lists, and run the same plain remove.')
 
     if detect_git_force_push(command):
         return ('BLOCKED: Force push (--force, -f, --force-with-lease, or a +ref refspec) rewrites '
