@@ -106,6 +106,11 @@ Some commands are approved based on their *arguments*, not just their name:
 - **`curl`** - approved to `localhost:*` or configured trusted domains (any method);
   approved anywhere for reads (no write flags like `-X POST`, `-d`, `--data`).
   To add a trusted domain: add to `curl_domains` in `~/.claude/safe-compounds-config.json`.
+  A write-flagged curl to any other host is judged by the AI (`curl_judge.py`), because many search APIs take their query as a POST body.
+  The judge reads the command plus the host's front page, fetched with an anonymous GET of the origin root only (public hosts, no redirects), quoted as untrusted data.
+  Only a narrow shape reaches the judge: one URL, POST, literal `-d` bodies, harmless flags and headers.
+  File bodies, uploads, redirects, proxies, credentials, shell expansion, extra targets, other methods, a non-public host, an overlong command, or AI off or without credentials fall through to the prompt without a network or AI call.
+  A SAFE verdict is remembered per exact URL plus the body with its numbers masked, in the learned store on this machine only (see "Learned → source promotion").
 - **`cp`, `mv`, `touch`, `ln`, `chmod`** - approved when the destination path is within
   the current git repo (CWD, git worktree, or `settings.json` allowed-edit paths),
   `~/.claude/plugins/`, a `trusted_destination_dirs` entry, or any `.tmp` directory
@@ -167,6 +172,7 @@ are promoted back to the plugin source via a GitHub PR on a rolling branch
 - Inserts newly learned names into the correct set literals in `trust.py` / `commands.py`.
 - Excludes anything in `trusted_commands` or `learned_sync_exclude` in the config
   (private/company-specific commands).
+- Promotes only the command and subcommand names it has a target set for, so the `curl` judge's remembered endpoint verdicts stay local.
 - Is idempotent and best-effort (failures never disrupt session end).
 
 ### Config file
