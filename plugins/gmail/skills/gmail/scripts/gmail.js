@@ -446,7 +446,9 @@ function renderShow(parsed) {
   if (files.length) {
     lines.push(`Attachments: ${files.map((a, i) => `${a.filename || `attachment-${i + 1}`} (${a.contentType || 'unknown type'})`).join(' | ')}`);
   }
-  lines.push('\n' + (parsed.text || clean(parsed.html) || '(no body)'));
+  // An HTML-only message renders as its plain text: the drainer's triage reads only a leading excerpt
+  // of this body, and an HTML body's leading excerpt is all <style>.
+  lines.push('\n' + (parsed.text || htmlToPlainText(parsed.html) || '(no body)'));
   return lines.join('\n');
 }
 
