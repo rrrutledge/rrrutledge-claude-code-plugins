@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 # scripts/ is on sys.path (the poller inserts it); fall back to a relative add when run standalone.
@@ -50,8 +51,9 @@ _PRIORITY_RE = re.compile(r"^\s*(?:🎯\s*)?P([1-3])\s*$")
 # matches that one canonical form; anchored so a contact name containing "referral" never trips it.
 _REFERRAL_RE = re.compile(r"^\s*🤝 Referral\s*$")
 
-# A money label marks a card where money comes in or goes out. A "💰 Money" card is pinned to
-# TOP_PRIORITY_BAND (see _priority_band).
+# A money label marks a card where money comes in or goes out (a bill, the ISC invoice, the monthly
+# budget, a sponsorship follow-up). The pod's money skills apply the exact string "💰 Money" when they
+# create or recur their card; the card then sits in the top band with job search.
 _MONEY_RE = re.compile(r"^\s*💰 Money\s*$")
 
 # A person follow-up card wears the "👤 Contact" label: it tracks the follow-up cadence with one
@@ -99,6 +101,7 @@ _DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 class Provider(ProviderBase):
     name = "trello"
+    SNAPSHOT_TTL_S = 600
 
     def __init__(self):
         self._utils = self._import_trello_utils()
@@ -123,6 +126,9 @@ class Provider(ProviderBase):
         self.board_in_progress_lists = {}
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
+        # Board id -> (monotonic fetch time, trello_utils.get_board_snapshot), filled lazily by capture's
+        # related-cards lookup.
+        self._snapshots = {}
 
     # --------------------------------------------------------------- locate the trello-outreach helper
     @staticmethod
@@ -292,10 +298,10 @@ class Provider(ProviderBase):
                            if (l.get("color") or "").lower() == "yellow" and l.get("name")),
                           None)
         # Hold status labels (⛔ Blocked / ⏳ Waiting), priority labels (🎯 P1/P2/P3), the 🤝 Referral
-        # and 💰 Money labels, and the 👤 Contact card-type label out of the name pool so none is ever
-        # read as a contact - a status label carries dependency state, a priority label carries fit rank,
-        # the referral and money labels carry a queue promotion, and 👤 Contact marks the card as a
-        # person-follow-up card, none of them a contact's name.
+        # label, and the 👤 Contact card-type label out of the name pool so none is ever read as a
+        # contact - a status label carries dependency state, a priority label carries fit rank, the
+        # referral label carries a queue promotion, and 👤 Contact marks the card as a person-follow-up
+        # card, none of them a contact's name.
         names = [l.get("name") for l in labels
                  if l.get("name") and l.get("name") != initiative
                  and not any(tok in l.get("name").lower() for tok in self.status_labels)
@@ -329,8 +335,9 @@ class Provider(ProviderBase):
         Four pins put a card in the top band, ahead of everything below it: a 👤 Contact
         person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
-        card; and a P1 Director-or-above role, with or without posted pay, or a P1 people manager whose
-        posted pay reaches _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
+        card; and a P1
+        Director-or-above role, with or without posted pay, or a P1 people manager whose posted pay reaches
+        _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
         whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
@@ -556,6 +563,7 @@ class Provider(ProviderBase):
                 who = ", ".join(contacts) if contacts else bname
                 items.append({
                     "cardId": card["id"],
+                    "boardId": board["id"],
                     "board": bname,
                     "list": list_name,
                     "name": card.get("name", ""),
@@ -682,6 +690,7 @@ class Provider(ProviderBase):
         os.makedirs(items_dir, exist_ok=True)
         body_file = os.path.join(items_dir, f"{iid}.trello.md")
         comments = self._fetch_comments(item["cardId"])
+        related = self._related_cards(item)
         with open(body_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('name')}\n\n"
                     f"Board: {item.get('board')} / List: {item.get('list')}\n"
@@ -690,7 +699,8 @@ class Provider(ProviderBase):
                     f"Contacts: {', '.join(item.get('contacts') or []) or '(none)'}\n"
                     f"Initiative: {item.get('initiative') or '(none)'}\n"
                     f"Link: {item.get('url')}\nCardId: {item['cardId']}\n\n"
-                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n")
+                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n\n"
+                    f"## Related cards on this board\n\n{related}\n")
         record = {
             "id": iid, "source": self.name, "triage": item.get("_bucket", "needs-you"),
             # messageId == the stable_id: it is the handle the reconcile checks against
@@ -712,6 +722,41 @@ class Provider(ProviderBase):
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
         return json_file
+
+    def _related_cards(self, item):
+        """The capture's "Related cards on this board" section: other cards on the board, archived and
+        Abandoned/Finished included, that are the same item or open with the same employer or person
+        (trello_utils.find_related_cards). A failed lookup says so, so the worker searches by hand."""
+        if not hasattr(self._utils, "get_board_snapshot"):
+            return "(not looked up: the installed trello plugin predates the related-cards lookup; update it)"
+        try:
+            # An item queued before captures carried boardId names its board only by name.
+            bid = item.get("boardId") or next(b["id"] for b in self.boards if b.get("name") == item.get("board"))
+            # Cards captured from one board within a few minutes share one board-wide fetch; the keeper
+            # process lives for days, so an older snapshot is refetched.
+            fetched, snapshot = self._snapshots.get(bid, (0, None))
+            if time.monotonic() - fetched > self.SNAPSHOT_TTL_S:
+                snapshot = self._utils.get_board_snapshot(bid, self.session)
+                self._snapshots[bid] = (time.monotonic(), snapshot)
+            same, head = self._utils.find_related_cards(
+                {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")}, snapshot)
+        except Exception as e:
+            return f"(lookup failed: {e})"
+
+        def line(c):
+            where = f"{c['list']}, archived" if c["closed"] else c["list"]
+            state = "decided" if c["decided"] else "open"
+            age = "older" if c["older"] else "newer"
+            return f"- [{c['name']}]({c['url']}) - {where} - {state}, {age} than this card - {c['why']}"
+
+        def block(title, cards):
+            # Open cards first, then newest, so a capped list keeps the cards a decision turns on.
+            cards = sorted(cards, key=lambda c: (c["decided"], c["older"]))
+            rows = [f"{title} ({len(cards)}):"] + ([line(c) for c in cards[:10]] or ["- none"])
+            return rows + ([f"- ...and {len(cards) - 10} more"] if len(cards) > 10 else [])
+
+        return "\n".join(block("Same item (same name ignoring punctuation, or a shared posting id)", same)
+                         + [""] + block("Same employer or person", head))
 
     def _fetch_comments(self, card_id):
         try:
