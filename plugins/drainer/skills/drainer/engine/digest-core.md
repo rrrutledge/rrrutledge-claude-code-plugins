@@ -119,11 +119,11 @@ Step 4's review gate governs CLEAR (disposal) alone, never this read - so resolv
 Resolve it in the same pass that gathers the digest, and present Russell the finished summary rather than an offer to go fetch it.
 The digest's fyi summary is that resolved content - for a hosted-PDF or attachment newsletter, read the file, then summarize it and pull its **action items for you** to-dos exactly as for a link-hosted bulletin - never the pointer stub restated.
 
-**Before framing any item as still needing Russell** - an open ask, an awaited reply, anything that implies he still owes a response - run that provider's **SITUATIONAL-CHECK** first (search Sent + Drafts; read `<providers_dir>/<source>-provider.md` → SITUATIONAL-CHECK).
+**Before framing any item as still needing Russell** - an open ask, an awaited reply, anything that implies he still owes a response - run the searches in worker-core §2's "Check before you ask" and "Search around before concluding" first, and read the thread per that provider's **SITUATIONAL-CHECK** (`<providers_dir>/<source>-provider.md`).
 The captured snippet is the *original inbound* message, and the conversation has usually moved on.
-If Russell (or a teammate on his behalf) already replied after the captured message, present it as **✅ already handled** or drop it from the summary entirely - never list it as a to-do.
+If Russell (or a teammate on his behalf) already replied after the captured message, or the searches show the matter settled elsewhere, present it as **✅ already handled** or drop it from the summary entirely - never list it as a to-do.
 An acknowledgement the ack ledger lists as sent is not such a reply, per worker-core §2 "An acknowledgement is not a reply": an acked item a worker re-triaged to fyi still owes its real reply.
-Summarize as actionable only what the situational check confirms is still open.
+Summarize as actionable only what the searches and the thread read confirm is still open.
 When that still-open item is something the pod can do, it is needs-you per `triage.md`'s question, so hand it off per the Hard rules' "Dispatch execution work" and list it by the launched session's title.
 Do not append a speculative "things still to do" list assembled from unverified captured snippets - that is exactly how an already-answered thread gets re-surfaced as if it needs attention.
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.

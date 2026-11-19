@@ -37,7 +37,8 @@ _SCRIPTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scrip
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 from provider_base import (ProviderBase, ProviderError, slug, NEUTRAL_PRIORITY_BAND, band_rank,  # noqa: E402
-                           find_skill_script)
+                           DUE_PRIORITY_BAND, TOP_PRIORITY_BAND, find_skill_script)
+import recurrence  # noqa: E402 - scripts/ is on sys.path above
 
 # A priority label is exactly "P1"/"P2"/"P3" (optionally with a 🎯 prefix), written by the job-board
 # poller (personal-ai-pod job-board-poll.js) to rank a role's fit. Anchored so it matches only a card
@@ -51,6 +52,10 @@ _PRIORITY_RE = re.compile(r"^\s*(?:🎯\s*)?P([1-3])\s*$")
 # matches that one canonical form; anchored so a contact name containing "referral" never trips it.
 _REFERRAL_RE = re.compile(r"^\s*🤝 Referral\s*$")
 
+# A money label marks a card where money comes in or goes out. A "💰 Money" card is pinned to
+# TOP_PRIORITY_BAND (see _priority_band).
+_MONEY_RE = re.compile(r"^\s*💰 Money\s*$")
+
 # A person follow-up card wears the "👤 Contact" label: it tracks the follow-up cadence with one
 # network contact (its Start is the next-ping date), as opposed to an application card, which tracks a
 # job's own progress and carries a P1/P2/P3 label instead. The two never share a card. Written as the
@@ -60,13 +65,14 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy - the one place it is defined; every other site that mentions a band points here.
 # A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
-#   👤 Contact (person follow-up)  → above neutral   worked ahead of email/Slack and every application
-#   card on an in-progress list    → above neutral   a live application is worked ahead of the inbox
-#   P1 Director-or-above role      → above neutral   with or without posted pay
-#   P1 manager, pay >= floor       → above neutral   the role Russell needs, whatever its title
+#   👤 Contact (person follow-up)  → top band        worked ahead of email/Slack and every application
+#   card on an in-progress list    → top band        a live application is worked ahead of the inbox
+#   P1 Director-or-above role      → top band        with or without posted pay
+#   P1 manager, pay >= floor       → top band        the role Russell needs, whatever its title
+#   card with an incomplete Due    → due band        started on purpose with a deadline; soonest Due first
 #   other P1 application card      → neutral         interleaves with that day's email/Slack by date
 #   P2/P3 application card         → below neutral   worked once the neutral band is drained
-# The four above-neutral pins live in _priority_band. A P2/P3 Director or well-paid manager keeps its
+# The top-band pins and the due band live in _priority_band. A P2/P3 Director or well-paid manager keeps its
 # P-tier band, so it still waits behind the inbox and every P1 card, whatever its level or pay.
 # A P1 (top-fit) application stays AT neutral so a fresh strong-fit role is caught the same day as email;
 # P2/P3 drop below. Within a band, a people manager below the pay floor, or with no posted pay, sits at the
@@ -292,15 +298,16 @@ class Provider(ProviderBase):
                            if (l.get("color") or "").lower() == "yellow" and l.get("name")),
                           None)
         # Hold status labels (⛔ Blocked / ⏳ Waiting), priority labels (🎯 P1/P2/P3), the 🤝 Referral
-        # label, and the 👤 Contact card-type label out of the name pool so none is ever read as a
-        # contact - a status label carries dependency state, a priority label carries fit rank, the
-        # referral label carries a queue promotion, and 👤 Contact marks the card as a person-follow-up
-        # card, none of them a contact's name.
+        # and 💰 Money labels, and the 👤 Contact card-type label out of the name pool so none is ever
+        # read as a contact - a status label carries dependency state, a priority label carries fit rank,
+        # the referral and money labels carry a queue promotion, and 👤 Contact marks the card as a
+        # person-follow-up card, none of them a contact's name.
         names = [l.get("name") for l in labels
                  if l.get("name") and l.get("name") != initiative
                  and not any(tok in l.get("name").lower() for tok in self.status_labels)
                  and not _PRIORITY_RE.match(l.get("name"))
                  and not _REFERRAL_RE.match(l.get("name"))
+                 and not _MONEY_RE.match(l.get("name"))
                  and not _CONTACT_RE.match(l.get("name"))]
         channel = next((n for n in names if n in self.channels), None)
         feats = [n for n in names if n in self.features]
@@ -308,23 +315,41 @@ class Provider(ProviderBase):
         return channel, feats, contacts, initiative
 
     @staticmethod
-    def _priority_band(card, in_progress=False):
+    def _due_dt(card, start_dt):
+        """The card's Due datetime when it counts for the due band, else None: the Due is set and not
+        marked complete, and the card has a Start (it was started on purpose; the startable gate already
+        ensured that Start has arrived)."""
+        if start_dt is None or card.get("dueComplete"):
+            return None
+        return Provider._parse_dt(card.get("due"))
+
+    @staticmethod
+    def _due_rank(band, due_dt):
+        """The sort value band_rank reads for the due band: the negated Due epoch seconds, so the
+        descending sort puts the soonest (or most overdue) Due first; 0 outside the due band."""
+        return -due_dt.timestamp() if band == DUE_PRIORITY_BAND else 0
+
+    @staticmethod
+    def _priority_band(card, in_progress=False, due_dt=None):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
-        Four pins put a card one band above neutral, ahead of the inbox and every application tier: a 👤
-        Contact person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
-        resolved by the caller from the card's list), whatever other labels either wears; and a P1
-        Director-or-above role, with or without posted pay, or a P1 people manager whose posted pay reaches
-        _PAY_BAND_FLOOR. Otherwise the first P1/P2/P3 priority label wins; an application card normally
+        Four pins put a card in the top band, ahead of everything below it: a 👤 Contact
+        person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
+        resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
+        card; and a P1 Director-or-above role, with or without posted pay, or a P1 people manager whose
+        posted pay reaches _PAY_BAND_FLOOR. Below the pins, a card with a due date (`due_dt`, see _due_dt) takes the due band,
+        whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
         if in_progress:
-            return NEUTRAL_PRIORITY_BAND + 1
+            return TOP_PRIORITY_BAND
         if Provider._is_p1(card) and (Provider._is_director_level(card)
                                       or Provider._pays_people_manager_floor(card)):
-            return NEUTRAL_PRIORITY_BAND + 1
+            return TOP_PRIORITY_BAND
         for l in labels:
-            if _CONTACT_RE.match(l.get("name") or ""):
-                return NEUTRAL_PRIORITY_BAND + 1
+            if _CONTACT_RE.match(l.get("name") or "") or _MONEY_RE.match(l.get("name") or ""):
+                return TOP_PRIORITY_BAND
+        if due_dt is not None:
+            return DUE_PRIORITY_BAND
         for l in labels:
             m = _PRIORITY_RE.match(l.get("name") or "")
             if m:
@@ -491,6 +516,35 @@ class Provider(ProviderBase):
             # isolates trello and records it to provider-health instead of aborting the whole cycle.
             raise ProviderError(f"trello enumerate failed (auth/API?): {e}", kind="auth")
 
+    def _sweep_recurring(self, card, start_dt, now):
+        """Bring a missed `Recurs:` card forward and return its Start (moved, or unchanged).
+        A card whose Start is a full period or more in the past was not completed (finishing an occurrence
+        already moves Start), so Start moves to the latest date on its original schedule that is not in the
+        future and one dated comment is left on the card. No digest entry, no opt-out. A failure on one
+        card is logged and never stops the cycle: a failed Start write keeps the old Start this cycle, a
+        failed comment keeps the move."""
+        period = recurrence.parse_period(card.get("desc"))
+        if period is None or start_dt is None:
+            return start_dt
+        try:
+            new_start = recurrence.moved_start(start_dt, period, now)
+            if new_start is None:
+                return start_dt
+            self._utils.trello_request("PUT", f"/cards/{card['id']}", self.session,
+                                       body={"start": new_start.isoformat()})
+        except Exception as e:
+            print(f"  recurring sweep could not move card {card['id']}: {e}")
+            return start_dt
+        card["start"] = new_start.isoformat()
+        local = lambda d: d.astimezone().date()  # noqa: E731 - the card history reads in local time
+        try:
+            self._utils.add_comment(
+                card["id"], f"{local(now)}: occurrence of {local(start_dt)} missed, moved to {local(new_start)}",
+                self.session)
+        except Exception as e:
+            print(f"  recurring sweep moved card {card['id']} but could not comment: {e}")
+        return new_start
+
     def _my_id(self):
         """Return the authenticated member's Trello ID, fetched once and cached."""
         if self._my_member_id is None:
@@ -519,12 +573,14 @@ class Provider(ProviderBase):
             # feeds still_in_inbox_ids, so a card in play here is exactly one reconcile treats as
             # outstanding.
             for card, list_name, start_dt in self._startable_cards(board, now, my_id):
+                start_dt = self._sweep_recurring(card, start_dt, now)
                 # Sort rank / go-live: a card ranks by its Start (its resurface day); an undated card by
                 # its creation date (always in the past), so it sorts by age alongside email/Slack.
                 sort_dt = start_dt or self._created_dt(card["id"])
                 # The three band values; band_rank (provider_base) defines the order they sort in.
                 in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
-                priority_band = self._priority_band(card, in_progress)  # see _PRIORITY_BAND
+                due_dt = self._due_dt(card, start_dt)
+                priority_band = self._priority_band(card, in_progress, due_dt)  # see _PRIORITY_BAND
                 referral_band = self._referral_band(card)  # see _referral_band
                 level_band = self._level_band(card)        # see _level_band
                 channel, feats, contacts, initiative_label = self._classify_labels(card)
@@ -556,6 +612,7 @@ class Provider(ProviderBase):
                     "preview": f"[{bname} / {list_name}] {(card.get('desc') or '').strip()[:200]}",
                     "_sort_dt": sort_dt,
                     "_priority_band": priority_band,
+                    "_due_rank": self._due_rank(priority_band, due_dt),
                     "_referral_band": referral_band,
                     "_level_band": level_band,
                 })

@@ -30,8 +30,9 @@ Start is the one date, alongside two labels + a description convention:
   Record `Blocked-by: <upstream-shortlink>[, …]` in the description; optionally attach the upstream card for a human-visible link.
   (The `trello` skill's SKILL.md owns applying this at creation time - it's the mechanics layer every Trello write goes through.)
 
-**Trello's native Due field is a separate, informational date the queue never reads.**
-It's fine to set Due as a plain deadline marker when a card genuinely has one, alongside Start - but setting only Due, expecting it to hold a card back, nudge it, or make it resurface, silently does nothing: the drainer's queue and every nudge/advance operation in this file act on Start alone.
+**Trello's native Due field ranks a card once its Start has arrived.**
+The due-band rule lives in `trello-queue-model.md`.
+Whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
 
 **Unblock has a push and a pull.**
@@ -198,6 +199,12 @@ This applies to any board, not just outreach: a personal to-do that repeats ("ca
 On CLEAR, once the work for this occurrence is done - or launched and running on its own, as a spawned session that IS the occurrence's work - **do not** move a `Recurs:` card to Abandoned or Finished.
 Instead **bump its Start date forward by the stated cadence** (same mechanism as the ordinary **nudge** op above, just driven by the card's own marker instead of a reply-cadence tier) and post the usual dated comment.
 The card goes quiet until that new Start arrives, then resurfaces as a fresh drainable item - the id scheme already stamps the Start into the card's id for exactly this reason (see `trello-queue-model.md`), so this occurrence and the next one are never confused in seen-state.
+
+**A missed occurrence is brought forward by a plain-code sweep.**
+Each poller cycle, the adapter moves the Start of a `Recurs:` card whose Start is a full period or more in the past, because finishing an occurrence already moves Start.
+The sweep acts silently: one dated comment on the card ("occurrence of <date> missed, moved to <date>"), no digest entry, no opt-out word.
+It waits a full period before acting, so a card whose Start is the first of a period it covers retroactively keeps a period of grace.
+The cadences it reads and the date math live in `scripts/recurrence.py`.
 
 A `Recurs:` card is never `stop`ped for being "done" - completing one occurrence isn't the end of the task, only this cycle of it.
 `stop` still applies if Russell explicitly says to abandon the recurring task altogether (clear the `Recurs:` line too, so it can't come back by mistake).
