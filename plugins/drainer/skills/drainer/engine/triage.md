@@ -10,12 +10,12 @@ This file ONLY classifies - what the poller DOES with each bucket (own worker vs
 For every inbound item ask: **is there something to do - for Russell, or for the pod working on his behalf?**
 If there is, now is the time - do it immediately, or kick it off in a worker session.
 Everything Russell is going to do, he does right now, and the pod does every step it can carry out for him.
-Nobody has to ask in words: when the item implies work of any kind, that work is something to do.
+When the item implies work of any kind, that work is something to do.
 
 Answer it by **reading the item as Russell would** - the world-knowledge below tells you who he is, the people and organizations he's tied to, and the systems he acts in, so you can judge the item the way he would on reading it.
 That knowledge informs your judgment.
 The cases it lists are illustrations of the one question - when an item fits no listed case, reason from the question anyway.
-A novel item with no rule to its name is still decided by "would Russell act on this?".
+A novel item with no rule to its name is still decided by the question above.
 Never drop an item to junk merely because nothing here named it.
 
 Answering that is the whole of triage, and the answer is one of four buckets - two when there's something to do, two when there isn't.
@@ -71,8 +71,8 @@ Whether a sign-in exists doesn't decide it here.
 
 **When there is something to do, it's one of two buckets:**
 
-- **needs-you** - Russell acts on it now, in its own worker session.
-  This is the default for anything he'd do.
+- **needs-you** - it gets acted on now, in its own worker session, by Russell or by the pod for him.
+  This is the default for anything either would do.
   It's ONE bucket on purpose; don't split reply-vs-work here.
   Record a hint: **"reply"** when a message is the whole response (an answer, an acknowledgment), **"work"** when the action is the whole of it, and **"work-then-reply"** when the sender asks for something the pod can carry out itself (the asks `worker-core.md` step 3 covers) and a reply then reports it done.
   The verdict's reason (the item's `triageReason`) names that ask as the worker's task ("fill the sender's form, then reply done"), because the worker carries it out itself (`worker-core.md` step 3).
@@ -153,5 +153,5 @@ When it's genuinely unclear, use `false`.
   Any doubt that the rule applies → fall back to **needs-you** (let Russell decide).
   Better to ask once than to auto-act on something that wasn't actually a standing decision.
 - Unsure whether there's something to do → treat it as **needs-you** (prefer acting).
-  An item whose text you couldn't read (empty, or markup that never reaches the message) is unsure, not nothing-to-do.
+  An item whose text you couldn't read (an empty body, or one that is only HTML markup with no readable text) counts as unsure.
 - Nothing to do, unsure between **fyi** and **junk** → **fyi** (prefer keeping eyes on it).

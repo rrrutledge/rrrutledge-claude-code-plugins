@@ -116,7 +116,7 @@ The captured snippet is the *original inbound* message, and the conversation has
 If Russell (or a teammate on his behalf) already replied after the captured message, present it as **✅ already handled** or drop it from the summary entirely - never list it as a to-do.
 An acknowledgement the ack ledger lists as sent is not such a reply, per worker-core §2 "An acknowledgement is not a reply": an acked item a worker re-triaged to fyi still owes its real reply.
 Summarize as actionable only what the situational check confirms is still open.
-When that still-open item is something the pod can do, it was needs-you all along, so hand it off per the Hard rules' "Dispatch execution work" and list it by the launched session's title rather than leaving it for Russell as an fyi line.
+When that still-open item is something the pod can do, it is needs-you per `triage.md`'s question, so hand it off per the Hard rules' "Dispatch execution work" and list it by the launched session's title.
 Do not append a speculative "things still to do" list assembled from unverified captured snippets - that is exactly how an already-answered thread gets re-surfaced as if it needs attention.
 A **recap** (a `zoom` or Fireflies meeting recap) is the same trap in another form: its "next steps" are not a to-do list to reproduce, because the owner's action items from that meeting are already captured as their own separate needs-you items, each with its own worker.
 Summarize the recap's gist - what was discussed, the decisions, any date or number worth knowing - and never re-list those action items here, or the same action shows up twice: once as a live worker, once as a phantom digest to-do.
