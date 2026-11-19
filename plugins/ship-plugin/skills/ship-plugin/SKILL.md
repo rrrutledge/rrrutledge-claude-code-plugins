@@ -27,8 +27,8 @@ The session handles the two calls a script can't make: leaving a worktree throug
    `python "<base directory>/scripts/ship.py" --pr <n>`, or with no `--pr` for the open PR on the current branch.
    Add `--admin` only when Russell explicitly says to override branch protection.
 2. **On exit code 3, leave the worktree and rerun.**
-   The script has printed `EXIT_WORKTREE keep` (docstring step 5 says why).
-   Call `ExitWorktree` with `action: keep`; the rerun's cleanup removes the worktree with `git worktree remove`, which refuses a worktree holding uncommitted files.
+   The script has printed `EXIT_WORKTREE` (docstring step 5 says why).
+   Call `ExitWorktree` with `action: keep`.
    Then run the `then rerun:` command it printed, which resumes after the merge.
 3. **On exit code 1, handle the `ERR` line.**
    A merge conflict is resolved by merging `origin/main` into the branch, fixing the conflicts, and pushing; then rerun.
