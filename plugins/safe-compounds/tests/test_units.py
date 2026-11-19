@@ -165,6 +165,16 @@ class TestGit:
         assert enforce_bash("git push origin feature") is None
         assert enforce_bash("git push origin --delete feature") is None
 
+    def test_worktree_force_remove_blocked_with_finish_the_merge_message(self):
+        for cmd in ("git worktree remove --force /w", "git worktree remove -f /w",
+                    "git -C /repo worktree remove /w --force", "git worktree remove -ff /w",
+                    "git worktree remove --forc /w"):
+            reason = enforce_bash(cmd)
+            assert reason and "finish the merge" in reason, cmd
+        assert enforce_bash("git worktree remove /w") is None
+        assert enforce_bash("git worktree add -f /w branch") is None
+        assert enforce_bash("git worktree list") is None
+
     def test_reset_hard_blocked(self):
         assert is_git_command_safe("git reset --hard") is False
 
@@ -877,26 +887,29 @@ class TestEnterWorktree:
 
 class TestExitWorktree:
     def test_keep_approves(self):
-        assert classify_exit_worktree({"action": "keep"}) is True
+        assert classify_exit_worktree({"action": "keep"}) == ("allow", None)
 
     def test_plain_remove_approves(self):
         # The tool itself refuses this call when there's uncommitted work or
         # unmerged commits, so a plain remove (no override) is safe to allow.
-        assert classify_exit_worktree({"action": "remove"}) is True
+        assert classify_exit_worktree({"action": "remove"}) == ("allow", None)
 
-    def test_remove_with_discard_changes_prompts(self):
-        # discard_changes=True forces the tool past unsaved/unmerged work --
-        # a genuinely destructive override, so this must not auto-approve.
-        assert classify_exit_worktree({"action": "remove", "discard_changes": True}) is False
+    def test_remove_with_discard_changes_blocks_with_git_redirect(self):
+        # discard_changes=True forces the tool past unsaved/unmerged work, so it
+        # is blocked and routed to `git worktree remove`, which checks for itself.
+        decision, reason = classify_exit_worktree({"action": "remove", "discard_changes": True})
+        assert decision == "block"
+        assert "git worktree remove" in reason
+        assert '"keep"' in reason
 
     def test_remove_with_discard_changes_false_approves(self):
-        assert classify_exit_worktree({"action": "remove", "discard_changes": False}) is True
+        assert classify_exit_worktree({"action": "remove", "discard_changes": False}) == ("allow", None)
 
     def test_unrecognized_action_prompts(self):
-        assert classify_exit_worktree({"action": "bogus"}) is False
+        assert classify_exit_worktree({"action": "bogus"}) == ("prompt", None)
 
     def test_missing_action_prompts(self):
-        assert classify_exit_worktree({}) is False
+        assert classify_exit_worktree({}) == ("prompt", None)
 
 
 class TestComplexBash:

@@ -632,6 +632,11 @@ Fix without asking: a violation is always wrong.
 
 **Screenshot on Failure** - Scripts save screenshots to `.tmp/diag-*.png` on failure so the recovery loop can read them. The `screenshotOnFailure(context, label)` helper in `templates/screenshot-on-failure.js` saves them; where a script calls it is `script-quality-standards.md` **Helper Calls and Logging**.
 
+**Evidence Screenshots** - A screenshot that shows the user a problem comes from the live page where they would see that problem, so the image matches what they find when they go look.
+Capture each one with `captureEvidence(page, { text } | { selector }, outPath)` from `browser-chauffeur-helpers`, which draws a red box around the target.
+Aim the box at the smallest target that is the problem itself.
+Take one image per problem, and Read each before handing it over to confirm the box sits on the problem.
+
 **Virtualized Grid Scrolling** - To render off-screen rows in a virtualized grid/list (Vaadin Grid, react-window, ag-grid, and similar - they mount only visible rows and recycle DOM nodes as you scroll), call the component's own scroll-to API directly via `page.evaluate()`: `grid.scrollToIndex(n)` for Vaadin Grid, or the analogous method on whichever virtualization library the page uses. Verify the target content actually appears in `document.body.innerText` afterward before moving on. Scroll, locate the row's control, and click it with a locator all in the same script run - a virtualized grid's scroll position and recycled row contents can shift between runs, so measuring a position in one script and clicking it in the next can land on a different row than intended. When the resulting action is destructive or hard to undo, read back its confirmation dialog (or resulting state) to confirm it names the item you meant before proceeding.
 
 **Coordinate Clicks in CSS Pixels** - Get click targets via `getBoundingClientRect()` inside `page.evaluate()`, which always returns CSS pixels matching what `page.mouse.click()` expects. Don't read coordinates off a saved screenshot image - screenshots can be rendered at a different pixel density (`devicePixelRatio`, e.g. 1.25x on Windows), so numbers eyeballed from an image land in the wrong place on the live page.

@@ -110,6 +110,24 @@ def test_band_rank_is_priority_then_level_then_referral():
           (provider_base.NEUTRAL_PRIORITY_BAND, 0, 0, 0), provider_base.band_rank({}))
 
 
+def test_money_label():
+    print("test: the 💰 Money label puts a card in the top band and is held out of contacts")
+    Provider = adapter_mod.Provider
+    top = provider_base.TOP_PRIORITY_BAND
+    money = [{"name": "💰 Money"}]
+    check("a Money card is in the top band", Provider._priority_band(card(labels=money)) == top)
+    check("a P3 role that is also Money is lifted",
+          Provider._priority_band(card(labels=money + [{"name": "🎯 P3"}])) == top)
+    check("a Money card with a Due date stays in the top band",
+          Provider._priority_band(card(labels=money), due_dt=object()) == top)
+    check("bare 'Money' without the emoji does not count",
+          Provider._priority_band(card(labels=[{"name": "Money"}])) == provider_base.NEUTRAL_PRIORITY_BAND)
+    prov = adapter_mod.Provider.__new__(adapter_mod.Provider)
+    prov.channels, prov.features, prov.status_labels = set(), set(), {"blocked", "waiting"}
+    _, _, contacts, _ = prov._classify_labels(card(labels=money + [{"name": "Dana Whitfield"}]))
+    check("Money held out; a real person stays a contact", contacts == ["Dana Whitfield"], contacts)
+
+
 def test_due_band():
     print("test: due band - an incomplete Due on a started card sits between the top band and neutral, soonest Due first")
     from datetime import datetime, timezone, timedelta
@@ -299,6 +317,7 @@ if __name__ == "__main__":
     test_referral_band_reads_label()
     test_referral_label_held_out_of_contacts()
     test_band_rank_is_priority_then_level_then_referral()
+    test_money_label()
     test_due_band()
     test_sort_key_orders_level_within_band()
     test_level_leads_referral_within_band()

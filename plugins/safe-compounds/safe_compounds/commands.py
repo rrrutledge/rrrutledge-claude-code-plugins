@@ -318,12 +318,21 @@ def _git_reset_ok(args):
     return bool(non_flag_args) and non_flag_args[0].startswith('origin/')
 
 
+def _git_read_tree_ok(args):
+    # Rewriting the index and working tree stays inside the repo; --index-output
+    # writes the index to an arbitrary path, which can land outside it. Git
+    # accepts the flag with a space before its value and as an abbreviation, so
+    # every spelling of it is refused.
+    return not any(a.split('=', 1)[0].startswith('--i') and '--index-output'.startswith(a.split('=', 1)[0])
+                   for a in args)
+
+
 GIT_SPEC = {
     'command': 'git',
     'trusted': GIT_TRUSTED_SUBCOMMANDS,
     'conditional': GIT_CONDITIONAL_SUBCOMMANDS,
     'specials': {'checkout': _git_checkout_ok, 'clean': _git_clean_ok, 'reset': _git_reset_ok,
-                 'push': _git_push_ok},
+                 'push': _git_push_ok, 'read-tree': _git_read_tree_ok},
     'global_opts': GIT_GLOBAL_OPTS_WITH_ARG,
     'allow_empty': True,
     'category': None,  # no AI fallback: unknown git subcommands prompt

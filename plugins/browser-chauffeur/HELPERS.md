@@ -81,6 +81,14 @@ Marks a tab **you own** active (the lower-level primitive `findTab` uses). Call 
 - **Parameters**: `context` - Playwright browser context; `page` - the Playwright page
 - **Returns**: Promise<void>
 
+### `captureEvidence(page, target, outPath)`
+
+Screenshots one problem on the live page, cropped to it with a red box around the target.
+When to use it: SKILL.md Common Patterns, **Evidence Screenshots**.
+
+- **Parameters**: `page` - a Playwright page; `target` - `{ text }` for the first visible occurrence of a string that sits whole in one text node of the main document, or `{ selector }` for the first visible element that matches; `outPath` - the PNG path
+- **Returns**: Promise<void>; it throws when the target isn't found or can't be brought into view
+
 ### `cancelScriptWatchdog()`
 
 Cancels the process watchdog that requiring the helpers installs (see **Process guard** below). Call it only in a script that legitimately needs to run past the watchdog window - for example, one that waits out a long media playback.

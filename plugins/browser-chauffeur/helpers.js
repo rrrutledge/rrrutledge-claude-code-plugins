@@ -18,6 +18,7 @@ const { verifyAfterMutation } = require('./skills/browser-chauffeur/templates/ve
 const { openTab, closeTab, findTab, touchTab, registerTab, unregisterTab } = require('./skills/browser-chauffeur/templates/tab-registry');
 const { captureFullPageScreenshot } = require('./skills/browser-chauffeur/templates/fullpage-screenshot');
 const { connectBrowser } = require('./skills/browser-chauffeur/templates/connect-browser');
+const { captureEvidence } = require('./skills/browser-chauffeur/templates/evidence-screenshot');
 
 // --- Process guard (installed on require) ---
 // A chauffeur script connects to the browser over a live CDP WebSocket, and that
@@ -91,4 +92,5 @@ module.exports = {
   unregisterTab,
   cancelScriptWatchdog,
   captureFullPageScreenshot,
+  captureEvidence,
 };

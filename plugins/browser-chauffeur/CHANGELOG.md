@@ -12,6 +12,11 @@
 - **`cdp-session.js` gains timeouts and lazy loading.**
   It exports `withTimeout`, its `httpJson` times out and checks the status, and it loads `ws` on first use.
 
+## [1.19.0] - 2026-11-19
+
+### Added
+- **`captureEvidence` screenshots a live-page problem**, cropped to it with a red box around the exact element or text, after layout settles; see **Evidence Screenshots** in `SKILL.md`.
+
 ## [1.18.1] - 2026-11-13
 
 ### Changed
