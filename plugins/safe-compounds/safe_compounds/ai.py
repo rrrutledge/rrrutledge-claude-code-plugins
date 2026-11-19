@@ -26,6 +26,15 @@ def _ai_disabled():
     return os.environ.get('SAFE_COMPOUNDS_DISABLE_AI') == '1'
 
 
+def enabled():
+    """True when a call can be attempted: not disabled, and credentials are configured
+    (the gcloud token for Vertex is only fetched at call time, so a bad token still
+    falls back to None there)."""
+    return not _ai_disabled() and bool(
+        os.environ.get('ANTHROPIC_VERTEX_PROJECT_ID')
+        or os.environ.get('ANTHROPIC_HOOK_API_KEY') or os.environ.get('ANTHROPIC_API_KEY'))
+
+
 def _vertex_token():
     gcloud_path = os.path.join(
         os.path.expanduser('~'),

@@ -3,8 +3,9 @@
 A worker that judges an emoji reaction fits a Slack message proposes it here rather than adding it.
 `propose` stages the reaction with send-confidence as a draft of message type `reaction` and scores it
 under the live model. When the model's auto-send test passes, it adds the reaction at once, logs it as
-auto-sent, and prints the digest line and the undo command; otherwise it prints the draft id, and the
-worker puts the reaction in front of Russell like any written draft.
+auto-sent, which is the record the digest lists it from (`auto_sent.py`), and prints the undo command;
+otherwise it prints the draft id, and the worker puts the reaction in front of Russell like any written
+draft.
 Russell's answer is the reaction's outcome, recorded by `approve` (which adds it, with a different emoji
 if he chose one) or `discard`.
 `undo` takes an auto-sent reaction off and records it as discarded, so the model learns from the undo.
@@ -85,10 +86,7 @@ def cmd_propose(args):
     if model.get("auto_send"):
         slack("--react", args.channel, args.ts, emoji)
         sc.record_auto_sent(scored["draft_id"])
-        out.update(auto_sent=True, undo=undo_command(scored["draft_id"]),
-                   digest=f"Reacted :{emoji}: on {args.permalink} (send-confidence auto-send, model "
-                          f"v{model.get('version')}: floor {model.get('floor')} over {model.get('support')} "
-                          f"drafts). Undo: `{undo_command(scored['draft_id'])}`")
+        out.update(auto_sent=True, undo=undo_command(scored["draft_id"]))
     return out
 
 

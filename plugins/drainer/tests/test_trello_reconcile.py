@@ -313,13 +313,15 @@ got = p.finished_since({f"trello-{c}": rec_for(c) for c in (C_DONE, C_ARCH, C_OP
 check("terminal cards reported", sorted(got), sorted(f"trello-{c}" for c in (C_DONE, C_ARCH)))
 
 
-def finished_run(workers, agents):
+def finished_run(workers, agents, resumed=None):
     """Run close_finished_workers over `workers` ({guid: (card id, seconds since its transcript was
-    last written)}); return the short ids stopped."""
+    last written)}); `resumed` ({guid: seconds since written}) adds transcripts for sessions a worker
+    continued under. Return the short ids stopped."""
     rt = workspace({}, {f"trello-{c}": rec_for(c) for c, _ in workers.values()})
     transcripts = {}
-    for guid, (c, written_ago) in workers.items():
+    for guid, (c, _) in workers.items():
         write_session(rt, f"trello-{c}", guid)
+    for guid, written_ago in [(g, ago) for g, (_, ago) in workers.items()] + list((resumed or {}).items()):
         path = os.path.join(rt, f"{guid}.jsonl")
         open(path, "w").close()
         os.utime(path, (time.time() - written_ago,) * 2)
@@ -352,6 +354,18 @@ n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0], status=None,
 check("a background worker mid-turn is left running", stopped, [])
 n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, None)
 check("a failed session scan stops nothing", (n, stopped), (0, []))
+
+real_resolver = poller.holder_resolver
+try:
+    poller.holder_resolver = lambda: lambda r: [(r, 0), (G[1], 0)]
+    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[0]), agent(G[1])],
+                              resumed={G[1]: 3 * DAY_S})
+    check("a resumed worker is stopped under its newest session", stopped, [G[1][:8]])
+    poller.holder_resolver = lambda: lambda r: [(r, 0), (G[2], 1)]
+    n, stopped = finished_run({G[0]: (C_DONE, 3 * DAY_S)}, [agent(G[2])], resumed={G[2]: 3 * DAY_S})
+    check("a session the worker handed off to is never stopped", stopped, [])
+finally:
+    poller.holder_resolver = real_resolver
 
 print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
 sys.exit(1 if failures else 0)

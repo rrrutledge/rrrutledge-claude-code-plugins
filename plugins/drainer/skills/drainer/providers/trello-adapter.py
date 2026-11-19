@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 
 # scripts/ is on sys.path (the poller inserts it); fall back to a relative add when run standalone.
@@ -100,6 +101,7 @@ _DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
 class Provider(ProviderBase):
     name = "trello"
+    SNAPSHOT_TTL_S = 600
 
     def __init__(self):
         self._utils = self._import_trello_utils()
@@ -124,6 +126,9 @@ class Provider(ProviderBase):
         self.board_in_progress_lists = {}
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
+        # Board id -> (monotonic fetch time, trello_utils.get_board_snapshot), filled lazily by capture's
+        # related-cards lookup.
+        self._snapshots = {}
 
     # --------------------------------------------------------------- locate the trello-outreach helper
     @staticmethod
@@ -587,6 +592,7 @@ class Provider(ProviderBase):
                 who = ", ".join(contacts) if contacts else bname
                 items.append({
                     "cardId": card["id"],
+                    "boardId": board["id"],
                     "board": bname,
                     "list": list_name,
                     "name": card.get("name", ""),
@@ -713,6 +719,7 @@ class Provider(ProviderBase):
         os.makedirs(items_dir, exist_ok=True)
         body_file = os.path.join(items_dir, f"{iid}.trello.md")
         comments = self._fetch_comments(item["cardId"])
+        related = self._related_cards(item)
         with open(body_file, "w", encoding="utf-8") as f:
             f.write(f"# {item.get('name')}\n\n"
                     f"Board: {item.get('board')} / List: {item.get('list')}\n"
@@ -721,7 +728,8 @@ class Provider(ProviderBase):
                     f"Contacts: {', '.join(item.get('contacts') or []) or '(none)'}\n"
                     f"Initiative: {item.get('initiative') or '(none)'}\n"
                     f"Link: {item.get('url')}\nCardId: {item['cardId']}\n\n"
-                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n")
+                    f"## Description\n\n{item.get('desc') or '(empty)'}\n\n## Comments\n\n{comments}\n\n"
+                    f"## Related cards on this board\n\n{related}\n")
         record = {
             "id": iid, "source": self.name, "triage": item.get("_bucket", "needs-you"),
             # messageId == the stable_id: it is the handle the reconcile checks against
@@ -743,6 +751,41 @@ class Provider(ProviderBase):
         with open(json_file, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
         return json_file
+
+    def _related_cards(self, item):
+        """The capture's "Related cards on this board" section: other cards on the board, archived and
+        Abandoned/Finished included, that are the same item or open with the same employer or person
+        (trello_utils.find_related_cards). A failed lookup says so, so the worker searches by hand."""
+        if not hasattr(self._utils, "get_board_snapshot"):
+            return "(not looked up: the installed trello plugin predates the related-cards lookup; update it)"
+        try:
+            # An item queued before captures carried boardId names its board only by name.
+            bid = item.get("boardId") or next(b["id"] for b in self.boards if b.get("name") == item.get("board"))
+            # Cards captured from one board within a few minutes share one board-wide fetch; the keeper
+            # process lives for days, so an older snapshot is refetched.
+            fetched, snapshot = self._snapshots.get(bid, (0, None))
+            if time.monotonic() - fetched > self.SNAPSHOT_TTL_S:
+                snapshot = self._utils.get_board_snapshot(bid, self.session)
+                self._snapshots[bid] = (time.monotonic(), snapshot)
+            same, head = self._utils.find_related_cards(
+                {"id": item["cardId"], "name": item.get("name"), "desc": item.get("desc")}, snapshot)
+        except Exception as e:
+            return f"(lookup failed: {e})"
+
+        def line(c):
+            where = f"{c['list']}, archived" if c["closed"] else c["list"]
+            state = "decided" if c["decided"] else "open"
+            age = "older" if c["older"] else "newer"
+            return f"- [{c['name']}]({c['url']}) - {where} - {state}, {age} than this card - {c['why']}"
+
+        def block(title, cards):
+            # Open cards first, then newest, so a capped list keeps the cards a decision turns on.
+            cards = sorted(cards, key=lambda c: (c["decided"], c["older"]))
+            rows = [f"{title} ({len(cards)}):"] + ([line(c) for c in cards[:10]] or ["- none"])
+            return rows + ([f"- ...and {len(cards) - 10} more"] if len(cards) > 10 else [])
+
+        return "\n".join(block("Same item (same name ignoring punctuation, or a shared posting id)", same)
+                         + [""] + block("Same employer or person", head))
 
     def _fetch_comments(self, card_id):
         try:

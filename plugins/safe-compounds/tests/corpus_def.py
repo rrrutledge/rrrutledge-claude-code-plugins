@@ -208,6 +208,8 @@ CASES = [
     {"id": "complex_backtick", "tool": "Bash", "command": "echo `date`", "expect": "BLOCK"},
     {"id": "brace_group", "tool": "Bash", "command": "{ echo a; echo b; }", "expect": "BLOCK"},
     {"id": "inline_python", "tool": "Bash", "command": "python -c \"print(1)\"", "expect": "BLOCK"},
+    {"id": "direct_sh_script", "tool": "Bash", "command": ".tmp/x.sh arg", "expect": "BLOCK"},
+    {"id": "bash_sh_script", "tool": "Bash", "command": "bash .tmp/x.sh", "expect": "BLOCK"},
     {"id": "inline_node", "tool": "Bash", "command": "node -e \"console.log(1)\"", "expect": "BLOCK"},
     {"id": "powershell_cmdlet", "tool": "Bash", "command": "Get-ChildItem", "expect": "BLOCK"},
     {"id": "redundant_cd_cwd", "tool": "Bash", "command": "cd {CWD} && ls", "expect": "BLOCK"},
