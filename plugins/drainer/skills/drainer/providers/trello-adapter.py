@@ -65,8 +65,8 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # THE priority policy - the one place it is defined; every other site that mentions a band points here.
 # It applies only to a job-search card (resolved initiative `job-search`: the card's initiative label,
 # else its board's default). Every other card ranks neutral by date alongside email/Slack, apart from a
-# 💰 Money card and a card with a Due date. A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
-# drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
+# 💰 Money card and a card with a Due date. A job-search card maps to a queue band, ranked
+# (band, date) descending against every other drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)  → top band        worked ahead of email/Slack and every application
 #   card on an in-progress list    → top band        a live application is worked ahead of the inbox
 #   P1 Director-or-above role      → top band        with or without posted pay
@@ -80,9 +80,7 @@ _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 # P2/P3 drop below. Within a band, a people manager below the pay floor, or with no posted pay, sits at the
 # neutral level (see _level_band) and interleaves with email by date, as does every individual-contributor
 # P1; a P2/P3 individual contributor waits behind the same tier's Director-or-above roles and people
-# managers. This is inert for every other
-# board: the poller-labeled job-search cards, 👤 Contact cards, and cards on a board that names
-# `in_progress_lists` in the registry are the ones that leave the default neutral.
+# managers. A Contact card or an in-progress-list card on a non-job-search board stays neutral.
 _PRIORITY_BAND = {
     1: NEUTRAL_PRIORITY_BAND,
     2: NEUTRAL_PRIORITY_BAND - 1,
