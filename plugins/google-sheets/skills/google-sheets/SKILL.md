@@ -1,6 +1,6 @@
 ---
 name: google-sheets
-description: Append rows to a Google Sheet, or read a range's values, via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API. Use when writing to a tracked Google Sheet programmatically instead of pasting by hand or driving a browser.
+description: Append rows, insert rows mid-sheet, update ranges in place, list tabs, or read a range's values in a Google Sheet via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API. Use when writing to a tracked Google Sheet programmatically instead of pasting by hand or driving a browser.
 ---
 
 # Google Sheets - Programmatic Row Appends via the Sheets API

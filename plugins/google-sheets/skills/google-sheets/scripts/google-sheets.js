@@ -77,25 +77,30 @@ async function updateValues(sheetsClient, spreadsheetId, range, rows) {
 async function insertRows(sheetsClient, spreadsheetId, tabId, at, rows) {
   const tab = (await listTabs(sheetsClient, spreadsheetId)).find(t => t.sheetId === tabId);
   if (!tab) throw new Error(`No tab with sheetId ${tabId} (run --list-tabs)`);
+  const range = { sheetId: tabId, dimension: 'ROWS', startIndex: at, endIndex: at + rows.length };
   await sheetsClient.spreadsheets.batchUpdate({
     spreadsheetId,
-    requestBody: {
-      requests: [{
-        insertDimension: {
-          range: { sheetId: tabId, dimension: 'ROWS', startIndex: at, endIndex: at + rows.length },
-          inheritFromBefore: at > 0,
-        },
-      }],
-    },
+    requestBody: { requests: [{ insertDimension: { range, inheritFromBefore: at > 0 } }] },
   });
   const quoted = `'${tab.title.replace(/'/g, "''")}'`;
-  return updateValues(sheetsClient, spreadsheetId, `${quoted}!A${at + 1}`, rows);
+  try {
+    return await updateValues(sheetsClient, spreadsheetId, `${quoted}!A${at + 1}`, rows);
+  } catch (e) {
+    // Drop the blank rows so a failed write leaves the sheet as it was and a retry does not stack more.
+    await sheetsClient.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{ deleteDimension: { range } }] },
+    });
+    throw e;
+  }
 }
 
 function readRows(file) {
   if (!file) throw new Error('--rows-file required');
   const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!Array.isArray(rows) || !rows.length) throw new Error('--rows-file must be a non-empty JSON array of rows');
+  if (!Array.isArray(rows) || !rows.length || !rows.every(Array.isArray)) {
+    throw new Error('--rows-file must be a non-empty JSON array of rows, each row an array');
+  }
   return rows;
 }
 
@@ -122,9 +127,7 @@ function readRows(file) {
     const result = await updateValues(sheetsClient, args['sheet-id'], args['range'], readRows(args['rows-file']));
     console.log(`Updated ${result.updatedCells} cell(s) at ${result.updatedRange}.`);
   } else if (args['append-rows']) {
-    if (!args['rows-file']) throw new Error('--rows-file required');
-    const rows = JSON.parse(fs.readFileSync(args['rows-file'], 'utf8'));
-    if (!Array.isArray(rows) || !rows.length) throw new Error('--rows-file must be a non-empty JSON array of rows');
+    const rows = readRows(args['rows-file']);
     const result = await appendRows(sheetsClient, args['sheet-id'], args['range'], rows);
     console.log(`Appended ${rows.length} row(s) at ${result.updates.updatedRange}.`);
   } else if (args['get-values']) {

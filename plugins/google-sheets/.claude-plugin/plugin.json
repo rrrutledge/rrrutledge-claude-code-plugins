@@ -1,7 +1,7 @@
 {
   "name": "google-sheets",
   "version": "1.2.0",
-  "description": "Append rows to a Google Sheet via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API.",
+  "description": "Append rows, insert rows mid-sheet, update ranges in place, list tabs, or read values in a Google Sheet via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API.",
   "author": {
     "name": "Russell Rutledge"
   },

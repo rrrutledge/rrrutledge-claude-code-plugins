@@ -33,7 +33,8 @@
 // Insert after: node google-docs.js --insert-after --doc-id=<id> --match="paragraph starts with" --text="..."
 //               (inserts --text at the end of the first paragraph, tables included, whose text starts
 //                with --match. A leading "\n" in --text starts a new paragraph that inherits the
-//                matched paragraph's bullet; "\n" is also accepted as the two characters backslash-n.
+//                matched paragraph's bullet; the two characters backslash-n in --text or --replace
+//                are turned into a newline. Only the doc's first tab is read.
 //                The doc is read just before the insert and the batch carries that read's revision id
 //                as writeControl.requiredRevisionId, so a concurrent edit rejects the batch.)
 //
@@ -364,7 +365,7 @@ async function replaceAll(docsClient, docId, find, replace, matchCase) {
   } else if (args['replace-all']) {
     if (typeof args['find'] !== 'string' || !args['find']) throw new Error('--find required');
     if (args['replace'] === undefined) throw new Error('--replace required (may be empty)');
-    const replace = args['replace'] === true ? '' : args['replace'];
+    const replace = args['replace'] === true ? '' : args['replace'].replace(/\\n/g, '\n');
     const n = await replaceAll(docsClient, args['doc-id'], args['find'], replace, !!args['match-case']);
     console.log(`Replaced ${n} occurrence(s).`);
   } else {
