@@ -106,7 +106,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **When the ask rested on your own mistake, own it plainly, release the other person, and don't pivot to a replacement ask.**
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
-  State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
+  State what you need and trust them to fill it; cut every hint about how to do it or what to watch for, whatever its form (a supplied script, a suggested approach, step-by-step notes, a list of candidate answers) — hints quietly narrow and lead the reply you get back.
   Logistics the ask never settled follow **When unsure**.
 - **Phrase a requested edit to someone else's draft as a question, not a flat correction** — "can you make it X?" reads as collaborative even when you already know exactly what should change; save the flat "should be X" framing for reference material, not a live ask.
   **When the edits are discrete errors in a finished piece, list them as a plain observation instead** - the owner can see what to do with the list, so asking them to fix it implies they needed telling.
@@ -572,7 +572,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
 - **Email reply flow**: always **Reply All**, never plain Reply, to preserve every CC.
   Reply into an existing thread on the same topic rather than composing new, even when it isn't a direct response to any single message.
 - **Email sign-off**: `Russ` alone on its own line. The full mechanics - no valediction or fused closing word, the auto-appended-signature-block case, and the family, LDS, and third-party forms - live in **Core voice**'s sign-off rule.
-- **Email subject**: a short noun phrase naming the concrete topic, no trailing `?` even when the email asks a question. Name what the email is actually about ("Contoso job connection") rather than a vague framing word like "quick question."
+- **Email subject**: a short noun phrase naming the concrete topic, no trailing `?` even when the email asks a question. Name what the email is actually about ("Contoso job connection") rather than a vague framing word (see **Plain words over corporate and AI filler** in `authoring-rules`).
 - **Energizing close** — how to execute a warm close, when **Register** calls for one: end with a brief forward-looking note ("Looking forward to it!", "This'll be great") instead of a helper-offer tail.
   A warm closing line about the contact themselves ("It was great to see you again!") ends on an exclamation mark and is the whole close.
   When onboarding a partner or sponsor, that close can be the concrete next step their deliverable unlocks - for a just-published sponsorship or asset, a coordinated announcement they can amplify too.
