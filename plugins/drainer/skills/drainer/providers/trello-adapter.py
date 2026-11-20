@@ -63,7 +63,9 @@ _MONEY_RE = re.compile(r"^\s*💰 Money\s*$")
 _CONTACT_RE = re.compile(r"^\s*👤 Contact\s*$")
 
 # THE priority policy - the one place it is defined; every other site that mentions a band points here.
-# A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
+# It applies only to a job-search card (resolved initiative `job-search`: the card's initiative label,
+# else its board's default). Every other card ranks neutral by date alongside email/Slack, apart from a
+# 💰 Money card and a card with a Due date. A Job Search Outreach card maps to a queue band, ranked (band, date) descending against every other
 # drained item. Bands are relative to NEUTRAL_PRIORITY_BAND (email/Slack and every unlabeled card):
 #   👤 Contact (person follow-up)  → top band        worked ahead of email/Slack and every application
 #   card on an in-progress list    → top band        a live application is worked ahead of the inbox
@@ -330,8 +332,11 @@ class Provider(ProviderBase):
         return -due_dt.timestamp() if band == DUE_PRIORITY_BAND else 0
 
     @staticmethod
-    def _priority_band(card, in_progress=False, due_dt=None):
+    def _priority_band(card, in_progress=False, due_dt=None, job_search=True):
         """Return a card's queue band (see _PRIORITY_BAND), or neutral when it carries no ranking label.
+        Job-search scope: the in-progress, 👤 Contact, P1 Director/manager pins and the P1/P2/P3 bands
+        apply only when `job_search` is true (the caller resolves the card's initiative); any other card
+        ranks neutral, except a 💰 Money card and a card with a due date, which keep their bands.
         Four pins put a card in the top band, ahead of everything below it: a 👤 Contact
         person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
@@ -340,16 +345,20 @@ class Provider(ProviderBase):
         whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
         wears exactly one."""
         labels = card.get("labels", [])
-        if in_progress:
-            return TOP_PRIORITY_BAND
-        if Provider._is_p1(card) and (Provider._is_director_level(card)
-                                      or Provider._pays_people_manager_floor(card)):
-            return TOP_PRIORITY_BAND
+        if job_search:
+            if in_progress:
+                return TOP_PRIORITY_BAND
+            if Provider._is_p1(card) and (Provider._is_director_level(card)
+                                          or Provider._pays_people_manager_floor(card)):
+                return TOP_PRIORITY_BAND
         for l in labels:
-            if _CONTACT_RE.match(l.get("name") or "") or _MONEY_RE.match(l.get("name") or ""):
+            name = l.get("name") or ""
+            if _MONEY_RE.match(name) or (job_search and _CONTACT_RE.match(name)):
                 return TOP_PRIORITY_BAND
         if due_dt is not None:
             return DUE_PRIORITY_BAND
+        if not job_search:
+            return NEUTRAL_PRIORITY_BAND
         for l in labels:
             m = _PRIORITY_RE.match(l.get("name") or "")
             if m:
@@ -580,15 +589,17 @@ class Provider(ProviderBase):
                 # The three band values; band_rank (provider_base) defines the order they sort in.
                 in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
                 due_dt = self._due_dt(card, start_dt)
-                priority_band = self._priority_band(card, in_progress, due_dt)  # see _PRIORITY_BAND
-                referral_band = self._referral_band(card)  # see _referral_band
-                level_band = self._level_band(card)        # see _level_band
                 channel, feats, contacts, initiative_label = self._classify_labels(card)
                 # A per-card initiative label wins over the board's default initiative. The slug is the
                 # initiative label's name slugified (→ initiatives/<slug>.md); board defaults are already
                 # slugs in the registry.
                 initiative = slug(initiative_label, 60) if initiative_label \
                     else self.board_initiatives.get(bname)
+                # Only a job-search card is lifted or demoted by the priority policy.
+                job_search = initiative == "job-search"
+                priority_band = self._priority_band(card, in_progress, due_dt, job_search)  # see _PRIORITY_BAND
+                referral_band = self._referral_band(card) if job_search else 0  # see _referral_band
+                level_band = self._level_band(card) if job_search else 0         # see _level_band
                 who = ", ".join(contacts) if contacts else bname
                 items.append({
                     "cardId": card["id"],
