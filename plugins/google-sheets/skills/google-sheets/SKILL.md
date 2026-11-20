@@ -1,11 +1,11 @@
 ---
 name: google-sheets
-description: Append rows to a Google Sheet, or read a range's values, via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API. Use when writing to a tracked Google Sheet programmatically instead of pasting by hand or driving a browser.
+description: Append rows, insert rows mid-sheet, update ranges in place, list tabs, or read a range's values in a Google Sheet via the Sheets API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to the spreadsheets API. Use when writing to a tracked Google Sheet programmatically instead of pasting by hand or driving a browser.
 ---
 
-# Google Sheets - Programmatic Row Appends via the Sheets API
+# Google Sheets - Programmatic Row and Value Edits via the Sheets API
 
-Append rows to a Google Sheet, or read a range's values, through the Sheets API's `values.append`/`values.get` endpoints, using Google's own official Node client library (`googleapis`) rather than hand-built REST calls or browser paste automation: `scripts/google-sheets.js`.
+Append or insert rows, update or read a range's values, and list tabs in a Google Sheet through the Sheets API, using Google's own official Node client library (`googleapis`) rather than hand-built REST calls or browser paste automation: `scripts/google-sheets.js`.
 
 Reuses the same Google Cloud OAuth "Desktop app" client the `gmail` plugin's filter path already registered (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`) - one OAuth client, many scopes.
 This path requests `https://www.googleapis.com/auth/spreadsheets`, a scope the gmail client's cached token was never consented for, so it keeps its own token cache (`~/.claude/google-sheets/oauth-token.json`) separate from `~/.claude/gmail/oauth-token.json`.
@@ -24,7 +24,8 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 
 ## Commands - `google-sheets.js`
 
-Every command takes `--sheet-id=<id>` (the spreadsheet id from its URL, `docs.google.com/spreadsheets/d/<id>/edit`) and `--range=<A1 range>` (a sheet name plus column/row span, e.g. `Sheet1!A:D` or `Sheet1!A4:D`).
+Every command takes `--sheet-id=<id>` (the spreadsheet id from its URL, `docs.google.com/spreadsheets/d/<id>/edit`).
+The range commands (append, get, update) also take `--range=<A1 range>` (a sheet name plus column/row span, e.g. `Sheet1!A:D` or `Sheet1!A4:D`).
 
 - **Append rows:** `node google-sheets.js --append-rows --sheet-id=<id> --range=<A1 range> --rows-file=<path to JSON>`
   `rows-file` is a JSON array of rows, each row an array of per-column cell values.
@@ -32,6 +33,12 @@ Every command takes `--sheet-id=<id>` (the spreadsheet id from its URL, `docs.go
   Values are written with `valueInputOption=USER_ENTERED`, so a string like `"9/3/2026"` lands as a real date cell, the same way typing or pasting it into the sheet would.
 - **Read a range's values:** `node google-sheets.js --get-values --sheet-id=<id> --range=<A1 range>`
   Prints the range's values as a JSON array of rows - useful to confirm the row count before/after an append.
+- **List the tabs:** `node google-sheets.js --list-tabs --sheet-id=<id>`
+  Prints `sheetId<TAB>title` per tab; the numeric sheetId is what `--insert-rows` takes.
+- **Insert rows in the middle:** `node google-sheets.js --insert-rows --sheet-id=<id> --tab-id=<numeric sheetId> --at=<n> --rows-file=<path to JSON>`
+  Inserts blank rows before 0-based row index `n` (`--at=3` makes the first new row spreadsheet row 4) and fills them with the rows.
+- **Update a range in place:** `node google-sheets.js --update-values --sheet-id=<id> --range=<A1 range> --rows-file=<path to JSON>`
+  Overwrites the range's values with the rows.
 
 ## Auth-error handling
 

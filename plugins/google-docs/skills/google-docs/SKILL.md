@@ -1,6 +1,6 @@
 ---
 name: google-docs
-description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API - no browser. Append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
+description: Read/write Google Docs content (table rows, paragraphs, hyperlinks) via the Docs API - no browser. Read a doc as text, insert text after a paragraph, replace text, append or delete table rows, and set a cell to plain text, a bulleted list, or a short clickable hyperlink. Reuses the gmail plugin's OAuth client with a separate token scoped to the documents API. Use when editing a Google Doc's content programmatically instead of pasting by hand or driving a browser.
 ---
 
 # Google Docs - Programmatic Content Edits via the Docs API
@@ -39,6 +39,15 @@ Every command takes `--doc-id=<id>` (the doc id from its URL, `docs.google.com/d
   Replaces the cell's entire content with one line of clickable hyperlinked text - the short label is what's shown; clicking it opens the URL.
 - **Set a cell to plain text:** `node google-docs.js --set-cell-text --doc-id=<id> --row-index=<n> --col-index=<n> --text="..." [--bold]`
   Replaces the cell's entire content with one line of plain text, optionally bold - useful for renaming a header cell.
+- **Read the doc as text:** `node google-docs.js --read --doc-id=<id>`
+  Prints one line per paragraph; table cells print as `[table T row R col C] text`.
+- **Insert text after a paragraph:** `node google-docs.js --insert-after --doc-id=<id> --match="paragraph starts with" --text="..."`
+  Inserts at the end of the first paragraph (table cells included) that starts with `--match`.
+  A leading `\n` in `--text` makes a new paragraph that inherits the matched paragraph's bullet; the two characters backslash-n in `--text` or `--replace` become a newline.
+  Reading and matching cover the doc's first tab only.
+  A concurrent edit rejects the batch - re-run it.
+- **Replace all matching text:** `node google-docs.js --replace-all --doc-id=<id> --find="old" --replace="new" [--match-case]`
+  Prints how many occurrences changed; an empty `--replace` deletes the matched text.
 
 ## Auth-error handling
 
