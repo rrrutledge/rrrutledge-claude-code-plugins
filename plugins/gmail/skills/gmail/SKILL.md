@@ -133,6 +133,8 @@ Under `scripts/` (run with `node`):
     `text (url)`.
     A table needs a header row, a separator row (`|---|---|--:|`), and a pipe at both ends of every row.
     Loose `a | b | c` lines render as run-on text, and the script warns on stderr when it sees them.
+    Every rendered table gets black grid lines (1px solid #000 on the table and each header and data cell, with cell padding) added as inline styles, because Gmail ignores stylesheets.
+    A plain Markdown table in the body file is enough; hand-written inline borders are unnecessary.
     **If `GMAIL_SIGNATURE_HTML` is set (see Setup step 4), stop at the last content
     sentence - no sign-off line.**
   - **`--no-quote` (with `--reply`)** - suppress the auto-appended quoted original while keeping the
