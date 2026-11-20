@@ -135,7 +135,7 @@ A list of named people or entities (a per-contact status roster) bolds just the 
 
 **Plain words over corporate and AI filler.**
 Raise or mention something with "mention", "tell you about", or "let me know".
-**Check:** "flag", "flagging", "flagged" used to mean raising or mentioning something, "leverage" as a verb, "streamline", "as per", "kindly", "delve", "furthermore", "moreover", "I wanted to reach out", "I hope this message finds you well", "please don't hesitate to", "I'm excited to share", "honestly" as a hedge opener.
+**Check:** "flag", "flagging", "flagged" used to mean raising or mentioning something, "leverage" as a verb, "streamline", "as per", "kindly", "delve", "furthermore", "moreover", "I wanted to reach out", "I hope this message finds you well", "please don't hesitate to", "I'm excited to share", "honestly" as a hedge opener, "quick" as a softener ("quick question", "a quick find").
 
 **Semantic line breaks in markdown source.**
 Within a paragraph or a multi-sentence bullet, start each sentence on a new line.

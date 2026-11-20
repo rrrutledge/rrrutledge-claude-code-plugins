@@ -322,7 +322,6 @@ The specifics that most often separate a message that reads as Russell's from on
   "I can send you the file if that'd help", not "Happy to send you the file if that'd help." Russell doesn't talk this way; it reads as generic AI phrasing.
   **An offer whose delivery rests on a third party's willingness is hedged ("I may be able to introduce you").**
 - **Adding a new item mid-thread: lead into it, don't tack it on cold — but don't reuse one fixed opener every time.** The bridge phrasing varies by relationship and occasion: "found one more", "one more thing", "if it's not too much trouble, I have one other similar ask", or no bridge line at all when the item flows naturally from what's already in the thread.
-  The bridge names no topic and carries no qualifier; the item follows it.
   Scope: tacking a new point onto something you already sent, answered or not; on a still-unanswered one, a new share or update rides along as an add-on to what's pending and leaves the pending ask unrestated (see **Follow-up nudges**' "Let the thread carry the context").
   When several points are compiled into one message from the start (e.g. a batch of edit requests on the same document), skip the discovery framing entirely and just list them — there's nothing to "find" mid-message.
 - **Adding a new recipient to an existing thread: state the action, don't address them.**
@@ -574,7 +573,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
 - **Email reply flow**: always **Reply All**, never plain Reply, to preserve every CC.
   Reply into an existing thread on the same topic rather than composing new, even when it isn't a direct response to any single message.
 - **Email sign-off**: `Russ` alone on its own line. The full mechanics - no valediction or fused closing word, the auto-appended-signature-block case, and the family, LDS, and third-party forms - live in **Core voice**'s sign-off rule.
-- **Email subject**: a short noun phrase naming the concrete topic, no trailing `?` even when the email asks a question. Name what the email is actually about ("Contoso job connection") rather than a vague framing word like "quick question."
+- **Email subject**: a short noun phrase naming the concrete topic, no trailing `?` even when the email asks a question. Name what the email is actually about ("Contoso job connection") rather than a vague framing word (see **Plain words over corporate and AI filler** in `authoring-rules`).
 - **Energizing close** — how to execute a warm close, when **Register** calls for one: end with a brief forward-looking note ("Looking forward to it!", "This'll be great") instead of a helper-offer tail.
   A warm closing line about the contact themselves ("It was great to see you again!") ends on an exclamation mark and is the whole close.
   When onboarding a partner or sponsor, that close can be the concrete next step their deliverable unlocks - for a just-published sponsorship or asset, a coordinated announcement they can amplify too.
