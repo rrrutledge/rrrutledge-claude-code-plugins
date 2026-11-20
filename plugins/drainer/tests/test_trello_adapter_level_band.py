@@ -310,7 +310,29 @@ def test_registry_parses_in_progress_lists():
     check("a board without the field has none", "in_progress_lists" not in boards[1], boards)
 
 
+def test_pins_apply_only_to_job_search():
+    print("test: above-neutral pins and P-label bands apply only to a job-search card")
+    Provider = adapter_mod.Provider
+    neutral = provider_base.NEUTRAL_PRIORITY_BAND
+    top = adapter_mod.TOP_PRIORITY_BAND
+    contact = card(labels=[{"name": "👤 Contact"}])
+    p1_dir = card("Priority: P1 · x · Director/VP-level", [{"name": "🎯 P1"}])
+    p3 = card(labels=[{"name": "🎯 P3"}])
+    plain = card()
+    check("Contact card, job-search -> top", Provider._priority_band(contact, job_search=True) == top)
+    check("Contact card, other board -> neutral", Provider._priority_band(contact, job_search=False) == neutral)
+    check("in-progress card, job-search -> top", Provider._priority_band(plain, in_progress=True, job_search=True) == top)
+    check("in-progress card, other board -> neutral",
+          Provider._priority_band(plain, in_progress=True, job_search=False) == neutral)
+    check("P1 Director, job-search -> top", Provider._priority_band(p1_dir, job_search=True) == top)
+    check("P1 Director, other board -> neutral", Provider._priority_band(p1_dir, job_search=False) == neutral)
+    check("P3 label, job-search -> below neutral", Provider._priority_band(p3, job_search=True) == neutral - 2)
+    check("P3 label, other board -> neutral", Provider._priority_band(p3, job_search=False) == neutral)
+    check("default keeps the job-search behavior", Provider._priority_band(contact) == top)
+
+
 if __name__ == "__main__":
+    test_pins_apply_only_to_job_search()
     test_priority_band_above_inbox_pins()
     test_registry_parses_in_progress_lists()
     test_level_band_reads_desc_line()
