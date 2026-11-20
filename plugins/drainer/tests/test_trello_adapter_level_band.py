@@ -138,11 +138,14 @@ def test_due_band():
         c = card()
         c["due"] = (now + timedelta(days=days)).isoformat().replace("+00:00", "Z")
         c["dueComplete"] = complete
-        return Provider._due_dt(c, start if has_start else None)
+        return Provider._due_dt(c, start if has_start else None, now)
     check("incomplete Due on a started card counts", due(3) is not None)
+    check("an overdue Due counts", due(-30) is not None)
+    check("a Due in 6 days counts", due(6) is not None)
+    check("a Due in 8 days does not count", due(8) is None)
     check("a completed Due does not count", due(3, complete=True) is None)
     check("a card with no Start does not enter the due band", due(3, has_start=False) is None)
-    check("no Due field -> None", Provider._due_dt(card(), start) is None)
+    check("no Due field -> None", Provider._due_dt(card(), start, now) is None)
     top, dueb, neutral = (provider_base.TOP_PRIORITY_BAND, provider_base.DUE_PRIORITY_BAND,
                           provider_base.NEUTRAL_PRIORITY_BAND)
     check("bands run top > due > neutral > P2 > P3", top > dueb > neutral > adapter_mod._PRIORITY_BAND[2]
@@ -165,11 +168,18 @@ def test_due_band():
         band = Provider._priority_band(card(), due_dt=dd)
         return {"name": name, "_priority_band": band, "_due_rank": Provider._due_rank(band, dd),
                 "_level_band": 0, "_referral_band": 0, "_sort_dt": dt}
-    items = [stamped("due later", 9), stamped("plain", None, "2026-11-16"), stamped("due soon", -2),
+    items = [stamped("due later", 6), stamped("plain", None, "2026-11-16"), stamped("due soon", -2),
              stamped("due mid", 4)]
     ranked = [it["name"] for it in sorted(items, key=SORT_KEY, reverse=True)]
     check("due band soonest first (overdue leads), then neutral", ranked ==
           ["due soon", "due mid", "due later", "plain"], ranked)
+
+    far = stamped("far", 8)
+    check("a Due 8 days out is neutral with a zero due rank",
+          far["_priority_band"] == neutral and far["_due_rank"] == 0, far)
+    p1far = Provider._priority_band(card(labels=p1), due_dt=due(8))
+    check("a far-Due job-search card keeps its P-label band, not the due band",
+          p1far == adapter_mod._PRIORITY_BAND[1], p1far)
 
 
 def test_level_leads_referral_within_band():
