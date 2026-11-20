@@ -106,7 +106,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **When the ask rested on your own mistake, own it plainly, release the other person, and don't pivot to a replacement ask.**
   Say you got mixed up, tell them not to bother, and stop.
 - **When asking someone to do something — or for their genuine read on an open question — just ask; don't pre-fill the answer.**
-  State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
+  State what you need and trust them to fill it; cut a supplied script, a suggested approach, step-by-step notes, guardrails against a mistake they might make, a "Tip for Claude:" line addressed to a second reader when the task hands them to an AI tool, or a list of candidate answers appended to your own question — the examples quietly narrow and lead the reply you get back.
   Logistics the ask never settled follow **When unsure**.
 - **Phrase a requested edit to someone else's draft as a question, not a flat correction** — "can you make it X?" reads as collaborative even when you already know exactly what should change; save the flat "should be X" framing for reference material, not a live ask.
   **When the edits are discrete errors in a finished piece, list them as a plain observation instead** - the owner can see what to do with the list, so asking them to fix it implies they needed telling.
@@ -322,6 +322,7 @@ The specifics that most often separate a message that reads as Russell's from on
   "I can send you the file if that'd help", not "Happy to send you the file if that'd help." Russell doesn't talk this way; it reads as generic AI phrasing.
   **An offer whose delivery rests on a third party's willingness is hedged ("I may be able to introduce you").**
 - **Adding a new item mid-thread: lead into it, don't tack it on cold — but don't reuse one fixed opener every time.** The bridge phrasing varies by relationship and occasion: "found one more", "one more thing", "if it's not too much trouble, I have one other similar ask", or no bridge line at all when the item flows naturally from what's already in the thread.
+  The bridge names no topic and carries no qualifier; the item follows it.
   Scope: tacking a new point onto something you already sent, answered or not; on a still-unanswered one, a new share or update rides along as an add-on to what's pending and leaves the pending ask unrestated (see **Follow-up nudges**' "Let the thread carry the context").
   When several points are compiled into one message from the start (e.g. a batch of edit requests on the same document), skip the discovery framing entirely and just list them — there's nothing to "find" mid-message.
 - **Adding a new recipient to an existing thread: state the action, don't address them.**
