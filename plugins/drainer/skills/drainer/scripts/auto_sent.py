@@ -5,8 +5,9 @@ say-so is logged there with `disposition: "auto-sent"` (`record_auto_sent`), by 
 at the moment it sent. So this reads that log, and every auto-sent action reaches the digest whether or
 not its worker closed out an item, and whatever kind of send it was.
 
-The digest launcher (`run-digest.py`) renders the section into the digest seed, which the session
-presents verbatim. A send undone since (`slack_reaction.py undo`) is listed as undone. The section lists
+The digest launcher (`run-digest.py`) renders the section into the digest seed. The session presents the
+entries, turns each `[raw context ...]` line into one sentence or drops it, and keeps the undo commands
+(listed under a line marking them for the session alone) from Russell. A send undone since (`slack_reaction.py undo`) is listed as undone. The section lists
 every auto-sent draft id missing from `<runtime_dir>/auto-sent-reported.json`, and the digest session
 adds the ids it listed by running `reported` once Russell has seen the section, so a digest that never
 reaches him leaves its sends for the next one.
@@ -122,8 +123,7 @@ def reaction_facts(reaction, call=slack_json):
         pass
     try:
         if thread_ts and thread_ts != ts:
-            parent = call("--show", f"--channel={channel}", f"--ts={thread_ts}")
-            facts["parent"] = parent
+            facts["parent"] = call("--show", f"--channel={channel}", f"--ts={thread_ts}")
         elif facts["dm"]:
             history = call("--history", f"--channel={channel}", "--limit=100")
             before = [m for m in history if float(m["ts"]) < float(ts)]
@@ -144,7 +144,7 @@ def describe(sent, facts=None):
         when = sent["ts"].strftime("%b %d").replace(" 0", " ")
         return (f"- **{scored.get('channel') or '?'}** - sent a {scored.get('message_type') or 'message'} "
                 f"to {scored.get('recipient') or '?'} ({when}){undone}")
-    f = facts if facts is not None else {"where": r.get("channel") or "?"}
+    f = facts
     emoji = emoji_display(r.get("emoji"))
     on = f" on {f['author']}" if f.get("author") else ""
     day = f" ({f['day']})" if f.get("day") else ""
@@ -160,12 +160,20 @@ def describe(sent, facts=None):
     return "\n".join(lines)
 
 
-def label(sent, facts):
-    """A short name for a send, to match an undo command with the entry Russell sees."""
-    r = sent["scored"].get("reaction")
-    if not r:
-        return f"{sent['scored'].get('channel') or '?'} send"
-    return f"{facts['where']} {emoji_display(r.get('emoji'))} {facts.get('day') or ''}".strip()
+def breaker(call):
+    """`call` that gives up for the rest of the run after its first failure, so a Slack outage costs one
+    failed call instead of several per send."""
+    down = []
+
+    def guarded(*args):
+        if down:
+            raise RuntimeError("slack unavailable")
+        try:
+            return call(*args)
+        except Exception:
+            down.append(True)
+            raise
+    return guarded
 
 
 def covered_queue_ids(queue):
@@ -184,12 +192,13 @@ def section(sc, runtime_dir, queue, undo_command, call=slack_json):
     sends = collect(sc, read_reported(runtime_dir)) if sc else []
     lines = [f"Sent without you since the last digest ({len(sends)}):"] if sends else [NOTHING]
     undos = []
-    for s in sends:
+    call = breaker(call)
+    for n, s in enumerate(sends, 1):
         r = s["scored"].get("reaction")
         facts = reaction_facts(r, call) if r else None
         lines += ["    " + e for e in describe(s, facts).split("\n")]
         if r and not s["undone"]:
-            undos.append(f"    {label(s, facts)}: {undo_command(s['draft_id'])}")
+            undos.append(f"    entry {n} above: {undo_command(s['draft_id'])}")
     if undos:
         lines.append("    Undo commands, for you alone, not for Russell (run one when he asks to take a send back):")
         lines += undos
