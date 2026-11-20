@@ -26,6 +26,21 @@
 //               --text="..." [--bold] [--table-index=0]
 //               (replaces the cell's entire content with one line of plain text, optionally bold.)
 //
+// Read:         node google-docs.js --read --doc-id=<id>
+//               (prints "revisionId: <id>" on the first line, then the doc as plain text, one line per
+//                paragraph; each table cell is printed as "[table T row R col C] text".)
+//
+// Insert after: node google-docs.js --insert-after --doc-id=<id> --match="paragraph starts with" --text="..."
+//               (inserts --text at the end of the first paragraph, tables included, whose text starts
+//                with --match. A leading "\n" in --text starts a new paragraph that inherits the
+//                matched paragraph's bullet; "\n" is also accepted as the two characters backslash-n.
+//                The doc is read just before the insert and the batch carries that read's revision id
+//                as writeControl.requiredRevisionId, so a concurrent edit rejects the batch.)
+//
+// Replace all:  node google-docs.js --replace-all --doc-id=<id> --find="old" --replace="new" [--match-case]
+//               (replaceAllText across the whole doc; prints how many occurrences changed. --replace
+//                may be empty to delete the matched text.)
+//
 // Plain rows/bullets are inserted as plain text (no hyperlinks) via --append-rows/--set-cell-bullets;
 // use --set-cell-link when the cell should show short clickable text instead of a bare URL. One row
 // is appended and re-fetched at a time: within a row, cells are filled rightmost-column-first so an
@@ -251,6 +266,55 @@ async function setCellText(docsClient, docId, tableIndex, rowIndex, colIndex, te
   await batchUpdate(docsClient, docId, requests);
 }
 
+const paragraphText = p => p.elements.map(e => (e.textRun ? e.textRun.content : '')).join('');
+
+// Flattens a body into paragraph records (start/end index and text), descending into table cells.
+// `where` labels table cells so the reader can print which cell a paragraph sits in.
+function collectParagraphs(content, out, where) {
+  let tableNo = 0;
+  for (const el of content || []) {
+    if (el.paragraph) {
+      out.push({ start: el.startIndex, end: el.endIndex, text: paragraphText(el.paragraph), where });
+    } else if (el.table) {
+      const t = tableNo++;
+      el.table.tableRows.forEach((row, r) => row.tableCells.forEach((cell, c) => {
+        collectParagraphs(cell.content, out, `table ${t} row ${r} col ${c}`);
+      }));
+    }
+  }
+  return out;
+}
+
+async function readDoc(docsClient, docId) {
+  const doc = await getDocument(docsClient, docId);
+  const lines = [`revisionId: ${doc.revisionId}`];
+  for (const p of collectParagraphs(doc.body.content, [], null)) {
+    const text = p.text.replace(/\n$/, '');
+    lines.push(p.where ? `[${p.where}] ${text}` : text);
+  }
+  return lines.join('\n');
+}
+
+async function insertAfterParagraph(docsClient, docId, match, text) {
+  const doc = await getDocument(docsClient, docId);
+  const para = collectParagraphs(doc.body.content, [], null).find(p => p.text.startsWith(match));
+  if (!para) throw new Error(`No paragraph starts with: ${match}`);
+  await docsClient.documents.batchUpdate({
+    documentId: docId,
+    requestBody: {
+      requests: [{ insertText: { location: { index: para.end - 1 }, text } }],
+      writeControl: { requiredRevisionId: doc.revisionId },
+    },
+  });
+}
+
+async function replaceAll(docsClient, docId, find, replace, matchCase) {
+  const res = await batchUpdate(docsClient, docId, [{
+    replaceAllText: { containsText: { text: find, matchCase }, replaceText: replace },
+  }]);
+  return res.data.replies[0].replaceAllText.occurrencesChanged || 0;
+}
+
 (async () => {
   if (!args['doc-id']) throw new Error('--doc-id required');
   const authClient = getAuthedClient();
@@ -290,7 +354,20 @@ async function setCellText(docsClient, docId, tableIndex, rowIndex, colIndex, te
     if (!args['text']) throw new Error('--text required');
     await setCellText(docsClient, args['doc-id'], tableIndex, parseInt(args['row-index'], 10), parseInt(args['col-index'], 10), args['text'], !!args['bold']);
     console.log(`Set text "${args['text']}" in row ${args['row-index']}, col ${args['col-index']}.`);
+  } else if (args['read']) {
+    console.log(await readDoc(docsClient, args['doc-id']));
+  } else if (args['insert-after']) {
+    if (typeof args['match'] !== 'string' || !args['match']) throw new Error('--match required');
+    if (typeof args['text'] !== 'string' || !args['text']) throw new Error('--text required');
+    await insertAfterParagraph(docsClient, args['doc-id'], args['match'], args['text'].replace(/\\n/g, '\n'));
+    console.log(`Inserted after the paragraph starting "${args['match']}".`);
+  } else if (args['replace-all']) {
+    if (typeof args['find'] !== 'string' || !args['find']) throw new Error('--find required');
+    if (args['replace'] === undefined) throw new Error('--replace required (may be empty)');
+    const replace = args['replace'] === true ? '' : args['replace'];
+    const n = await replaceAll(docsClient, args['doc-id'], args['find'], replace, !!args['match-case']);
+    console.log(`Replaced ${n} occurrence(s).`);
   } else {
-    throw new Error('Nothing to do - pass --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, or --set-cell-text');
+    throw new Error('Nothing to do - pass --append-rows, --delete-rows, --set-cell-bullets, --set-cell-link, --set-cell-text, --read, --insert-after, or --replace-all');
   }
 })().catch(e => { console.error('Error:', e.message); process.exit(1); });

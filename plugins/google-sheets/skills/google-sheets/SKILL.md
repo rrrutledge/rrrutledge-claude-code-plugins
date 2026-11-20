@@ -32,6 +32,12 @@ Every command takes `--sheet-id=<id>` (the spreadsheet id from its URL, `docs.go
   Values are written with `valueInputOption=USER_ENTERED`, so a string like `"9/3/2026"` lands as a real date cell, the same way typing or pasting it into the sheet would.
 - **Read a range's values:** `node google-sheets.js --get-values --sheet-id=<id> --range=<A1 range>`
   Prints the range's values as a JSON array of rows - useful to confirm the row count before/after an append.
+- **List the tabs:** `node google-sheets.js --list-tabs --sheet-id=<id>`
+  Prints `sheetId<TAB>title` per tab; the numeric sheetId is what `--insert-rows` takes.
+- **Insert rows in the middle:** `node google-sheets.js --insert-rows --sheet-id=<id> --tab-id=<numeric sheetId> --at=<n> --rows-file=<path to JSON>`
+  Inserts blank rows before 0-based row index `n` (`--at=3` makes the first new row spreadsheet row 4), then writes the rows into them from column A with `USER_ENTERED`.
+- **Update a range in place:** `node google-sheets.js --update-values --sheet-id=<id> --range=<A1 range> --rows-file=<path to JSON>`
+  Overwrites the range's values with the rows; nothing is inserted.
 
 ## Auth-error handling
 
