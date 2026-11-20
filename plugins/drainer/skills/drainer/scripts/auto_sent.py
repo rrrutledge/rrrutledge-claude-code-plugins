@@ -59,19 +59,113 @@ def collect(sc, reported):
     return sorted(out, key=lambda s: s["ts"])
 
 
-def describe(sent, undo_command):
-    """One line for a send: when, what went where, and how to undo it (or that it was undone)."""
+EMOJI = {
+    "heart": "❤️", "+1": "👍", "thumbsup": "👍", "-1": "👎", "thumbsdown": "👎", "pray": "🙏",
+    "raised_hands": "🙌", "tada": "🎉", "clap": "👏", "eyes": "👀", "white_check_mark": "✅",
+    "heavy_check_mark": "✔️", "smile": "😄", "slightly_smiling_face": "🙂", "grinning": "😀",
+    "joy": "😂", "100": "💯", "fire": "🔥", "rocket": "🚀", "star": "⭐", "sparkles": "✨",
+    "muscle": "💪", "ok_hand": "👌", "wave": "👋", "thinking_face": "🤔", "raised_hand": "✋",
+    "heart_eyes": "😍", "blush": "😊", "sunglasses": "😎", "partying_face": "🥳", "bulb": "💡",
+    "memo": "📝", "point_up": "☝️", "handshake": "🤝", "party_popper": "🎉",
+}
+QUOTE_LIMIT = 300
+
+
+def emoji_display(name):
+    """The Unicode emoji for a Slack shortcode, or a plain-words note for one with no Unicode form (a
+    custom workspace emoji, or one this table doesn't carry)."""
+    base = (name or "?").split("::")[0]
+    return EMOJI.get(base) or f"custom :{base}: emoji"
+
+
+def _clip(text):
+    text = " ".join((text or "").split())
+    return text if len(text) <= QUOTE_LIMIT else text[:QUOTE_LIMIT].rstrip() + "..."
+
+
+def _day(ts):
+    """A Slack ts as "Nov 12", in the machine's local time."""
+    try:
+        d = datetime.datetime.fromtimestamp(float(ts)).astimezone()
+    except (TypeError, ValueError, OSError):
+        return None
+    return d.strftime("%b %d").replace(" 0", " ")
+
+
+def slack_json(*args):
+    """One slack.js call with --json, parsed; raises when the call fails or prints no JSON."""
+    from provider_base import find_skill_script, run_node
+    path = find_skill_script(__file__, "slack", os.path.join("scripts", "slack.js"))
+    if not path:
+        raise RuntimeError("the slack skill's slack.js was not found")
+    res = run_node([path, *args, "--json"])
+    if res.returncode != 0:
+        raise RuntimeError((res.stderr or res.stdout).strip()[-200:])
+    return json.loads(res.stdout)
+
+
+def reaction_facts(reaction, call=slack_json):
+    """The raw facts the digest shows for a reaction: where it went, whose message and what it said, and
+    the message it answered (the thread parent, or the previous message in a DM). Each lookup that fails
+    just leaves its fact out, so a Slack outage degrades the line instead of losing the send."""
+    channel, ts, thread_ts = reaction.get("channel"), reaction.get("ts"), reaction.get("thread_ts")
+    facts = {"where": channel or "?", "dm": str(channel or "").startswith("D")}
+    try:
+        name = call(f"--resolve-name={channel}")["name"]
+        facts["where"] = f"DM with {name}" if facts["dm"] else name
+    except Exception:
+        pass
+    try:
+        msg = call("--show", f"--channel={channel}", f"--ts={ts}", *([f"--thread-ts={thread_ts}"] if thread_ts else []))
+        facts.update(author=msg.get("from"), text=msg.get("text"), day=_day(ts))
+    except Exception:
+        pass
+    try:
+        if thread_ts and thread_ts != ts:
+            parent = call("--show", f"--channel={channel}", f"--ts={thread_ts}")
+            facts["parent"] = parent
+        elif facts["dm"]:
+            history = call("--history", f"--channel={channel}", "--limit=100")
+            before = [m for m in history if float(m["ts"]) < float(ts)]
+            if before:
+                facts["parent"] = before[-1]
+    except Exception:
+        pass
+    return facts
+
+
+def describe(sent, facts=None):
+    """One send as the digest shows it: where, what was sent, and (for a reaction) the message it went on
+    with the message it answered as raw context for the digest session to turn into one line or drop."""
     scored = sent["scored"]
-    when = sent["ts"].strftime("%b %d, %I:%M %p %Z").replace(" 0", " ")
     r = scored.get("reaction")
-    if r:
-        what = f"Reacted :{r.get('emoji') or '?'}: on {r.get('permalink') or '?'}"
-        undo = f"Undo: `{undo_command(sent['draft_id'])}`"
+    undone = " (undone since)" if sent["undone"] else ""
+    if not r:
+        when = sent["ts"].strftime("%b %d").replace(" 0", " ")
+        return (f"- **{scored.get('channel') or '?'}** - sent a {scored.get('message_type') or 'message'} "
+                f"to {scored.get('recipient') or '?'} ({when}){undone}")
+    f = facts if facts is not None else {"where": r.get("channel") or "?"}
+    emoji = emoji_display(r.get("emoji"))
+    on = f" on {f['author']}" if f.get("author") else ""
+    day = f" ({f['day']})" if f.get("day") else ""
+    lines = [f"- **{f['where']}** - {emoji}{on}{day}{undone}:"]
+    if f.get("text"):
+        lines.append(f'  > "{_clip(f["text"])}"')
     else:
-        what = (f"Sent a {scored.get('message_type') or 'message'} to {scored.get('recipient') or '?'} "
-                f"on {scored.get('channel') or '?'}")
-        undo = f"No undo; draft {sent['draft_id']}"
-    return f"- {when}: {what}" + (" - undone since." if sent["undone"] else f". {undo}")
+        lines.append("  > (message text unavailable)")
+    parent = f.get("parent")
+    if parent:
+        who = parent.get("from") or "someone"
+        lines.append(f'  [raw context, {who}: "{_clip(parent.get("text"))}"]')
+    return "\n".join(lines)
+
+
+def label(sent, facts):
+    """A short name for a send, to match an undo command with the entry Russell sees."""
+    r = sent["scored"].get("reaction")
+    if not r:
+        return f"{sent['scored'].get('channel') or '?'} send"
+    return f"{facts['where']} {emoji_display(r.get('emoji'))} {facts.get('day') or ''}".strip()
 
 
 def covered_queue_ids(queue):
@@ -82,12 +176,23 @@ def covered_queue_ids(queue):
             and not (entry["item"].get("dispositionReason") or "").strip()]
 
 
-def section(sc, runtime_dir, queue, undo_command):
+def section(sc, runtime_dir, queue, undo_command, call=slack_json):
     """The seed's block for the digest's "Sent without you" section, and the draft ids it lists for
-    `reported` to record. With send-confidence missing nothing could have gone out on its own."""
+    `reported` to record. With send-confidence missing nothing could have gone out on its own.
+    The entries are what Russell sees; the undo commands follow under a line marking them for the digest
+    session alone."""
     sends = collect(sc, read_reported(runtime_dir)) if sc else []
     lines = [f"Sent without you since the last digest ({len(sends)}):"] if sends else [NOTHING]
-    lines += ["    " + describe(s, undo_command) for s in sends]
+    undos = []
+    for s in sends:
+        r = s["scored"].get("reaction")
+        facts = reaction_facts(r, call) if r else None
+        lines += ["    " + e for e in describe(s, facts).split("\n")]
+        if r and not s["undone"]:
+            undos.append(f"    {label(s, facts)}: {undo_command(s['draft_id'])}")
+    if undos:
+        lines.append("    Undo commands, for you alone, not for Russell (run one when he asks to take a send back):")
+        lines += undos
     covered = covered_queue_ids(queue)
     if covered:
         lines.append("    Queue items that only repeat a send listed here or in an earlier digest: "
