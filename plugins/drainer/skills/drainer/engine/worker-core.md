@@ -288,9 +288,9 @@ Whatever the sender asks Russell to do is step 3's work whenever the pod can do 
 Do it now, and stage only its irreversible final button (a form's Submit, an invite's Send) for Russell, per the global staging rule; step 4's reply then reports the ask done.
 An ask that needs a fact or a judgment only Russell holds comes back to him as one complete question (§1's one-brief rule), and the work resumes on his answer.
 A notice that points at a web console, portal, or admin page ("you have a request, message, or alert waiting in X") points at a record: open it in browser-chauffeur, sign in (fetching an emailed MFA code from a readable mailbox), and read the real record - who asked, what exactly, why, the risk - before presenting anything.
-"Only an admin can approve" settles who decides, never whether we look: the decision then reaches Russell as one complete brief with a recommendation and the approve/deny button staged, per §1's one-brief rule.
+When only an admin can approve, we still read the record, and the decision then reaches Russell as one complete brief with a recommendation and the approve/deny button staged, per §1's one-brief rule.
 An ask only his own hands can finish is still ours to set up: open the page for him in the browser (browser-chauffeur), ready at the step he takes, or give him the exact steps when there is no page to open; every LinkedIn action gets its link for him to click, per the LinkedIn ban.
-Telling him to go open the page and look is a failure; a bare link is right only for a gate only he can clear (login, CAPTCHA, phone MFA, handled per §2e as HELP_NEEDED) or a LinkedIn page.
+A bare link is for a gate only he can clear (login, CAPTCHA, phone MFA, handled per §2e as HELP_NEEDED).
 The reply then reports it done once he has done it.
 Triage's `kind` and `triageReason` are a quick read of a skimmed body; the ask in the item's own words decides what step 3 does.
 
