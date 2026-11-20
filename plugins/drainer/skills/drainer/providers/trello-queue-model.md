@@ -50,9 +50,11 @@ A P2/P3 Director or well-paid manager keeps its P-tier band, so it still waits b
 A people manager with no posted pay, or pay under the floor, is not pinned: it keeps its P-tier band and sits at the neutral level, interleaved with email by date (see the level band below).
 An **application card** carries a **priority label** named exactly `P1`, `P2`, or `P3` (optionally with a 🎯 prefix), written by the job-board poller (personal-ai-pod `job-board-poll.js`): `P1` stays **at** the neutral band so a fresh top-fit role is caught the same day as email, while `P2`/`P3` sit **below** it.
 The bands, highest first, are the top band (the pins above), the **due band**, neutral (mail, Slack, ordinary cards, a plain P1), then P2, then P3.
-A card with a Due date that is not marked complete, and a Start that has arrived, is in the due band; the adapter reads the card's `due` and `dueComplete` fields.
+A card with a Due date that is not marked complete, a Start that has arrived, and a Due within one week from now is in the due band; the adapter reads the card's `due` and `dueComplete` fields.
+An overdue Due counts as within the week.
+A card whose Due is more than a week away ranks like a card with no Due.
 Cards in the due band run soonest Due first, an overdue card ahead of one due later.
-A card takes the highest band it qualifies for, so a top-band card with a Due date stays in the top band, and a plain P1 or P2/P3 role with a Due date moves up into the due band.
+A card takes the highest band it qualifies for, so a top-band card with a Due date stays in the top band, and a plain P1 or P2/P3 role with a Due within the week moves up into the due band.
 A board without these labels, desc lines, or `in_progress_lists` orders purely by date.
 The band each tier maps to - and how to change it - is defined in one place, the adapter's `_PRIORITY_BAND`.
 
