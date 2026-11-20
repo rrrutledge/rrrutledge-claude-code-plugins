@@ -27,8 +27,8 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # _PRIORITY_BAND.
 NEUTRAL_PRIORITY_BAND = 1
 # The two bands above neutral: a started card with an incomplete Due date within a week (overdue
-# counts; a later Due stays neutral), and the top band (contact,
-# in-progress, a P1 Director-or-above or well-paid manager). Larger is worked sooner.
+# counts; a later Due stays neutral), and the top band (contact, in-progress, a P1 Director-or-above
+# or well-paid manager). Larger is worked sooner.
 DUE_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 1
 TOP_PRIORITY_BAND = NEUTRAL_PRIORITY_BAND + 2
 
