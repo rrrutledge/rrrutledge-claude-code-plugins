@@ -75,8 +75,11 @@ Stuck-provider health (step 0) is separate and always runs.
 ## 1c. Sent without you - every send that went out on its own
 
 Your launcher handed you a **Sent without you** block in the runtime facts, listing the sends that went out on send-confidence's say-so.
-Present the block verbatim as its own section, at the spot step 4 places it, including when it reads "nothing".
-When Russell asks to take back a send the block lists, run the Undo command printed beside it.
+Present the block as its own section, at the spot step 4 places it, including when it reads "nothing".
+Leave out the "Undo commands" lines: they are yours, and Russell never sees or runs one.
+A `[raw context ...]` line holds the message the reaction answered (the thread parent, or the previous DM message).
+Replace it with one plain line on what the reaction answered when the quoted message alone doesn't explain why the reaction fits, in the form "He was replying in your thread praising ..." or "He was answering your ask to ...", and drop it when the quote stands on its own.
+When Russell asks to take back a send, run the undo command for its entry number from the "Undo commands" lines yourself.
 Once Russell has replied to the digest, run the Sent without you reported command from the runtime facts, when they carry one, so the next digest lists only sends Russell hasn't seen.
 
 ## 2b. Auto-handled - report what Claude already did, split by disposition (no decision needed)

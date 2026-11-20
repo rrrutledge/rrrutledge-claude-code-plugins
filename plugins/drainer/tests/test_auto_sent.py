@@ -57,8 +57,20 @@ def propose(ts, emoji):
                                                          emoji=emoji, permalink=PERMALINK))
 
 
+def fake_slack(*args):
+    if args[0].startswith("--resolve-name="):
+        return {"name": {"C0123ABCD": "#summit2026planning", "D0DM": "Jeff Bailey"}[args[0].split("=")[1]]}
+    if args[0] == "--show":
+        ts = [a for a in args if a.startswith("--ts=")][0].split("=")[1]
+        if ts == "1761600000.000100":
+            return {"from": "Paul Berschick", "text": "These postcards are so engaging."}
+        return {"from": "Paul Berschick", "text": "And I enjoyed the\nsmiles on the faces"}
+    return [{"ts": "1761690000.000100", "from": "Russell", "text": "ask"},
+            {"ts": "1761700000.000100", "from": "Jeff Bailey", "text": "later"}]
+
+
 def section(rt, queue=()):
-    return auto_sent.section(sc, rt, list(queue), slack_reaction.undo_command)
+    return auto_sent.section(sc, rt, list(queue), slack_reaction.undo_command, fake_slack)
 
 
 def now():
@@ -78,10 +90,31 @@ check("both went out on their own", (kept["auto_sent"], undone["auto_sent"]), (T
 slack_reaction.cmd_undo(argparse.Namespace(draft_id=undone["draft_id"]))
 block, ids = section(rt)
 check("counts both, oldest first", ("(2):" in block, ids), (True, [kept["draft_id"], undone["draft_id"]]))
-check("names the emoji and the permalink", f"Reacted :heart: on {PERMALINK}" in block, True)
-check("carries the undo command", slack_reaction.undo_command(kept["draft_id"]) in block, True)
-check("an undone one reads as undone", "Reacted :tada:" in block and "undone since." in block, True)
-check("and carries no undo of its own", slack_reaction.undo_command(undone["draft_id"]) in block, False)
+check("names the channel, real emoji, author, and quoted text",
+      '**#summit2026planning** - ❤️ on Paul Berschick (' in block
+      and '> "And I enjoyed the smiles on the faces"' in block, True)
+check("no permalink and no :name: shortcode in what Russell sees",
+      PERMALINK in block or "Reacted :" in block, False)
+check("the undo command sits under the digest-session-only line",
+      block.index("for you alone") < block.index(slack_reaction.undo_command(kept["draft_id"])), True)
+check("an undone one reads as undone, with no undo of its own",
+      "🎉 on Paul Berschick" in block and "(undone since)" in block
+      and slack_reaction.undo_command(undone["draft_id"]) not in block, True)
+check("emoji map", [auto_sent.emoji_display(n) for n in ("heart", "+1", "isc", "heart::skin-tone-3")],
+      ["❤️", "👍", "custom :isc: emoji", "❤️"])
+
+print("a threaded reply carries its parent as raw context; a DM carries the previous message")
+facts = auto_sent.reaction_facts({"channel": "C0123ABCD", "ts": "1761700000.000100",
+                                  "thread_ts": "1761600000.000100"}, fake_slack)
+check("thread parent", facts["parent"]["text"], "These postcards are so engaging.")
+facts = auto_sent.reaction_facts({"channel": "D0DM", "ts": "1761700000.000100"}, fake_slack)
+check("DM name and previous message", (facts["where"], facts["parent"]["text"]), ("DM with Jeff Bailey", "ask"))
+def broken(*a):
+    raise RuntimeError("slack down")
+facts = auto_sent.reaction_facts({"channel": "C0123ABCD", "ts": "1"}, broken)
+check("a Slack failure degrades to the id",
+      auto_sent.describe({"scored": {"reaction": {"channel": "C0123ABCD", "emoji": "heart"}}, "undone": False},
+                         facts), "- **C0123ABCD** - ❤️:\n  > (message text unavailable)")
 
 print("any other kind of send is listed too, and a malformed event is skipped")
 sc._append_event({"event": "scored", "draft_id": "d-email1", "ts": now(), "message_type": "reply",
@@ -89,8 +122,7 @@ sc._append_event({"event": "scored", "draft_id": "d-email1", "ts": now(), "messa
 sc._append_event({**sc._superseded_event("d-email1", now()), "v": 2, "disposition": "auto-sent"})
 sc._append_event({"event": "outcome", "ts": now(), "disposition": "auto-sent"})
 block, ids = section(rt)
-check("a reply that went out on its own",
-      "Sent a reply to jane@example.com on outlook. No undo; draft d-email1" in block, True)
+check("a reply that went out on its own", "**outlook** - sent a reply to jane@example.com" in block, True)
 check("three sends listed", len(ids), 3)
 
 print("a send leaves the section only once a digest reports it")
