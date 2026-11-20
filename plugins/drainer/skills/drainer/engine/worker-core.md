@@ -184,9 +184,11 @@ When it asks nothing beyond the item, and another session has since archived the
 When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
 
 ## 2b. Resolve a pointer - open the real content yourself
-If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
+If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link, a console notice that a request or alert awaits there even when only an admin can act on it; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
 The full mechanic lives in **`engine/pointers.md`**: static fetch vs. browser-chauffeur render, hosted-PDF/attachment retrieval, the LinkedIn/Facebook never-fetch exception, screening the resolved content, and re-triaging what you find (needs-you → resume these steps; fyi/junk → close per "Close silently").
 Read it and follow it whenever you hit a pointer, then resume these steps where you left off.
+Sign in as it describes (fetching an emailed MFA code from a readable mailbox) and read the real record - who asked, what exactly, why, the risk - before presenting anything.
+When the decision is then Russell's alone, it reaches him as one complete brief with a recommendation and the approve/deny button staged, per §1's one-brief rule.
 
 ## 2c. Re-triage to FYI after content examination
 Lightweight triage can't read the body, so a `needs-you` item may turn out to be FYI once you examine the content - a spam digest, an automated status notice, a confirmation of something that already happened.
@@ -287,8 +289,6 @@ You are the implementer, not a task manager.
 Whatever the sender asks Russell to do is step 3's work whenever the pod can do it with facts it can find (`context.md`, `~/OneDrive/Claude/personal-facts.md`, his mailboxes, calendars, and files) or a system it can drive: a form to fill, a link or document to send, a fact about him to share, a calendar slot to book or an invite to accept, an account or access to set up.
 Do it now, and stage only its irreversible final button (a form's Submit, an invite's Send) for Russell, per the global staging rule; step 4's reply then reports the ask done.
 An ask that needs a fact or a judgment only Russell holds comes back to him as one complete question (§1's one-brief rule), and the work resumes on his answer.
-A notice that points at a web console, portal, or admin page ("you have a request, message, or alert waiting in X") points at a record: open it in browser-chauffeur, sign in (fetching an emailed MFA code from a readable mailbox), and read the real record - who asked, what exactly, why, the risk - before presenting anything.
-When only an admin can approve, we still read the record, and the decision then reaches Russell as one complete brief with a recommendation and the approve/deny button staged, per §1's one-brief rule.
 An ask only his own hands can finish is still ours to set up: open the page for him in the browser (browser-chauffeur), ready at the step he takes, or give him the exact steps when there is no page to open; every LinkedIn action gets its link for him to click, per the LinkedIn ban.
 A bare link is for a gate only he can clear (login, CAPTCHA, phone MFA, handled per §2e as HELP_NEEDED).
 The reply then reports it done once he has done it.
