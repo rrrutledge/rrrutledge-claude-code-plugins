@@ -123,6 +123,7 @@ module.paths.push(path.join(os.homedir(), '.claude', 'gmail', 'node_modules'));
 const { google } = require('googleapis');
 const { simpleParser } = require('mailparser');
 const { marked } = require('marked');
+const { renderBody } = require('./markdown-body');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
@@ -752,7 +753,7 @@ async function reply() {
   if (!args['message-id'] || !args['body-file']) {
     throw new Error('--reply requires --message-id and --body-file');
   }
-  const html = marked.parse(fs.readFileSync(args['body-file'], 'utf8'));
+  const html = renderBody(fs.readFileSync(args['body-file'], 'utf8'), marked);
   let gid = await findMessageId(args['message-id']);
   if (!gid) throw new Error('Original message not found in inbox or All Mail.');
   const givenGid = gid;
@@ -822,7 +823,7 @@ async function draftNew() {
   if (!args.to || !args.subject || !args['body-file']) {
     throw new Error('--draft-new requires --to, --subject, and --body-file');
   }
-  const html = marked.parse(fs.readFileSync(args['body-file'], 'utf8'));
+  const html = renderBody(fs.readFileSync(args['body-file'], 'utf8'), marked);
   const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) });
   const draftId = await createDraft(raw, null);
   console.log(`Draft staged in Drafts to ${args.to}. Review in Gmail; never sent.`);
