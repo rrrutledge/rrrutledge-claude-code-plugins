@@ -143,6 +143,9 @@ def test_due_band():
     check("an overdue Due counts", due(-30) is not None)
     check("a Due in 6 days counts", due(6) is not None)
     check("a Due in 8 days does not count", due(8) is None)
+    naive = card()
+    naive["due"] = "2026-11-18"
+    check("a Due without an offset reads as UTC", Provider._due_dt(naive, start, now) is not None)
     check("a completed Due does not count", due(3, complete=True) is None)
     check("a card with no Start does not enter the due band", due(3, has_start=False) is None)
     check("no Due field -> None", Provider._due_dt(card(), start, now) is None)

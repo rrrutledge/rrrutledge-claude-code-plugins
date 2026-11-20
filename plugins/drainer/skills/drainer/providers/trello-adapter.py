@@ -322,12 +322,13 @@ class Provider(ProviderBase):
     def _due_dt(card, start_dt, now):
         """The card's Due datetime when it counts for the due band, else None: the Due is set and not
         marked complete, the card has a Start (it was started on purpose; the startable gate already
-        ensured that Start has arrived), and the Due falls within _DUE_WINDOW of `now` (every past Due
-        qualifies, so overdue counts). A Due further out ranks like a card with no Due, and because the
-        band and the due rank both read this value they agree."""
+        ensured that Start has arrived), and the Due falls within _DUE_WINDOW of `now` (a past Due
+        qualifies, so overdue counts). A Due further out ranks like a card with no Due."""
         if start_dt is None or card.get("dueComplete"):
             return None
         due = Provider._parse_dt(card.get("due"))
+        if due is not None and due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
         if due is None or due - now > _DUE_WINDOW:
             return None
         return due
@@ -348,9 +349,9 @@ class Provider(ProviderBase):
         person-follow-up card and a card on one of its board's in-progress lists (`in_progress`,
         resolved by the caller from the card's list), whatever other labels either wears; a 💰 Money
         card; and a P1 Director-or-above role, with or without posted pay, or a P1 people manager whose
-        posted pay reaches _PAY_BAND_FLOOR. Below the pins, a card with a due date within a week (`due_dt`, see
-        _due_dt; overdue counts, a Due further out leaves `due_dt` None) takes the due band, whatever its P-tier. Otherwise the first P1/P2/P3 priority label wins; an application card normally
-        wears exactly one."""
+        posted pay reaches _PAY_BAND_FLOOR. Below the pins, a card with a due date within a week (`due_dt`,
+        see _due_dt) takes the due band, whatever its P-tier. Otherwise the first P1/P2/P3 priority
+        label wins; an application card normally wears exactly one."""
         labels = card.get("labels", [])
         if job_search:
             if in_progress:
