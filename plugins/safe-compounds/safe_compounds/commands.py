@@ -543,6 +543,13 @@ START_SAFE_EXTENSIONS = {
 }
 
 
+# claude://code/new?q=<text> opens the Claude desktop app on a new session with
+# the prompt box prefilled; the user still presses send, and closing the window
+# undoes it. Only this one path with one URL-encoded value is trusted - any other
+# custom scheme hands the URL to an app whose behavior the hook can't see.
+CLAUDE_PREFILL_URL = re.compile(r'claude://code/new\?q=[A-Za-z0-9%._~-]*')
+
+
 def is_start_safe(seg):
     tokens = shell_tokenize(seg)
     if len(tokens) < 2:
@@ -555,6 +562,8 @@ def is_start_safe(seg):
     # but its "/" would hide the real extension from splitext.
     target = target.split('#', 1)[0]
     if target.startswith('http://') or target.startswith('https://'):
+        return True
+    if CLAUDE_PREFILL_URL.fullmatch(target):
         return True
     if os.path.isdir(target):
         return True

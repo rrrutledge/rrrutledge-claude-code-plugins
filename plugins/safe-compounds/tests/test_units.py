@@ -703,6 +703,18 @@ class TestStartSafe:
     def test_fragment_cannot_smuggle_safe_extension(self):
         assert is_start_safe('start "" "C:\\x\\evil.exe#a.html"') is False
 
+    def test_claude_prefill_deep_link(self):
+        assert is_start_safe('start "claude://code/new?q=Test%20prefill%20-%20do%20not%20send"') is True
+
+    def test_other_claude_path_rejected(self):
+        assert is_start_safe('start "claude://code/other?q=hello"') is False
+
+    def test_prefill_with_extra_param_rejected(self):
+        assert is_start_safe('start "claude://code/new?q=hi&x=1"') is False
+
+    def test_other_custom_scheme_rejected(self):
+        assert is_start_safe('start "ms-msdt:/id?q=hello"') is False
+
 
 class TestMcp:
     def test_read(self):
