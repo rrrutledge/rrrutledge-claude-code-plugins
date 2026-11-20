@@ -78,24 +78,27 @@ instructions: |-
     applies by then whether or not an intro has landed. Otherwise it stays startable-now until the
     application is in, is finished in a single session, then moves to Applied and, once every helper has
     their update, to Finished / Abandoned and rests. Every other wait a role seems to need - a referrer's
-    name, a recruiter who has gone quiet - is really a wait on a person, so that clock lives on the
-    person's card, never the role card. Created by the job-board poller
+    name, a recruiter who has gone quiet - is really a wait on a person, so while that person is a primary follow-up, that clock lives on
+    their card. Created by the job-board poller
     (always in `Identified`, always wearing a `P1`/`P2`/`P3` fit label) or by the apply-for-job flow. It
     never wears the `👤 Contact` label.
-  - **Person follow-up card** - one network contact. Its Start tracks the follow-up cadence with that one
-    person (the nudge cadence in the CLEAR guidance). One card per contact, reused across every role they
-    help with - a referrer who spans four applications is one card, not four, the same way the referrers
-    list compounds. It wears the **`👤 Contact`** label and never a `P1`/`P2`/`P3` label.
+  - **Person follow-up card** - one network contact, and only while following up with them moves the
+    work (the job-search initiative's "A person card only while following up with them moves the work"). Its Start tracks the follow-up cadence with that one person (the nudge
+    cadence in the CLEAR guidance). One card per contact, reused across every role they help with - a
+    referrer who spans four applications is one card, not four, the same way the referrers list
+    compounds. It wears the **`👤 Contact`** label and never a `P1`/`P2`/`P3` label.
 
-  **Outreach for a role lives on the contact's person card, linked to the application card.** When a
+  **Outreach for a role lives on the contact's person card, linked to the application card, while the contact is a primary follow-up.** When a
   warm intro for a role goes to a contact, open or update that contact's person card (search first, per
   above), set its Start to the follow-up cadence (day 5 after the ask for a role-specific referral ask, per
   the job-search initiative's 0 / 5 / 7 day schedule), and link the two by URL - the application card names the
-  contacts helping it, the person card names the role(s) it's helping. Bundling several contacts' threads
-  onto one application card is what drops follow-ups: four contacts are four clocks, and a card's one Start
-  can hold only one. Every contact you reach gets their own person card, even a single cold ask you
-  expect nothing back from - reaching out to someone starts their follow-up clock, and a card is where
-  that clock lives so the follow-up can never be dropped.
+  contacts helping it, the person card names the role(s) it's helping. Bundling several primary contacts' threads
+  onto one application card is what drops follow-ups: four primary contacts are four clocks, and a card's one Start
+  can hold only one. Every contact you ask gets their own person card, even a single cold ask you
+  expect nothing back from - an ask starts their follow-up clock, and a card is where that clock lives
+  so the follow-up can never be dropped. When the contact stops being the primary follow-up, the job-search
+  initiative's "A person card only while following up with them moves the work" says how the card folds
+  into the role card; "Everyone who helped on a role hears how it went" covers the updates they are owed.
 
   **Person cards lead the queue.** A `👤 Contact` card is worked ahead of the inbox and every application
   tier, so following up with an existing contact always beats starting or chasing an application. That
