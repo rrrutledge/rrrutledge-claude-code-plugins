@@ -40,12 +40,12 @@ Every command takes `--doc-id=<id>` (the doc id from its URL, `docs.google.com/d
 - **Set a cell to plain text:** `node google-docs.js --set-cell-text --doc-id=<id> --row-index=<n> --col-index=<n> --text="..." [--bold]`
   Replaces the cell's entire content with one line of plain text, optionally bold - useful for renaming a header cell.
 - **Read the doc as text:** `node google-docs.js --read --doc-id=<id>`
-  Prints `revisionId: <id>` on the first line, then one line per paragraph; table cells print as `[table T row R col C] text`.
+  Prints one line per paragraph; table cells print as `[table T row R col C] text`.
 - **Insert text after a paragraph:** `node google-docs.js --insert-after --doc-id=<id> --match="paragraph starts with" --text="..."`
   Inserts at the end of the first paragraph (table cells included) that starts with `--match`.
   A leading `\n` in `--text` makes a new paragraph that inherits the matched paragraph's bullet; the two characters backslash-n in `--text` or `--replace` become a newline.
   Reading and matching cover the doc's first tab only.
-  The doc is read just before the insert and the write carries that revision id, so a concurrent edit rejects the batch - re-run it.
+  A concurrent edit rejects the batch - re-run it.
 - **Replace all matching text:** `node google-docs.js --replace-all --doc-id=<id> --find="old" --replace="new" [--match-case]`
   Prints how many occurrences changed; an empty `--replace` deletes the matched text.
 
