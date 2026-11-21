@@ -224,6 +224,8 @@ CASES = [
     # --- start / wt ---------------------------------------------------------
     {"id": "start_docx", "tool": "Bash", "command": "start report.docx", "expect": "ALLOW"},
     {"id": "start_exe", "tool": "Bash", "command": "start evil.exe", "expect": "PROMPT"},
+    {"id": "start_claude_prefill", "tool": "Bash", "command": 'start "claude://code/new?q=hello%20world"', "expect": "ALLOW"},
+    {"id": "start_claude_other_path", "tool": "Bash", "command": 'start "claude://code/other?q=hello"', "expect": "PROMPT"},
     # Windows Terminal runs an arbitrary inner command line in a new tab, so
     # every `wt` form prompts - even one whose inner program is trusted, since
     # the inner program's arguments go unchecked (`wt new-tab rm -rf ~`).
