@@ -34,9 +34,9 @@ def test_zoom_without_flag_is_denied(tool, field):
     assert decide(tool, event(**{field: f"Join: {ZOOM}"})) == "deny"
 
 
-@pytest.mark.parametrize("tool", [CREATE, UPDATE])
-def test_zoom_with_false_flag_passes(tool):
-    assert decide(tool, event(location=ZOOM, description=ZOOM, addGoogleMeetUrl=False, attendees=GUESTS)) == "defer"
+@pytest.mark.parametrize("tool,guests", [(CREATE, "attendees"), (UPDATE, "addedAttendees")])
+def test_zoom_with_false_flag_passes(tool, guests):
+    assert decide(tool, event(location=ZOOM, description=ZOOM, addGoogleMeetUrl=False, **{guests: GUESTS})) == "defer"
 
 
 @pytest.mark.parametrize("text", [
@@ -44,13 +44,16 @@ def test_zoom_with_false_flag_passes(tool):
     "<a href=\"https://acme.webex.com/meet/pat\">join</a>",
     "https://zoomgov.com/j/123",
     "zoom.us/j/81234567890",
+    "Join at zoom.us.",
+    "Zoom (zoom.us)",
 ])
 def test_other_join_links_are_caught(text):
     assert decide(CREATE, event(description=text)) == "deny"
 
 
-def test_look_alike_host_is_not_a_join_link():
-    assert decide(CREATE, event(description="https://zoom.us-events.example.com/agenda")) == "defer"
+@pytest.mark.parametrize("text", ["https://zoom.us-events.example.com/agenda", "Questions: pat@zoom.us"])
+def test_look_alikes_and_emails_are_not_join_links(text):
+    assert decide(CREATE, event(description=text)) == "defer"
 
 
 def test_guests_without_flag_are_denied():
@@ -59,7 +62,7 @@ def test_guests_without_flag_are_denied():
     assert decide(UPDATE, {"eventId": "x", "addedAttendees": GUESTS}) == "deny"
 
 
-@pytest.mark.parametrize("extra", [{"addGoogleMeetUrl": True}, {"addGoogleMeetUrl": False}, {"googleMeetUrl": "abc-defg-hij"}])
+@pytest.mark.parametrize("extra", [{"addGoogleMeetUrl": True}, {"addGoogleMeetUrl": False}, {"googleMeetUrl": "abc-defg-hij"}, {"googleMeetUrl": ""}])
 def test_an_explicit_choice_passes(extra):
     assert decide(CREATE, event(attendees=GUESTS, description=f"Recording: {ZOOM}", **extra)) == "defer"
 
