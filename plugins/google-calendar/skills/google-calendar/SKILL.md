@@ -1,22 +1,27 @@
 ---
 name: google-calendar
-description: Read a Google Calendar's events over a time range, or remove the Google Meet link from an event, via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to calendar.readonly and calendar.events. Use when a script needs a Google Calendar's events, when an event should carry a Zoom (or other) link instead of Meet, or when a Meet link has to come off an existing event.
+description: Schedule, create, or edit a Google Calendar event through the claude.ai connector without it attaching an unwanted Google Meet link, read a Google Calendar's events over a time range, or remove the Meet link from an existing event via the Calendar API - no browser. Use when putting a meeting, call, or invite on Google Calendar (especially one with a Zoom or Teams link), when a script needs a Google Calendar's events, or when a Meet link has to come off an event.
 ---
 
-# Google Calendar - Event Listing and Meet Removal via the Calendar API
+# Google Calendar - Creating Events Without Meet, Listing, and Meet Removal
+
+## Creating or editing an event through the connector
+
+1. Call the claude.ai Google Calendar connector's `create_event` with `addGoogleMeetUrl` set explicitly on every event that has guests: `false` for an in-person meeting or one with its own Zoom/Teams link, `true` only for a meeting meant to be on Google Meet.
+   Leaving the flag out attaches a Meet link to the invites, despite the connector's documented `false` default, and the invites reach every guest the moment the event is created.
+2. For a Zoom (or Teams, Webex, ...) meeting, put the join URL in both `location` and `description`, pass `addGoogleMeetUrl: false`, and leave `googleMeetUrl` out.
+3. Pass `addGoogleMeetUrl: false` on an `update_event` that sets a non-Meet join URL too.
+4. To take a Meet link off an event that already has one, run `--strip-meet` (below); the connector's `update_event` can only add Meet.
+
+The plugin's `meet_guard.py` PreToolUse hook enforces steps 1-3: it denies a `create_event` or `update_event` that breaks them, with the corrected call in its message.
+
+## The Calendar API script
 
 List a Google Calendar's events over a time range through the Calendar API's `events.list` endpoint, or remove an event's Google Meet link, using Google's official Node client library (`googleapis`): `scripts/google-calendar.js`.
 
 Reuses the same Google Cloud OAuth "Desktop app" client the `gmail` plugin already registered (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`) - one OAuth client, many scopes.
 This path requests `calendar.readonly` plus `calendar.events` and keeps its own token cache (`~/.claude/google-calendar/oauth-token.json`).
 A token without `calendar.events` still lists events; re-run the sign-in once before the first Meet removal.
-
-## Events with no Google Meet link
-
-The claude.ai Google Calendar connector's `create_event` attaches a Meet link to any event with guests unless the call passes `addGoogleMeetUrl: false` explicitly; leaving the flag out gets a Meet link despite its documented `false` default.
-So for a meeting whose real link is Zoom, create it through the connector with `addGoogleMeetUrl: false`, and put the Zoom join URL in `location` and `description`.
-
-The connector's `update_event` can only add a Meet link, so take one off an existing event with `--strip-meet` below.
 
 ## Setup (per machine, one-time)
 

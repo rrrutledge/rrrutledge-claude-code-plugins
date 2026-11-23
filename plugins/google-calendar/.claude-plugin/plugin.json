@@ -1,7 +1,7 @@
 {
   "name": "google-calendar",
-  "version": "1.1.0",
-  "description": "Read a Google Calendar's events over a time range, or remove an event's Google Meet link, via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to calendar.readonly and calendar.events.",
+  "version": "1.2.0",
+  "description": "Keep the claude.ai Google Calendar connector from attaching an unwanted Google Meet link (a PreToolUse guard on create_event / update_event), read a Google Calendar's events over a time range, or remove an event's Meet link via the Calendar API - no browser.",
   "author": {
     "name": "Russell Rutledge"
   },
