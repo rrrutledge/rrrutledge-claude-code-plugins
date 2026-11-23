@@ -46,6 +46,9 @@ def test_zoom_with_false_flag_passes(tool, guests):
     "zoom.us/j/81234567890",
     "Join at zoom.us.",
     "Zoom (zoom.us)",
+    "**zoom.us**",
+    "https://nam12.safelinks.protection.outlook.com/?url=https%3A%2F%2Fus02web.zoom.us%2Fj%2F8123",
+    "https://gov.teams.microsoft.us/l/meetup-join/19",
 ])
 def test_other_join_links_are_caught(text):
     assert decide(CREATE, event(description=text)) == "deny"
@@ -60,9 +63,10 @@ def test_guests_without_flag_are_denied():
     assert decide(CREATE, event(attendees=GUESTS)) == "deny"
     assert decide(CREATE, event(attendeeEmails=["guest@example.com"])) == "deny"
     assert decide(UPDATE, {"eventId": "x", "addedAttendees": GUESTS}) == "deny"
+    assert decide(CREATE, event(attendees=GUESTS, googleMeetUrl="")) == "deny"
 
 
-@pytest.mark.parametrize("extra", [{"addGoogleMeetUrl": True}, {"addGoogleMeetUrl": False}, {"googleMeetUrl": "abc-defg-hij"}, {"googleMeetUrl": ""}])
+@pytest.mark.parametrize("extra", [{"addGoogleMeetUrl": True}, {"addGoogleMeetUrl": False}, {"googleMeetUrl": "abc-defg-hij"}])
 def test_an_explicit_choice_passes(extra):
     assert decide(CREATE, event(attendees=GUESTS, description=f"Recording: {ZOOM}", **extra)) == "defer"
 
