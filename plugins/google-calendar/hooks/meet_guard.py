@@ -7,79 +7,62 @@ though its schema documents a `false` default. The invites go out the moment the
 created, so a Meet link removed afterward has already reached every guest.
 
 This PreToolUse hook sees every `create_event` and `update_event` call before it runs,
-whether or not the session loaded the google-calendar skill, and denies three shapes, each
-with the corrected call spelled out:
+whether or not the session loaded the google-calendar skill. A call that sets
+`addGoogleMeetUrl` (either way) or `googleMeetUrl` has made its choice and defers. A call
+that leaves both out is denied, with the corrected call spelled out, in two cases:
 
-  * The event carries a Zoom, Teams, Webex, or other non-Meet join URL in `location` or
-    `description`, and the call doesn't pass `addGoogleMeetUrl: false` - or it asks for
-    Meet outright (`addGoogleMeetUrl: true`, `googleMeetUrl`).
-  * `create_event` has guests and leaves `addGoogleMeetUrl` out, so the connector would
-    add Meet silently. Passing either `true` or `false` lets it through; the call just has
-    to say which.
+  * The event's `location` or `description` holds a Zoom, Teams, Webex, or other non-Meet
+    join URL - the call needs `addGoogleMeetUrl: false`.
+  * The call adds guests (`attendees` on create, `addedAttendees` on update) - the call
+    needs the flag set to whichever the meeting wants.
 
-Everything else defers. The hook is a pure veto - it only denies or defers, never
-approves - and on any internal error it defers, so it can never be the mysterious reason
-a legitimate calendar call fails.
+The hook denies or defers, and on any internal error it defers, so it can never be the
+mysterious reason a legitimate calendar call fails.
 """
 
 import json
 import re
 import sys
 
-CREATE = "mcp__claude_ai_Google_Calendar__create_event"
-UPDATE = "mcp__claude_ai_Google_Calendar__update_event"
+GUEST_FIELDS = ("attendees", "attendeeEmails", "addedAttendees", "addedAttendeeEmails")
 
 NON_MEET_JOIN = re.compile(
-    r"https?://(?:[\w-]+\.)*(?:"
+    r"(?<![\w.-])(?:https?://)?(?:[\w-]+\.)*(?:"
     r"zoom\.us|zoomgov\.com|teams\.microsoft\.com|teams\.live\.com|webex\.com|"
-    r"gotomeeting\.com|goto\.com|whereby\.com|bluejeans\.com|chime\.aws|meet\.jit\.si|"
-    r"around\.co|discord\.gg|slack\.com/huddle"
-    r")\b",
+    r"gotomeeting\.com|goto\.com|whereby\.com|bluejeans\.com|chime\.aws|meet\.jit\.si"
+    r")(?=[/:?#\s\"'<>]|$)",
     re.IGNORECASE,
 )
 
 
-def join_url(tool_input):
+def verdict(tool_input):
+    if tool_input.get("addGoogleMeetUrl") is not None or tool_input.get("googleMeetUrl"):
+        return None
     for field in ("location", "description"):
         match = NON_MEET_JOIN.search(str(tool_input.get(field) or ""))
         if match:
-            return match.group(0)
-    return None
-
-
-def verdict(tool_name, tool_input):
-    flag = tool_input.get("addGoogleMeetUrl")
-    url = join_url(tool_input)
-    if url:
-        if tool_input.get("googleMeetUrl") or flag is not False:
             return (
-                f"This event's join link is {url}, so it must not get a Google Meet link. "
-                "Re-run the same call with `addGoogleMeetUrl: false` and no `googleMeetUrl` - "
-                "the connector attaches Meet to any event with guests unless that flag is "
-                "explicitly false, despite its documented `false` default. "
+                f"This event's join link is {match.group(0)}, so it stays off Google Meet. "
+                "Re-run the same call with `addGoogleMeetUrl: false` - the connector attaches "
+                "Meet to any event with guests unless that flag is explicitly false, despite "
+                "its documented `false` default. "
                 "Keep the join URL in both `location` and `description`."
             )
-        return None
-    if tool_name == CREATE and flag is None and not tool_input.get("googleMeetUrl"):
-        if tool_input.get("attendees") or tool_input.get("attendeeEmails"):
-            return (
-                "This event has guests and no `addGoogleMeetUrl`, so the connector would "
-                "attach a Google Meet link to the invites despite its documented `false` "
-                "default. Re-run the same call with `addGoogleMeetUrl` set explicitly: "
-                "`false` for an in-person meeting or one with its own Zoom/Teams link (put "
-                "that URL in `location` and `description`), `true` only when the meeting "
-                "should be on Google Meet."
-            )
+    if any(tool_input.get(field) for field in GUEST_FIELDS):
+        return (
+            "This call adds guests with no `addGoogleMeetUrl`, so the connector would attach "
+            "a Google Meet link to the invites despite its documented `false` default. "
+            "Re-run the same call with `addGoogleMeetUrl` set explicitly: `false` for an "
+            "in-person meeting or one with its own Zoom/Teams link (put that URL in "
+            "`location` and `description`), `true` for a meeting meant to be on Google Meet."
+        )
     return None
 
 
 def main():
     try:
-        payload = json.load(sys.stdin)
-        tool_name = payload.get("tool_name")
-        if tool_name not in (CREATE, UPDATE):
-            return
-        reason = verdict(tool_name, payload.get("tool_input") or {})
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+        reason = verdict(payload.get("tool_input") or {})
     except Exception:
         return
     if reason:

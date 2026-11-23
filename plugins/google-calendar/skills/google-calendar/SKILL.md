@@ -7,13 +7,10 @@ description: Schedule, create, or edit a Google Calendar event through the claud
 
 ## Creating or editing an event through the connector
 
-1. Call the claude.ai Google Calendar connector's `create_event` with `addGoogleMeetUrl` set explicitly on every event that has guests: `false` for an in-person meeting or one with its own Zoom/Teams link, `true` only for a meeting meant to be on Google Meet.
+1. Set `addGoogleMeetUrl` explicitly on every connector `create_event` or `update_event` that adds guests or sets a non-Meet join URL: `true` for a meeting meant to be on Google Meet, `false` for every other meeting.
    Leaving the flag out attaches a Meet link to the invites, despite the connector's documented `false` default, and the invites reach every guest the moment the event is created.
-2. For a Zoom (or Teams, Webex, ...) meeting, put the join URL in both `location` and `description`, pass `addGoogleMeetUrl: false`, and leave `googleMeetUrl` out.
-3. Pass `addGoogleMeetUrl: false` on an `update_event` that sets a non-Meet join URL too.
-4. To take a Meet link off an event that already has one, run `--strip-meet` (below); the connector's `update_event` can only add Meet.
-
-The plugin's `meet_guard.py` PreToolUse hook enforces steps 1-3: it denies a `create_event` or `update_event` that breaks them, with the corrected call in its message.
+2. For a meeting with a non-Meet join URL, put that URL in both `location` and `description`.
+3. To take a Meet link off an event that already has one, run `--strip-meet` (below); the connector's `update_event` can only add Meet.
 
 ## The Calendar API script
 
