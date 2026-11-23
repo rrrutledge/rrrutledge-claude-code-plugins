@@ -71,9 +71,10 @@ A closing nudge to use access or instructions the reader asked for is a tail too
 **Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to", a closing nudge to use what was just handed over; a final paragraph restating what was already said; unrequested reassurance; an offer or invitation addressed past the reader to a third party.
 Innocent: a genuinely open decision, asked as one direct question and stopped there.
 
-**Spell a community's own term the way that community writes it.**
-A discipline, product, or program name carries its owner's spelling and capitalization in every artifact Russell's name goes on, including when he is the one speaking for that community.
-**Check:** a community's term split into separate words or cased differently from how the community's own site, thread, or materials write it.
+**Write "InnerSource" as one word in Pascal case, capital I and capital S.**
+The term holds in every artifact Russell's name goes on, in running prose and in names like "InnerSource Commons".
+The same goes for any other community's own term: it carries the spelling and capitalization that community uses.
+**Check:** "inner source", "inner-source", "Inner Source", "innersource", or "inner sourcing" anywhere outside a quotation or a URL; any other community term split into separate words or cased differently from how the community's own site, thread, or materials write it.
 
 **Skill prose carries only the steps that need the running Claude session.**
 In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
