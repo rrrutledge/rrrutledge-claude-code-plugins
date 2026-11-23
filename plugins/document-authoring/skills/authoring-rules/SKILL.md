@@ -71,6 +71,10 @@ A closing nudge to use access or instructions the reader asked for is a tail too
 **Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to", a closing nudge to use what was just handed over; a final paragraph restating what was already said; unrequested reassurance; an offer or invitation addressed past the reader to a third party.
 Innocent: a genuinely open decision, asked as one direct question and stopped there.
 
+**Spell a community's own term the way that community writes it.**
+A discipline, product, or program name carries its owner's spelling and capitalization in every artifact Russell's name goes on, including when he is the one speaking for that community.
+**Check:** a community's term split into separate words or cased differently from how the community's own site, thread, or materials write it.
+
 **Skill prose carries only the steps that need the running Claude session.**
 In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
 A how-to doc or runbook for a repeatable procedure splits its steps by the same test: a script it points to holds the steps whose commands and branches can be written down in advance.
