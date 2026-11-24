@@ -26,6 +26,10 @@ param(
 $TaskName = 'DrainerDigest'
 
 if ($Remove) {
+    if ($DryRun) {
+        Write-Host "DryRun: would remove scheduled task '$TaskName'; nothing removed."
+        return
+    }
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Write-Host "Removed scheduled task '$TaskName'."
     return
@@ -37,9 +41,9 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # plugin cache, then point the task at it. The launcher resolves whichever drainer
 # version is installed at run time, so routine plugin updates need no re-registration.
 $stableDir = Join-Path $env:USERPROFILE '.claude\drainer'
-if (-not (Test-Path $stableDir)) { New-Item -ItemType Directory -Path $stableDir -Force | Out-Null }
 $launcher = Join-Path $stableDir 'launch-drainer.py'
 if (-not $DryRun) {
+    if (-not (Test-Path $stableDir)) { New-Item -ItemType Directory -Path $stableDir -Force | Out-Null }
     Copy-Item -Path (Join-Path $scriptDir 'launch-drainer.py') -Destination $launcher -Force
 }
 
@@ -54,7 +58,7 @@ $trigger = New-ScheduledTaskTrigger -Daily -At $At
 # New-ScheduledTaskTrigger writes StartBoundary with a fixed UTC offset (e.g. -05:00), which Task
 # Scheduler holds as one absolute instant, so the task drifts an hour at each daylight-time change.
 # A StartBoundary with no offset keeps local wall-clock time.
-$trigger.StartBoundary = (Get-Date).Date.Add([TimeSpan]::Parse($At)).ToString('yyyy-MM-ddTHH:mm:ss')
+$trigger.StartBoundary = (Get-Date).Date.Add([datetime]::Parse($At).TimeOfDay).ToString('yyyy-MM-ddTHH:mm:ss')
 
 if ($DryRun) {
     $zone = [TimeZoneInfo]::Local
