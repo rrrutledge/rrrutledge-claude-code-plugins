@@ -225,29 +225,31 @@ def search_trello(compiled):
 
 
 def search_records(repo, terms):
-    """[(provider name, hits, error)] for each provider enabled in `repo`'s drainer.local.md that keeps
-    records (overrides `ProviderBase.search_records`), then one entry per provider that failed to load;
-    a failed provider reports its error and the rest still run."""
+    """(records, unloaded): `records` is [(provider name, hits, error)] for each provider enabled in
+    `repo`'s drainer.local.md that keeps records (overrides `ProviderBase.search_records`), a failed
+    search carrying its error; `unloaded` is [(provider name, error)] for each enabled provider whose
+    adapter failed to load, so whether it keeps records is unknown."""
     cfg = read_config(repo)
-    results, failed = [], []
+    records, unloaded = [], []
     providers = load_providers(
         cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
-        on_error=lambda name, message, kind: kind != "missing" and failed.append((name, [], message)))
+        on_error=lambda name, message, kind: kind != "missing" and unloaded.append((name, message)))
     for prov in providers:
         if type(prov).search_records is ProviderBase.search_records:
             continue
         try:
-            results.append((prov.name, prov.search_records(terms), None))
+            records.append((prov.name, prov.search_records(terms), None))
         except Exception as e:
-            results.append((prov.name, [], str(e)))
-    return results + failed
+            records.append((prov.name, [], str(e)))
+    return records, unloaded
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="search_around.py")
     p.add_argument("--term", action="append", required=True)
     p.add_argument("--item", help="the captured item json; sessions about this same item are skipped")
-    p.add_argument("--repo", default=".", help="the repo whose .claude/drainer.local.md names the providers")
+    p.add_argument("--repo", default=".",
+                   help="the merged-main config repo, whose .claude/drainer.local.md names the providers")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     exclude_id = None
@@ -285,15 +287,29 @@ def main(argv=None):
         for date, snippet in h["comments"][:3]:
             print(f"    {_local(date)}: ...{snippet}...")
 
-    for name, hits, error in search_records(args.repo, args.term):
-        print()
-        print(f"== {name} records: {len(hits)} with a match")
+    print()
+    config = os.path.join(args.repo, ".claude", "drainer.local.md")
+    try:
+        records, unloaded = search_records(args.repo, [t for t, _ in compiled])
+    except Exception as e:
+        records, unloaded = [], []
+        print(f"== Provider records: (failed: {e})")
+    else:
+        if not os.path.isfile(config):
+            print(f"== Provider records: not searched, no drainer config at {config}")
+        elif not records:
+            print(f"== Provider records: no provider enabled in {config} keeps records")
+    for name, hits, error in records:
+        shown = f", top {MAX_SHOWN} shown" if len(hits) > MAX_SHOWN else ""
+        print(f"== {name} records: {len(hits)} with a match{shown}")
         if error:
             print(f"   (failed: {error})")
-        for h in hits:
-            print(f"- {h['title']} {h['url']}")
-            for line in h["lines"]:
+        for h in hits[:MAX_SHOWN]:
+            print(f"- {h.get('title', '(untitled)')} {h.get('url', '')}")
+            for line in h.get("lines", []):
                 print(f"    {line}")
+    for name, error in unloaded:
+        print(f"   (provider {name} failed to load, so its records, if any, were not searched: {error})")
 
 
 if __name__ == "__main__":

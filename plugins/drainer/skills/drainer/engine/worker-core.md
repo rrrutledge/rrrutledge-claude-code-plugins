@@ -107,7 +107,7 @@ Every one of these systems is searched:
 - **Both mailboxes**, per "Search both mailboxes" below.
 - **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
 - **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
-- **Recent sessions, Trello cards, and provider records:** `python <drainer-skill>/scripts/search_around.py --repo . --item <the captured item json> --term <name> [--term <name> ...]`.
+- **Recent sessions, Trello cards, and provider records:** `python <drainer-skill>/scripts/search_around.py --repo <the merged-main config repo your seed names> --item <the captured item json> --term <name> [--term <name> ...]`.
   Pass one `--term` per person, company, and platform name and per item identifier, the sender's brand, the sender's email address, and the person it's addressed to included; leave out Russell's own name and the mail and chat platforms, which every session carries.
   Give a name in its shortest distinctive form too (a first name, a brand's leading word), since notes written in a session use the short form.
   Read each hit's snippets and comments, and open the card or the session's transcript for the full record; a matching card is the item's record, per "A tracked card is the item's record".

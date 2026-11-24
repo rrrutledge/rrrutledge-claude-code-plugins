@@ -103,10 +103,10 @@ with tempfile.TemporaryDirectory() as tmp:
     (adapters / "plain-adapter.py").write_text(ADAPTER.format(name="plain", body="    pass"), encoding="utf-8")
     (adapters / "broken-adapter.py").write_text(ADAPTER.format(name="broken", body=(
         "    def __init__(self):\n        raise ProviderError('no token', kind='auth')")), encoding="utf-8")
-    check("a record-keeping provider is searched; one that keeps none and a missing one are skipped; a broken one reports",
+    check("a record-keeping provider is searched; one that keeps none and a missing one are skipped; an unloaded one is named",
           search_around.search_records(str(repo), ["Acme", "jo@acme.com"]),
-          [("sheet", [{"title": "Acme row", "url": "u", "lines": ["Acme", "jo@acme.com"]}], None),
-           ("broken", [], "no token")])
+          ([("sheet", [{"title": "Acme row", "url": "u", "lines": ["Acme", "jo@acme.com"]}], None)],
+           [("broken", "no token")]))
 
 if failures:
     print(f"\n{len(failures)} failure(s)")
