@@ -24,7 +24,8 @@
 // - the way to recover a newsletter's hosted-PDF link, or its inline/"view in browser"
 //                 content, that the plaintext view strips out. Prints a "*** DRAFT - NOT SENT ***"
 //                 banner up top when the message is still sitting in Drafts, and an "Attachments:"
-//                 header line naming each file attachment when it carries any.)
+//                 header line naming each file attachment when it carries any. An inline image
+//                 prints as `[image: <alt text>]` where it sits in the body.)
 // Auth headers:  node mail.js --auth=<messageId>
 //                (emits a JSON object with the message's envelope-authentication headers as the
 //                 receiving system stamped them - the raw Authentication-Results value(s) and any
@@ -43,10 +44,14 @@
 // Draft new:     node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md \
 //                  [--cc=c@z] [--attach=file1.pdf,file2.png] [--replace] [--text]
 //                (creates a fresh DRAFT to specific recipients; never sends. --body-file is Markdown
-//                 (same as --reply). --attach adds file attachments; --replace first deletes any
-//                 existing drafts with the same subject so re-runs don't pile up duplicates; --text
+//                 (same as --reply). --attach adds file attachments; --replace, once the new draft
+//                 is built, deletes the other drafts with the same subject so re-runs don't pile up duplicates; --text
 //                 sends the body-file as literal plain text instead of rendering the Markdown.
-//                 --reply and --draft-new print one `attachment: <absolute path>` line per --attach file.)
+//                 In --reply and --draft-new, an image in the body file whose source is a local file -
+//                 `![alt](photo.jpg)` or `<img src="photo.jpg" width="400">` - is embedded inline at
+//                 that spot (relative paths resolve against the body file's folder; wrap a path with
+//                 spaces in <>). Both print one `attachment: <absolute path>` line per --attach file,
+//                 and one `attachment: <absolute path> (inline)` line per inline image.)
 // Send to self:  node mail.js --send-self --subject="..." --body-file=note.txt
 //                (sends a plain-text mail to your own inbox; handy for phone copy-paste)
 // Send a draft:  node mail.js --send-draft --message-id=<draftId>
@@ -116,8 +121,53 @@ function withDefaultFont(html) {
 // paragraphs, `1.`/`-` lists, **bold**, and [links](url) render as structured HTML with their line
 // breaks intact instead of collapsing into one run-on block. Raw HTML in the file passes through
 // untouched. `--text` (draft-new) bypasses this to send the file as literal plain text.
-function renderBody(md) {
-  return withDefaultFont(marked.parse(md));
+// Returns { html, inline }: inline is the inline-image attachments the html references (see inlineImages).
+// A Markdown image path's backslashes become forward slashes first: Markdown reads a backslash before
+// punctuation as an escape and drops it, so a Windows path like `C:\repo\.tmp\a.jpg` would otherwise
+// lose the separator before `.tmp`.
+function renderBody(md, baseDir = '.') {
+  const slashed = md.replace(/(!\[[^\]\n]*\]\(\s*<?)([^)>\n]+)/g, (m, open, dest) => open + dest.replace(/\\/g, '/'));
+  return inlineImages(withDefaultFont(marked.parse(slashed)), baseDir);
+}
+
+// The image types mail clients show inline; any other file type arrives as a broken picture.
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.bmp': 'image/bmp' };
+
+// An image in the body file whose source is a local file - Markdown `![alt](photo.jpg)` or raw
+// `<img src="photo.jpg" width="400">` - becomes an inline attachment shown at that spot in the message.
+// Its src is rewritten to `cid:<id>` and the file is attached as a Graph fileAttachment with isInline
+// and the matching contentId. A relative
+// path resolves against the body file's folder. A source with a scheme (https:, cid:, data:) or a
+// protocol-relative `//host` is left alone. An image with no style of its own gets max-width:100% and
+// height:auto so a full-size phone photo fits the reading pane without stretching.
+// marked percent-encodes the src (a space becomes %20), so it is decoded before use.
+function inlineImages(html, baseDir) {
+  const byPath = new Map();
+  const out = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const m = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const raw = m && (m[1] ?? m[2] ?? m[3]);
+    if (!m || /^([a-z][a-z0-9+.-]+:|\/\/)/i.test(raw)) return tag;
+    let src = raw.replace(/&amp;/g, '&');
+    try { src = decodeURI(src); } catch { /* keep as written */ }
+    const file = path.resolve(baseDir, src);
+    if (!fs.existsSync(file)) throw new Error(`inline image not found: ${file} (from src="${raw}" in the body file)`);
+    const contentType = IMAGE_TYPES[path.extname(file).toLowerCase()];
+    if (!contentType) throw new Error(`inline image must be ${Object.keys(IMAGE_TYPES).join(' ')}: ${file}`);
+    if (!byPath.has(file)) {
+      byPath.set(file, {
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: path.basename(file),
+        contentType,
+        contentBytes: fs.readFileSync(file).toString('base64'),
+        isInline: true,
+        contentId: `inline${byPath.size + 1}-${path.basename(file).replace(/[^A-Za-z0-9.]/g, '_')}`,
+      });
+    }
+    const rewritten = tag.replace(m[0], ` src="cid:${byPath.get(file).contentId}"`);
+    return /\sstyle\s*=/i.test(rewritten) ? rewritten : rewritten.replace(/^<img\b/i, '<img style="max-width:100%; height:auto"');
+  });
+  return { html: out, inline: [...byPath.entries()].map(([file, attachment]) => ({ file, attachment })) };
 }
 
 const args = Object.fromEntries(
@@ -138,6 +188,8 @@ const strip = (html) => (html || '')
 const toText = (html) => (html || '')
   .replace(/<style[\s\S]*?<\/style>/gi, '')
   .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<img\b[^>]*\ssrc\s*=\s*"cid:([^"]*)"[^>]*>/gi, (tag, cid) =>
+    `[image: ${(tag.match(/\salt\s*=\s*"([^"]+)"/i) || [])[1] || cid}]`)
   .replace(/<\/(p|h[1-6]|blockquote|table)>/gi, '\n\n')
   .replace(/<\/(div|li|tr|ul|ol)>/gi, '\n')
   .replace(/<(hr)\b[^>]*>/gi, '\n')
@@ -456,10 +508,43 @@ function buildAttachments(attach) {
   }));
 }
 
-// One `attachment: <absolute path>` line per --attach file a staged draft carries, so the session
-// presenting the draft can send each file to Russell's device without re-deriving the list.
-function printAttachmentLines(attach) {
+// Add fileAttachments to a new draft. Graph rejects a request body over about 4 MB, so a file whose
+// base64 form passes 3 MiB (a full-size phone photo) goes up through an upload session in 3.75 MiB
+// chunks instead of one POST. If any attachment fails, the half-built draft is deleted (to Deleted
+// Items) so Drafts never holds a copy missing its files, and the error is rethrown.
+const UPLOAD_LIMIT = 3 * 1024 * 1024;
+const CHUNK = 12 * 320 * 1024; // upload-session chunks must be multiples of 320 KiB
+async function addAttachments(client, messageId, attachments) {
+  try {
+    for (const a of attachments) await addAttachment(client, messageId, a);
+  } catch (e) {
+    await client.api(`/me/messages/${messageId}`).delete().catch(() => {});
+    throw e;
+  }
+}
+async function addAttachment(client, messageId, a) {
+  if (a.contentBytes.length <= UPLOAD_LIMIT) return client.api(`/me/messages/${messageId}/attachments`).post(a);
+  const bytes = Buffer.from(a.contentBytes, 'base64');
+  const session = await client.api(`/me/messages/${messageId}/attachments/createUploadSession`).post({
+    AttachmentItem: { attachmentType: 'file', name: a.name, size: bytes.length, contentType: a.contentType,
+      isInline: !!a.isInline, contentId: a.contentId },
+  });
+  for (let start = 0; start < bytes.length; start += CHUNK) {
+    const chunk = bytes.subarray(start, start + CHUNK);
+    const r = await fetch(session.uploadUrl, { method: 'PUT', body: chunk, headers: {
+      'Content-Type': 'application/octet-stream',
+      'Content-Range': `bytes ${start}-${start + chunk.length - 1}/${bytes.length}`,
+    } });
+    if (!r.ok) throw new Error(`upload of ${a.name} failed: HTTP ${r.status} ${await r.text()}`);
+  }
+}
+
+// One `attachment: <absolute path>` line per file a staged draft carries, --attach files and inline
+// body images alike (an inline one marked `(inline)`), so the session presenting the draft can send
+// each file to Russell's device without re-deriving the list.
+function printAttachmentLines(attach, inline) {
   for (const p of new Set(attachPaths(attach).map(p => path.resolve(p)))) console.log(`attachment: ${p}`);
+  for (const { file } of inline) console.log(`attachment: ${file} (inline)`);
 }
 
 async function reply(client) {
@@ -467,17 +552,16 @@ async function reply(client) {
     throw new Error('--reply requires --message-id and --body-file');
   }
   const raw = fs.readFileSync(args['body-file'], 'utf8');
+  const { html, inline } = renderBody(raw, path.dirname(args['body-file']));
+  const attachments = [...buildAttachments(args.attach), ...inline.map(i => i.attachment)];
   const draft = await client.api(`/me/messages/${args['message-id']}/createReplyAll`).post({});
   const quoted = draft.body?.content || '';
-  await client.api(`/me/messages/${draft.id}`).patch({ body: { contentType: 'html', content: renderBody(raw) + quoted } });
-  const attachments = buildAttachments(args.attach);
-  for (const a of attachments) {
-    await client.api(`/me/messages/${draft.id}/attachments`).post(a);
-  }
+  await client.api(`/me/messages/${draft.id}`).patch({ body: { contentType: 'html', content: html + quoted } });
+  await addAttachments(client, draft.id, attachments);
   const extra = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
   console.log(`draft-id: ${draft.id}`);
-  printAttachmentLines(args.attach);
+  printAttachmentLines(args.attach, inline);
 }
 
 async function thread(client) {
@@ -537,25 +621,29 @@ async function sentSince(client) {
 }
 
 // Reusable: create a draft message (never sends). Returns the created draft.
-//   createDraft(client, { to, subject, body, cc, attach, replace, contentType })
+//   createDraft(client, { to, subject, body, cc, attach, replace, contentType, baseDir })
 //   - attach: a path or comma-separated string or array of paths -> file attachments
-//   - replace: delete any existing drafts with the same subject first (avoids duplicates)
-async function createDraft(client, { to, subject, body = '', cc, attach, replace = false, contentType = 'html' } = {}) {
+//   - replace: once the new draft is complete, delete the other drafts with the same subject (avoids
+//     duplicates); a draft that fails to build leaves the old one in place
+//   - baseDir: the folder a relative inline-image path in the body resolves against (default cwd)
+//   The returned draft carries `inline`: [{ file, attachment }] for each inline body image.
+async function createDraft(client, { to, subject, body = '', cc, attach, replace = false, contentType = 'html', baseDir = '.' } = {}) {
   if (!to || !subject) throw new Error('createDraft requires { to, subject }');
   client = client || await getGraphClient();
+  const { html: finalBody, inline } = contentType === 'html' ? renderBody(body, baseDir) : { html: body, inline: [] };
+  const attachments = [...buildAttachments(attach), ...inline.map(i => i.attachment)];
+  const recip = (s) => String(s).split(',').map(a => ({ emailAddress: { address: a.trim() } }));
+  const message = { subject, body: { contentType, content: finalBody }, toRecipients: recip(to) };
+  if (cc) message.ccRecipients = recip(cc);
+  const draft = await client.api('/me/messages').post(message);
+  await addAttachments(client, draft.id, attachments);
   if (replace) {
     const existing = await client.api('/me/mailFolders/drafts/messages')
       .filter(`subject eq '${String(subject).replace(/'/g, "''")}'`)
       .select('id,subject').top(20).get();
-    for (const m of existing.value || []) await client.api(`/me/messages/${m.id}`).delete();
+    for (const m of existing.value || []) if (m.id !== draft.id) await client.api(`/me/messages/${m.id}`).delete();
   }
-  const recip = (s) => String(s).split(',').map(a => ({ emailAddress: { address: a.trim() } }));
-  const finalBody = contentType === 'html' ? renderBody(body) : body;
-  const message = { subject, body: { contentType, content: finalBody }, toRecipients: recip(to) };
-  if (cc) message.ccRecipients = recip(cc);
-  const attachments = buildAttachments(attach);
-  if (attachments.length) message.attachments = attachments;
-  return client.api('/me/messages').post(message);
+  return { ...draft, inline };
 }
 
 async function draftNew(client) {
@@ -566,10 +654,11 @@ async function draftNew(client) {
   const draft = await createDraft(client, {
     to: args.to, subject: args.subject, body, cc: args.cc,
     attach: args.attach, replace: !!args.replace, contentType: args.text ? 'text' : 'html',
+    baseDir: path.dirname(args['body-file']),
   });
-  const extra = args.attach ? ' with attachment' : '';
+  const extra = args.attach || draft.inline.length ? ' with attachment' : '';
   console.log(`Draft created to ${args.to} (id ${draft.id.slice(0, 20)}...)${extra}. Review in Outlook Drafts; never sent.`);
-  printAttachmentLines(args.attach);
+  printAttachmentLines(args.attach, draft.inline);
 }
 
 async function sendDraft(client) {

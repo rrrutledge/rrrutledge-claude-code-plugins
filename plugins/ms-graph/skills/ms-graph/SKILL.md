@@ -56,13 +56,18 @@ All under `scripts/`:
   - Envelope-auth headers: `node mail.js --auth=<messageId>` (JSON with the message's `Authentication-Results` and `Received-SPF` values - the SPF/DKIM/DMARC provenance the receiving system stamped on arrival, which the `From:` line can't give; read by the drainer's security screen; also any `List-Unsubscribe` values, the bulk-mail marker, and any `X-Forwarded-For` values, the marker of a message a mailbox forwarded here)
   - Sent since: `node mail.js --sent-since=<YYYY-MM-DD> [--json]` (every Sent Items message sent on or after that day, oldest first, with its conversationId, recipients, and plain-text body; read by the send-confidence outcome sweep)
   - Thread: `node mail.js --thread=<conversationId> [--json]` (every message in the conversation across all folders, oldest first, with `fromMe`, the send time, and `isDraft`; read by the drainer's acknowledgement sweep)
-  - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.html`
-  - Draft new to recipients (never sends): `node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.html [--cc=c@z] [--attach=file1.pdf,file2.png] [--replace] [--text]` (`--attach` adds file attachments; `--replace` deletes any existing drafts with the same subject first, so re-runs don't pile up duplicates; `--text` treats the body-file as plain text instead of HTML)
-    The reply presenting a draft with `--attach` files sends those files to Russell, per `document-authoring:writing-flow`'s **Stage** step.
+  - Draft reply-all (never sends): `node mail.js --reply --message-id=<id> --body-file=reply.md [--attach=file1.pdf,file2.png]`
+  - Draft new to recipients (never sends): `node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.html [--cc=c@z] [--attach=file1.pdf,file2.png] [--replace] [--text]` (`--attach` adds file attachments; `--replace`, once the new draft is built, deletes the other drafts with the same subject, so re-runs don't pile up duplicates; `--text` treats the body-file as plain text instead of HTML)
+    **Inline images** (`--reply` and `--draft-new`): write `![alt](photo.jpg)` in the body file where the picture belongs, and it is embedded in the message body at that spot.
+    A relative path resolves against the body file's folder, and a path with spaces goes in angle brackets, `![alt](<my photo.jpg>)`.
+    For a set width, write raw HTML instead: `<img src="photo.jpg" width="400" alt="...">`.
+    Each inline image prints an `attachment: <path> (inline)` line.
+    The reply presenting a draft with `--attach` files or inline images sends those files to Russell, per `document-authoring:writing-flow`'s **Stage** step.
   - Send to self: `node mail.js --send-self --subject="..." --body-file=note.txt`
   - Send a staged draft: `node mail.js --send-draft --message-id=<draftId>` (promotes a draft from `--reply`/`--draft-new` to a real send via Graph's own send action, transmitting exactly what's saved in Drafts; the only path that emits real mail - use only on Russ's explicit per-message instruction after he's reviewed this exact draft)
   - Delete one (reversible): `node mail.js --delete=<messageId>` (moves to Deleted Items, never a permanent purge)
-  - Reusable from other scripts: `require('<…>/mail.js')` exports `createDraft(client, {to, subject, body, cc, attach, replace, contentType})` (CLI is `require.main`-guarded).
+  - Reusable from other scripts: `require('<…>/mail.js')` exports `createDraft(client, {to, subject, body, cc, attach, replace, contentType, baseDir})` (CLI is `require.main`-guarded).
+    Pass `baseDir` when the body places inline images by relative path.
   - **Inbox rules** (server-side filters):
     - List: `node mail.js --list-rules [--json]` (full, untruncated conditions/exceptions/actions - the API returns every phrase, unlike the OWA UI which caps the visible list)
     - Create: `node mail.js --create-rule --name="Corporate Subjects" --subject-contains="A||B||C" [--body-contains=] [--from-contains=] [--subject-or-body=] [--except-from="gmail.com||outlook.com||icloud.com"] --move-to=archive [--mark-read] [--delete-msg] [--no-stop]` (multi-value flags split on `||`; `--move-to` takes a well-known folder id like `archive`; `--except-from` is the personal-domain fence; sequence is auto-assigned to the end)
