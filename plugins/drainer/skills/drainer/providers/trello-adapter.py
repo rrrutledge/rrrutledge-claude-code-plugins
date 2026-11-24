@@ -18,8 +18,9 @@ legacy `providers.trello.boards` block in drainer.local.md.
 The **Start date IS the queue** (startable-task model): the native Start date is a card's
 "work-on-it / go-live" date, and it is the only date the queue reads. enumerate returns cards in active
 lists that are startable and NOT wearing a ⛔ Blocked (skip) label. A card is startable once its Start
-has arrived, or immediately when it carries no Start; a future Start is the sole way to defer a card -
-"not okay to begin until this day" (see _startable). Cards rank by their Start (their go-live), most
+has arrived, or immediately when it carries no Start; a future Start is the sole per-card way to defer
+a card - "not okay to begin until this day" (see _startable). An initiative doc can also hold its cards
+on named lists out of the queue (see _hold_lists). Cards rank by their Start (their go-live), most
 recent first; an undated card ranks by its creation date, decoded from the card's ObjectId, so it sorts
 by age. Blocked cards are suppressed until finishing their upstream runs trello_utils.cascade_unblock
 (strips ⛔, sets Start=today). Credentials are TRELLO_API_KEY / TRELLO_TOKEN in the environment (read by
@@ -102,6 +103,11 @@ _MANAGES_PEOPLE_RE = re.compile(r"^Manages people:\s*yes\b", re.MULTILINE | re.I
 _COMP_LINE_RE = re.compile(r"^Comp:(.*)$", re.MULTILINE)
 _DOLLAR_RE = re.compile(r"\$\s*(\d[\d,]*(?:\.\d+)?)\s*([kK])?")
 
+# An initiative doc's front matter: the `---` block that opens `initiatives/<slug>.md`. Its
+# `hold_lists: [A, B]` line holds that initiative's cards on those lists out of the queue (see
+# _hold_lists).
+_FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
+
 
 class Provider(ProviderBase):
     name = "trello"
@@ -128,6 +134,8 @@ class Provider(ProviderBase):
         # Board name → lowercased names of its in-progress lists (a board's `in_progress_lists:` field in
         # the registry); a card on one of them ranks above neutral (see _PRIORITY_BAND).
         self.board_in_progress_lists = {}
+        # The config repo; its initiatives/ folder is re-read for hold_lists on every enumerate and every reconcile.
+        self.repo = None
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
         # Board id -> (monotonic fetch time, trello_utils.get_board_snapshot), filled lazily by capture's
@@ -171,6 +179,7 @@ class Provider(ProviderBase):
         repo = cfg.get("repo")
         if not repo:
             return
+        self.repo = repo
         # Drainer knobs (skip_lists / label_vocab) - and legacy boards fallback - from drainer.local.md.
         block = ""
         try:
@@ -485,18 +494,55 @@ class Provider(ProviderBase):
     def _startable(start_dt, now):
         """Whether a card is in play now. Start is the only date the queue reads: a card is startable
         when it has no Start (start immediately) or its Start has arrived. A future Start is the sole way
-        to defer a card - it means "not okay to begin until this day". No other field holds it back."""
+        to defer a card - it means "not okay to begin until this day". No other card field holds it back;
+        an initiative hold works per list (see _hold_lists)."""
         return start_dt is None or start_dt <= now
 
-    def _startable_cards(self, board, now, my_id):
+    def _initiative(self, card, board_name):
+        """The card's initiative slug: its initiative label's name slugified (→ initiatives/<slug>.md),
+        else its board's default initiative (already a slug in the registry), else None."""
+        label = self._classify_labels(card)[3]
+        return slug(label, 60) if label else self.board_initiatives.get(board_name)
+
+    def _hold_lists(self):
+        """Initiative slug -> the lowercased list names its doc holds out of the queue.
+
+        An initiative doc opts in with a front-matter line `hold_lists: [A, B]`: while that line is
+        there, the initiative's cards on those lists are not startable, so no worker ever picks one up.
+        Nothing is written to a held card, so deleting the line puts every held card back in the queue
+        on the next cycle at its own Start. Read fresh on every call (the keeper loads providers once
+        for days, and the config repo is refreshed to merged main every cycle), so the edit that ends a
+        hold takes effect without a restart. A missing folder or an unreadable doc holds nothing."""
+        held = {}
+        folder = os.path.join(self.repo, "initiatives") if self.repo else None
+        try:
+            names = os.listdir(folder) if folder else []
+        except OSError:
+            return held
+        for fn in names:
+            if not fn.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(folder, fn), encoding="utf-8") as f:
+                    m = _FRONT_MATTER_RE.match(f.read())
+            except OSError:
+                continue
+            lists = self._parse_inline_list(m.group(1), "hold_lists") if m else []
+            if lists:
+                held[fn[:-3]] = {n.lower() for n in lists}
+        return held
+
+    def _startable_cards(self, board, now, my_id, held=None):
         """Yield `(card, list_name, start_dt)` for every currently-startable card on one board.
 
         The single source of truth for "in play", so enumerate (which builds full items) and
         still_in_inbox_ids (which needs only the ids, for the reconcile) apply an identical gate and can
         never drift: on an active, non-skip list; not wearing a ⛔ Blocked/skip label; not assigned to
-        someone else; and startable now (no Start, or a Start that has arrived - a future Start defers).
+        someone else; startable now (no Start, or a Start that has arrived - a future Start defers); and
+        not on a list its initiative holds (`held`, from _hold_lists).
         The board fetches hit the Trello REST API; a bad token or network error raises to the caller."""
         bid = board["id"]
+        bname = board.get("name", bid)
         lists = {l["id"]: l["name"] for l in self._utils.get_board_lists(bid, self.session)}
         for card in self._utils.get_board_cards(bid, self.session, fields="all"):
             list_name = lists.get(card.get("idList"))
@@ -516,6 +562,8 @@ class Provider(ProviderBase):
                 continue
             start_dt = self._parse_dt(card.get("start"))
             if not self._startable(start_dt, now):
+                continue
+            if held and list_name.lower() in held.get(self._initiative(card, bname), ()):
                 continue
             yield card, list_name, start_dt
 
@@ -584,12 +632,13 @@ class Provider(ProviderBase):
         unblocked = self._utils.sweep_unblock([b["id"] for b in self.boards], self.session)
         if unblocked:
             print(f"  sweep_unblock freed {len(unblocked)} card(s): {unblocked}")
+        held = self._hold_lists()
         for board in self.boards:
             bname = board.get("name", board["id"])
             # fields="all" (inside _startable_cards) so the newer `start` date comes back; the same gate
             # feeds still_in_inbox_ids, so a card in play here is exactly one reconcile treats as
             # outstanding.
-            for card, list_name, start_dt in self._startable_cards(board, now, my_id):
+            for card, list_name, start_dt in self._startable_cards(board, now, my_id, held):
                 start_dt = self._sweep_recurring(card, start_dt, now)
                 # Sort rank / go-live: a card ranks by its Start (its resurface day); an undated card by
                 # its creation date (always in the past), so it sorts by age alongside email/Slack.
@@ -597,12 +646,8 @@ class Provider(ProviderBase):
                 # The three band values; band_rank (provider_base) defines the order they sort in.
                 in_progress = list_name.lower() in self.board_in_progress_lists.get(bname, ())
                 due_dt = self._due_dt(card, start_dt, now)
-                channel, feats, contacts, initiative_label = self._classify_labels(card)
-                # A per-card initiative label wins over the board's default initiative. The slug is the
-                # initiative label's name slugified (→ initiatives/<slug>.md); board defaults are already
-                # slugs in the registry.
-                initiative = slug(initiative_label, 60) if initiative_label \
-                    else self.board_initiatives.get(bname)
+                channel, feats, contacts, _ = self._classify_labels(card)
+                initiative = self._initiative(card, bname)
                 # Only a job-search card is lifted or demoted by the priority policy.
                 job_search = initiative == "job-search"
                 priority_band = self._priority_band(card, in_progress, due_dt, job_search)  # see _PRIORITY_BAND
@@ -698,8 +743,9 @@ class Provider(ProviderBase):
             now = datetime.now(timezone.utc)
             my_id = self._my_id()
             ids = set()
+            held = self._hold_lists()
             for board in self.boards:
-                for card, _list_name, _start_dt in self._startable_cards(board, now, my_id):
+                for card, _list_name, _start_dt in self._startable_cards(board, now, my_id, held):
                     ids.add(self.stable_id({"name": card.get("name", ""),
                                             "cardId": card["id"], "start": card.get("start")}))
             return ids

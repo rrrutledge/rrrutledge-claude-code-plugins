@@ -23,6 +23,10 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
     The four-space `initiative:` field is parsed by the adapter alongside `id`.
     The adapter writes the resolved slug as `initiative` on the item.
     See `trello-provider.md`'s INITIATIVE-LOOKUP for how the worker loads the content and STAGE-PLAYBOOK for the generic per-stage activity.
+- **Initiative hold:** an initiative doc whose front matter carries an inline list `hold_lists: [A, B, ...]` holds that initiative's cards on those lists out of the queue, matched case-insensitively against the whole list name.
+  A held card is neither enumerated nor counted startable by the reconcile, and nothing is written to it, so it keeps its own Start.
+  The adapter re-reads `initiatives/` on every enumerate and reconcile, so deleting the line releases every held card on the next cycle.
+  `initiative-doc-template.md` covers when an initiative uses it.
 - **In-progress lists:** a four-space inline list `in_progress_lists: [A, B, ...]` on a board entry in `trello-boards.yaml` names that board's in-progress lists, matched case-insensitively against the card's list name.
   A card on one of them is pinned above neutral (see ENUMERATE).
 - Drainer knobs in `.claude/drainer.local.md` → `providers.trello`:
@@ -34,8 +38,8 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
 - Credentials: `TRELLO_API_KEY` / `TRELLO_TOKEN` in the environment (used by the `trello` skill).
 
 ## ENUMERATE
-Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), and are **startable** - Start now-or-earlier, or no Start at all.
-A future Start is the only thing that holds a card back.
+Via the `trello` skill, list cards across the configured boards that sit in an **active** list (not in `skip_lists`), are **not** wearing a `skip_labels` label (⛔ Blocked), are **not** on a list their initiative holds (see Initiative hold under Config), and are **startable** - Start now-or-earlier, or no Start at all.
+A future Start is the only per-card way to hold a card back.
 Rank a card by its **Start date** (its go-live), most recent first, and an undated card by its **creation date** (decoded from the card's ObjectId).
 
 Rank is `(priority band, due rank, level band, referral band, date)`, all descending - due rank is zero everywhere but the due band, level breaks ties within a band, referral breaks ties within a band+level, date breaks ties within a band+level+referral.
