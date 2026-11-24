@@ -71,11 +71,6 @@ A closing nudge to use access or instructions the reader asked for is a tail too
 **Check:** does this sentence hand the reader something they don't already have? Watch for a close starting "happy to", "let me know if you'd like", "if you'd rather", "hope this helps", "feel free to", a closing nudge to use what was just handed over; a final paragraph restating what was already said; unrequested reassurance; an offer or invitation addressed past the reader to a third party.
 Innocent: a genuinely open decision, asked as one direct question and stopped there.
 
-**Write "InnerSource" as one word in Pascal case, capital I and capital S.**
-The term holds in every artifact Russell's name goes on, in running prose and in names like "InnerSource Commons".
-The same goes for any other community's own term: it carries the spelling and capitalization that community uses.
-**Check:** "inner source", "inner-source", "Inner Source", "innersource", or "inner sourcing" anywhere outside a quotation or a URL; any other community term split into separate words or cased differently from how the community's own site, thread, or materials write it.
-
 **Skill prose carries only the steps that need the running Claude session.**
 In a `SKILL.md` or other skill instructions, a step whose commands, and every branch on their output, can be written down in advance belongs in a script the skill runs.
 A how-to doc or runbook for a repeatable procedure splits its steps by the same test: a script it points to holds the steps whose commands and branches can be written down in advance.
@@ -131,7 +126,7 @@ Write "see the [incident report](URL)", never a bare `https://…` in prose.
 Sentence length and rhythm are drafting judgment rather than a decidable check, so they stay in `document-authoring`.
 
 **State facts without editorializing.**
-**Check:** cheerful labels ("the good news is", "you're all set"); unsolicited reassurance, including a consoling frame invented on the writer's behalf about someone else's setback ("the effort wasn't wasted") or a cheerful verdict on a third party's situation that the ask never supplied ("good news for him!"), when a concrete thing the writer did would say it better; a release from an apology or worry the recipient never voiced ("no apology needed"); hedging something already confirmed ("looks like", "turns out").
+**Check:** cheerful labels ("the good news is", "you're all set"); unsolicited reassurance, including a consoling frame invented on the writer's behalf about someone else's setback ("the effort wasn't wasted") rather than the writer's own actual reaction; a release from an apology or worry the recipient never voiced ("no apology needed"); hedging something already confirmed ("looks like", "turns out").
 
 **Bold lead-ins on bullets.**
 Start each bullet with a bold 4-7 word key phrase, then the detail.
