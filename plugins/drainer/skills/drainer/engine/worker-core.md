@@ -107,13 +107,14 @@ Every one of these systems is searched:
 - **Both mailboxes**, per "Search both mailboxes" below.
 - **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
 - **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
-- **Recent sessions and Trello cards:** `python <drainer-skill>/scripts/search_around.py --item <the captured item json> --term <name> [--term <name> ...]`.
-  Pass one `--term` per person, company, and platform name and per item identifier, the sender's brand and the person it's addressed to included; leave out Russell's own name and the mail and chat platforms, which every session carries.
+- **Recent sessions, Trello cards, and provider records:** `python <drainer-skill>/scripts/search_around.py --repo <the merged-main config repo your seed names> --item <the captured item json> --term <name> [--term <name> ...]`.
+  Pass one `--term` per person, company, and platform name and per item identifier, the sender's brand, the sender's email address, and the person it's addressed to included; leave out Russell's own name and the mail and chat platforms, which every session carries.
   Give a name in its shortest distinctive form too (a first name, a brand's leading word), since notes written in a session use the short form.
   Read each hit's snippets and comments, and open the card or the session's transcript for the full record; a matching card is the item's record, per "A tracked card is the item's record".
+  A matching provider record is the item's record too, per "A tracked card is the item's record".
 
 Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
-A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, the boards, or recent sessions").
+A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, the boards, the provider records, or recent sessions").
 
 **Search both mailboxes.**
 Search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive), whichever mailbox the item arrived in.
@@ -166,7 +167,9 @@ Two patterns to watch for, on any source:
 **A tracked card is the item's record.**
 The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
-The item is new only when the boards and every other system in "Search around before concluding" come up empty.
+A provider record `search_around.py` prints is the item's record in the same way: read its fields and history before deciding the move, reference it, and write back what this session learns through the RECORD section of that provider's `<source>-provider.md`, the way a card gets its comments.
+Writing to it is reversible work, per §3's staging rule.
+The item is new only when the boards, the provider records, and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
 **Also check whether another live session is already working on this same thing.**
