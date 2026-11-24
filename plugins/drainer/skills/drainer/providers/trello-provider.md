@@ -1,8 +1,8 @@
 # trello provider - outreach boards (Trello API)
 
 A provider for the **outreach** source.
-The card's **Start date IS the queue**: harvested on every run like any other source, it returns the cards that are startable now and not wearing a ⛔ Blocked label.
-A card is startable once its Start has arrived, or immediately when it has no Start; a future Start is the only thing that holds a card back - "not okay to begin until this day".
+The card's **Start date IS the queue**: harvested on every run like any other source, it returns the cards that are startable now, not wearing a ⛔ Blocked label, and not on a list their initiative holds.
+A card is startable once its Start has arrived, or immediately when it has no Start; a future Start is the only per-card way to hold a card back - "not okay to begin until this day" - and an initiative can also hold its cards on named lists (see `trello-queue-model.md`, Initiative hold).
 Start is the one date the queue reads (see STARTABLE-TASK MODEL): the "work-on-it / go-live" day, whether the card is an outreach follow-up or a task.
 It rides the single schedule with no special cadence.
 All Trello reads and mutations go through the **`trello`** skill's `trello_utils.py` - never the Trello REST API directly.
@@ -21,7 +21,7 @@ If not, tell the user to set them and stop.
 The default posture is **hungry to start**: everything is startable now unless it's genuinely blocked.
 Start is the one date, alongside two labels + a description convention:
 - **Start date = "work-on-it / ping-back"** - the day the card should resurface, and the only date the queue reads.
-  A startable-now card carries **no** Start; a future Start is the only way to hold a card back until a chosen day; a ⏳ Waiting card's Start is when to re-nudge.
+  A startable-now card carries **no** Start; a future Start is the only per-card way to hold a card back until a chosen day; a ⏳ Waiting card's Start is when to re-nudge.
 - **⏳ Waiting** (label) = blocked on a **person's** reply.
   Still surfaces on its ping-back Start so the worker can re-nudge.
   Record `Waiting-for: <name> · <channel>` in the description (Phase 2's reply matcher reads it).
@@ -32,7 +32,7 @@ Start is the one date, alongside two labels + a description convention:
 
 **Trello's native Due field ranks a card once its Start has arrived.**
 The due-band rule lives in `trello-queue-model.md`.
-Whether a card is in play, and every nudge/advance operation in this file, act on Start alone.
+Whether a card is in play is the ENUMERATE gate in `trello-queue-model.md`; every nudge/advance operation in this file acts on Start alone.
 When rescheduling a card for any reason (nudge, hold-back, advance, a Russell-requested date change), set **Start**, not Due.
 
 **Unblock has a push and a pull.**
