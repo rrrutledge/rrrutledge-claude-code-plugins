@@ -31,7 +31,7 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
    In Teams, use Reply on a message in that topic; in email, reply into the existing thread on that subject.
    **When one template is filled for many recipients, resolve each person's form of address before filling the greeting.**
    Find it in Russell's own past messages to them (sent mail, Slack DMs); when no prior message settles it, ask him about that person.
-   **State only what the thread, the ask, or a source you actually read establishes.** When the draft would point to what an email or document says, open the source first.
+   **State only what the thread, the ask, or a source you actually read establishes, a reaction or verdict about the recipient or a third party included, even as the natural warm line to fill a gap.** When the draft would point to what an email or document says, open the source first.
    A routing choice or other logistic the ask left open follows `message-rules`' **When unsure**.
    **When the message reports on work you're doing yourself, finish that work first.** Draft the status update only once every action it describes is actually done, including a step only moments from finishing, since a draft written in parallel ends up describing something as upcoming that should already be done by the time the message goes out.
    **Check that every time-bound statement will still hold when Russell sends.**
