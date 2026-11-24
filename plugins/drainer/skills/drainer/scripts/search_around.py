@@ -6,15 +6,16 @@ Each `--term` is a name or identifier: a company, platform, person, order or doc
 A term matches whole words loosely: case is ignored, and spaces, underscores, hyphens, and CamelCase
 joins are optional, so `AcmeCorp` also finds "Acme Corp" and "acme-corp", and "Dan" skips "Jordan".
 
-Sessions: every top-level transcript under each ~/.claude*/projects modified in the last `DAYS`,
+Sessions: every top-level transcript under each non-backup ~/.claude*/projects (and
+`CLAUDE_CONFIG_DIR`'s) modified in the last `DAYS`,
 except this session's own (CLAUDE_CODE_SESSION_ID) and any session whose first prompt names
 `--item`'s id (the drainer's own triage and worker runs for this same item).
 Each hit prints the session's title, id, last-active time, the terms it matched, and one snippet per
 matched term.
 
 Trello: Trello's own card search over all of Russell's boards for each term (it matches names,
-descriptions, and comments), printing the card, its link, and its last activity, plus the matching
-comments of the top `CARDS_WITH_COMMENTS` cards.
+descriptions, and comments), printing the card, its link, and its last activity, plus up to 3
+matching comments on each of the top `CARDS_WITH_COMMENTS` cards.
 A failed Trello request prints as "(failed: ...)" and the other searches still run.
 
 Sessions and cards rank by how many terms they matched, then by recency; the top `MAX_SHOWN` of each
@@ -58,7 +59,8 @@ def transcripts():
 
 
 def term_words(term):
-    """`AcmeCorp` / `Acme Corp` / `acme-corp` -> ['Acme', 'Corp']."""
+    """A term's words, split on spaces, underscores, hyphens, and CamelCase joins:
+    `AcmeCorp` -> ['Acme', 'Corp'], `acme-corp` -> ['acme', 'corp']."""
     spaced = re.sub(r"(?<=[a-z]{2})(?=[A-Z])|(?<=[0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", term)
     return [w for w in re.split(r"[\s_\-]+", spaced) if w]
 
@@ -147,7 +149,8 @@ def _local(iso):
 
 
 def search_sessions(compiled, exclude_id):
-    # The prefilter, run on the lowercased file and then on each line before it is parsed: a plain
+    # The prefilter, run on the lowercased file and then on each line after the first prompt (title
+    # lines excepted) before it is parsed: a plain
     # substring test for each term's words joined by nothing, a space, a hyphen, or an underscore. A
     # case-insensitive regex over ~2 GB of transcripts takes minutes. bytes.lower() folds ASCII only,
     # so a non-ASCII term turns the prefilter off.
