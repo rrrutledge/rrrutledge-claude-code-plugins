@@ -12,7 +12,7 @@
 //                refuses when it is another provider's, such as a Zoom add-on.)
 // Create:        node google-calendar.js --create --summary=<title> --start=<YYYY-MM-DDTHH:MM> --end=<...>
 //                  --join=<zoom url> [--guests=a@x.com,b@y.com] [--description=<text>] [--tz=<IANA>]
-//                  [--calendar=<id>] [--send]
+//                  [--reminders=15,10,0] [--calendar=<id>] [--send]
 //                (Leaves Google Meet off. Times are local wall clock in --tz, default America/Chicago.
 //                Guests get the invite email with --send and are added silently without it.)
 //
@@ -94,15 +94,19 @@ const isMeet = ev => !!ev.hangoutLink ||
 // calendar-level auto-add comes off before any guest is added; a non-Meet add-on conference (a Zoom add-on) is
 // kept. Guests are added next, emailed when `send` is true, and the event is checked once more; that last check
 // runs after the invites go out, so a Meet link it finds is reported for --strip-meet. `start`/`end` are local
-// wall-clock times in `timeZone`. Resolves to the final Event resource.
+// wall-clock times in `timeZone`. `reminders` is a list of minutes-before for popup reminders; left out, the
+// calendar's defaults apply. Resolves to the final Event resource.
 async function createEvent({
   calendar = 'primary', summary, start, end, join, guests = [], description = '',
-  timeZone = 'America/Chicago', send = false,
+  timeZone = 'America/Chicago', reminders, send = false,
 } = {}) {
   for (const [name, value] of Object.entries({ summary, start, end, join })) {
     if (typeof value !== 'string' || !value) throw new Error(`createEvent requires a string ${name}`);
   }
   if (!Array.isArray(guests)) throw new Error('createEvent requires guests as an array of email addresses');
+  if (reminders !== undefined && !(Array.isArray(reminders) && reminders.every(Number.isInteger))) {
+    throw new Error('createEvent requires reminders as an array of whole minutes');
+  }
   const withSeconds = t => (/T\d{2}:\d{2}$/.test(t) ? `${t}:00` : t);
   const auth = getAuthedClient();
   await assertAccountEmail(auth);
@@ -116,6 +120,9 @@ async function createEvent({
       description: description ? `${description}\n\n${join}` : join,
       start: { dateTime: withSeconds(start), timeZone },
       end: { dateTime: withSeconds(end), timeZone },
+      ...(reminders && {
+        reminders: { useDefault: false, overrides: reminders.map(minutes => ({ method: 'popup', minutes })) },
+      }),
     },
   })).data;
   if (isMeet(ev)) {
@@ -156,6 +163,7 @@ if (require.main === module) {
         guests: typeof args.guests === 'string' ? args.guests.split(',').map(s => s.trim()).filter(Boolean) : [],
         description: typeof args.description === 'string' ? args.description : '',
         timeZone: args.tz, send,
+        reminders: typeof args.reminders === 'string' ? args.reminders.split(',').map(Number) : undefined,
       });
       const count = (ev.attendees || []).length;
       console.log(`${ev.summary}: created ${ev.id}, no Meet link, ${count} guest(s)` +

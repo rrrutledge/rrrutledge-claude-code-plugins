@@ -7,12 +7,12 @@ description: Schedule or create a Zoom (or other non-Meet) meeting on Google Cal
 
 ## Creating an event
 
-1. Create a Zoom (or other non-Meet) meeting with `google-calendar.js --create` (Commands, below).
+1. Create every meeting with `google-calendar.js --create` (Commands, below), with its Zoom (or other) link as `--join`.
 2. Pass `--send` once Russell says to send the invites; without it, guests are added with no email.
-3. A meeting meant to be on Google Meet goes through the connector's `create_event` with `addGoogleMeetUrl: true`.
-4. To take a Meet link off an event that already has one, run `--strip-meet`.
+3. To take a Meet link off an event that already has one, run `--strip-meet`.
 
-A connector call keeps Meet off when it passes `addGoogleMeetUrl: false` explicitly; leaving the flag out attaches Meet, despite the connector's documented `false` default.
+Russell's settings deny the claude.ai connector's `create_event` and `update_event`, because the connector attaches Meet to an event with guests unless the call says otherwise.
+Rescheduling or otherwise editing an event happens in the Calendar UI.
 
 ## The Calendar API script
 
@@ -38,14 +38,15 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
   `--calendar` defaults to `primary`, the signed-in account's own calendar.
   A plain `YYYY-MM-DD` is local midnight, a timestamp needs its UTC offset (`2026-10-01T00:00:00-05:00`), and `--end` is exclusive.
   `--json` prints the raw Google `Event` resources; without it, one line per event.
-- **Create an event with no Google Meet link:** `node google-calendar.js --create --summary=<title> --start=<YYYY-MM-DDTHH:MM> --end=<YYYY-MM-DDTHH:MM> --join=<url> [--guests=<a@x.com,b@y.com>] [--description=<text>] [--tz=<IANA>] [--calendar=<id>] [--send]`
+- **Create an event with no Google Meet link:** `node google-calendar.js --create --summary=<title> --start=<YYYY-MM-DDTHH:MM> --end=<YYYY-MM-DDTHH:MM> --join=<url> [--guests=<a@x.com,b@y.com>] [--description=<text>] [--tz=<IANA>] [--reminders=<minutes,...>] [--calendar=<id>] [--send]`
   Times are wall-clock in `--tz`, which defaults to `America/Chicago`.
-  It prints the event id and link; the event uses the calendar's default reminders, adjustable afterward with the connector's `update_event` (`overrideReminders`).
+  `--reminders=15,10,0` sets popup reminders that many minutes before; without it, the calendar's defaults apply.
+  It prints the event id and link.
 - **Remove an event's Google Meet link:** `node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]`
   Guests get no update email unless `--send` is passed, and whether to notify them is Russell's call.
-  The event id is the one `--create` prints, or the `id` the connector's `create_event` / `list_events` returns.
+  The event id is the one `--create` prints, or the `id` the connector's `list_events` returns.
   For a recurring meeting, pick the scope: an occurrence id clears that one date, and its `recurringEventId` clears the series, except occurrences already edited on their own, which each need their own id.
 - **Call it from another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, recurring events expanded to single instances and ordered by start time.
   Cancelled events are left out.
   `stripMeet({ calendar, event, send })` from the same module resolves to the patched `Event`, or `null` when the event had no conference.
-  `createEvent({ calendar, summary, start, end, join, guests, description, timeZone, send })` resolves to the created `Event`.
+  `createEvent({ calendar, summary, start, end, join, guests, description, timeZone, reminders, send })` resolves to the created `Event`.
