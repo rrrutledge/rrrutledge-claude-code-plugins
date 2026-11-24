@@ -169,8 +169,8 @@ This isn't source-specific, so it applies the same way no matter which provider 
 Same work arriving by another source carries its own conversation key (poller-core, "One conversation, one worker"), so it reaches you as a separate item, and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
-When you stand down for the session that keeps the item, settle your item's source by `duplicate-sessions.md` steps 5 and 6, so Russell talks only to that session.
-An item whose source cleared at capture closes per "Close silently" (after §2d) with no digest entry; a Trello card closes paused with `python <skill>/scripts/close-session.py --pause`.
+When you stand down for the session that keeps the item, settle your item's source by `duplicate-sessions.md` steps 5 and 6.
+Close the drainer way: `python <skill>/scripts/close-session.py --pause` when step 6 closes you paused, and "Close silently" (after §2d) with no digest entry when it closes you for good.
 
 **When your seed names a live session already on this item's conversation, ask it first.**
 Settle with that session before any other work, by the rule in `duplicate-sessions.md`.
