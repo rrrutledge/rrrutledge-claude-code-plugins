@@ -26,7 +26,7 @@ its own (a tracking sheet; see `ProviderBase.search_records`) is searched for th
 matching record prints in full, so an item that arrives on one source finds its record on another.
 
 CLI:
-    python search_around.py --term <name> [--term <name> ...] [--item <item.json>] [--repo <repo>]
+    python search_around.py --repo <config repo> --term <name> [--term <name> ...] [--item <item.json>]
 """
 import argparse
 import json
@@ -229,7 +229,8 @@ def search_records(repo, terms):
     `repo`'s drainer.local.md that keeps records (overrides `ProviderBase.search_records`), a failed
     search carrying its error; `unloaded` is [(provider name, error)] for each enabled provider whose
     adapter failed to load, so whether it keeps records is unknown."""
-    cfg = read_config(repo)
+    # A worker runs in the real repo, so its runtime state (token caches, health) is under the cwd.
+    cfg = read_config(repo, runtime_root=os.getcwd())
     records, unloaded = [], []
     providers = load_providers(
         cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
@@ -248,7 +249,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="search_around.py")
     p.add_argument("--term", action="append", required=True)
     p.add_argument("--item", help="the captured item json; sessions about this same item are skipped")
-    p.add_argument("--repo", default=".",
+    p.add_argument("--repo", required=True,
                    help="the merged-main config repo, whose .claude/drainer.local.md names the providers")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
@@ -297,6 +298,8 @@ def main(argv=None):
     else:
         if not os.path.isfile(config):
             print(f"== Provider records: not searched, no drainer config at {config}")
+        elif not records and unloaded:
+            print("== Provider records: not fully searched, providers below failed to load")
         elif not records:
             print(f"== Provider records: no provider enabled in {config} keeps records")
     for name, hits, error in records:

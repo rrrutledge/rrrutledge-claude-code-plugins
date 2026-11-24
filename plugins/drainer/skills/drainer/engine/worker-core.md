@@ -167,8 +167,8 @@ Two patterns to watch for, on any source:
 **A tracked card is the item's record.**
 The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
-A provider record `search_around.py` prints is the item's record in the same way: read its fields and history before deciding the move, reference it, and write back what this session learns through the CLEAR section of that provider's `<source>-provider.md` (a history entry, a changed status, the next check-in), the way a card gets its comments.
-Writing to a record or a card is bookkeeping, so it needs no wait for Russell; a reply the record calls for is still drafted for him to send.
+A provider record `search_around.py` prints is the item's record in the same way: read its fields and history before deciding the move, reference it, and write back what this session learns through the RECORD section of that provider's `<source>-provider.md` (a history entry, a changed status, the next check-in), the way a card gets its comments.
+Writing to a record or a card is a reversible edit, so it needs no wait for Russell; a reply the record calls for is still drafted for him to send.
 The item is new only when the boards, the provider records, and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
