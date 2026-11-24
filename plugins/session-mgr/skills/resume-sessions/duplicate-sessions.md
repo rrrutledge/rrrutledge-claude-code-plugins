@@ -32,17 +32,19 @@ Russell talks to exactly one session per topic, the keeper, so the session that 
    Anything Russell must see or do on the overlap goes through the keeper.
 5. Sort every step you still own on the overlap, your item's source bookkeeping included, by one test: does it wait on the keeper's work?
    When none does, finish them now and close.
-   When any does, hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you once its work is done and you finish those steps with nothing for Russell to answer.
+   When any does, hand the keeper your resume command (`resume-on-completion.md`, `schedule-resume.py`) and close paused, so the keeper resumes you once its work is done and you finish those steps as the one session left on the topic.
    Those steps stay yours because you hold who asked and why, and the skills your source needs, which the keeper may not have loaded; a keeper that is Russell's interactive session or a Remote Control session runs one command instead of taking on your bookkeeping.
    A step inside the keeper's own conversation, such as Russell's send of a draft the keeper staged, is the keeper's; confirm the keeper takes it before standing down.
-6. Your source bookkeeping is how the item's source learns the work is carried, so nothing is orphaned and the poller does not queue the item again:
-   - **A source that clears at capture** (an email archived, a chat thread marked read) is accounted for once the keeper carries the work, so CLEAR it now when it is not cleared already, and close for good.
-   - **A source whose clear records the outcome**, such as a Trello card (its dated comment, its Start, its CLEAR, `cascade_unblock`), waits on the keeper.
+6. Your source bookkeeping tells the item's source the work is carried, and every step that waits on the keeper gets a record that resurfaces it if the resume never runs, for example when Russell closes his own keeper session before it runs the command:
+   - **When nothing waits**, CLEAR your item now when it is not cleared already (an email archived, a chat thread marked read, a card advanced), and close for good.
+   - **When your item is a card** (a Trello card), the card is that record.
      Before closing paused, post a dated comment naming the keeper by title and saying this session resumes to finish the card, and set Start to a check-back date, per `resume-on-completion.md` step 3.
-     That date also covers Russell closing his own keeper session before it runs the command.
-     When the keeper resumes you, read its report, then comment, CLEAR, and `cascade_unblock` as the outcome calls for, and close without presenting anything to Russell.
+   - **When your item's source holds nothing after its clear** (an email archived, a chat thread marked read), file a tracker card for the steps that wait, such as a reply still to stage, with that same comment and check-back Start, then CLEAR the source and close paused.
+     A drainer worker files it per `worker-core.md`, "Waiting on someone else → tracker card"; a plain session files it on the board its work belongs to.
+   When the keeper resumes you, read its report, do the waiting steps, then finish the card: comment, CLEAR, and `cascade_unblock` as the outcome calls for.
 7. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`, or the close your own skill names.
-8. When you are unsure whether the keeper covers it all, stay open.
+8. When you are unsure whether the keeper covers it all, keep working until you can close.
+   Ask the keeper about the exact part in doubt; when its answer still leaves that part open, ask Russell one direct question naming it, and act on his answer.
 9. A session that a peer asks about this answers before going on, a session resumed by the question included.
 10. The keeper tells the peer what it will deliver, and folds what the peer hands over into its own work.
    Handed a resume command, the keeper runs it once its work is done, per `resume-on-completion.md` step 2.
