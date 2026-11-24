@@ -73,7 +73,7 @@
     {
       "name": "google-calendar",
       "source": "./plugins/google-calendar",
-      "description": "Read a Google Calendar's events over a time range, or remove an event's Google Meet link, via the Calendar API - no browser. Reuses the gmail plugin's OAuth client with a separate token scoped to calendar.readonly and calendar.events."
+      "description": "Create a Zoom (or other non-Meet) meeting with no Google Meet link, read a Google Calendar's events over a time range, or remove an event's Meet link, via the Calendar API - no browser. A PreToolUse hook keeps the claude.ai connector's create_event / update_event from attaching a Meet link nobody asked for."
     },
     {
       "name": "google-forms",

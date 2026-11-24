@@ -1,19 +1,18 @@
 ---
 name: google-calendar
-description: Schedule or create a Zoom (or other non-Meet) meeting on Google Calendar with a script that never attaches a Google Meet link, read a Google Calendar's events over a time range, or remove the Meet link from an existing event via the Calendar API - no browser. Use when putting a meeting, call, or invite on Google Calendar (especially one with a Zoom or Teams link), when a script needs a Google Calendar's events, or when a Meet link has to come off an event.
+description: Schedule or create a Zoom (or other non-Meet) meeting on Google Calendar with no Google Meet link, read a Google Calendar's events over a time range, or remove the Meet link from an existing event via the Calendar API - no browser. Use when putting a meeting, call, or invite on Google Calendar (especially one with a Zoom or Teams link), when a script needs a Google Calendar's events, or when a Meet link has to come off an event.
 ---
 
 # Google Calendar - Creating Events Without Meet, Listing, and Meet Removal
 
 ## Creating an event
 
-1. Create a Zoom (or other non-Meet) meeting with `google-calendar.js --create` (Commands, below), in place of the claude.ai connector's `create_event`.
-   The script asks the Calendar API for no conference, checks the event before adding any guest, and sets the join URL as the location and in the description.
-2. Pass `--send` only when Russell has said to send the invites; without it, guests are added with no email.
+1. Create a Zoom (or other non-Meet) meeting with `google-calendar.js --create` (Commands, below).
+2. Pass `--send` once Russell says to send the invites; without it, guests are added with no email.
 3. A meeting meant to be on Google Meet goes through the connector's `create_event` with `addGoogleMeetUrl: true`.
 4. To take a Meet link off an event that already has one, run `--strip-meet`.
 
-The connector leaves Meet off only when a call passes `addGoogleMeetUrl: false` explicitly, despite its documented `false` default, so the plugin's PreToolUse hook denies a connector call that leaves the flag out and points to `--create`.
+A connector call keeps Meet off when it passes `addGoogleMeetUrl: false` explicitly; leaving the flag out attaches Meet, despite the connector's documented `false` default.
 
 ## The Calendar API script
 
@@ -21,7 +20,7 @@ List a Google Calendar's events over a time range through the Calendar API's `ev
 
 Reuses the same Google Cloud OAuth "Desktop app" client the `gmail` plugin already registered (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`) - one OAuth client, many scopes.
 This path requests `calendar.readonly` plus `calendar.events` and keeps its own token cache (`~/.claude/google-calendar/oauth-token.json`).
-A token without `calendar.events` still lists events; re-run the sign-in once before the first Meet removal.
+A token without `calendar.events` still lists events; re-run the sign-in once before the first create or Meet removal.
 
 ## Setup (per machine, one-time)
 
@@ -44,7 +43,7 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
   It prints the event id and link; the event uses the calendar's default reminders, adjustable afterward with the connector's `update_event` (`overrideReminders`).
 - **Remove an event's Google Meet link:** `node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]`
   Guests get no update email unless `--send` is passed, and whether to notify them is Russell's call.
-  The event id is the `id` the connector's `create_event` / `list_events` returns.
+  The event id is the one `--create` prints, or the `id` the connector's `create_event` / `list_events` returns.
   For a recurring meeting, pick the scope: an occurrence id clears that one date, and its `recurringEventId` clears the series, except occurrences already edited on their own, which each need their own id.
 - **Call it from another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, recurring events expanded to single instances and ordered by start time.
   Cancelled events are left out.

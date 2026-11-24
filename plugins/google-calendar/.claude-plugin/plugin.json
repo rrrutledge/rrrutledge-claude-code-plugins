@@ -1,7 +1,7 @@
 {
   "name": "google-calendar",
   "version": "1.2.0",
-  "description": "Keep the claude.ai Google Calendar connector from attaching an unwanted Google Meet link (a PreToolUse guard on create_event / update_event), read a Google Calendar's events over a time range, or remove an event's Meet link via the Calendar API - no browser.",
+  "description": "Create a Zoom (or other non-Meet) meeting with no Google Meet link, read a Google Calendar's events over a time range, or remove an event's Meet link, via the Calendar API - no browser. A PreToolUse hook keeps the claude.ai connector's create_event / update_event from attaching a Meet link nobody asked for.",
   "author": {
     "name": "Russell Rutledge"
   },
