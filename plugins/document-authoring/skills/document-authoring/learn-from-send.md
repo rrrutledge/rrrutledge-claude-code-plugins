@@ -63,6 +63,7 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
 1. **Read the brief, the draft, and the sent text.**
 2. **Diagnose each change by asking which rule governed that choice:**
    - **A clear rule the draft broke** - the reviewer missed it, so the lesson is sharper rule wording a reviewer can't read past.
+     A removed sentence the brief's claims list marks UNSUPPORTED is this case exactly: the drafter invented it, against the Write step's evidence rule, and the estimate had already flagged it.
    - **The rules were silent or ambiguous on it** - a rule gap to fill.
      A change that lands on a spot the reviewer listed as unsettled is this case exactly.
    - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write; when every change lands here, report per step 5 and close.
