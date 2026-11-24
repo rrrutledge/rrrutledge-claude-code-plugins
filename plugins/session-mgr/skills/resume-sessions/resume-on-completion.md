@@ -43,7 +43,7 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    Leave a dated comment on the work's Trello card noting the pause and naming the session you handed the resume to, and keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
-   When no card tracks the work, such as an email worker whose email is already archived or a chat worker whose thread is marked read, the source holds nothing that would resurface it, so file a backstop card for the remaining steps on Russell's board (per the drainer's `context.md`) and give it that comment and Start.
+   When no card tracks the work and the source holds nothing that would resurface it, file a backstop card for the remaining steps on the board the work belongs to (a drainer worker uses Russell's board per its `context.md`), and give it that comment and Start.
    The resumed session finishes that card along with the work.
 
 4. **Close this session now, paused**, via the **`session-mgr:close`** skill with `--pause` (a drainer worker: `python <skill>/scripts/close-session.py --pause`).

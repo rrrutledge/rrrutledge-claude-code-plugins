@@ -37,7 +37,7 @@ Russell talks to exactly one session per topic, the keeper, so the session that 
    A step inside the keeper's own conversation, such as Russell's send of a draft the keeper staged, is the keeper's; confirm the keeper takes it before standing down.
 6. Your source bookkeeping tells the item's source the work is carried, and every step that waits on the keeper gets a record that resurfaces it if the resume never runs:
    - **When none of your steps wait**, CLEAR your item now when it is not cleared already (an email archived, a chat thread marked read, a card advanced), and close for good.
-   - **When some of your steps wait**, record the pause on a card per `resume-on-completion.md` step 3: your item's own card when it is one, or a backstop card when the cleared source holds no record.
+   - **When some of your steps wait**, record the pause on a card per `resume-on-completion.md` step 3.
      Then CLEAR a source that clears at capture, leave a card un-cleared, and close paused.
 
    When the keeper resumes you, read its report, do the waiting steps, then finish the card: comment, CLEAR, and `cascade_unblock` as the outcome calls for.

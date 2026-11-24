@@ -392,9 +392,7 @@ A Russell-only step that happens *inside* that session belongs to that session's
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
-  **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.
-  An item with no card gets the backstop card that step 3 names.
-  Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
+  **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.  Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
   **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.
 
