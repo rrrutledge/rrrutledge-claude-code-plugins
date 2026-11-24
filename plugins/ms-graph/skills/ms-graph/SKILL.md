@@ -67,7 +67,7 @@ All under `scripts/`:
   - Send a staged draft: `node mail.js --send-draft --message-id=<draftId>` (promotes a draft from `--reply`/`--draft-new` to a real send via Graph's own send action, transmitting exactly what's saved in Drafts; the only path that emits real mail - use only on Russ's explicit per-message instruction after he's reviewed this exact draft)
   - Delete one (reversible): `node mail.js --delete=<messageId>` (moves to Deleted Items, never a permanent purge)
   - Reusable from other scripts: `require('<…>/mail.js')` exports `createDraft(client, {to, subject, body, cc, attach, replace, contentType, baseDir})` (CLI is `require.main`-guarded).
-    Pass `baseDir`, the body's folder, when the body places inline images by relative path.
+    Pass `baseDir` when the body places inline images by relative path.
   - **Inbox rules** (server-side filters):
     - List: `node mail.js --list-rules [--json]` (full, untruncated conditions/exceptions/actions - the API returns every phrase, unlike the OWA UI which caps the visible list)
     - Create: `node mail.js --create-rule --name="Corporate Subjects" --subject-contains="A||B||C" [--body-contains=] [--from-contains=] [--subject-or-body=] [--except-from="gmail.com||outlook.com||icloud.com"] --move-to=archive [--mark-read] [--delete-msg] [--no-stop]` (multi-value flags split on `||`; `--move-to` takes a well-known folder id like `archive`; `--except-from` is the personal-domain fence; sequence is auto-assigned to the end)

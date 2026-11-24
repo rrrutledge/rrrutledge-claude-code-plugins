@@ -15,7 +15,7 @@ fs.writeFileSync(path.join(dir, '.pics', 'a.jpg'), Buffer.from('jpg-bytes'));
 fs.writeFileSync(path.join(dir, 'IMG_1.heic'), Buffer.from('heic'));
 
 // Records each Graph call; the draft POST returns the message it was given, the attachment POSTs are kept.
-// failAttachment makes every attachment POST reject, the way an oversized or dropped request does.
+// failAttachment makes every attachment POST reject.
 async function draft(body, opts = {}, calls = [], failAttachment = false) {
   const client = { api: (url) => ({
     post: async (payload) => {

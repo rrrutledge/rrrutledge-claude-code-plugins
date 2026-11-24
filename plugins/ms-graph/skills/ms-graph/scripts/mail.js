@@ -130,14 +130,14 @@ function renderBody(md, baseDir = '.') {
   return inlineImages(withDefaultFont(marked.parse(slashed)), baseDir);
 }
 
-// The image types mail clients show inline; any other file (an iPhone .heic, a .tif) arrives as a broken picture.
+// The image types mail clients show inline; any other file type arrives as a broken picture.
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
   '.webp': 'image/webp', '.bmp': 'image/bmp' };
 
 // An image in the body file whose source is a local file - Markdown `![alt](photo.jpg)` or raw
-// `<img src="photo.jpg" width="400">` - becomes an inline attachment shown at that spot in the message,
-// the way a picture dragged into the Outlook compose window is. Its src is rewritten to `cid:<id>` and
-// the file rides along as a Graph fileAttachment with isInline and the matching contentId. A relative
+// `<img src="photo.jpg" width="400">` - becomes an inline attachment shown at that spot in the message.
+// Its src is rewritten to `cid:<id>` and the file is attached as a Graph fileAttachment with isInline
+// and the matching contentId. A relative
 // path resolves against the body file's folder. A source with a scheme (https:, cid:, data:) or a
 // protocol-relative `//host` is left alone. An image with no style of its own gets max-width:100% and
 // height:auto so a full-size phone photo fits the reading pane without stretching.
