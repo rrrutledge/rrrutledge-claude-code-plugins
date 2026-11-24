@@ -108,15 +108,16 @@ Every one of these systems is searched:
 - **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
 - **Recent sessions and card comments:** `python <drainer-skill>/scripts/search_around.py --item <the captured item json> --term <name> [--term <name> ...]`.
   Pass one `--term` per company, platform, person, and identifier the item names, the sender's brand and the person it's addressed to included.
-  Read each hit's snippets and comments, and open the card or the session's transcript for the full record.
+  Give a name in its shortest distinctive form too (a first name, a brand's leading word), since notes written in a session use the short form.
+  Read each hit's snippets and comments, and open the card or the session's transcript for the full record; a matching card is the item's record, per "A tracked card is the item's record".
 
 Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
 A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, the boards, or recent sessions").
 
 **An inbound you can't place is a pointer to Russell's own recent work.**
-An inbound that presumes an action Russell took - addressed to him or to a family member - usually follows from something he set in motion in a recent session, often minutes before it arrived.
-Run `search_around.py` on it before presenting it as suspicious or asking Russell whether he expected it; phishing is settled by `triage.md`'s sender-domain and link checks.
-A session or card that explains it is the item's record: name it in what you present, and carry on with the next step it shows: who acts next, and by when.
+An inbound that presumes an action Russell took, addressed to him or to a family member, usually follows from a recent session, often one that ended minutes before it arrived.
+Run the searches above, `search_around.py` included, before presenting it as suspicious or asking Russell whether he expected it.
+Phishing is decided by `triage.md`'s sender-domain and link checks.
 
 **Search both mailboxes.**
 Search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive), whichever mailbox the item arrived in.
@@ -167,7 +168,8 @@ Two patterns to watch for, on any source:
   An item whose content describes an ask or a next step is only half-read until you've checked the channel that ask actually points to - checking only the channel it arrived on and finding silence there is not the same as confirming nothing happened.
 
 **A tracked card is the item's record.**
-The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
+The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
+A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
 The item is new only when the boards and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.
 
