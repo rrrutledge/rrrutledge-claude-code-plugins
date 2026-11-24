@@ -493,9 +493,9 @@ class Provider(ProviderBase):
     @staticmethod
     def _startable(start_dt, now):
         """Whether a card is in play now. Start is the only date the queue reads: a card is startable
-        when it has no Start (start immediately) or its Start has arrived. A future Start is the sole way
-        to defer a card - it means "not okay to begin until this day". No other card field holds it back;
-        an initiative hold works per list (see _hold_lists)."""
+        when it has no Start (start immediately) or its Start has arrived. A future Start is the sole
+        per-card way to defer a card - it means "not okay to begin until this day". No other card field
+        holds it back; an initiative hold works per list (see _hold_lists)."""
         return start_dt is None or start_dt <= now
 
     def _initiative(self, card, board_name):
@@ -538,8 +538,8 @@ class Provider(ProviderBase):
         """Yield `(card, list_name, start_dt)` for every currently-startable card on one board.
 
         The single source of truth for "in play", so enumerate (which builds full items) and
-        still_in_inbox_ids (which needs only the ids, for the reconcile) apply an identical gate and can
-        never drift: on an active, non-skip list; not wearing a ⛔ Blocked/skip label; not assigned to
+        still_in_inbox_ids (which needs only the ids, for the reconcile) apply the same base gate and can
+        never drift on it: on an active, non-skip list; not wearing a ⛔ Blocked/skip label; not assigned to
         someone else; and startable now (no Start, or a Start that has arrived - a future Start defers).
         Enumerate also passes `held` (from _hold_lists) to leave out cards on a list their initiative
         holds; the reconcile passes none, so a held card still reads as outstanding there (see
@@ -640,8 +640,8 @@ class Provider(ProviderBase):
         for board in self.boards:
             bname = board.get("name", board["id"])
             # fields="all" (inside _startable_cards) so the newer `start` date comes back; the same gate
-            # feeds still_in_inbox_ids, so a card in play here is exactly one reconcile treats as
-            # outstanding.
+            # feeds still_in_inbox_ids, so every card in play here is one reconcile treats as outstanding
+            # (reconcile also counts held cards; see still_in_inbox_ids).
             for card, list_name, start_dt in self._startable_cards(board, now, my_id, held):
                 start_dt = self._sweep_recurring(card, start_dt, now)
                 # Sort rank / go-live: a card ranks by its Start (its resurface day); an undated card by
@@ -734,7 +734,8 @@ class Provider(ProviderBase):
         is part of the stable_id, so a properly cleared card mints a NEW id and its old id is absent from
         this set - reconcile then leaves it alone, exactly as it leaves an archived email alone. The set
         is computed fresh from the boards, so a card CLEAR deferred into the future (its new Start not yet
-        arrived) is correctly excluded, and it applies the same gate as enumerate (via _startable_cards),
+        arrived) is correctly excluded, and it applies the same base gate as enumerate (via
+        _startable_cards), without the initiative hold (below),
         so a blocked / skip-listed / reassigned card is never re-queued.
 
         A card on a list its initiative holds stays in this set. The reconcile writes every seen id
