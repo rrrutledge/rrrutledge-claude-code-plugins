@@ -316,6 +316,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Confirming a factual yes/no is where the helper tail bites hardest** (the rule itself is in `authoring-rules`).
   Answer in the fewest words that carry it and stop — "Yes - Northwind Bank.", not a sentence justifying the answer with internal evidence (prior migrations, other accounts already switched).
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
+  Exception: a yes to whether something they sent (an application, a submission) arrived still closes with the thank-you from **Brevity**.
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
   **Exception - the step hangs on something the same message leaves open**: "I can" names his part in the plan without announcing it as settled, so it isn't a tail.
@@ -654,4 +655,4 @@ These registers reach outside the palette, and most also stack past the one-emoj
 ### When unsure
 
 Default to `1on1` warmth for individuals and `announcement` structure for groups.
-If you'd have to invent a personal detail (including a fact about Russell's own history or accounts, or his own verdict on how an event went, which parts he felt strong or weak on, and what happens next), or a commitment the ask never made (any promise, acceptance, or refusal of an obligation, or a change to how Russell works), or a claim about Russell's future scope or intent that the ask never gave (a "for now", an "everything else stays as is"), or a stance on a question the ask left to him, or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
+If you'd have to invent a personal detail (including a fact about Russell's own history or accounts, or his own verdict on how an event went, which parts he felt strong or weak on, and what happens next), or a reason for someone else's behavior the ask never gave, or a commitment the ask never made (any promise, acceptance, or refusal of an obligation, or a change to how Russell works), or a claim about Russell's future scope or intent that the ask never gave (a "for now", an "everything else stays as is"), or a stance on a question the ask left to him, or settle a logistic the ask left open, leave it out, or insert a placeholder like `[CONFIRM: …]` where the recipient can't act without it, instead of fabricating.
