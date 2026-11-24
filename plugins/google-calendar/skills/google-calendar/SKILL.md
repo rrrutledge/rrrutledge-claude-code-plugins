@@ -1,20 +1,23 @@
 ---
 name: google-calendar
-description: Schedule, create, or edit a Google Calendar event through the claude.ai connector without it attaching an unwanted Google Meet link, read a Google Calendar's events over a time range, or remove the Meet link from an existing event via the Calendar API - no browser. Use when putting a meeting, call, or invite on Google Calendar (especially one with a Zoom or Teams link), when a script needs a Google Calendar's events, or when a Meet link has to come off an event.
+description: Schedule or create a Zoom (or other non-Meet) meeting on Google Calendar with a script that never attaches a Google Meet link, read a Google Calendar's events over a time range, or remove the Meet link from an existing event via the Calendar API - no browser. Use when putting a meeting, call, or invite on Google Calendar (especially one with a Zoom or Teams link), when a script needs a Google Calendar's events, or when a Meet link has to come off an event.
 ---
 
 # Google Calendar - Creating Events Without Meet, Listing, and Meet Removal
 
-## Creating or editing an event through the connector
+## Creating an event
 
-1. Set `addGoogleMeetUrl` explicitly on every connector `create_event` or `update_event` that adds guests or sets a non-Meet join URL: `true` for a meeting meant to be on Google Meet, `false` for every other meeting.
-   Leaving the flag out attaches a Meet link to the invites, despite the connector's documented `false` default, and the invites reach every guest the moment the event is created.
-2. For a meeting with a non-Meet join URL, put that URL in both `location` and `description`.
-3. To take a Meet link off an event that already has one, run `--strip-meet` (below); the connector's `update_event` adds Meet links and has no field that removes one.
+1. Create a Zoom (or other non-Meet) meeting with `google-calendar.js --create` (Commands, below), in place of the claude.ai connector's `create_event`.
+   The script asks the Calendar API for no conference, checks the event before adding any guest, and sets the join URL as the location and in the description.
+2. Pass `--send` only when Russell has said to send the invites; without it, guests are added with no email.
+3. A meeting meant to be on Google Meet goes through the connector's `create_event` with `addGoogleMeetUrl: true`.
+4. To take a Meet link off an event that already has one, run `--strip-meet`.
+
+The connector leaves Meet off only when a call passes `addGoogleMeetUrl: false` explicitly, despite its documented `false` default, so the plugin's PreToolUse hook denies a connector call that leaves the flag out and points to `--create`.
 
 ## The Calendar API script
 
-List a Google Calendar's events over a time range through the Calendar API's `events.list` endpoint, or remove an event's Google Meet link, using Google's official Node client library (`googleapis`): `scripts/google-calendar.js`.
+List a Google Calendar's events over a time range through the Calendar API's `events.list` endpoint, create an event with no Google Meet link, or remove an event's Meet link, using Google's official Node client library (`googleapis`): `scripts/google-calendar.js`.
 
 Reuses the same Google Cloud OAuth "Desktop app" client the `gmail` plugin already registered (`GMAIL_OAUTH_CLIENT_ID` / `GMAIL_OAUTH_CLIENT_SECRET`) - one OAuth client, many scopes.
 This path requests `calendar.readonly` plus `calendar.events` and keeps its own token cache (`~/.claude/google-calendar/oauth-token.json`).
@@ -36,6 +39,9 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
   `--calendar` defaults to `primary`, the signed-in account's own calendar.
   A plain `YYYY-MM-DD` is local midnight, a timestamp needs its UTC offset (`2026-10-01T00:00:00-05:00`), and `--end` is exclusive.
   `--json` prints the raw Google `Event` resources; without it, one line per event.
+- **Create an event with no Google Meet link:** `node google-calendar.js --create --summary=<title> --start=<YYYY-MM-DDTHH:MM> --end=<YYYY-MM-DDTHH:MM> --join=<url> [--guests=<a@x.com,b@y.com>] [--description=<text>] [--tz=<IANA>] [--calendar=<id>] [--send]`
+  Times are wall-clock in `--tz`, which defaults to `America/Chicago`.
+  It prints the event id and link; the event uses the calendar's default reminders, adjustable afterward with the connector's `update_event` (`overrideReminders`).
 - **Remove an event's Google Meet link:** `node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]`
   Guests get no update email unless `--send` is passed, and whether to notify them is Russell's call.
   The event id is the `id` the connector's `create_event` / `list_events` returns.
@@ -43,3 +49,4 @@ Claude Code installs the script dependencies (`googleapis`, `google-auth-library
 - **Call it from another script:** `require('<google-calendar>/scripts/google-calendar.js').listEvents({ calendar, start, end })` resolves to the raw `Event` resources overlapping `[start, end)`, recurring events expanded to single instances and ordered by start time.
   Cancelled events are left out.
   `stripMeet({ calendar, event, send })` from the same module resolves to the patched `Event`, or `null` when the event had no conference.
+  `createEvent({ calendar, summary, start, end, join, guests, description, timeZone, send })` resolves to the created `Event`.

@@ -36,9 +36,11 @@ NON_MEET_JOIN = re.compile(
 )
 
 CHOICE = (
-    "Re-run the same call with `addGoogleMeetUrl` set explicitly: `true` for a meeting "
-    "meant to be on Google Meet, `false` for every other meeting, with a non-Meet join URL "
-    "in both `location` and `description`. "
+    "For a Zoom or other non-Meet meeting, create it with the google-calendar skill's "
+    "`google-calendar.js --create --join=<url>` instead, which never adds Meet (pass `--send` "
+    "only when Russell has said to send the invites). "
+    "Otherwise re-run the same call with `addGoogleMeetUrl` set explicitly: `true` for a "
+    "meeting meant to be on Google Meet, `false` for every other meeting. "
     "The flag stops a new Meet link; the google-calendar skill's "
     "`google-calendar.js --strip-meet` removes one an event already has."
 )
