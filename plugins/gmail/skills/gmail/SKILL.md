@@ -162,13 +162,12 @@ Under `scripts/` (run with `node`):
     stages a Gmail emoji reaction to that message as a draft and prints its `draft-id`, which `--send-draft` sends once Russ says to.
     The emoji defaults to 👍.
     When to acknowledge with a reaction is `message-rules`' **Acknowledge with the channel's native 👍 reaction** rule.
-    Google's reaction format says a Gmail recipient sees it as an emoji on the message it answers.
+    A Gmail recipient sees it as the same "👍 1" chip on their message that Gmail's own reaction button produces.
     Outlook shows the fallback, a normal email with a large emoji, "`<name>` reacted via Gmail", and the quoted original.
     In the sending account's own Gmail the thread shows that same fallback as a separate message, because Gmail folds only reactions made in its own UI into the emoji chip there.
     It reacts to the exact message given and goes to its sender plus its other To and Cc recipients (`--exclude` drops some).
     A reaction draft goes out through `--send-draft` alone, because Gmail's compose window rebuilds the message on Send and drops the reaction part.
     Staging it leaves any other draft on the thread alone, but a later `--reply` on that thread replaces the staged reaction, so send the reaction before staging a reply.
-    Outlook has no counterpart: its reactions work only between Exchange Online mailboxes in one tenant, and Graph exposes no API for them.
   - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
     (sends that one draft and removes it from Drafts; Gmail files the copy in Sent). See **Sending**
     below - this runs only on Russ's explicit per-message say-so.
