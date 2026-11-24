@@ -122,43 +122,50 @@ function withDefaultFont(html) {
 // breaks intact instead of collapsing into one run-on block. Raw HTML in the file passes through
 // untouched. `--text` (draft-new) bypasses this to send the file as literal plain text.
 // Returns { html, inline }: inline is the inline-image attachments the html references (see inlineImages).
+// A Markdown image path's backslashes become forward slashes first: Markdown reads a backslash before
+// punctuation as an escape and drops it, so a Windows path like `C:\repo\.tmp\a.jpg` would otherwise
+// lose the separator before `.tmp`.
 function renderBody(md, baseDir = '.') {
-  return inlineImages(withDefaultFont(marked.parse(md)), baseDir);
+  const slashed = md.replace(/(!\[[^\]\n]*\]\(\s*<?)([^)>\n]+)/g, (m, open, dest) => open + dest.replace(/\\/g, '/'));
+  return inlineImages(withDefaultFont(marked.parse(slashed)), baseDir);
 }
 
+// The image types mail clients show inline; any other file (an iPhone .heic, a .tif) arrives as a broken picture.
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-  '.webp': 'image/webp', '.bmp': 'image/bmp', '.heic': 'image/heic' };
+  '.webp': 'image/webp', '.bmp': 'image/bmp' };
 
 // An image in the body file whose source is a local file - Markdown `![alt](photo.jpg)` or raw
 // `<img src="photo.jpg" width="400">` - becomes an inline attachment shown at that spot in the message,
 // the way a picture dragged into the Outlook compose window is. Its src is rewritten to `cid:<id>` and
 // the file rides along as a Graph fileAttachment with isInline and the matching contentId. A relative
-// path resolves against the body file's folder. Web, cid:, and data: sources are left alone. An image
-// with no style of its own gets max-width:100% so a full-size phone photo fits the reading pane.
-// marked percent-encodes the src (a Windows backslash becomes %5C), so it is decoded before use.
+// path resolves against the body file's folder. A source with a scheme (https:, cid:, data:) or a
+// protocol-relative `//host` is left alone. An image with no style of its own gets max-width:100% and
+// height:auto so a full-size phone photo fits the reading pane without stretching.
+// marked percent-encodes the src (a space becomes %20), so it is decoded before use.
 function inlineImages(html, baseDir) {
   const byPath = new Map();
   const out = html.replace(/<img\b[^>]*>/gi, (tag) => {
-    const m = tag.match(/\ssrc\s*=\s*"([^"]*)"/i);
-    if (!m || /^(https?:|cid:|data:)/i.test(m[1])) return tag;
-    let src = m[1].replace(/&amp;/g, '&');
+    const m = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const raw = m && (m[1] ?? m[2] ?? m[3]);
+    if (!m || /^([a-z][a-z0-9+.-]+:|\/\/)/i.test(raw)) return tag;
+    let src = raw.replace(/&amp;/g, '&');
     try { src = decodeURI(src); } catch { /* keep as written */ }
     const file = path.resolve(baseDir, src);
-    if (!fs.existsSync(file)) throw new Error(`inline image not found: ${file} (from src="${m[1]}" in the body file)`);
+    if (!fs.existsSync(file)) throw new Error(`inline image not found: ${file} (from src="${raw}" in the body file)`);
+    const contentType = IMAGE_TYPES[path.extname(file).toLowerCase()];
+    if (!contentType) throw new Error(`inline image must be ${Object.keys(IMAGE_TYPES).join(' ')}: ${file}`);
     if (!byPath.has(file)) {
-      const ext = path.extname(file).toLowerCase();
       byPath.set(file, {
         '@odata.type': '#microsoft.graph.fileAttachment',
         name: path.basename(file),
-        contentType: IMAGE_TYPES[ext] || 'application/octet-stream',
+        contentType,
         contentBytes: fs.readFileSync(file).toString('base64'),
         isInline: true,
         contentId: `inline${byPath.size + 1}-${path.basename(file).replace(/[^A-Za-z0-9.]/g, '_')}`,
       });
     }
-    let rewritten = tag.replace(m[0], ` src="cid:${byPath.get(file).contentId}"`);
-    if (!/\sstyle\s*=/i.test(rewritten)) rewritten = rewritten.replace(/^<img\b/i, '<img style="max-width:100%"');
-    return rewritten;
+    const rewritten = tag.replace(m[0], ` src="cid:${byPath.get(file).contentId}"`);
+    return /\sstyle\s*=/i.test(rewritten) ? rewritten : rewritten.replace(/^<img\b/i, '<img style="max-width:100%; height:auto"');
   });
   return { html: out, inline: [...byPath.entries()].map(([file, attachment]) => ({ file, attachment })) };
 }
@@ -501,10 +508,31 @@ function buildAttachments(attach) {
   }));
 }
 
+// Add one fileAttachment to a draft. Graph rejects a request body over about 4 MB, so a file over 3 MB
+// (a full-size phone photo) goes up through an upload session in 3.75 MB chunks instead of one POST.
+const UPLOAD_LIMIT = 3 * 1024 * 1024;
+const CHUNK = 12 * 320 * 1024; // upload-session chunks must be multiples of 320 KiB
+async function addAttachment(client, messageId, a) {
+  const bytes = Buffer.from(a.contentBytes, 'base64');
+  if (bytes.length <= UPLOAD_LIMIT) return client.api(`/me/messages/${messageId}/attachments`).post(a);
+  const session = await client.api(`/me/messages/${messageId}/attachments/createUploadSession`).post({
+    AttachmentItem: { attachmentType: 'file', name: a.name, size: bytes.length, contentType: a.contentType,
+      isInline: !!a.isInline, contentId: a.contentId },
+  });
+  for (let start = 0; start < bytes.length; start += CHUNK) {
+    const chunk = bytes.subarray(start, start + CHUNK);
+    const r = await fetch(session.uploadUrl, { method: 'PUT', body: chunk, headers: {
+      'Content-Type': 'application/octet-stream',
+      'Content-Range': `bytes ${start}-${start + chunk.length - 1}/${bytes.length}`,
+    } });
+    if (!r.ok) throw new Error(`upload of ${a.name} failed: HTTP ${r.status} ${await r.text()}`);
+  }
+}
+
 // One `attachment: <absolute path>` line per file a staged draft carries, --attach files and inline
 // body images alike (an inline one marked `(inline)`), so the session presenting the draft can send
 // each file to Russell's device without re-deriving the list.
-function printAttachmentLines(attach, inline = []) {
+function printAttachmentLines(attach, inline) {
   for (const p of new Set(attachPaths(attach).map(p => path.resolve(p)))) console.log(`attachment: ${p}`);
   for (const { file } of inline) console.log(`attachment: ${file} (inline)`);
 }
@@ -515,13 +543,11 @@ async function reply(client) {
   }
   const raw = fs.readFileSync(args['body-file'], 'utf8');
   const { html, inline } = renderBody(raw, path.dirname(args['body-file']));
+  const attachments = [...buildAttachments(args.attach), ...inline.map(i => i.attachment)];
   const draft = await client.api(`/me/messages/${args['message-id']}/createReplyAll`).post({});
   const quoted = draft.body?.content || '';
   await client.api(`/me/messages/${draft.id}`).patch({ body: { contentType: 'html', content: html + quoted } });
-  const attachments = [...buildAttachments(args.attach), ...inline.map(i => i.attachment)];
-  for (const a of attachments) {
-    await client.api(`/me/messages/${draft.id}/attachments`).post(a);
-  }
+  for (const a of attachments) await addAttachment(client, draft.id, a);
   const extra = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
   console.log(`draft-id: ${draft.id}`);
@@ -593,6 +619,9 @@ async function sentSince(client) {
 async function createDraft(client, { to, subject, body = '', cc, attach, replace = false, contentType = 'html', baseDir = '.' } = {}) {
   if (!to || !subject) throw new Error('createDraft requires { to, subject }');
   client = client || await getGraphClient();
+  // Render and read every file before --replace deletes anything, so a bad image path leaves the old draft in place.
+  const { html: finalBody, inline } = contentType === 'html' ? renderBody(body, baseDir) : { html: body, inline: [] };
+  const attachments = [...buildAttachments(attach), ...inline.map(i => i.attachment)];
   if (replace) {
     const existing = await client.api('/me/mailFolders/drafts/messages')
       .filter(`subject eq '${String(subject).replace(/'/g, "''")}'`)
@@ -600,12 +629,10 @@ async function createDraft(client, { to, subject, body = '', cc, attach, replace
     for (const m of existing.value || []) await client.api(`/me/messages/${m.id}`).delete();
   }
   const recip = (s) => String(s).split(',').map(a => ({ emailAddress: { address: a.trim() } }));
-  const { html: finalBody, inline } = contentType === 'html' ? renderBody(body, baseDir) : { html: body, inline: [] };
   const message = { subject, body: { contentType, content: finalBody }, toRecipients: recip(to) };
   if (cc) message.ccRecipients = recip(cc);
-  const attachments = [...buildAttachments(attach), ...inline.map(i => i.attachment)];
-  if (attachments.length) message.attachments = attachments;
   const draft = await client.api('/me/messages').post(message);
+  for (const a of attachments) await addAttachment(client, draft.id, a);
   return { ...draft, inline };
 }
 
