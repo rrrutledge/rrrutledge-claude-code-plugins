@@ -54,8 +54,6 @@ The resume carries the wake note as a follow-up prompt, so the session comes bac
 ## Why this is safe against a duplicate worker (drainer)
 
 A drainer worker's item is a Trello card, and the poller stamps that card's id into seen-state the moment it dispatches the worker.
-The id stays "already seen" for as long as the card's Start date holds, and a card with a future Start is not startable, so a worker that closes under this pattern **without clearing the card**, its Start either untouched or moved to step 3's check-back date, gets no second worker dispatched onto it while the resume is pending (see `providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4).
-The check-back date is the backstop: when it arrives with the resume never run, the card resurfaces and the next worker finds the paused session and the work's state.
-Leave the card un-cleared: the work is not done, and the resumed session is what CLEARs it once the remaining work finishes.
+The id stays "already seen" for as long as the card's Start date holds, and a card with a future Start is not startable, so a worker that closes under this pattern **without clearing the card**, its Start either untouched or moved to step 3's check-back date, gets no second worker dispatched onto it while the resume is pending (see `providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4).Leave the card un-cleared: the work is not done, and the resumed session is what CLEARs it once the remaining work finishes.
 
 The resumed session is not mistaken for a stale orphan: while it runs it appears in `claude agents --json`, which `find-orphans.py` reads for liveness, and the original session's clean self-close already deregistered it, so `find-orphans.py` has nothing to resurrect in the gap between close and resume.

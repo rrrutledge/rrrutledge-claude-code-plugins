@@ -39,9 +39,9 @@ Russell talks to exactly one session per topic, the keeper, so the session that 
    - **A source that clears at capture** (an email archived, a chat thread marked read) is accounted for once the keeper carries the work, so CLEAR it now when it is not cleared already, and close for good.
    - **A source whose clear records the outcome**, such as a Trello card (its dated comment, its Start, its CLEAR, `cascade_unblock`), waits on the keeper.
      Before closing paused, post a dated comment naming the keeper by title and saying this session resumes to finish the card, and set Start to a check-back date, per `resume-on-completion.md` step 3.
-     That date resurfaces the card if the resume never lands, for example when Russell closes his own keeper session before it runs the command.
+     That date also covers Russell closing his own keeper session before it runs the command.
      When the keeper resumes you, read its report, then comment, CLEAR, and `cascade_unblock` as the outcome calls for, and close without presenting anything to Russell.
-7. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`, or the close your own skill names, with `--pause` when step 5 has you close paused.
+7. Standing down means sending the keeper everything useful you have gathered (links, findings, any draft you staged), then closing with `session-mgr:close`, or the close your own skill names.
 8. When you are unsure whether the keeper covers it all, stay open.
 9. A session that a peer asks about this answers before going on, a session resumed by the question included.
 10. The keeper tells the peer what it will deliver, and folds what the peer hands over into its own work.
