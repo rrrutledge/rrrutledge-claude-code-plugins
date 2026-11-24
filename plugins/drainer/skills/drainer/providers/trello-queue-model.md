@@ -24,8 +24,9 @@ Read this when changing the adapter (`trello-adapter.py`), the queue policy (`pr
     The adapter writes the resolved slug as `initiative` on the item.
     See `trello-provider.md`'s INITIATIVE-LOOKUP for how the worker loads the content and STAGE-PLAYBOOK for the generic per-stage activity.
 - **Initiative hold:** an initiative doc whose front matter carries an inline list `hold_lists: [A, B, ...]` holds that initiative's cards on those lists out of the queue, matched case-insensitively against the whole list name.
-  A held card is neither enumerated nor counted startable by the reconcile, and nothing is written to it, so it keeps its own Start.
-  The adapter re-reads `initiatives/` on every enumerate and reconcile, so deleting the line releases every held card on the next cycle.
+  Enumerate leaves a held card out, and nothing is written to it, so it keeps its own Start.
+  The reconcile still counts a held card as outstanding, so a held card whose worker exited without CLEAR is re-queued, waits out the hold in enumerate, and dispatches once the hold lifts.
+  The adapter re-reads `initiatives/` on every enumerate, so deleting the line releases every held card on the next cycle.
   `initiative-doc-template.md` covers when an initiative uses it.
 - **In-progress lists:** a four-space inline list `in_progress_lists: [A, B, ...]` on a board entry in `trello-boards.yaml` names that board's in-progress lists, matched case-insensitively against the card's list name.
   A card on one of them is pinned above neutral (see ENUMERATE).

@@ -1,7 +1,7 @@
 """Tests for the initiative hold: an `initiatives/<slug>.md` front-matter line `hold_lists: [A, B]` keeps
-that initiative's cards on those lists out of the trello adapter's queue (enumerate) and out of the
-reconcile's startable set (still_in_inbox_ids), with nothing written to the held cards, and deleting the
-line releases them on the next call.
+that initiative's cards on those lists out of the trello adapter's queue (enumerate) while the reconcile's
+startable set (still_in_inbox_ids) still counts them, with nothing written to the held cards, and
+deleting the line releases them on the next call.
 
 Run directly:
     python plugins/drainer/tests/test_trello_initiative_hold.py
@@ -111,8 +111,8 @@ check("held lists drop out; In Conversation and the other board's plain card sta
       got, ["card 00003", "card 00004"])
 check("a per-card initiative label on another board is held too",
       "card 00005" in got, False)
-check("the reconcile's startable set applies the same hold",
-      len(p.still_in_inbox_ids()), 2)
+check("the reconcile still counts held cards as outstanding, so none is memoized handled for good",
+      len(p.still_in_inbox_ids()), 5)
 check("nothing is written to a held card", p._utils.writes, [])
 
 print("\ndeleting the line releases every held card on the next call, no restart")
@@ -126,9 +126,12 @@ for label, doc in [("no front matter", "# Job Search\n"),
                    ("hold_lists in the body", "# Job Search\nhold_lists: [Identified]\n")]:
     check(label, len(make_provider(repo_with(doc)).enumerate(50)), 5)
 
-print("\nCRLF front matter parses the same")
+print("\nCRLF and BOM-prefixed front matter parse the same")
 check("CRLF doc holds the same cards",
       names(make_provider(repo_with(HELD_DOC.replace("\n", "\r\n"))).enumerate(50)),
+      ["card 00003", "card 00004"])
+check("BOM-prefixed doc holds the same cards",
+      names(make_provider(repo_with("﻿" + HELD_DOC)).enumerate(50)),
       ["card 00003", "card 00004"])
 
 print("\nno config repo or no initiatives folder holds nothing")

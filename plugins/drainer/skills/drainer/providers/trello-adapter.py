@@ -134,7 +134,7 @@ class Provider(ProviderBase):
         # Board name → lowercased names of its in-progress lists (a board's `in_progress_lists:` field in
         # the registry); a card on one of them ranks above neutral (see _PRIORITY_BAND).
         self.board_in_progress_lists = {}
-        # The config repo; its initiatives/ folder is re-read for hold_lists on every enumerate and every reconcile.
+        # The config repo; its initiatives/ folder is re-read for hold_lists on every enumerate.
         self.repo = None
         # Resolved lazily on first enumerate; used to skip cards assigned to someone else.
         self._my_member_id = None
@@ -508,22 +508,24 @@ class Provider(ProviderBase):
         """Initiative slug -> the lowercased list names its doc holds out of the queue.
 
         An initiative doc opts in with a front-matter line `hold_lists: [A, B]`: while that line is
-        there, the initiative's cards on those lists are not startable, so no worker ever picks one up.
-        Nothing is written to a held card, so deleting the line puts every held card back in the queue
-        on the next cycle at its own Start. Read fresh on every call (the keeper loads providers once
+        there, enumerate leaves the initiative's cards on those lists out, so no worker ever picks one
+        up. Nothing is written to a held card, so deleting the line puts every held card back in the
+        queue on the next cycle at its own Start. Read fresh on every enumerate (the keeper loads providers once
         for days, and the config repo is refreshed to merged main every cycle), so the edit that ends a
         hold takes effect without a restart. A missing folder or an unreadable doc holds nothing."""
         held = {}
-        folder = os.path.join(self.repo, "initiatives") if self.repo else None
+        if not self.repo:
+            return held
+        folder = os.path.join(self.repo, "initiatives")
         try:
-            names = os.listdir(folder) if folder else []
+            names = os.listdir(folder)
         except OSError:
             return held
         for fn in names:
             if not fn.endswith(".md"):
                 continue
             try:
-                with open(os.path.join(folder, fn), encoding="utf-8") as f:
+                with open(os.path.join(folder, fn), encoding="utf-8-sig") as f:
                     m = _FRONT_MATTER_RE.match(f.read())
             except OSError:
                 continue
@@ -532,14 +534,16 @@ class Provider(ProviderBase):
                 held[fn[:-3]] = {n.lower() for n in lists}
         return held
 
-    def _startable_cards(self, board, now, my_id, held=None):
+    def _startable_cards(self, board, now, my_id, held):
         """Yield `(card, list_name, start_dt)` for every currently-startable card on one board.
 
         The single source of truth for "in play", so enumerate (which builds full items) and
         still_in_inbox_ids (which needs only the ids, for the reconcile) apply an identical gate and can
         never drift: on an active, non-skip list; not wearing a ⛔ Blocked/skip label; not assigned to
-        someone else; startable now (no Start, or a Start that has arrived - a future Start defers); and
-        not on a list its initiative holds (`held`, from _hold_lists).
+        someone else; and startable now (no Start, or a Start that has arrived - a future Start defers).
+        Enumerate also passes `held` (from _hold_lists) to leave out cards on a list their initiative
+        holds; the reconcile passes none, so a held card still reads as outstanding there (see
+        still_in_inbox_ids).
         The board fetches hit the Trello REST API; a bad token or network error raises to the caller."""
         bid = board["id"]
         bname = board.get("name", bid)
@@ -733,6 +737,11 @@ class Provider(ProviderBase):
         arrived) is correctly excluded, and it applies the same gate as enumerate (via _startable_cards),
         so a blocked / skip-listed / reassigned card is never re-queued.
 
+        A card on a list its initiative holds stays in this set. The reconcile writes every seen id
+        missing from the set to a permanent handled memo, so a held card left out here would never
+        re-dispatch once its hold lifts. Counting it as outstanding is safe: a re-queue only drops its
+        seen key, and enumerate holds it again until the hold lifts.
+
         Returns None on any board-fetch failure so reconcile SKIPS Trello that cycle: an empty set would
         read as "every Trello card is gone" and re-queue all of them - the failure mode the email path
         guards against the same way. `capture` writes each item's messageId = its stable_id, so the
@@ -743,9 +752,8 @@ class Provider(ProviderBase):
             now = datetime.now(timezone.utc)
             my_id = self._my_id()
             ids = set()
-            held = self._hold_lists()
             for board in self.boards:
-                for card, _list_name, _start_dt in self._startable_cards(board, now, my_id, held):
+                for card, _list_name, _start_dt in self._startable_cards(board, now, my_id, {}):
                     ids.add(self.stable_id({"name": card.get("name", ""),
                                             "cardId": card["id"], "start": card.get("start")}))
             return ids
