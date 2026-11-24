@@ -87,17 +87,11 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   return res.data;
 }
 
-const isMeet = ev => !!ev.hangoutLink ||
-  (ev.conferenceData?.conferenceSolution?.key?.type ?? ev.conferenceData?.createRequest?.conferenceSolutionKey?.type) === 'hangoutsMeet';
-
 // Create an event whose join link is `join` (Zoom or any other non-Meet URL, set as the location and appended
-// to the description), with Google Meet left off. The API attaches a conference only when a call asks for one,
-// and this call asks for none. The event is inserted guest-free and checked, so a Meet link from a
-// calendar-level auto-add comes off before any guest is added; a non-Meet add-on conference (a Zoom add-on) is
-// kept. Guests are added next, emailed when `send` is true, and the event is checked once more; that last check
-// runs after the invites go out, so a Meet link it finds is reported for --strip-meet. `start`/`end` are local
+// to the description), with Google Meet left off: the API attaches a conference only when a call sends
+// conferenceData, and this call sends none. Guests are emailed when `send` is true. `start`/`end` are local
 // wall-clock times in `timeZone`. `reminders` is a list of minutes-before for popup reminders; left out, the
-// calendar's defaults apply. Resolves to the final Event resource.
+// calendar's defaults apply. Resolves to the created Event resource.
 async function createEvent({
   calendar = 'primary', summary, start, end, join, guests = [], description = '',
   timeZone = 'America/Chicago', reminders, send = false,
@@ -113,43 +107,21 @@ async function createEvent({
   const auth = getAuthedClient();
   await assertAccountEmail(auth);
   const api = google.calendar({ version: 'v3', auth });
-  let ev = (await api.events.insert({
+  return (await api.events.insert({
     calendarId: calendar,
-    sendUpdates: 'none',
+    sendUpdates: send ? 'all' : 'none',
     requestBody: {
       summary,
       location: join,
       description: description ? `${description}\n\n${join}` : join,
       start: { dateTime: withSeconds(start), timeZone },
       end: { dateTime: withSeconds(end), timeZone },
+      attendees: guests.map(email => ({ email })),
       ...(reminders?.length && {
         reminders: { useDefault: false, overrides: reminders.map(minutes => ({ method: 'popup', minutes })) },
       }),
     },
   })).data;
-  if (isMeet(ev)) {
-    try {
-      ev = await stripMeet({ calendar, event: ev.id });
-    } catch (e) {
-      throw new Error(`event ${ev.id} was created with a Meet link and no guests, and removing it failed: ${e.message}`);
-    }
-  }
-  if (guests.length) {
-    try {
-      ev = (await api.events.patch({
-        calendarId: calendar,
-        eventId: ev.id,
-        sendUpdates: send ? 'all' : 'none',
-        requestBody: { attendees: guests.map(email => ({ email })) },
-      })).data;
-    } catch (e) {
-      throw new Error(`event ${ev.id} was created with no guests, and adding them failed (${e.message}) - delete it before re-running`);
-    }
-  }
-  if (isMeet(ev)) {
-    throw new Error(`${summary}: event ${ev.id} gained a Meet link when guests were added - run --strip-meet --event=${ev.id}`);
-  }
-  return ev;
 }
 
 module.exports = { listEvents, stripMeet, createEvent };
@@ -172,7 +144,7 @@ if (require.main === module) {
         reminders: list(args.reminders).map(Number),
       });
       const count = (ev.attendees || []).length;
-      console.log(`${ev.summary}: created ${ev.id}, no Meet link, ${count} guest(s)` +
+      console.log(`${ev.summary}: created ${ev.id}, ${ev.hangoutLink ? 'with a Meet link' : 'no Meet link'}, ${count} guest(s)` +
         `${send && count ? ', invites sent' : ', no invites sent'}\n${ev.htmlLink}`);
       return;
     }
