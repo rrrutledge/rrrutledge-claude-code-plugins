@@ -11,7 +11,7 @@ description: Schedule or create a Zoom (or other non-Meet) meeting on Google Cal
 2. Pass `--send` once Russell says to send the invites; without it, guests are added with no email.
 3. To take a Meet link off an event that already has one, run `--strip-meet`.
 
-Rescheduling or otherwise editing an event happens in the Calendar UI.
+Reschedule or otherwise edit an event with the claude.ai connector's `update_event`, leaving `addGoogleMeetUrl` out; it adds Meet when that flag is `true`.
 
 ## The Calendar API script
 
