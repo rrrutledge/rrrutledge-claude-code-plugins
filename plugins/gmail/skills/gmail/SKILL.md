@@ -161,9 +161,9 @@ Under `scripts/` (run with `node`):
   - React to a message (never sends): `node gmail.js --react=<message-id> [--emoji=❤️] [--exclude=<addr[,addr]>]`
     stages a Gmail emoji reaction to that message as a draft and prints its `draft-id`, which `--send-draft` sends once Russ says to.
     The emoji defaults to 👍.
-    A reaction acknowledges a message without replying to it, so a follow-up a week later still reads as the first real reply.
+    When to acknowledge with a reaction is `message-rules`' **Acknowledge with the channel's native 👍 reaction** rule.
     Google's reaction format says a Gmail recipient sees it as an emoji on the message it answers.
-    Outlook shows the fallback, a normal email with a large emoji, "<name> reacted via Gmail", and the quoted original.
+    Outlook shows the fallback, a normal email with a large emoji, "`<name>` reacted via Gmail", and the quoted original.
     In the sending account's own Gmail the thread shows that same fallback as a separate message, because Gmail folds only reactions made in its own UI into the emoji chip there.
     It reacts to the exact message given and goes to its sender plus its other To and Cc recipients (`--exclude` drops some).
     A reaction draft goes out through `--send-draft` alone, because Gmail's compose window rebuilds the message on Send and drops the reaction part.

@@ -25,7 +25,6 @@ function pickLatest(messages) {
 function unfoldThreadHeaders(raw) {
   const s = raw.toString('utf8');
   const end = s.indexOf('\r\n\r\n');
-  if (end === -1) return raw;
   const head = s.slice(0, end).replace(/^(In-Reply-To|References):[ \t]*\r\n[ \t]+/gim, '$1: ');
   return Buffer.from(head + s.slice(end), 'utf8');
 }

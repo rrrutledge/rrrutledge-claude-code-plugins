@@ -136,7 +136,7 @@ const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
-const { pickLatest, unfoldThreadHeaders, isSingleEmoji } = require('./threading');
+const { isReaction, pickLatest, unfoldThreadHeaders, isSingleEmoji } = require('./threading');
 const { pickTextPart, partAsMime } = require('./body-part');
 
 const USER_ID = 'me';
@@ -779,8 +779,8 @@ const fromAccount = (orig, acct) => !!(orig.from && orig.from.value.some(a => a.
 // - our OWN sent message: keep its recipients, so a follow-up goes to the people we wrote to, not back to ourselves.
 // --to overrides To, --cc adds to CC, and --exclude drops addresses from both.
 // A reaction passes reaction=true: it answers the person who wrote the message and the people it went to,
-// so Reply-To, --to, and --cc are ignored.
-function replyRecipients(orig, acct, { reaction = false } = {}) {
+// so Reply-To, --to, and --cc are ignored. `own` is every address of the account, left out of CC.
+function replyRecipients(orig, acct, { reaction = false, own = new Set([acct]) } = {}) {
   const fromSelf = fromAccount(orig, acct);
   // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
   // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
@@ -795,7 +795,7 @@ function replyRecipients(orig, acct, { reaction = false } = {}) {
     ? (orig.cc ? orig.cc.value : [])
     : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
   const allRecips = ccSource
-    .map(a => a.address).filter(a => a && a.toLowerCase() !== acct);
+    .map(a => a.address).filter(a => a && !own.has(a.toLowerCase()));
   const ccList = args.cc && !reaction
     ? [...new Set([args.cc, ...allRecips])].join(', ')
     : allRecips.join(', ');
@@ -830,7 +830,8 @@ async function senderName(acct, sendAs) {
 // draft on the thread alone, so a reply drafted alongside it survives.
 // It refuses the messages Gmail's own UI won't react to - one the account sent, a mailing-list message,
 // one the account got only by Bcc, one with more than 20 recipients - since there the fallback email
-// would land on everyone.
+// would land on everyone - and a message that is itself a reaction.
+// It sends from whichever of the account's addresses the message was sent to, as Gmail's own button does.
 async function react() {
   if (typeof args.react !== 'string') throw new Error('--react requires =<message-id>');
   const emoji = args.emoji === undefined ? '👍' : String(args.emoji);
@@ -842,29 +843,32 @@ async function react() {
   // The account's own addresses are its primary one plus every send-as alias.
   const sendAs = (await gmail.users.settings.sendAs.list({ userId: USER_ID })).data.sendAs || [];
   const own = new Set([acct, ...sendAs.map(s => (s.sendAsEmail || '').toLowerCase())]);
-  const fromAddrs = (orig.from ? orig.from.value : []).map(a => (a.address || '').toLowerCase());
-  if (fromAddrs.some(a => own.has(a))) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
+  if (orig.from && orig.from.value.some(a => own.has((a.address || '').toLowerCase()))) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
   if (!orig.messageId) throw new Error('That message has no Message-ID, so a reaction has nothing to attach to.');
   if (orig.headers.has('list-id')) throw new Error('That message came through a mailing list; Gmail does not take reactions on list mail.');
   const origRecips = [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])].map(a => (a.address || '').toLowerCase()).filter(Boolean);
   if (!origRecips.some(a => own.has(a))) throw new Error('This account is not in that message\'s To or Cc (a Bcc or list copy), so Gmail does not take a reaction on it.');
   if (new Set(origRecips).size > 20) throw new Error('That message has more than 20 recipients; Gmail does not take reactions on it.');
-  const name = await senderName(acct, sendAs);
+  const full = await gmail.users.messages.get({ userId: USER_ID, id: gid, format: 'full' });
+  if (isReaction(full.data.payload)) throw new Error('That message is itself an emoji reaction; react to the message it answers instead.');
+  const me = origRecips.find(a => own.has(a));
+  const name = await senderName(me, sendAs);
   const when = orig.date ? orig.date.toUTCString() : '';
   const origFrom = orig.from ? orig.from.text : '';
   const aboutUrl = 'https://www.google.com/gmail/about/';
   const text = `${emoji}\n\n${name} reacted via Gmail\n<${aboutUrl}>\n\nOn ${when}, ${origFrom} wrote:\n\n` +
-    (orig.text || htmlToPlainText(orig.html)).split('\n').map(l => `> ${l}`).join('\n') + '\n';
+    (orig.text || htmlToPlainText(orig.html)).trimEnd().split('\n').map(l => `> ${l}`).join('\n') + '\n';
   const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const html = `<div><p style="font-size:50px;margin-top:0;margin-bottom:0">${escape(emoji)}</p>` +
     `<p style="margin-top:10px;margin-bottom:0">${escape(name)} reacted via <a href="${aboutUrl}">Gmail</a></p></div>` +
     `<br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${escape(when)}, ${escape(origFrom)} wrote:<br></div>` +
     `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">` +
     `${orig.html || escape(orig.text || '').replace(/\n/g, '<br>')}</blockquote></div>`;
-  const { to, cc } = replyRecipients(orig, acct, { reaction: true });
+  const { to, cc } = replyRecipients(orig, acct, { reaction: true, own });
+  if (!to) throw new Error('--exclude removed the message\'s sender; a reaction goes to the person who wrote it.');
   const subject = /^re:/i.test(orig.subject || '') ? orig.subject : `Re: ${orig.subject || ''}`;
   const raw = await new MailComposer({
-    from: { name, address: acct }, to, cc: cc || undefined, subject,
+    from: { name, address: me }, to, cc: cc || undefined, subject,
     inReplyTo: `<${stripId(orig.messageId)}>`,
     references: [orig.references, orig.messageId].flat().filter(Boolean).join(' '),
     alternatives: [
