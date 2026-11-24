@@ -20,6 +20,8 @@
 //   const { listEvents, stripMeet, createEvent } = require('<google-calendar>/scripts/google-calendar.js');
 //   const events = await listEvents({ start: '2026-10-01', end: '2026-11-01' });
 //   const patched = await stripMeet({ event: '<id>' });
+//   const created = await createEvent({ summary: 'Sync', start: '2026-11-24T08:00', end: '2026-11-24T09:00',
+//     join: 'https://zoom.us/j/<id>', guests: ['a@x.com'], reminders: [15, 10, 0] });
 
 const { google } = require('googleapis');
 const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
@@ -120,7 +122,7 @@ async function createEvent({
       description: description ? `${description}\n\n${join}` : join,
       start: { dateTime: withSeconds(start), timeZone },
       end: { dateTime: withSeconds(end), timeZone },
-      ...(reminders && {
+      ...(reminders?.length && {
         reminders: { useDefault: false, overrides: reminders.map(minutes => ({ method: 'popup', minutes })) },
       }),
     },
@@ -133,12 +135,16 @@ async function createEvent({
     }
   }
   if (guests.length) {
-    ev = (await api.events.patch({
-      calendarId: calendar,
-      eventId: ev.id,
-      sendUpdates: send ? 'all' : 'none',
-      requestBody: { attendees: guests.map(email => ({ email })) },
-    })).data;
+    try {
+      ev = (await api.events.patch({
+        calendarId: calendar,
+        eventId: ev.id,
+        sendUpdates: send ? 'all' : 'none',
+        requestBody: { attendees: guests.map(email => ({ email })) },
+      })).data;
+    } catch (e) {
+      throw new Error(`event ${ev.id} was created with no guests, and adding them failed (${e.message}) - delete it before re-running`);
+    }
   }
   if (isMeet(ev)) {
     throw new Error(`${summary}: event ${ev.id} gained a Meet link when guests were added - run --strip-meet --event=${ev.id}`);
@@ -158,12 +164,12 @@ if (require.main === module) {
   (async () => {
     if (args.create) {
       const send = args.send === true || args.send === 'true';
+      const list = v => (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+      const str = v => (typeof v === 'string' && v ? v : undefined);
       const ev = await createEvent({
-        calendar: args.calendar, summary: args.summary, start: args.start, end: args.end, join: args.join,
-        guests: typeof args.guests === 'string' ? args.guests.split(',').map(s => s.trim()).filter(Boolean) : [],
-        description: typeof args.description === 'string' ? args.description : '',
-        timeZone: args.tz, send,
-        reminders: typeof args.reminders === 'string' ? args.reminders.split(',').map(Number) : undefined,
+        calendar: str(args.calendar), summary: args.summary, start: args.start, end: args.end, join: args.join,
+        guests: list(args.guests), description: str(args.description), timeZone: str(args.tz), send,
+        reminders: list(args.reminders).map(Number),
       });
       const count = (ev.attendees || []).length;
       console.log(`${ev.summary}: created ${ev.id}, no Meet link, ${count} guest(s)` +
