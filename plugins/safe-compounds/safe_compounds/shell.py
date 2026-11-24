@@ -17,7 +17,7 @@ UNPARSEABLE_SEGMENT = '__unparseable_process_substitution__'
 # Commands that only read a process-substitution path as data (never run it).
 _DATA_CONSUMERS = frozenset({
     'cat', 'comm', 'diff', 'cmp', 'sort', 'join', 'paste', 'grep', 'head', 'tail',
-    'wc', 'uniq', 'cut', 'column', 'tee',
+    'wc', 'uniq', 'cut', 'column',
 })
 
 
@@ -122,18 +122,39 @@ def _balanced_group(cmd, start):
     return None, start
 
 
-def split_segments(cmd, process_substitution=False):
-    """With process_substitution=True (the trust check only), `<(...)` and
-    `>(...)` are split out as their own segments; the raw-text detectors in
-    enforce.py keep the default and see the command text unchanged.
+def _is_plain_data_argument(before, opener, inner):
+    """True when a `<(inner)` group, preceded by the outer segment text `before`,
+    is a plain positional input of a bare data-reading command: a closed group
+    with a simple body, an input `<(` (an output `>(` pipes the command's data
+    into another process), a bare command name (no path), no option that runs
+    or writes its argument, and the group starting its own word."""
+    if inner is None or opener != '<(' or re.search(r"(^|\s)#|\$'|\bcase\b", inner):
+        return False
+    if before and not before[-1].isspace():
+        return False
+    tokens = shell_tokenize(before)
+    while tokens and re.match(r'^\w+=', tokens[0]):
+        tokens.pop(0)
+    if not tokens or tokens[0] not in _DATA_CONSUMERS:
+        return False
+    return not any(re.match(r'^--?(o|output|compress-program|pre|pre-glob)(=|$)', t)
+                   for t in tokens[1:])
 
-    Split a compound command into segments on &&, ||, ;, |, and bare newline
+
+def split_segments(cmd, process_substitution=False):
+    """Split a compound command into segments on &&, ||, ;, |, and bare newline
     operators, only when those operators appear outside quotes -- matching real
     bash, where an unquoted newline terminates a statement exactly like `;`.
     A backslash-newline line continuation is consumed whole by consume_escape()
     before reaching this check, so it stays part of the current segment instead
     of splitting -- exactly like a `\\<newline>`-continued command runs as one
-    statement in bash."""
+    statement in bash.
+
+    With process_substitution=True (the trust check only), a `<(...)` after a
+    data-reading command is split out as its own segments; anything else with
+    `<(` or `>(` ends the split at that point with an untrusted segment, so the
+    call prompts.  The raw-text detectors in enforce.py keep the default and
+    see the command text unchanged."""
     segments = []
     inner_segments = []
     current = []
@@ -161,7 +182,7 @@ def split_segments(cmd, process_substitution=False):
                 # interpret it (source, awk -f, bash) or a group that never
                 # closes gets a segment no allowlist trusts, forcing a prompt.
                 inner, end = _balanced_group(cmd, tok.pos + 2)
-                if inner is None or first_word(''.join(current)) not in _DATA_CONSUMERS:
+                if not _is_plain_data_argument(''.join(current), two, inner):
                     segments.append(''.join(current))
                     return segments + inner_segments + [UNPARSEABLE_SEGMENT]
                 inner_segments.extend(split_segments(inner, process_substitution=True))

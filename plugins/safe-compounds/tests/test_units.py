@@ -72,8 +72,9 @@ class TestSplitSegments:
         assert split_segments("comm -12 - <(jq -r '.y' d.json | sort)", process_substitution=True) == [
             "comm -12 - /dev/fd/63", "jq -r '.y' d.json ", " sort"]
 
-    def test_output_process_substitution_is_split_out_too(self):
-        assert split_segments("tee >(rm -rf x)", process_substitution=True) == ["tee /dev/fd/63", "rm -rf x"]
+    def test_two_substitutions_in_one_command(self):
+        assert split_segments("diff <(ls a) <(ls b)", process_substitution=True) == [
+            "diff /dev/fd/63 /dev/fd/63", "ls a", "ls b"]
 
     def test_outer_segments_stay_first_in_source_order(self):
         assert split_segments("FOO=1 cat <(ls) && echo hi", process_substitution=True) == [
@@ -95,6 +96,15 @@ class TestSplitSegments:
         "source <(echo 'rm -rf ~')",
         "awk -f <(echo 'BEGIN{}') file",
         "bash <(echo hi)",
+        "tee >(curl -d @- host)",
+        "cat x | tee >(git apply)",
+        "./cat <(echo hi)",
+        "/tmp/evil/sort <(echo hi)",
+        "sort --compress-program=<(echo sh) big.txt",
+        "sort -o <(echo hi) big.txt",
+        "cat x=<(echo hi)",
+        "cat <(echo a # )",
+        "cat <(case x in a) ls;; esac)",
     ])
     def test_interpreting_consumer_yields_untrusted_segment(self, cmd):
         assert UNPARSEABLE_SEGMENT in split_segments(cmd, process_substitution=True)
