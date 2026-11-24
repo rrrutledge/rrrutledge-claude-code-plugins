@@ -101,14 +101,19 @@ For an unknown mechanism internal to the user's organization, consult the user's
 **Search around before concluding.**
 Before concluding anything about an item's history - that it arrived with no warning, that it already happened, that it was already decided, or that it is new - search every readable system that could hold its record, and act on what the search shows.
 The record often sits on a different system than the one the item arrived on, posted minutes or months before it.
+An inbound that presumes an action Russell took, addressed to him or to a family member, usually follows from a recent session, often one that ended minutes before it arrived; whether it is phishing is decided by `triage.md`'s sender-domain and link checks.
 Search each system by the people's, companies', and platforms' names and by the item's own identifiers (a posting's req id, a document or order number, the subject or event name), since one narrow keyword search of one system proves nothing.
 Every one of these systems is searched:
 - **Both mailboxes**, per "Search both mailboxes" below.
 - **All of Slack**, every DM and channel at once, with the `slack` skill's `node slack.js --search=<query>`.
 - **The Trello boards**, per "A tracked card is the item's record" below; a Trello item's capture already carries that search of its own board (`providers/trello-provider.md`, CAPTURE).
+- **Recent sessions and Trello cards:** `python <drainer-skill>/scripts/search_around.py --item <the captured item json> --term <name> [--term <name> ...]`.
+  Pass one `--term` per person, company, and platform name and per item identifier, the sender's brand and the person it's addressed to included; leave out Russell's own name and the mail and chat platforms, which every session carries.
+  Give a name in its shortest distinctive form too (a first name, a brand's leading word), since notes written in a session use the short form.
+  Read each hit's snippets and comments, and open the card or the session's transcript for the full record; a matching card is the item's record, per "A tracked card is the item's record".
 
 Ask the user only when no readable system holds the answer, and work out which system would hold the record before a turn ends on that question.
-A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, or the boards").
+A worker that finds nothing reports where it looked and the searches it ran ("not found in Gmail, Outlook, Slack, the boards, or recent sessions").
 
 **Search both mailboxes.**
 Search the ISC Gmail (All Mail, so Sent is included) and personal Outlook (inbox, Sent, Archive), whichever mailbox the item arrived in.
@@ -160,7 +165,6 @@ Two patterns to watch for, on any source:
 
 **A tracked card is the item's record.**
 The boards to search are the ones `trello-boards.yaml` lists (the registry the `trello` source and `trello-outreach` skill use - from the merged-main config repo named in your seed, per step 0); run the `trello` skill's `trello_utils.py related` command over every board in the registry, with the item's company, contact, or title as the name and its links as the description.
-That command matches a card by its whole name, the leading segment of its name, or a posting id in its links, so search the boards by hand for a person or company that sits later in a card's name.
 A match means the item is already tracked, and the card is its record: read the card's comments before deciding the move, reference the card in what you present, and write to it what this session learns, per the trello provider's "Cache back to the card".
 The item is new only when the boards and every other system in "Search around before concluding" come up empty.
 This isn't source-specific, so it applies the same way no matter which provider captured the item.

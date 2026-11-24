@@ -62,7 +62,7 @@ A confirmed **open** card means the work belongs on one card, the older of the t
 Carry anything new from the newer card into a dated comment on the older one, and stop the newer card with a comment linking the older.
 When the newer card is this one, close the same way; when it is the other card, carry on with this one.
 The "Same employer or person" cards are context for the research, showing how this employer or contact went before.
-A name the section never searched (a contact in the description, another board's employer) gets the same search by hand.
+A name the section never searched (a contact in the description, another board's employer) goes into the `search_around.py` call in `../engine/worker-core.md` §2, "Search around before concluding".
 
 Read its description + structured comments FIRST; then run INITIATIVE-LOOKUP for program context; act on that before re-discovering anything.
 Write `items/<id>.json`:
