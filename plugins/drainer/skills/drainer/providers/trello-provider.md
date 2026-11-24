@@ -162,7 +162,7 @@ Then the card ends in exactly one of these:
    Its Start stays put, and it never self-closes through worker-core §6a.
 4. **One of the listed events has set a later date** - set Start to that date, and name in the comment what happened and when.
    Only new activity in this list counts:
-   - a reply, or an outbound from Russell, that restarts the nudge cadence
+   - a reply, or an outbound from Russell, that restarts the nudge cadence (what counts is set under "Nudge cadence")
    - an out-of-office or automatic reply, counted from its return date or, when it gives none, from its own date
    - a new date from the other party, such as a rescheduled interview or a stated turnaround
    - this occurrence's work done on a `Recurs:` card
@@ -240,10 +240,15 @@ A board or initiative cadence that sets its own number of follow-ups spends them
 
 **Time the contact is away doesn't count - an out-of-office pauses the clock.**
 The cadence measures how long the contact has had to answer, and days they spent on vacation or leave gave them none.
-So count the interval from the day they return, not from the day of the last outbound: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
-Before drafting a follow-up on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
+So count the interval from the day they return: a contact away for a whole month has had zero days, and a 1-week follow-up lands one week after they're back.
+Before drafting a follow-up on a card whose follow-up rides email, search the mailbox for an out-of-office or automatic reply from that contact since the last written outbound (the email provider's SITUATIONAL-CHECK search, which covers Archive - an auto-reply is usually already triaged and archived by the time the card comes due).
 When one turns up, read its return date and bump Start to that return date plus the card's cadence interval, with a dated comment naming the absence and its return date - DUE-CARD outcome 4, with nothing sent.
 An auto-reply with no return date gets the full interval counted from the auto-reply's own date.
+
+**The cadence counts from the last written message, so an emoji reaction leaves the clock running.**
+A reaction counts as "seen" on any channel and from either side.
+A contact's reaction to Russell's ask leaves the clock running, and so does Russell's reaction to a contact's "I'll check and get back to you".
+After his own reaction, Russell's next written reply is still his first follow-up, with the card's full cadence behind it.
 
 ## JUNK-LEARNING
 N/A - outreach cards are curated, not inbound noise.
