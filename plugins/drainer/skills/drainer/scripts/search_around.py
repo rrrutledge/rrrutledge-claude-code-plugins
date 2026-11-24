@@ -21,8 +21,12 @@ A failed Trello request prints as "(failed: ...)" and the other searches still r
 Sessions and cards rank by how many terms they matched, then by recency; the top `MAX_SHOWN` of each
 print.
 
+Provider records: every provider enabled in `--repo`'s drainer.local.md whose adapter keeps records of
+its own (a tracking sheet; see `ProviderBase.search_records`) is searched for the same terms, and each
+matching record prints in full, so an item that arrives on one source finds its record on another.
+
 CLI:
-    python search_around.py --term <name> [--term <name> ...] [--item <item.json>]
+    python search_around.py --term <name> [--term <name> ...] [--item <item.json>] [--repo <repo>]
 """
 import argparse
 import json
@@ -33,8 +37,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from provider_base import find_skill_script
+from drainer_config import provider_search_dirs, read_config
+from provider_base import ProviderBase, find_skill_script, load_providers
 
+PROVIDERS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "providers")
 DAYS = 14
 CARDS_WITH_COMMENTS = 5
 MAX_SHOWN = 10
@@ -218,10 +224,30 @@ def search_trello(compiled):
     return hits, errors
 
 
+def search_records(repo, terms):
+    """[(provider name, hits, error)] for each provider enabled in `repo`'s drainer.local.md that keeps
+    records (overrides `ProviderBase.search_records`), then one entry per provider that failed to load;
+    a failed provider reports its error and the rest still run."""
+    cfg = read_config(repo)
+    results, failed = [], []
+    providers = load_providers(
+        cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
+        on_error=lambda name, message, kind: kind != "missing" and failed.append((name, [], message)))
+    for prov in providers:
+        if type(prov).search_records is ProviderBase.search_records:
+            continue
+        try:
+            results.append((prov.name, prov.search_records(terms), None))
+        except Exception as e:
+            results.append((prov.name, [], str(e)))
+    return results + failed
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="search_around.py")
     p.add_argument("--term", action="append", required=True)
     p.add_argument("--item", help="the captured item json; sessions about this same item are skipped")
+    p.add_argument("--repo", default=".", help="the repo whose .claude/drainer.local.md names the providers")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
     exclude_id = None
@@ -258,6 +284,16 @@ def main(argv=None):
               f"matched: {', '.join(sorted(h['matched']))}")
         for date, snippet in h["comments"][:3]:
             print(f"    {_local(date)}: ...{snippet}...")
+
+    for name, hits, error in search_records(args.repo, args.term):
+        print()
+        print(f"== {name} records: {len(hits)} with a match")
+        if error:
+            print(f"   (failed: {error})")
+        for h in hits:
+            print(f"- {h['title']} {h['url']}")
+            for line in h["lines"]:
+                print(f"    {line}")
 
 
 if __name__ == "__main__":

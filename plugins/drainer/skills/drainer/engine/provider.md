@@ -27,7 +27,7 @@ Every adapter defines these:
 - **`capture(item, iid, runtime_dir)`** - write `<runtime_dir>/items/<iid>.json` (fields: `id`, `source`, `triage`, `kind`, `from`, `received`, `snippet`, deep-link `url`, `messageId`, body-file pointer) plus the body file, and return the `<iid>.json` path.
   The poller calls this for every dispatched item.
 
-`ProviderBase` gives every other hook a default an adapter overrides when its source supports it: among them `clear` (the poller's own clears, `engine/poller-core.md` steps 5-6), `still_in_inbox_ids` (reconcile), `conversation_key` and `correspondent` (routing and holds), `triage_text`, `screen_signal`, and `rescue`.
+`ProviderBase` gives every other hook a default an adapter overrides when its source supports it: among them `clear` (the poller's own clears, `engine/poller-core.md` steps 5-6), `still_in_inbox_ids` (reconcile), `conversation_key` and `correspondent` (routing and holds), `triage_text`, `screen_signal`, `rescue`, and `search_records` (a source that keeps tracked records, such as a sheet, exposes them to worker-core §2's search, so an item arriving on any source finds its record).
 Each hook's docstring in `provider_base.py` says what it does and what its default is.
 
 ## Prose (markdown) - what the worker reads
