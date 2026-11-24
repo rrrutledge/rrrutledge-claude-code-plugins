@@ -27,7 +27,7 @@ Every adapter defines these:
 - **`capture(item, iid, runtime_dir)`** - write `<runtime_dir>/items/<iid>.json` (fields: `id`, `source`, `triage`, `kind`, `from`, `received`, `snippet`, deep-link `url`, `messageId`, body-file pointer) plus the body file, and return the `<iid>.json` path.
   The poller calls this for every dispatched item.
 
-`ProviderBase` gives every other hook a default an adapter overrides when its source supports it: among them `clear` (the poller's own clears, `engine/poller-core.md` steps 5-6), `still_in_inbox_ids` (reconcile), `conversation_key` and `correspondent` (routing and holds), `triage_text`, `screen_signal`, and `rescue`.
+`ProviderBase` gives every other hook a default an adapter overrides when its source supports it: among them `clear` (the poller's own clears, `engine/poller-core.md` steps 5-6), `still_in_inbox_ids` (reconcile), `conversation_key` and `correspondent` (routing and holds), `triage_text`, `screen_signal`, `rescue`, and `search_records` (worker-core §2's search).
 Each hook's docstring in `provider_base.py` says what it does and what its default is.
 
 ## Prose (markdown) - what the worker reads
@@ -46,6 +46,7 @@ Each hook's docstring in `provider_base.py` says what it does and what its defau
 And, where the source needs one:
 
 - **SITUATIONAL-CHECK** - how to pull the full current conversation for this source, for worker-core §2.
+- **RECORD** - for a provider whose adapter overrides `search_records`: how a worker on an item from any source writes back to a record that search found, per worker-core §2's "A tracked card is the item's record".
 - **AUTO-HANDLE** - standing rules the worker executes on its own (`engine/auto-handle.md`); the poller lifts this section into the triage prompt, gated by `Trigger:` lines (`docs/extending.md`, "Triggers").
 - **REPORT-PHISHING** - how to report a `kind: phishing` item to the mail provider (`engine/digest-core.md` step 3).
 - **RESOLVE-A-POINTER** - the source's mechanics for recovering a pointer's link (`engine/pointers.md`).
