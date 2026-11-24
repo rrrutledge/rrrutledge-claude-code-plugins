@@ -932,7 +932,7 @@ class ProviderBase:
         """The records this source keeps that name any of `terms` (people, companies, platforms, email
         addresses, identifiers), for worker-core §2's "Search around before concluding", which runs it
         through `search_around.py` for every enabled provider. Each term arrives as the worker typed it,
-        so match it as whole words with case ignored, the way the session search does. Returns `[{"title", "url", "lines"}]`, one
+        so match it as whole words with case ignored. Returns `[{"title", "url", "lines"}]`, one
         per record, `lines` holding what a worker reads before deciding the move: the record's fields and
         its newest history. A source whose items are tracked records (a tracking sheet, a CRM) overrides
         this, so an item that arrives on another source still finds its record. Raises ProviderError when

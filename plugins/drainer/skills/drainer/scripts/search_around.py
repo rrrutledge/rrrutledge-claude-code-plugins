@@ -224,13 +224,16 @@ def search_trello(compiled):
     return hits, errors
 
 
-def search_records(repo, terms):
+def search_records(repo, terms, item=None):
     """(records, unloaded): `records` is [(provider name, hits, error)] for each provider enabled in
     `repo`'s drainer.local.md that keeps records (overrides `ProviderBase.search_records`), a failed
     search carrying its error; `unloaded` is [(provider name, error)] for each enabled provider whose
-    adapter failed to load, so whether it keeps records is unknown."""
-    # A worker runs in the real repo, so its runtime state (token caches, health) is under the cwd.
+    adapter failed to load, so whether it keeps records is unknown.
+    The adapters' runtime dir (token caches, health) is the one holding `item`, captured at
+    `<runtime_dir>/items/<id>.json`; without an item it resolves against the cwd."""
     cfg = read_config(repo, runtime_root=os.getcwd())
+    if item:
+        cfg["runtime_dir"] = os.path.dirname(os.path.dirname(os.path.abspath(item)))
     records, unloaded = [], []
     providers = load_providers(
         cfg["providers"], provider_search_dirs(PROVIDERS_DIR, cfg["local_dir"]), cfg=cfg,
@@ -291,7 +294,7 @@ def main(argv=None):
     print()
     config = os.path.join(args.repo, ".claude", "drainer.local.md")
     try:
-        records, unloaded = search_records(args.repo, [t for t, _ in compiled])
+        records, unloaded = search_records(args.repo, [t for t, _ in compiled], args.item)
     except Exception as e:
         records, unloaded = [], []
         print(f"== Provider records: (failed: {e})")
@@ -303,16 +306,19 @@ def main(argv=None):
         elif not records:
             print(f"== Provider records: no provider enabled in {config} keeps records")
     for name, hits, error in records:
+        if error:
+            print(f"== {name} records: search failed, so not searched: {error}")
+            continue
         shown = f", top {MAX_SHOWN} shown" if len(hits) > MAX_SHOWN else ""
         print(f"== {name} records: {len(hits)} with a match{shown}")
-        if error:
-            print(f"   (failed: {error})")
         for h in hits[:MAX_SHOWN]:
-            print(f"- {h.get('title', '(untitled)')} {h.get('url', '')}")
-            for line in h.get("lines", []):
+            print(f"- {h.get('title') or '(untitled)'} {h.get('url') or ''}")
+            for line in h.get("lines") or []:
                 print(f"    {line}")
-    for name, error in unloaded:
-        print(f"   (provider {name} failed to load, so its records, if any, were not searched: {error})")
+    if unloaded:
+        print("== Providers that failed to load, so their records, if any, were not searched:")
+        for name, error in unloaded:
+            print(f"- {name}: {error}")
 
 
 if __name__ == "__main__":
