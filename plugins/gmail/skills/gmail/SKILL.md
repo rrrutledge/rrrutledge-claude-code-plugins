@@ -145,7 +145,6 @@ Under `scripts/` (run with `node`):
   - **Images placed in the body (with `--reply` / `--draft-new`)** - write `![alt](photo.jpg)` in the body file where the picture belongs, and it is embedded in the message body at that spot.
     A relative path resolves against the body file's folder, and a path with spaces goes in angle brackets, `![alt](<my photo.jpg>)`.
     For a set width, write raw HTML instead: `<img src="photo.jpg" width="400" alt="...">`.
-    This is the same body-file syntax the `ms-graph` skill's `mail.js` takes.
   - **`--inline=<img[,img]>` (with `--reply` / `--draft-new`)** - embed image files in the message body via `cid:` references, placed after the body text, so they render inline rather than as a bottom-of-message attachment.
     Images render at about half the message width by default; add `--inline-width=<css width>` (any CSS width) when a screenshot needs more room to be readable.
     `--inline` combines with `--attach` for regular files.

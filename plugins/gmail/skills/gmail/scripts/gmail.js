@@ -718,9 +718,12 @@ function attachments(bodyImages) {
 // `(inline)`, so the session presenting the draft can send each file to Russ's device without
 // re-deriving the list.
 function printAttachmentLines(bodyImages) {
-  const lines = new Set((attachments(bodyImages) || [])
-    .map(a => `attachment: ${path.resolve(a.path)}${a.cid ? ' (inline)' : ''}`));
-  for (const line of lines) console.log(line);
+  const inlineByPath = new Map();
+  for (const a of attachments(bodyImages) || []) {
+    const p = path.resolve(a.path);
+    inlineByPath.set(p, inlineByPath.get(p) || !!a.cid);
+  }
+  for (const [p, inline] of inlineByPath) console.log(`attachment: ${p}${inline ? ' (inline)' : ''}`);
 }
 
 // Render the --body-file Markdown to HTML, embedding each local image it places (`![alt](photo.jpg)` or
