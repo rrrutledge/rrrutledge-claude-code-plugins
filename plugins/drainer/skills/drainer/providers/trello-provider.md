@@ -53,6 +53,7 @@ Only a CLEAR mints a fresh id - the go-live date is part of the id (see the id s
 **Leave the Start date untouched until CLEAR, or until one of DUE-CARD outcome 4's events sets a later date.**
 Bumping it to "claim" the card forges the very id CLEAR is meant to mint later - one seen-state never recorded - so the next cycle reads a brand-new item and spawns a second worker on top of this one.
 A later date from outcome 4 is safe, because a future Start holds the card back until that day.
+
 **Match a decided duplicate before any research.**
 The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for.
 A card under "Same item" is a candidate: open it and confirm it is this same request (the same posting, the same ask from the same person) rather than a recurrence of it or a different item sharing a name.
