@@ -47,5 +47,17 @@ If contacts fall into types that change the ask, define them here.
 Either shape holds only **content** (what / why / the ask) - never per-stage outreach instructions.
 That advancement logic is generic and lives once in `trello-provider.md` (STAGE-PLAYBOOK); the worker combines it with this content to draft for the card's current column.
 
+## Holding an initiative's waiting cards
+While a program is paused, a `hold_lists:` line in the doc's front matter keeps the initiative's cards on the named lists out of the drain, so no worker drafts a follow-up or a new ask for them.
+Name only the lists where a card waits on Russell to reach out first, so replies and live conversations keep moving.
+
+```markdown
+---
+hold_lists: [Identified, Applied / Reached Out]
+---
+```
+
+Ending the pause is deleting that line; every held card returns to the queue on the next cycle at its own Start (see `trello-queue-model.md`, Initiative hold).
+
 To add an initiative: (1) create `initiatives/<slug>.md` in the consumer repo using shape A or B; (2) make a yellow Trello label that slugifies to `<slug>` and put it on the cards (or set the board default).
 No central list to edit.
