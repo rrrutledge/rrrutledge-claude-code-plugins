@@ -166,7 +166,6 @@ Under `scripts/` (run with `node`):
     Outlook shows the fallback, a normal email with a large emoji, "<name> reacted via Gmail", and the quoted original.
     In the sending account's own Gmail the thread shows that same fallback as a separate message, because Gmail folds only reactions made in its own UI into the emoji chip there.
     It reacts to the exact message given and goes to its sender plus its other To and Cc recipients (`--exclude` drops some).
-    It refuses the messages Gmail's own reaction button refuses: one the account sent, mailing-list mail, a copy that reached the account by Bcc, and a message with more than 20 recipients.
     A reaction draft goes out through `--send-draft` alone, because Gmail's compose window rebuilds the message on Send and drops the reaction part.
     Staging it leaves any other draft on the thread alone, but a later `--reply` on that thread replaces the staged reaction, so send the reaction before staging a reply.
     Outlook has no counterpart: its reactions work only between Exchange Online mailboxes in one tenant, and Graph exposes no API for them.

@@ -778,14 +778,15 @@ const fromAccount = (orig, acct) => !!(orig.from && orig.from.value.some(a => a.
 // - someone else's message: To = its sender; CC = its other To+CC recipients (a reply-all).
 // - our OWN sent message: keep its recipients, so a follow-up goes to the people we wrote to, not back to ourselves.
 // --to overrides To, --cc adds to CC, and --exclude drops addresses from both.
-// A reaction passes useReplyTo=false, since it answers the person who wrote the message.
-function replyRecipients(orig, acct, { useReplyTo = true } = {}) {
+// A reaction passes reaction=true: it answers the person who wrote the message and the people it went to,
+// so Reply-To, --to, and --cc are ignored.
+function replyRecipients(orig, acct, { reaction = false } = {}) {
   const fromSelf = fromAccount(orig, acct);
   // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
   // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
   // prefer it automatically. --to still overrides both, for the cases a Reply-To doesn't catch.
-  const replyTo = useReplyTo && orig.replyTo && orig.replyTo.text;
-  const to = args.to
+  const replyTo = !reaction && orig.replyTo && orig.replyTo.text;
+  const to = args.to && !reaction
     ? args.to
     : (fromSelf
         ? (orig.to ? fromList(orig.to.value) : '')
@@ -795,7 +796,7 @@ function replyRecipients(orig, acct, { useReplyTo = true } = {}) {
     : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
   const allRecips = ccSource
     .map(a => a.address).filter(a => a && a.toLowerCase() !== acct);
-  const ccList = args.cc
+  const ccList = args.cc && !reaction
     ? [...new Set([args.cc, ...allRecips])].join(', ')
     : allRecips.join(', ');
   return {
@@ -807,9 +808,9 @@ function replyRecipients(orig, acct, { useReplyTo = true } = {}) {
 // The account owner's display name, for a From line and the reaction fallback's "<name> reacted via Gmail".
 // The send-as setting's name is often blank (Gmail then uses the Google account's name, which the granted
 // scopes can't read), so the name on the newest sent message stands in, and the bare address after that.
-async function senderName(acct) {
-  const sendAs = await gmail.users.settings.sendAs.list({ userId: USER_ID });
-  const setting = ((sendAs.data.sendAs || []).find(s => (s.sendAsEmail || '').toLowerCase() === acct) || {}).displayName;
+// `sendAs` is the account's send-as list.
+async function senderName(acct, sendAs) {
+  const setting = (sendAs.find(s => (s.sendAsEmail || '').toLowerCase() === acct) || {}).displayName;
   if (setting) return setting;
   const sent = await gmail.users.messages.list({ userId: USER_ID, labelIds: ['SENT'], maxResults: 10 });
   for (const m of sent.data.messages || []) {
@@ -824,13 +825,12 @@ async function senderName(acct) {
 // Stage a Gmail emoji reaction to one message as a draft, for --send-draft to send. A reaction is an
 // ordinary threaded reply whose multipart/alternative carries a text/vnd.google.email-reaction+json part
 // ({"emoji", "version": 1}) between a plain-text and an HTML fallback - the exact shape Gmail's own
-// reaction button sends. A Gmail recipient sees an emoji on the message it answers; a client without
-// reaction support shows the fallback: the emoji, "<name> reacted via Gmail", and the quoted original.
-// The sender's own Gmail shows that fallback too, since it folds only reactions made in its UI.
-// It reacts to the given message as-is (no newest-in-thread resolution - the reaction belongs to that
-// message), and leaves any other draft on the thread alone, so a reply drafted alongside it survives.
-// It refuses the messages Gmail's own UI won't react to - a mailing-list message, one the account got only
-// by Bcc, one with more than 20 recipients - since there the fallback email would land on everyone.
+// reaction button sends. How each client shows it is in SKILL.md.
+// It reacts to the given message as-is, since the reaction belongs to that message, and leaves any other
+// draft on the thread alone, so a reply drafted alongside it survives.
+// It refuses the messages Gmail's own UI won't react to - one the account sent, a mailing-list message,
+// one the account got only by Bcc, one with more than 20 recipients - since there the fallback email
+// would land on everyone.
 async function react() {
   if (typeof args.react !== 'string') throw new Error('--react requires =<message-id>');
   const emoji = args.emoji === undefined ? '👍' : String(args.emoji);
@@ -839,25 +839,29 @@ async function react() {
   if (!gid) throw new Error('Message to react to not found in inbox or All Mail.');
   const { parsed: orig, threadId } = await getParsed(gid);
   const acct = await account();
-  if (fromAccount(orig, acct)) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
+  // The account's own addresses are its primary one plus every send-as alias.
+  const sendAs = (await gmail.users.settings.sendAs.list({ userId: USER_ID })).data.sendAs || [];
+  const own = new Set([acct, ...sendAs.map(s => (s.sendAsEmail || '').toLowerCase())]);
+  const fromAddrs = (orig.from ? orig.from.value : []).map(a => (a.address || '').toLowerCase());
+  if (fromAddrs.some(a => own.has(a))) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
   if (!orig.messageId) throw new Error('That message has no Message-ID, so a reaction has nothing to attach to.');
   if (orig.headers.has('list-id')) throw new Error('That message came through a mailing list; Gmail does not take reactions on list mail.');
   const origRecips = [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])].map(a => (a.address || '').toLowerCase()).filter(Boolean);
-  if (!origRecips.includes(acct)) throw new Error('This account is not in that message\'s To or Cc (a Bcc or list copy), so Gmail does not take a reaction on it.');
+  if (!origRecips.some(a => own.has(a))) throw new Error('This account is not in that message\'s To or Cc (a Bcc or list copy), so Gmail does not take a reaction on it.');
   if (new Set(origRecips).size > 20) throw new Error('That message has more than 20 recipients; Gmail does not take reactions on it.');
-  const name = await senderName(acct);
+  const name = await senderName(acct, sendAs);
   const when = orig.date ? orig.date.toUTCString() : '';
   const origFrom = orig.from ? orig.from.text : '';
   const aboutUrl = 'https://www.google.com/gmail/about/';
   const text = `${emoji}\n\n${name} reacted via Gmail\n<${aboutUrl}>\n\nOn ${when}, ${origFrom} wrote:\n\n` +
-    (orig.text || '').split('\n').map(l => `> ${l}`).join('\n') + '\n';
+    (orig.text || htmlToPlainText(orig.html)).split('\n').map(l => `> ${l}`).join('\n') + '\n';
   const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const html = `<div><p style="font-size:50px;margin-top:0;margin-bottom:0">${escape(emoji)}</p>` +
     `<p style="margin-top:10px;margin-bottom:0">${escape(name)} reacted via <a href="${aboutUrl}">Gmail</a></p></div>` +
     `<br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${escape(when)}, ${escape(origFrom)} wrote:<br></div>` +
     `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">` +
     `${orig.html || escape(orig.text || '').replace(/\n/g, '<br>')}</blockquote></div>`;
-  const { to, cc } = replyRecipients(orig, acct, { useReplyTo: false });
+  const { to, cc } = replyRecipients(orig, acct, { reaction: true });
   const subject = /^re:/i.test(orig.subject || '') ? orig.subject : `Re: ${orig.subject || ''}`;
   const raw = await new MailComposer({
     from: { name, address: acct }, to, cc: cc || undefined, subject,

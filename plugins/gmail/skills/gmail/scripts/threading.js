@@ -25,14 +25,12 @@ function pickLatest(messages) {
 function unfoldThreadHeaders(raw) {
   const s = raw.toString('utf8');
   const end = s.indexOf('\r\n\r\n');
+  if (end === -1) return raw;
   const head = s.slice(0, end).replace(/^(In-Reply-To|References):[ \t]*\r\n[ \t]+/gim, '$1: ');
   return Buffer.from(head + s.slice(end), 'utf8');
 }
 
-// True for exactly one emoji (one grapheme, pictographic), the only reaction Gmail accepts.
-function isSingleEmoji(s) {
-  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(String(s))];
-  return graphemes.length === 1 && /\p{Extended_Pictographic}/u.test(s);
-}
+// True for exactly one emoji as Unicode's recommended emoji set defines it, the only reaction Gmail accepts.
+const isSingleEmoji = (s) => /^\p{RGI_Emoji}$/v.test(String(s));
 
 module.exports = { isReaction, pickLatest, unfoldThreadHeaders, isSingleEmoji };

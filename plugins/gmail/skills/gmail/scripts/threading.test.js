@@ -9,8 +9,13 @@ test('pulls a folded In-Reply-To and References id back onto the header line', (
 });
 
 test('accepts exactly one emoji', () => {
-  for (const ok of ['👍', '❤️', '👍🏽', '👨‍👩‍👧']) assert.ok(isSingleEmoji(ok), ok);
-  for (const bad of ['', 'ok', '👍👍', 'a👍']) assert.ok(!isSingleEmoji(bad), bad);
+  for (const ok of ['👍', '❤️', '👍🏽', '👨‍👩‍👧', '🇺🇸', '1️⃣']) assert.ok(isSingleEmoji(ok), ok);
+  for (const bad of ['', 'ok', '👍👍', 'a👍', '©']) assert.ok(!isSingleEmoji(bad), bad);
+});
+
+test('leaves a buffer with no header/body separator unchanged', () => {
+  const raw = Buffer.from('In-Reply-To:\r\n <id>');
+  assert.strictEqual(unfoldThreadHeaders(raw), raw);
 });
 
 const msg = (id, internalDate, extra = {}) => ({ id, internalDate: String(internalDate), labelIds: [], payload: { mimeType: 'text/html' }, ...extra });
