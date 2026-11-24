@@ -90,6 +90,29 @@ def has_unquoted_windows_drive_path(segment):
     return False
 
 
+def _balanced_group(cmd, start):
+    """Given the index just past an opening `(`, return (inner_text, index just
+    past the matching `)`), honoring quotes, escapes, and nested parentheses.
+    Returns (None, start) when the group never closes."""
+    depth = 1
+    inner = ShellTokenizer(cmd[start:])
+    while not inner.at_end():
+        if inner.consume_escape():
+            continue
+        if inner.update_quote_state():
+            inner.advance()
+            continue
+        if not inner.in_quotes():
+            if inner.peek() == '(':
+                depth += 1
+            elif inner.peek() == ')':
+                depth -= 1
+                if depth == 0:
+                    return cmd[start:start + inner.pos], start + inner.pos + 1
+        inner.advance()
+    return None, start
+
+
 def split_segments(cmd):
     """Split a compound command into segments on &&, ||, ;, |, and bare newline
     operators, only when those operators appear outside quotes -- matching real
@@ -115,6 +138,15 @@ def split_segments(cmd):
 
         if not tok.in_quotes():
             two = cmd[tok.pos:tok.pos + 2]
+            if two in ('<(', '>('):
+                # Process substitution: its inner command runs as a real
+                # process, so it is split out and judged as its own segments
+                # while the outer segment keeps only the surrounding words.
+                inner, end = _balanced_group(cmd, tok.pos + 2)
+                if inner is not None:
+                    segments.extend(split_segments(inner))
+                    tok.pos = end
+                    continue
             if two in ('&&', '||'):
                 segments.append(''.join(current))
                 current = []

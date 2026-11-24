@@ -63,6 +63,16 @@ class TestSplitSegments:
         # as its own independently-trusted segment.
         assert split_segments("echo foo\necho bar; echo baz") == ["echo foo", "echo bar", " echo baz"]
 
+    def test_process_substitution_inner_command_is_its_own_segment(self):
+        assert sorted(split_segments("comm -12 - <(jq -r '.y' d.json | sort)")) == sorted([
+            "comm -12 - ", "jq -r '.y' d.json ", " sort"])
+
+    def test_output_process_substitution_is_split_out_too(self):
+        assert sorted(split_segments("tee >(rm -rf x)")) == ["rm -rf x", "tee "]
+
+    def test_process_substitution_in_quotes_is_literal(self):
+        assert split_segments("echo '<(a | b)'") == ["echo '<(a | b)'"]
+
     def test_backslash_newline_continuation_stays_joined(self):
         # A trailing backslash before the newline is bash's real line
         # continuation syntax -- it does not terminate the statement.
