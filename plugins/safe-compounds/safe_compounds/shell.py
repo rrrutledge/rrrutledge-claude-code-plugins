@@ -11,6 +11,9 @@ import shlex
 # Sentinel returned by first_word for a pure variable assignment (no command).
 ASSIGNMENT_ONLY = '__assignment__'
 
+# Segment emitted for text the splitter cannot parse; no allowlist trusts it.
+UNPARSEABLE_SEGMENT = '__unparseable_process_substitution__'
+
 
 class ShellTokenizer:
     """Stateful character scanner with POSIX quote/escape tracking."""
@@ -122,6 +125,7 @@ def split_segments(cmd):
     of splitting -- exactly like a `\\<newline>`-continued command runs as one
     statement in bash."""
     segments = []
+    inner_segments = []
     current = []
     tok = ShellTokenizer(cmd)
 
@@ -140,11 +144,17 @@ def split_segments(cmd):
             two = cmd[tok.pos:tok.pos + 2]
             if two in ('<(', '>('):
                 # Process substitution: its inner command runs as a real
-                # process, so it is split out and judged as its own segments
-                # while the outer segment keeps only the surrounding words.
+                # process, so it is judged as its own segments, while the outer
+                # segment keeps a /dev/fd path where the substitution stood so
+                # its argument positions still match what bash runs.
                 inner, end = _balanced_group(cmd, tok.pos + 2)
-                if inner is not None:
-                    segments.extend(split_segments(inner))
+                if inner is None:
+                    # Unclosed group: the rest cannot be split reliably, so a
+                    # segment no allowlist trusts forces the normal prompt.
+                    inner_segments.append(UNPARSEABLE_SEGMENT)
+                else:
+                    inner_segments.extend(split_segments(inner))
+                    current.append('/dev/fd/63')
                     tok.pos = end
                     continue
             if two in ('&&', '||'):
@@ -162,7 +172,7 @@ def split_segments(cmd):
         tok.advance()
 
     segments.append(''.join(current))
-    return segments
+    return segments + inner_segments
 
 
 def extract_substitutions(cmd):

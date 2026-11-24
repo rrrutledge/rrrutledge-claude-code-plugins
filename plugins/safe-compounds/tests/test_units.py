@@ -11,9 +11,11 @@ PLUGIN_DIR = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, PLUGIN_DIR)
 
 from safe_compounds.shell import (  # noqa: E402
-    ASSIGNMENT_ONLY, extract_substitutions, first_word, has_unquoted_windows_drive_path,
-    split_segments, strip_var_assignment,
+    ASSIGNMENT_ONLY, UNPARSEABLE_SEGMENT, extract_substitutions, first_word,
+    has_unquoted_windows_drive_path, split_segments, strip_var_assignment,
 )
+from safe_compounds.approve import is_segment_trusted  # noqa: E402
+from safe_compounds.trust import get_trusted  # noqa: E402
 from safe_compounds import config  # noqa: E402
 from safe_compounds.commands import (  # noqa: E402
     is_git_command_safe, is_curl_safe, is_output_redirection_safe, is_sed_command_safe, is_start_safe,
@@ -64,11 +66,31 @@ class TestSplitSegments:
         assert split_segments("echo foo\necho bar; echo baz") == ["echo foo", "echo bar", " echo baz"]
 
     def test_process_substitution_inner_command_is_its_own_segment(self):
-        assert sorted(split_segments("comm -12 - <(jq -r '.y' d.json | sort)")) == sorted([
-            "comm -12 - ", "jq -r '.y' d.json ", " sort"])
+        assert split_segments("comm -12 - <(jq -r '.y' d.json | sort)") == [
+            "comm -12 - /dev/fd/63", "jq -r '.y' d.json ", " sort"]
 
     def test_output_process_substitution_is_split_out_too(self):
-        assert sorted(split_segments("tee >(rm -rf x)")) == ["rm -rf x", "tee "]
+        assert split_segments("tee >(rm -rf x)") == ["tee /dev/fd/63", "rm -rf x"]
+
+    def test_outer_segments_stay_first_in_source_order(self):
+        assert split_segments("FOO=1 cat <(ls) && echo hi") == [
+            "FOO=1 cat /dev/fd/63 ", " echo hi", "ls"]
+
+    def test_nested_process_substitution(self):
+        assert split_segments("cat <(cat <(ls))") == ["cat /dev/fd/63", "cat /dev/fd/63", "ls"]
+
+    def test_quoted_paren_inside_group_does_not_close_it(self):
+        assert split_segments("cat <(echo ')')") == ["cat /dev/fd/63", "echo ')'"]
+
+    def test_unclosed_process_substitution_yields_untrusted_segment(self):
+        assert UNPARSEABLE_SEGMENT in split_segments("cat <(echo hi ; rm -rf x")
+
+    def test_trusted_inner_commands_pass_and_unclosed_group_prompts(self):
+        trusted = get_trusted()
+        ok = split_segments("comm -12 - <(jq -r '.y' d.json | sort)")
+        bad = split_segments("cat <(echo hi ; rm -rf x")
+        assert all(is_segment_trusted(s, trusted) for s in ok)
+        assert not all(is_segment_trusted(s, trusted) for s in bad)
 
     def test_process_substitution_in_quotes_is_literal(self):
         assert split_segments("echo '<(a | b)'") == ["echo '<(a | b)'"]
