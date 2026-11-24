@@ -32,6 +32,8 @@ from provider_base import find_skill_script
 PROJECTS = Path.home() / ".claude" / "projects"
 DAYS = 14
 CARDS_WITH_COMMENTS = 5
+MAX_SESSIONS = 10
+MAX_CARDS = 10
 SNIPPETS_PER_SESSION = 3
 SNIPPET_RADIUS = 160
 # Stripped before matching: a seed's list of live sessions ("- <title> (background, blocked)") and a ListAgents listing
@@ -112,12 +114,16 @@ def scan_transcript(path, compiled, first_words, exclude_id):
 
 
 def compile_terms(terms):
-    """(term, pattern) for each term that has a word in it."""
-    return [(t, re.compile(r"[\s_\-]*".join(map(re.escape, term_words(t))), re.I))
+    """(term, pattern) for each term that has a word in it; a match starts and ends on a word edge."""
+    return [(t, re.compile(r"(?<!\w)" + r"[\s_\-]*".join(map(re.escape, term_words(t))) + r"(?!\w)", re.I))
             for t in terms if term_words(t)]
 
 
-def search_sessions(compiled, days, exclude_id):
+def _local(iso):
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %I:%M %p %Z")
+
+
+def search_sessions(compiled, exclude_id):
     # A plain lowercase substring test on each term's first word is the fast prefilter; a
     # case-insensitive regex over ~1.6 GB of transcripts takes minutes. bytes.lower() folds ASCII
     # only, so a term whose first word isn't ASCII turns the prefilter off.
@@ -125,7 +131,7 @@ def search_sessions(compiled, days, exclude_id):
     if not all(w.isascii() for w in first_words):
         first_words = None
     own = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
-    cutoff = time.time() - days * 86400
+    cutoff = time.time() - DAYS * 86400
     hits = []
     for path in PROJECTS.glob("*/*.jsonl"):
         try:
@@ -143,33 +149,45 @@ def search_sessions(compiled, days, exclude_id):
 
 
 def search_trello(compiled):
+    """(cards ranked like sessions, errors): one failed request is reported and the rest still run."""
     path = find_skill_script(__file__, "trello", os.path.join("scripts", "trello_utils.py"))
     if not path:
-        raise RuntimeError("the trello skill's trello_utils.py was not found")
+        return [], ["the trello skill's trello_utils.py was not found"]
     sys.path.insert(0, os.path.dirname(path))
     import trello_utils
     session = trello_utils.get_trello_session()
-    cards = {}
+    cards, errors = {}, []
     for term, _ in compiled:
-        res = trello_utils.trello_request("GET", "/search", session, params={
-            "query": " ".join(term_words(term)), "partial": "true", "modelTypes": "cards",
-            "cards_limit": 20, "card_fields": "name,shortUrl,dateLastActivity,closed",
-        })
-        for c in res.get("cards", []):
-            cards.setdefault(c["id"], {"card": c, "matched": set(), "comments": []})["matched"].add(term)
-    hits = sorted(cards.values(), key=lambda h: (len(h["matched"]), h["card"].get("dateLastActivity", "")),
+        words = term_words(term)
+        # Trello matches whole words, so a CamelCase name is searched both split and joined.
+        for query in dict.fromkeys([" ".join(words), "".join(words)]):
+            try:
+                res = trello_utils.trello_request("GET", "/search", session, params={
+                    "query": query, "partial": "true", "modelTypes": "cards",
+                    "cards_limit": 20, "card_fields": "name,shortUrl,dateLastActivity,closed",
+                })
+            except Exception as e:
+                errors.append(f"search {query!r}: {e}")
+                continue
+            for c in res.get("cards", []):
+                cards.setdefault(c["id"], {"card": c, "matched": set(), "comments": []})["matched"].add(term)
+    hits = sorted(cards.values(), key=lambda h: (len(h["matched"]), h["card"]["dateLastActivity"]),
                   reverse=True)
     # Trello's card search matches comment text but returns no comments, so the top cards'
     # comments are fetched and the matching ones kept.
     for h in hits[:CARDS_WITH_COMMENTS]:
-        actions = trello_utils.trello_request("GET", f"/cards/{h['card']['id']}/actions", session,
-                                              params={"filter": "commentCard", "limit": 1000})
+        try:
+            actions = trello_utils.trello_request("GET", f"/cards/{h['card']['id']}/actions", session,
+                                                  params={"filter": "commentCard", "limit": 1000})
+        except Exception as e:
+            errors.append(f"comments of {h['card']['shortUrl']}: {e}")
+            continue
         for a in actions:
             text = (a.get("data") or {}).get("text", "")
             m = next((m for _, rx in compiled for m in [rx.search(text)] if m), None)
             if m:
-                h["comments"].append((a.get("date", ""), _window(text, m)))
-    return hits
+                h["comments"].append((a["date"], _window(text, m)))
+    return hits, errors
 
 
 def main(argv=None):
@@ -186,9 +204,10 @@ def main(argv=None):
     compiled = compile_terms(args.term)
     if not compiled:
         p.error("every --term is empty")
-    hits = search_sessions(compiled, DAYS, exclude_id)
-    print(f"== Claude sessions, last {DAYS} days: {len(hits)} with a match")
-    for h in hits:
+    hits = search_sessions(compiled, exclude_id)
+    shown = f", top {MAX_SESSIONS} shown" if len(hits) > MAX_SESSIONS else ""
+    print(f"== Claude sessions, last {DAYS} days: {len(hits)} with a match{shown}")
+    for h in hits[:MAX_SESSIONS]:
         when = datetime.fromtimestamp(h["mtime"]).astimezone().strftime("%Y-%m-%d %I:%M %p %Z")
         print(f"- {h['title'] or '(untitled)'} [{h['id'][:8]}], last active {when}, "
               f"matched: {', '.join(sorted(h['matched']))}")
@@ -197,18 +216,20 @@ def main(argv=None):
 
     print()
     try:
-        cards = search_trello(compiled)
+        cards, errors = search_trello(compiled)
     except Exception as e:
-        print(f"== Trello: search failed ({e})")
-        return
-    print(f"== Trello cards: {len(cards)} with a match")
-    for h in cards:
+        cards, errors = [], [str(e)]
+    shown = f", top {MAX_CARDS} shown" if len(cards) > MAX_CARDS else ""
+    print(f"== Trello cards: {len(cards)} with a match{shown}")
+    for err in errors:
+        print(f"   (failed: {err})")
+    for h in cards[:MAX_CARDS]:
         c = h["card"]
         state = " (archived)" if c.get("closed") else ""
-        print(f"- {c['name']}{state} {c['shortUrl']}, last activity {c['dateLastActivity'][:10]}, "
+        print(f"- {c['name']}{state} {c['shortUrl']}, last activity {_local(c['dateLastActivity'])}, "
               f"matched: {', '.join(sorted(h['matched']))}")
         for date, snippet in h["comments"][:SNIPPETS_PER_SESSION]:
-            print(f"    {date[:10]}: ...{snippet}...")
+            print(f"    {_local(date)}: ...{snippet}...")
 
 
 if __name__ == "__main__":

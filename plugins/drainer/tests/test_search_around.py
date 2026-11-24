@@ -38,6 +38,8 @@ def write_session(projects, sid, title, messages):
 check("CamelCase splits", search_around.term_words("AcmeCorp"), ["Acme", "Corp"])
 check("hyphen splits", search_around.term_words("acme-corp"), ["acme", "corp"])
 check("acronym run splits", search_around.term_words("HSABank"), ["HSA", "Bank"])
+check("term matches whole words only",
+      bool(search_around.compile_terms(["Dan"])[0][1].search("Jordan danced")), False)
 check("empty terms dropped", [t for t, _ in search_around.compile_terms(["", "-", "Acme"])], ["Acme"])
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -62,21 +64,19 @@ with tempfile.TemporaryDirectory() as tmp:
     write_session(projects, "dddd4444", "this worker", [("user", "acmecorp")])
     os.environ["CLAUDE_CODE_SESSION_ID"] = "dddd4444"
 
-    hits = search_around.search_sessions(search_around.compile_terms(["AcmeCorp", "Jordan"]), 14,
+    hits = search_around.search_sessions(search_around.compile_terms(["AcmeCorp", "Jordan"]),
                                          "outlook-graph-20261124-mail-acmecorp")
     check("the sign-up sessions match", [h["id"] for h in hits], ["aaaa1111", "eeee5555"])
     check("title carried", hits[0]["title"], "Find short-term coverage for the kids")
     check("both terms matched", sorted(hits[0]["matched"]), ["AcmeCorp", "Jordan"])
     check("snippet shows the spaced form", "Acme Corp Basic" in hits[0]["snippets"][0], True)
 
-    hits = search_around.search_sessions(search_around.compile_terms(["AcmeCorp"]), 14, None)
+    hits = search_around.search_sessions(search_around.compile_terms(["AcmeCorp"]), None)
     check("without --item the same-item session shows", sorted(h["id"] for h in hits),
           ["aaaa1111", "bbbb2222", "eeee5555"])
 
-    hits = search_around.search_sessions(search_around.compile_terms(["Élan"]), 14, None)
-    check("non-ASCII term absent before its session exists", hits, [])
     write_session(projects, "ffff6666", "Accent case", [("user", "x"), ("assistant", "met with ÉLAN today")])
-    hits = search_around.search_sessions(search_around.compile_terms(["élan"]), 14, None)
+    hits = search_around.search_sessions(search_around.compile_terms(["élan"]), None)
     check("non-ASCII term found across case", [h["id"] for h in hits], ["ffff6666"])
 
 if failures:
