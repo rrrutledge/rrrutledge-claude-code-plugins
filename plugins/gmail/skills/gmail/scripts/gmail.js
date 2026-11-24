@@ -95,8 +95,12 @@
 //                 --inline takes image paths the same way but embeds them in the body via cid: references
 //                 (rendered after the body text), so they show inline instead of as a file list. Inline
 //                 images render at about half the message width by default; --inline-width=<css width>
-//                 overrides it. Both flags may be combined. --reply and --draft-new print one
-//                 `attachment: <absolute path>` line per --attach or --inline file after the draft-id.)
+//                 overrides it. Both flags may be combined. An image in the body file whose source is
+//                 a local file - `![alt](photo.jpg)` or `<img src="photo.jpg" width="400">` - is embedded
+//                 inline at that spot instead (relative paths resolve against the body file's folder;
+//                 wrap a path with spaces in <>). --reply and --draft-new print one
+//                 `attachment: <absolute path>` line per file after the draft-id, an inline image
+//                 marked `(inline)`.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts - Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
@@ -123,7 +127,7 @@ module.paths.push(path.join(os.homedir(), '.claude', 'gmail', 'node_modules'));
 const { google } = require('googleapis');
 const { simpleParser } = require('mailparser');
 const { marked } = require('marked');
-const { renderBody } = require('./markdown-body');
+const { renderBody, slashImagePaths, embedLocalImages } = require('./markdown-body');
 const MailComposer = require('nodemailer/lib/mail-composer');
 const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
@@ -188,6 +192,8 @@ function htmlToPlainText(html) {
       const label = inner.replace(/<[^>]+>/g, '').trim();
       return !label || label === href || /^mailto:/i.test(href) ? (label || href) : `${label} (${href})`;
     })
+    .replace(/<img\b[^>]*\ssrc\s*=\s*["']cid:([^"']*)["'][^>]*>/gi, (tag, cid) =>
+      `[image: ${(tag.match(/\salt\s*=\s*"([^"]+)"/i) || [])[1] || cid}]`)
     .replace(/<li(\s[^>]*)?>/gi, '- ')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|blockquote|li|h[1-6])>/gi, '\n')
@@ -693,36 +699,47 @@ function inlineImagesHtml() {
   ).join('');
 }
 
-function attachments() {
+function attachments(bodyImages) {
   // --attach=<path[,path]> - regular file attachments (comma-separated for several). --inline=<path[,path]>
-  // - images cid-embedded in the body instead. Both flags may be used together.
+  // - images cid-embedded after the body text; bodyImages - images the body file places itself (see
+  // renderBodyFile). All three may be used together.
   const regular = args.attach
     ? String(args.attach).split(',').map(s => s.trim()).filter(Boolean).map(p => ({ filename: path.basename(p), path: p }))
     : [];
   // X-Attachment-Id must equal the Content-ID (the cid) so Gmail's compose editor keeps the image inline
   // when it re-serializes the message on send - see inlineList() for the full rationale.
-  const inline = inlineList().map(a => ({ ...a, contentDisposition: 'inline', headers: { 'X-Attachment-Id': a.cid } }));
+  const inline = [...inlineList(), ...bodyImages]
+    .map(a => ({ ...a, contentDisposition: 'inline', headers: { 'X-Attachment-Id': a.cid } }));
   const all = [...regular, ...inline];
   return all.length ? all : undefined;
 }
 
-// One `attachment: <absolute path>` line per file a staged draft carries (--attach and --inline alike),
-// so the session presenting the draft can send each file to Russ's device without re-deriving the list.
-function printAttachmentLines() {
-  const paths = new Set((attachments() || []).map(a => path.resolve(a.path)));
-  for (const p of paths) console.log(`attachment: ${p}`);
+// One `attachment: <absolute path>` line per file a staged draft carries, an inline image marked
+// `(inline)`, so the session presenting the draft can send each file to Russ's device without
+// re-deriving the list.
+function printAttachmentLines(bodyImages) {
+  const lines = new Set((attachments(bodyImages) || [])
+    .map(a => `attachment: ${path.resolve(a.path)}${a.cid ? ' (inline)' : ''}`));
+  for (const line of lines) console.log(line);
+}
+
+// Render the --body-file Markdown to HTML, embedding each local image it places (`![alt](photo.jpg)` or
+// `<img src="photo.jpg">`) inline at that spot. A relative image path resolves against the body file's folder.
+function renderBodyFile() {
+  const md = fs.readFileSync(args['body-file'], 'utf8');
+  return embedLocalImages(renderBody(slashImagePaths(md), marked), path.dirname(args['body-file']));
 }
 
 // Build the outgoing RFC822 MIME (a Buffer) with MailComposer - transport-independent; the Gmail API
 // takes it base64url-encoded as the draft/message `raw`. htmlToPlainText supplies the text alternative;
 // In-Reply-To/References thread a reply.
-async function buildMime({ to, cc, subject, html, inReplyTo, references }) {
+async function buildMime({ to, cc, subject, html, inReplyTo, references, bodyImages }) {
   const styledHtml = withDefaultFont(html);
   const mail = {
     from: await account(), to, cc, subject,
     html: styledHtml,
     text: htmlToPlainText(styledHtml),
-    attachments: attachments(),
+    attachments: attachments(bodyImages),
     inReplyTo: inReplyTo ? `<${stripId(inReplyTo)}>` : undefined,
     references,
   };
@@ -753,7 +770,7 @@ async function reply() {
   if (!args['message-id'] || !args['body-file']) {
     throw new Error('--reply requires --message-id and --body-file');
   }
-  const html = renderBody(fs.readFileSync(args['body-file'], 'utf8'), marked);
+  const { html, inline: bodyImages } = renderBodyFile();
   let gid = await findMessageId(args['message-id']);
   if (!gid) throw new Error('Original message not found in inbox or All Mail.');
   const givenGid = gid;
@@ -810,25 +827,25 @@ async function reply() {
   const ccFinal = args.exclude ? excludeAddresses(ccList, args.exclude) : ccList;
   const raw = await buildMime({
     to: toFinal, cc: ccFinal || undefined, subject, html: withSignature(html + inlineImagesHtml()) + (args['no-quote'] ? '' : quoted),
-    inReplyTo: orig.messageId, references: refs,
+    inReplyTo: orig.messageId, references: refs, bodyImages,
   });
   const draftId = await createDraft(raw, threadId);
   const note = dropped ? ` (replaced ${dropped} prior draft on this thread)` : '';
   console.log(`Draft reply staged in Drafts (re: "${clean(subject).slice(0, 60)}")${note}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
-  printAttachmentLines();
+  printAttachmentLines(bodyImages);
 }
 
 async function draftNew() {
   if (!args.to || !args.subject || !args['body-file']) {
     throw new Error('--draft-new requires --to, --subject, and --body-file');
   }
-  const html = renderBody(fs.readFileSync(args['body-file'], 'utf8'), marked);
-  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()) });
+  const { html, inline: bodyImages } = renderBodyFile();
+  const raw = await buildMime({ to: args.to, cc: args.cc || undefined, subject: args.subject, html: withSignature(html + inlineImagesHtml()), bodyImages });
   const draftId = await createDraft(raw, null);
   console.log(`Draft staged in Drafts to ${args.to}. Review in Gmail; never sent.`);
   console.log(`draft-id: ${draftId}`);
-  printAttachmentLines();
+  printAttachmentLines(bodyImages);
 }
 
 async function sendDraft() {

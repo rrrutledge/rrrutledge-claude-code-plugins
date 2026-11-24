@@ -1,5 +1,9 @@
 // Render a --body-file Markdown body to HTML with inline-bordered tables, warning when pipe-delimited rows were meant as a table but did not render as one.
+// Also embeds the body's local images inline at the spot they appear (slashImagePaths, embedLocalImages).
 // Run the tests: node --test markdown-body.test.js
+
+const fs = require('fs');
+const path = require('path');
 
 const PIPE_ROW = /^\s*[^|\n]*\|[^|\n]*\|/;
 
@@ -37,4 +41,42 @@ function renderBody(markdown, marked, warn = m => console.error(m)) {
   return styleTables(html);
 }
 
-module.exports = { looksLikeBrokenTable, styleTables, renderBody };
+// A Markdown image path's backslashes become forward slashes before rendering: Markdown reads a backslash
+// before punctuation as an escape and drops it, so a Windows path like `C:\repo\.tmp\a.jpg` would otherwise
+// lose the separator before `.tmp`.
+function slashImagePaths(markdown) {
+  return markdown.replace(/(!\[[^\]\n]*\]\(\s*<?)([^)>\n]+)/g, (m, open, dest) => open + dest.replace(/\\/g, '/'));
+}
+
+// The image types mail clients show inline; any other file type arrives as a broken picture.
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'];
+
+// An image in the body whose source is a local file - Markdown `![alt](photo.jpg)` or raw
+// `<img src="photo.jpg" width="400">` - becomes an inline image shown at that spot in the message.
+// Its src is rewritten to `cid:<id>`, and the returned `inline` list names each file and its cid for the
+// MIME builder to attach. The cid follows Gmail's own `ii_` shape so its compose editor keeps the image
+// inline through send (see inlineList in gmail.js). A relative path resolves against baseDir. A source
+// with a scheme (https:, cid:, data:) or a protocol-relative `//host` is left alone. An image with no
+// style of its own gets max-width:100% and height:auto so a full-size phone photo fits the reading pane
+// without stretching. marked percent-encodes the src (a space becomes %20), so it is decoded before use.
+function embedLocalImages(html, baseDir) {
+  const byPath = new Map();
+  const out = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const m = tag.match(/\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const raw = m && (m[1] ?? m[2] ?? m[3]);
+    if (!m || /^([a-z][a-z0-9+.-]+:|\/\/)/i.test(raw)) return tag;
+    let src = raw.replace(/&amp;/g, '&');
+    try { src = decodeURI(src); } catch { /* keep as written */ }
+    const file = path.resolve(baseDir, src);
+    if (!fs.existsSync(file)) throw new Error(`inline image not found: ${file} (from src="${raw}" in the body file)`);
+    if (!IMAGE_EXTENSIONS.includes(path.extname(file).toLowerCase())) {
+      throw new Error(`inline image must be ${IMAGE_EXTENSIONS.join(' ')}: ${file}`);
+    }
+    if (!byPath.has(file)) byPath.set(file, { path: file, filename: path.basename(file), cid: `ii_gmailbody${byPath.size}` });
+    const rewritten = tag.replace(m[0], ` src="cid:${byPath.get(file).cid}"`);
+    return /\sstyle\s*=/i.test(rewritten) ? rewritten : rewritten.replace(/^<img\b/i, '<img style="max-width:100%; height:auto"');
+  });
+  return { html: out, inline: [...byPath.values()] };
+}
+
+module.exports = { looksLikeBrokenTable, styleTables, renderBody, slashImagePaths, embedLocalImages };

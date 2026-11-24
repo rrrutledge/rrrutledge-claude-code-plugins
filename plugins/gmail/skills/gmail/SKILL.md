@@ -142,6 +142,10 @@ Under `scripts/` (run with `node`):
     supplies its own quote (the sender's text in styled `<blockquote>`s) with responses spliced between
     their points, instead of a single clean quote at the bottom. Without it, `--reply` always appends
     the full quoted original.
+  - **Images placed in the body (with `--reply` / `--draft-new`)** - write `![alt](photo.jpg)` in the body file where the picture belongs, and it is embedded in the message body at that spot.
+    A relative path resolves against the body file's folder, and a path with spaces goes in angle brackets, `![alt](<my photo.jpg>)`.
+    For a set width, write raw HTML instead: `<img src="photo.jpg" width="400" alt="...">`.
+    This is the same body-file syntax the `ms-graph` skill's `mail.js` takes.
   - **`--inline=<img[,img]>` (with `--reply` / `--draft-new`)** - embed image files in the message body via `cid:` references, placed after the body text, so they render inline rather than as a bottom-of-message attachment.
     Images render at about half the message width by default; add `--inline-width=<css width>` (any CSS width) when a screenshot needs more room to be readable.
     `--inline` combines with `--attach` for regular files.
@@ -153,7 +157,8 @@ Under `scripts/` (run with `node`):
     (`--reply` and `--draft-new` each print a `draft-id:` line - the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
     thread, so a thread never carries more than one draft.
-    The reply presenting a draft with `--attach` or `--inline` files sends those files to Russ, per `document-authoring:writing-flow`'s **Stage** step.)
+    Each staged file prints an `attachment: <path>` line, an inline image marked `(inline)`.
+    The reply presenting a draft with `--attach` files or inline images sends those files to Russ, per `document-authoring:writing-flow`'s **Stage** step.)
   - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
     (sends that one draft and removes it from Drafts; Gmail files the copy in Sent). See **Sending**
     below - this runs only on Russ's explicit per-message say-so.
