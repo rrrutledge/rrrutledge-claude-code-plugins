@@ -61,11 +61,12 @@ Nothing spawns for a draft sent as-is, a factual correction, or a discard.
 The session runs rooted in the plugins repo clone, from the brief the outcome command wrote: why it spawned, each labelled change, what the estimate thought (every factor, the judge's rationales and claims, and the reviewer's rule coverage with the spots it found the rules didn't settle), the draft and the sent text in full, and the diff.
 
 1. **Read the brief, the draft, and the sent text.**
-2. **Diagnose each change by asking which rule governed that choice, after asking what the sent text put in the removed text's place:**
+2. **Diagnose each change by asking which rule governed that choice:**
    - **A clear rule the draft broke** - the reviewer missed it, so the lesson is sharper rule wording a reviewer can't read past.
+     A removed sentence the brief's claims list marks UNSUPPORTED is this case exactly: the drafter invented it, against the Write step's evidence rule, and the estimate had already flagged it.
    - **The rules were silent or ambiguous on it** - a rule gap to fill.
      A change that lands on a spot the reviewer listed as unsettled is this case exactly.
-   - **The rules were fine, and the edit was a one-off call about the situation** - including a replacement that supplies a fact or action the draft could not have known (something Russell did or learned after staging, or a detail the ask never gave), since the removed text only held its place - nothing to write; when every change lands here, report per step 5 and close.
+   - **The rules were fine, and the edit was a one-off call about the situation** - nothing to write; when every change lands here, report per step 5 and close.
 3. **Fill each rule gap.**
    Distill the underlying **rule**, not the transcript.
    It almost always belongs in `message-rules` (the message artifact rubric); a rule about *how you compose* rather than what lands belongs in `document-authoring`'s drafting loop instead.
