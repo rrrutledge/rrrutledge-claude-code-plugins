@@ -15,10 +15,14 @@ fs.writeFileSync(path.join(dir, '.pics', 'a.jpg'), Buffer.from('jpg-bytes'));
 fs.writeFileSync(path.join(dir, 'IMG_1.heic'), Buffer.from('heic'));
 
 // Records each Graph call; the draft POST returns the message it was given, the attachment POSTs are kept.
-async function draft(body, opts = {}) {
-  const calls = [];
+// failAttachment makes every attachment POST reject, the way an oversized or dropped request does.
+async function draft(body, opts = {}, calls = [], failAttachment = false) {
   const client = { api: (url) => ({
-    post: async (payload) => { calls.push({ url, verb: 'post', payload }); return url === '/me/messages' ? { id: 'd1', message: payload } : {}; },
+    post: async (payload) => {
+      calls.push({ url, verb: 'post', payload });
+      if (failAttachment && url.endsWith('/attachments')) throw new Error('413 too large');
+      return url === '/me/messages' ? { id: 'd1', message: payload } : {};
+    },
     filter() { return this; }, select() { return this; }, top() { return this; },
     get: async () => ({ value: [{ id: 'old' }] }),
     delete: async () => { calls.push({ url, verb: 'delete' }); },
@@ -49,6 +53,21 @@ test('web, protocol-relative, cid, and data images are left alone', async () => 
 });
 
 test('a missing or non-displayable image fails before --replace deletes the old draft', async () => {
-  await assert.rejects(draft('![x](nope.png)', { replace: true }), /inline image not found/);
+  const calls = [];
+  await assert.rejects(draft('![x](nope.png)', { replace: true }, calls), /inline image not found/);
+  assert.deepStrictEqual(calls, []);
   await assert.rejects(draft('![x](IMG_1.heic)'), /inline image must be/);
+});
+
+test('a failed attachment deletes the half-built draft and keeps the old one', async () => {
+  const calls = [];
+  await assert.rejects(draft('![Us](<my photo.png>)', { replace: true }, calls, true), /413/);
+  assert.deepStrictEqual(calls.filter(c => c.verb === 'delete').map(c => c.url), ['/me/messages/d1']);
+});
+
+test('--replace deletes the other same-subject drafts after the new one is built', async () => {
+  const calls = [];
+  await draft('![Us](<my photo.png>)', { replace: true }, calls);
+  assert.deepStrictEqual(calls.map(c => `${c.verb} ${c.url}`).slice(-2),
+    ['post /me/messages/d1/attachments', 'delete /me/messages/old']);
 });

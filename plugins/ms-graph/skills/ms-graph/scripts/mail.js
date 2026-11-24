@@ -44,8 +44,8 @@
 // Draft new:     node mail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md \
 //                  [--cc=c@z] [--attach=file1.pdf,file2.png] [--replace] [--text]
 //                (creates a fresh DRAFT to specific recipients; never sends. --body-file is Markdown
-//                 (same as --reply). --attach adds file attachments; --replace first deletes any
-//                 existing drafts with the same subject so re-runs don't pile up duplicates; --text
+//                 (same as --reply). --attach adds file attachments; --replace, once the new draft
+//                 is built, deletes the other drafts with the same subject so re-runs don't pile up duplicates; --text
 //                 sends the body-file as literal plain text instead of rendering the Markdown.
 //                 In --reply and --draft-new, an image in the body file whose source is a local file -
 //                 `![alt](photo.jpg)` or `<img src="photo.jpg" width="400">` - is embedded inline at
@@ -508,13 +508,23 @@ function buildAttachments(attach) {
   }));
 }
 
-// Add one fileAttachment to a draft. Graph rejects a request body over about 4 MB, so a file over 3 MB
-// (a full-size phone photo) goes up through an upload session in 3.75 MB chunks instead of one POST.
+// Add fileAttachments to a new draft. Graph rejects a request body over about 4 MB, so a file whose
+// base64 form passes 3 MiB (a full-size phone photo) goes up through an upload session in 3.75 MiB
+// chunks instead of one POST. If any attachment fails, the half-built draft is deleted (to Deleted
+// Items) so Drafts never holds a copy missing its files, and the error is rethrown.
 const UPLOAD_LIMIT = 3 * 1024 * 1024;
 const CHUNK = 12 * 320 * 1024; // upload-session chunks must be multiples of 320 KiB
+async function addAttachments(client, messageId, attachments) {
+  try {
+    for (const a of attachments) await addAttachment(client, messageId, a);
+  } catch (e) {
+    await client.api(`/me/messages/${messageId}`).delete().catch(() => {});
+    throw e;
+  }
+}
 async function addAttachment(client, messageId, a) {
+  if (a.contentBytes.length <= UPLOAD_LIMIT) return client.api(`/me/messages/${messageId}/attachments`).post(a);
   const bytes = Buffer.from(a.contentBytes, 'base64');
-  if (bytes.length <= UPLOAD_LIMIT) return client.api(`/me/messages/${messageId}/attachments`).post(a);
   const session = await client.api(`/me/messages/${messageId}/attachments/createUploadSession`).post({
     AttachmentItem: { attachmentType: 'file', name: a.name, size: bytes.length, contentType: a.contentType,
       isInline: !!a.isInline, contentId: a.contentId },
@@ -547,7 +557,7 @@ async function reply(client) {
   const draft = await client.api(`/me/messages/${args['message-id']}/createReplyAll`).post({});
   const quoted = draft.body?.content || '';
   await client.api(`/me/messages/${draft.id}`).patch({ body: { contentType: 'html', content: html + quoted } });
-  for (const a of attachments) await addAttachment(client, draft.id, a);
+  await addAttachments(client, draft.id, attachments);
   const extra = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
   console.log(`Draft reply created in thread${extra} (id ${draft.id.slice(0, 20)}...). Review in Outlook Drafts.`);
   console.log(`draft-id: ${draft.id}`);
@@ -613,26 +623,26 @@ async function sentSince(client) {
 // Reusable: create a draft message (never sends). Returns the created draft.
 //   createDraft(client, { to, subject, body, cc, attach, replace, contentType, baseDir })
 //   - attach: a path or comma-separated string or array of paths -> file attachments
-//   - replace: delete any existing drafts with the same subject first (avoids duplicates)
+//   - replace: once the new draft is complete, delete the other drafts with the same subject (avoids
+//     duplicates); a draft that fails to build leaves the old one in place
 //   - baseDir: the folder a relative inline-image path in the body resolves against (default cwd)
 //   The returned draft carries `inline`: [{ file, attachment }] for each inline body image.
 async function createDraft(client, { to, subject, body = '', cc, attach, replace = false, contentType = 'html', baseDir = '.' } = {}) {
   if (!to || !subject) throw new Error('createDraft requires { to, subject }');
   client = client || await getGraphClient();
-  // Render and read every file before --replace deletes anything, so a bad image path leaves the old draft in place.
   const { html: finalBody, inline } = contentType === 'html' ? renderBody(body, baseDir) : { html: body, inline: [] };
   const attachments = [...buildAttachments(attach), ...inline.map(i => i.attachment)];
-  if (replace) {
-    const existing = await client.api('/me/mailFolders/drafts/messages')
-      .filter(`subject eq '${String(subject).replace(/'/g, "''")}'`)
-      .select('id,subject').top(20).get();
-    for (const m of existing.value || []) await client.api(`/me/messages/${m.id}`).delete();
-  }
   const recip = (s) => String(s).split(',').map(a => ({ emailAddress: { address: a.trim() } }));
   const message = { subject, body: { contentType, content: finalBody }, toRecipients: recip(to) };
   if (cc) message.ccRecipients = recip(cc);
   const draft = await client.api('/me/messages').post(message);
-  for (const a of attachments) await addAttachment(client, draft.id, a);
+  await addAttachments(client, draft.id, attachments);
+  if (replace) {
+    const existing = await client.api('/me/mailFolders/drafts/messages')
+      .filter(`subject eq '${String(subject).replace(/'/g, "''")}'`)
+      .select('id,subject').top(20).get();
+    for (const m of existing.value || []) if (m.id !== draft.id) await client.api(`/me/messages/${m.id}`).delete();
+  }
   return { ...draft, inline };
 }
 
