@@ -64,8 +64,8 @@ For every Bash call:
    It also BLOCKs a shell script run directly or through `bash`/`sh` (shell scripts can't be safety-checked; the message asks for a `.tmp/` Python script), an unbounded `find` from `/`, a drive root, or home, which walks the whole
    disk for hours, and any `sed` in-place flag (`-i`, `--in-place`), which rewrites a file with no undo, and any command naming a saved tool result or chat attachment under `~/.claude`, which Claude Code prompts on regardless, so the block asks for a `.tmp/` script that opens the path itself.
 2. Split compound command (`a && b | c`) into segments.
-   A `<(...)` that is a plain positional argument of a bare data-reading command (`cat`, `comm`, `diff`, `sort`, and the like) is split out so its inner commands are judged as their own segments, leaving `/dev/fd/63` in the outer one.
-   Every other `<(...)` or `>(...)` (`source`, `awk -f`, `bash`, `tee >(...)`, a path-qualified command, an option that runs or writes its argument, an unclosed or comment/`case`-bearing group) adds a segment nothing trusts, so the call prompts.
+   A `<(...)` that is a plain positional argument of a bare command that only reads its file arguments is split out so its inner commands are judged as their own segments, leaving `/dev/fd/63` in the outer one.
+   Every other `<(...)` or `>(...)` adds a segment nothing trusts, so the call prompts.
    Only this trust check opts in, with `split_segments(command, process_substitution=True)`; the raw-text detectors in `enforce.py` keep the default and see the command unchanged, so a new caller in the trust path must pass the flag.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.
 4. All segments trusted → **ALLOW**.
