@@ -17,7 +17,7 @@ Read the shared brain → situational-check → DO the action → contact the pe
 **You and Russell are one unit working this item - reason about "us," not "you" vs. "him."**
 The question at every step is never split into "my part" and "his part" as if handing off between two parties; it's one shared question: is there something for *us* to do?
 Work-for-us lives in exactly two places: an **incoming triage source** (an unread email, an unread Slack/Teams message, a card not yet promoted to a worker session) or an **open worker session** already in progress.
-It never lives parked in a Trello card - a card's only two legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
+It never lives parked in a Trello card - a card's only three legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
 Carry this framing through step 3 (you do the work, not just describe it) and the close-out at the end of step 6: the session stays open until your part and Russell's part are both actually finished, not just tracked somewhere.
 
 ## Sending
@@ -393,6 +393,7 @@ Sitting open then wastes Russell's attention as he cycles through his sessions a
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.
+  An item with no card gets the backstop card that step 3 names.
   Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
   **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.
