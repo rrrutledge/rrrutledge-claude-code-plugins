@@ -1,4 +1,5 @@
-// Read a Google Calendar's events over a time range, or remove one event's Google Meet link, via the
+// Read a Google Calendar's events over a time range, create an event with no Google Meet link, or remove one
+// event's Google Meet link, via the
 // official `googleapis` Calendar v3 client (OAuth path - see google-calendar-oauth.js).
 //
 // List a range:  node google-calendar.js --start=<date or RFC 3339> --end=<date or RFC 3339> [--calendar=<id>] [--json]
@@ -9,11 +10,18 @@
 // Remove Meet:   node google-calendar.js --strip-meet --event=<id> [--calendar=<id>] [--send]
 //                (Drops the event's conference when it is Google Meet, leaving every other field as is, and
 //                refuses when it is another provider's, such as a Zoom add-on.)
+// Create:        node google-calendar.js --create --summary=<title> --start=<YYYY-MM-DDTHH:MM> --end=<...>
+//                  --join=<zoom url> [--guests=a@x.com,b@y.com] [--description=<text>] [--tz=<IANA>]
+//                  [--reminders=15,10,0] [--calendar=<id>] [--send]
+//                (Leaves Google Meet off. Times are local wall clock in --tz, default America/Chicago.
+//                Guests get the invite email with --send and are added silently without it.)
 //
 // Reusable from other scripts (require.main-guarded, so requiring this file does not run the CLI):
-//   const { listEvents, stripMeet } = require('<google-calendar>/scripts/google-calendar.js');
+//   const { listEvents, stripMeet, createEvent } = require('<google-calendar>/scripts/google-calendar.js');
 //   const events = await listEvents({ start: '2026-10-01', end: '2026-11-01' });
 //   const patched = await stripMeet({ event: '<id>' });
+//   const created = await createEvent({ summary: 'Sync', start: '2026-11-24T08:00', end: '2026-11-24T09:00',
+//     join: 'https://zoom.us/j/<id>', guests: ['a@x.com'], reminders: [15, 10, 0] });
 
 const { google } = require('googleapis');
 const { getAuthedClient, assertAccountEmail } = require('./google-calendar-oauth');
@@ -79,7 +87,44 @@ async function stripMeet({ calendar = 'primary', event, send = false } = {}) {
   return res.data;
 }
 
-module.exports = { listEvents, stripMeet };
+// Create an event whose join link is `join` (Zoom or any other non-Meet URL, set as the location and appended
+// to the description), with Google Meet left off: the API attaches a conference only when a call sends
+// conferenceData, and this call sends none. Guests are emailed when `send` is true. `start`/`end` are local
+// wall-clock times in `timeZone`. `reminders` is a list of minutes-before for popup reminders; left out, the
+// calendar's defaults apply. Resolves to the created Event resource.
+async function createEvent({
+  calendar = 'primary', summary, start, end, join, guests = [], description = '',
+  timeZone = 'America/Chicago', reminders, send = false,
+} = {}) {
+  for (const [name, value] of Object.entries({ summary, start, end, join })) {
+    if (typeof value !== 'string' || !value) throw new Error(`createEvent requires a string ${name}`);
+  }
+  if (!Array.isArray(guests)) throw new Error('createEvent requires guests as an array of email addresses');
+  if (reminders !== undefined && !(Array.isArray(reminders) && reminders.every(Number.isInteger))) {
+    throw new Error('createEvent requires reminders as an array of whole minutes');
+  }
+  const withSeconds = t => (/T\d{2}:\d{2}$/.test(t) ? `${t}:00` : t);
+  const auth = getAuthedClient();
+  await assertAccountEmail(auth);
+  const api = google.calendar({ version: 'v3', auth });
+  return (await api.events.insert({
+    calendarId: calendar,
+    sendUpdates: send ? 'all' : 'none',
+    requestBody: {
+      summary,
+      location: join,
+      description: description ? `${description}\n\n${join}` : join,
+      start: { dateTime: withSeconds(start), timeZone },
+      end: { dateTime: withSeconds(end), timeZone },
+      attendees: guests.map(email => ({ email })),
+      ...(reminders?.length && {
+        reminders: { useDefault: false, overrides: reminders.map(minutes => ({ method: 'popup', minutes })) },
+      }),
+    },
+  })).data;
+}
+
+module.exports = { listEvents, stripMeet, createEvent };
 
 if (require.main === module) {
   const args = Object.fromEntries(
@@ -89,6 +134,20 @@ if (require.main === module) {
     })
   );
   (async () => {
+    if (args.create) {
+      const send = args.send === true || args.send === 'true';
+      const list = v => (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+      const str = v => (typeof v === 'string' && v ? v : undefined);
+      const ev = await createEvent({
+        calendar: str(args.calendar), summary: args.summary, start: args.start, end: args.end, join: args.join,
+        guests: list(args.guests), description: str(args.description), timeZone: str(args.tz), send,
+        reminders: list(args.reminders).map(Number),
+      });
+      const count = (ev.attendees || []).length;
+      console.log(`${ev.summary}: created ${ev.id}, ${ev.hangoutLink ? 'with a Meet link' : 'no Meet link'}, ${count} guest(s)` +
+        `${send && count ? ', invites sent' : ', no invites sent'}\n${ev.htmlLink}`);
+      return;
+    }
     if (args['strip-meet']) {
       const ev = await stripMeet({ calendar: args.calendar, event: args.event, send: args.send === true || args.send === 'true' });
       console.log(ev ? `${ev.summary || '(no title)'}: Meet link removed` : 'No conference on that event - nothing changed');
