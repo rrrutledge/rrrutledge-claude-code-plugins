@@ -20,7 +20,7 @@ Reach for resume-on-completion only when a **specific, identifiable session** is
   It gets the same resume instruction.
 
 When the blocker is instead an **external party** replying on their own schedule, or nothing specific can be resumed against, use the existing **tracker-card** pattern (drainer `worker-core.md` §6, "Waiting on someone else → tracker card"): file a follow-up card and let a future poller cycle pick the remainder back up.
-Resume-on-completion supplements that pattern for the identifiable-session case.
+Resume-on-completion supplements that pattern for the identifiable-session case, and files its own backstop card when no card tracks the work (step 3).
 
 ## The steps
 
@@ -42,8 +42,9 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to write a short report to `.tmp/<slug>.report.md` in its own working directory first (what it did, where to find it, anything that differed from the ask), then run the command via its Bash tool with `--report-file ".tmp/<slug>.report.md"` added, which adds the report to the note.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
-   A drainer worker leaves a dated comment on its Trello card noting the pause and naming the session it handed the resume to; a plain session notes it wherever that work is tracked.
-   When the work is tracked on a Trello card, keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
+   Leave a dated comment on the work's Trello card noting the pause and naming the session you handed the resume to, and keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
+   When no card tracks the work and the source holds nothing that would resurface it, file a backstop card for the remaining steps on the board the work belongs to (a drainer worker uses Russell's board per its `context.md`), and give it that comment and Start.
+   The resumed session finishes that card along with the work.
 
 4. **Close this session now, paused**, via the **`session-mgr:close`** skill with `--pause` (a drainer worker: `python <skill>/scripts/close-session.py --pause`).
    This fires `SessionEnd` cleanly, so the session deregisters from the live-session registry rather than looking crash-interrupted.
@@ -53,8 +54,8 @@ The resume carries the wake note as a follow-up prompt, so the session comes bac
 
 ## Why this is safe against a duplicate worker (drainer)
 
-A drainer worker's item is a Trello card, and the poller stamps that card's id into seen-state the moment it dispatches the worker.
-The id stays "already seen" for as long as the card's Start date holds, and only a CLEAR bumps Start (minting a fresh id), so a worker that closes under this pattern **without clearing the card and without bumping Start** leaves the card in seen-state, and no second worker is dispatched onto it while the resume is pending (see `providers/trello-provider.md`, CAPTURE).
+When a drainer worker's item is a Trello card, the poller stamps that card's id into seen-state the moment it dispatches the worker.
+The id stays "already seen" for as long as the card's Start date holds, and a card with a future Start is not startable, so a worker that closes under this pattern **without clearing the card**, its Start either untouched or moved to step 3's check-back date, gets no second worker dispatched onto it while the resume is pending (see `providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4).
 Leave the card un-cleared: the work is not done, and the resumed session is what CLEARs it once the remaining work finishes.
 
 The resumed session is not mistaken for a stale orphan: while it runs it appears in `claude agents --json`, which `find-orphans.py` reads for liveness, and the original session's clean self-close already deregistered it, so `find-orphans.py` has nothing to resurrect in the gap between close and resume.

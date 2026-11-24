@@ -17,7 +17,7 @@ Read the shared brain → situational-check → DO the action → contact the pe
 **You and Russell are one unit working this item - reason about "us," not "you" vs. "him."**
 The question at every step is never split into "my part" and "his part" as if handing off between two parties; it's one shared question: is there something for *us* to do?
 Work-for-us lives in exactly two places: an **incoming triage source** (an unread email, an unread Slack/Teams message, a card not yet promoted to a worker session) or an **open worker session** already in progress.
-It never lives parked in a Trello card - a card's only two legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
+It never lives parked in a Trello card - a card's only three legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
 Carry this framing through step 3 (you do the work, not just describe it) and the close-out at the end of step 6: the session stays open until your part and Russell's part are both actually finished, not just tracked somewhere.
 
 ## Sending
@@ -169,7 +169,8 @@ This isn't source-specific, so it applies the same way no matter which provider 
 Same work arriving by another source carries its own conversation key (poller-core, "One conversation, one worker"), so it reaches you as a separate item, and this check catches it.
 A recurring card whose Start date arrives while its work is in motion is the same case, and so is a session Russell or a handoff started.
 Your seed's duplicate-check section runs this check; when your seed has no duplicate-check section, run `ListAgents` and settle by session-mgr's `resume-sessions/duplicate-sessions.md`.
-When you stand down for the session that keeps the item, leave a card un-cleared and its Start untouched (`providers/trello-provider.md`, CAPTURE), and close per "Close silently" (after §2d) with no digest entry: that session is the one carrying the item.
+When you stand down for the session that keeps the item, settle your item's source by `duplicate-sessions.md` steps 5 and 6.
+Close the drainer way: `python <skill>/scripts/close-session.py --pause` when step 6 closes you paused, and "Close silently" (after §2d) with no digest entry when it closes you for good.
 
 **When your seed names a live session already on this item's conversation, ask it first.**
 Settle with that session before any other work, by the rule in `duplicate-sessions.md`.
@@ -219,10 +220,10 @@ What still must not slip: anything this session doesn't finish before ending nee
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
 
 ## Close silently
-Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work (§2), an item already over at its source when you wake from a wait (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
+Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work when your source cleared at capture (§2), an item already over at its source when you wake from a wait (§2), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), you stood down for the session that keeps the item (§2), or the item is a Trello card that already sits on a terminal list or is archived.
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), or the item is a Trello card that already sits on a terminal list or is archived.
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
@@ -310,7 +311,7 @@ Safe, reversible work proceeds immediately; anything irreversible waits for Russ
 
 **If browser-chauffeur work here hits a gate only Russell can clear, follow §2e.**
 
-**A Trello card you adopt from §2's check needs no claiming - leave its Start date alone until CLEAR**, per `providers/trello-provider.md` CAPTURE.
+**A Trello card you adopt from §2's check needs no claiming - leave its Start date alone until CLEAR or a DUE-CARD outcome 4 event**, per `providers/trello-provider.md` CAPTURE.
 This applies whether Trello is your own source or you found the card from another source entirely.
 
 ## 4. Contact the person (draft-only by default)
@@ -391,7 +392,7 @@ A Russell-only step that happens *inside* that session belongs to that session's
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
-  **Leave the card un-cleared and its Start untouched** (`providers/trello-provider.md`, CAPTURE): the work isn't done, and the resumed session is what CLEARs it once it finishes.
+  **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.
   Only `--resume-me` on the launch plus `close-session.py --pause` makes the other session wake this one; a plain close removes it for good.
   Use the tracker-card pattern above instead whenever the blocker is an external party or nothing specific can be resumed against.
   **The resumed session is still this item's worker:** §3's routing and its context-reset rule apply to it exactly as they did before it paused.

@@ -50,9 +50,9 @@ The card itself is the item, and **we own it** - unlike inbound mail/Teams, the 
 The poller records this card's id in seen-state the moment it dispatches this session, and every later cycle drops the card as already-seen for as long as its go-live date holds.
 Only a CLEAR mints a fresh id - the go-live date is part of the id (see the id scheme in `trello-queue-model.md`), and CLEAR is what bumps it out - so the card resurfaces on its new date, never while this work is in flight.
 
-**Leave the Start date untouched until CLEAR.**
+**Leave the Start date untouched until CLEAR, or until one of DUE-CARD outcome 4's events sets a later date.**
 Bumping it to "claim" the card forges the very id CLEAR is meant to mint later - one seen-state never recorded - so the next cycle reads a brand-new item and spawns a second worker on top of this one.
-The Start date moves only when the work advances (CLEAR), never to mark a card in-flight.
+A later date from outcome 4 is safe, because a future Start holds the card back until that day.
 
 **Match a decided duplicate before any research.**
 The capture's "Related cards on this board" section is the board-wide search `../engine/worker-core.md` §2, "Search around before concluding", calls for.
@@ -167,6 +167,7 @@ Then the card ends in exactly one of these:
    - a new date from the other party, such as a rescheduled interview or a stated turnaround
    - this occurrence's work done on a `Recurs:` card
    - the card's work handed to a session this worker launched, named in the comment along with the fact that it resets Start when it finishes
+   - the card's work kept by a live peer session, with the comment and check-back date set per session-mgr's `duplicate-sessions.md` step 6
    - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
 
 **A party who hasn't replied gets a follow-up or a decision.**
