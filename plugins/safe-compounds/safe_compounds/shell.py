@@ -14,6 +14,12 @@ ASSIGNMENT_ONLY = '__assignment__'
 # Segment emitted for text the splitter cannot parse; no allowlist trusts it.
 UNPARSEABLE_SEGMENT = '__unparseable_process_substitution__'
 
+# Commands that only read a process-substitution path as data (never run it).
+_DATA_CONSUMERS = frozenset({
+    'cat', 'comm', 'diff', 'cmp', 'sort', 'join', 'paste', 'grep', 'head', 'tail',
+    'wc', 'uniq', 'cut', 'column', 'tee',
+})
+
 
 class ShellTokenizer:
     """Stateful character scanner with POSIX quote/escape tracking."""
@@ -116,8 +122,12 @@ def _balanced_group(cmd, start):
     return None, start
 
 
-def split_segments(cmd):
-    """Split a compound command into segments on &&, ||, ;, |, and bare newline
+def split_segments(cmd, process_substitution=False):
+    """With process_substitution=True (the trust check only), `<(...)` and
+    `>(...)` are split out as their own segments; the raw-text detectors in
+    enforce.py keep the default and see the command text unchanged.
+
+    Split a compound command into segments on &&, ||, ;, |, and bare newline
     operators, only when those operators appear outside quotes -- matching real
     bash, where an unquoted newline terminates a statement exactly like `;`.
     A backslash-newline line continuation is consumed whole by consume_escape()
@@ -142,21 +152,22 @@ def split_segments(cmd):
 
         if not tok.in_quotes():
             two = cmd[tok.pos:tok.pos + 2]
-            if two in ('<(', '>('):
-                # Process substitution: its inner command runs as a real
-                # process, so it is judged as its own segments, while the outer
-                # segment keeps a /dev/fd path where the substitution stood so
-                # its argument positions still match what bash runs.
+            if process_substitution and two in ('<(', '>('):
+                # The inner command runs as a real process, so it is judged as
+                # its own segments, while the outer segment keeps a /dev/fd
+                # path where the substitution stood so its argument positions
+                # still match what bash runs.  That is only safe when the outer
+                # command reads the path as data; a command that can run or
+                # interpret it (source, awk -f, bash) or a group that never
+                # closes gets a segment no allowlist trusts, forcing a prompt.
                 inner, end = _balanced_group(cmd, tok.pos + 2)
-                if inner is None:
-                    # Unclosed group: the rest cannot be split reliably, so a
-                    # segment no allowlist trusts forces the normal prompt.
-                    inner_segments.append(UNPARSEABLE_SEGMENT)
-                else:
-                    inner_segments.extend(split_segments(inner))
-                    current.append('/dev/fd/63')
-                    tok.pos = end
-                    continue
+                if inner is None or first_word(''.join(current)) not in _DATA_CONSUMERS:
+                    segments.append(''.join(current))
+                    return segments + inner_segments + [UNPARSEABLE_SEGMENT]
+                inner_segments.extend(split_segments(inner, process_substitution=True))
+                current.append('/dev/fd/63')
+                tok.pos = end
+                continue
             if two in ('&&', '||'):
                 segments.append(''.join(current))
                 current = []

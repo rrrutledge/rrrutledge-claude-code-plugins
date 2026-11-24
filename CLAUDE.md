@@ -64,6 +64,8 @@ For every Bash call:
    It also BLOCKs a shell script run directly or through `bash`/`sh` (shell scripts can't be safety-checked; the message asks for a `.tmp/` Python script), an unbounded `find` from `/`, a drive root, or home, which walks the whole
    disk for hours, and any `sed` in-place flag (`-i`, `--in-place`), which rewrites a file with no undo, and any command naming a saved tool result or chat attachment under `~/.claude`, which Claude Code prompts on regardless, so the block asks for a `.tmp/` script that opens the path itself.
 2. Split compound command (`a && b | c`) into segments.
+   A `<(...)` or `>(...)` after a data-reading command (`cat`, `comm`, `diff`, `sort`, and the like) is split out so its inner commands are judged as their own segments, leaving `/dev/fd/63` in the outer one.
+   After any other command (`source`, `awk -f`, `bash`) or when the group never closes, it adds a segment nothing trusts, so the call prompts.
 3. For each segment: `is_segment_trusted()`. If any segment fails → **PROMPT**.
 4. All segments trusted → **ALLOW**.
 
