@@ -89,7 +89,7 @@ Don't present a menu of options or stack a numbered list of questions.
   Naming an internal gap (a thin lineup, an unfilled slot) as the reason reads as recruiting a fallback rather than someone wanted.
 - **Asking an institution or company for your own records: state what you need, not why.** A former employer, bank, or similar org doesn't need the personal reason behind a document request (a loan application, a life event) to act on it — naming it only shares more than necessary. State the document and stop.
 - **Relaying a third party's request for someone's personal/sensitive info (a phone number, an address): attribute it to that third party and ask about their comfort sharing it, rather than requesting the detail directly as your own ask.**
-- **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand. When the ask is backed by a screenshot or a brief supporting fact rather than dense context, lead with the ask and let that evidence follow it.
+- **Flag an ask buried after dense content with a light lead-in** — Russell's go-to is "One small ask -". But when the message is short and the thread already carries the context, cut both the context and the lead-in and let the bare question stand. When the ask is backed by a screenshot or a brief supporting fact rather than dense context, lead with the ask and let that evidence follow it, except when the fact is the premise of a check on their own choice (see **Tell them what's happening, or check they knew it was coming**).
 - **Frame the ask to match the recipient's role.**
   When their job is to route you to a third party (find a volunteer, recommend a speaker), make the asks conditional on that handoff rather than personal requests to them — and don't narrate the follow-up's timing.
   On a repeat ask to someone with standing local knowledge, lean on that ("you have much more insight than me here") rather than citing a specific thing they said they'd do — the former trusts their judgment, the latter reads as holding them to an obligation.
@@ -120,6 +120,7 @@ Don't present a menu of options or stack a numbered list of questions.
 - **Tell them what's happening, or check they knew it was coming.**
   When a message tells someone something is going to happen that commits or affects them, and the thread doesn't show they were already briefed, explain it in the message or ask whether they knew it was coming, offering to talk it through if not (per the call-offer rule under **Links**).
   Skip the check when the thread shows they were briefed.
+  When the check is on a choice they just made and a fact they may not have weighed is what makes the check worth asking, state that fact first and close on a plain "just checking you're sure".
 - **When a decision-relevant fact is still outstanding, get it before committing — and don't let the wait look like stalling.**
   Hold off until the number, document, or valuation is in hand even if the other side wants a yes now; keep the tone warm and move straight to what you still need, so it reads as diligence.
   Cut lines that lock Russell in early (a stated readiness to sign, a formal request for an undecided step), which also give away leverage.
