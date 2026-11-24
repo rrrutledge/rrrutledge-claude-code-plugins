@@ -167,6 +167,7 @@ Then the card ends in exactly one of these:
    - a new date from the other party, such as a rescheduled interview or a stated turnaround
    - this occurrence's work done on a `Recurs:` card
    - the card's work handed to a session this worker launched, named in the comment along with the fact that it resets Start when it finishes
+   - the card's work kept by a live peer session under session-mgr's `duplicate-sessions.md`, named in the comment along with the fact that this worker resumes to finish the card when the peer's work is done
    - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
 
 **A party who hasn't replied gets a follow-up or a decision.**
