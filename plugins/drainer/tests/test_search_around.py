@@ -1,6 +1,7 @@
 """Test for search_around.py's session search: a loose term match (case, spacing, CamelCase), the
 title and snippets of a hit, and the three things it skips - this session's own transcript, a session
-about the same captured item, and a live-session listing that merely names the item's subject.
+about the same captured item, and a live-session listing that merely names the item's subject - and
+its provider-records search: only an enabled provider that keeps records is searched.
 
 Run directly:
     python plugins/drainer/tests/test_search_around.py
@@ -83,6 +84,29 @@ with tempfile.TemporaryDirectory() as tmp:
     write_session(projects, "ffff6666", "Accent case", [("user", "x"), ("assistant", "met with ÉLAN today")])
     hits = search_around.search_sessions(search_around.compile_terms(["élan"]), None)
     check("non-ASCII term found across case", [h["id"] for h in hits], ["ffff6666"])
+
+ADAPTER = '''from provider_base import ProviderBase, ProviderError
+class Provider(ProviderBase):
+    name = "{name}"
+{body}
+'''
+with tempfile.TemporaryDirectory() as tmp:
+    repo = Path(tmp)
+    (repo / ".claude").mkdir()
+    (repo / ".claude" / "drainer.local.md").write_text(
+        "---\nproviders:\n  sheet: {}\n  plain: {}\n  broken: {}\n  gone: {}\nlocal_dir: local\n---\n", encoding="utf-8")
+    adapters = repo / "local" / "providers"
+    adapters.mkdir(parents=True)
+    (adapters / "sheet-adapter.py").write_text(ADAPTER.format(name="sheet", body=(
+        "    def search_records(self, terms):\n"
+        "        return [{'title': 'Acme row', 'url': 'u', 'lines': list(terms)}]")), encoding="utf-8")
+    (adapters / "plain-adapter.py").write_text(ADAPTER.format(name="plain", body="    pass"), encoding="utf-8")
+    (adapters / "broken-adapter.py").write_text(ADAPTER.format(name="broken", body=(
+        "    def __init__(self):\n        raise ProviderError('no token', kind='auth')")), encoding="utf-8")
+    check("a record-keeping provider is searched; one that keeps none and a missing one are skipped; an unloaded one is named",
+          search_around.search_records(str(repo), ["Acme", "jo@acme.com"]),
+          ([("sheet", [{"title": "Acme row", "url": "u", "lines": ["Acme", "jo@acme.com"]}], None)],
+           [("broken", "no token")]))
 
 if failures:
     print(f"\n{len(failures)} failure(s)")
