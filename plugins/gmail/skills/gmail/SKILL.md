@@ -155,18 +155,19 @@ Under `scripts/` (run with `node`):
   - Draft new (never sends): `node gmail.js --draft-new --to="a@x,b@y" --subject="..." --body-file=msg.md [--cc=c@z]`
     (`--reply` and `--draft-new` each print a `draft-id:` line - the staged draft's id. That id
     is what `--send-draft` and `--delete-draft` take. `--reply` also replaces any prior draft on the same
-    thread, so a thread never carries more than one draft.
+    thread, so after a `--reply` the thread carries only that one draft.
     Each staged file prints an `attachment: <path>` line, an inline image marked `(inline)`.
     The reply presenting a draft with `--attach` files or inline images sends those files to Russ, per `document-authoring:writing-flow`'s **Stage** step.)
   - React to a message (never sends): `node gmail.js --react=<message-id> [--emoji=❤️] [--exclude=<addr[,addr]>]`
     stages a Gmail emoji reaction to that message as a draft and prints its `draft-id`, which `--send-draft` sends once Russ says to.
     The emoji defaults to 👍.
     A reaction acknowledges a message without replying to it, so a follow-up a week later still reads as the first real reply.
-    It is the email Gmail's own reaction button sends: a threaded reply carrying a `text/vnd.google.email-reaction+json` part (`{"emoji": "👍", "version": 1}`) between a plain-text and an HTML fallback.
     Google's reaction format says a Gmail recipient sees it as an emoji on the message it answers.
-    Outlook shows the fallback, a normal email with a large emoji, "Russ Rutledge reacted via Gmail", and the quoted original.
+    Outlook shows the fallback, a normal email with a large emoji, "<name> reacted via Gmail", and the quoted original.
     In the sending account's own Gmail the thread shows that same fallback as a separate message, because Gmail folds only reactions made in its own UI into the emoji chip there.
-    It reacts to the exact message given, goes to the same people a reply-all would (`--exclude` drops some), and refuses a message the account sent itself.
+    It reacts to the exact message given and goes to its sender plus its other To and Cc recipients (`--exclude` drops some).
+    It refuses the messages Gmail's own reaction button refuses: one the account sent, mailing-list mail, a copy that reached the account by Bcc, and a message with more than 20 recipients.
+    A reaction draft goes out through `--send-draft` alone, because Gmail's compose window rebuilds the message on Send and drops the reaction part.
     Staging it leaves any other draft on the thread alone, but a later `--reply` on that thread replaces the staged reaction, so send the reaction before staging a reply.
     Outlook has no counterpart: its reactions work only between Exchange Online mailboxes in one tenant, and Graph exposes no API for them.
   - Send a staged draft (REAL SEND): `node gmail.js --send-draft --draft-id=<draft-id>`
@@ -242,7 +243,7 @@ If Google declines to return a refresh token, revoke prior access at
   to `--show`, `--auth`, `--save-attachments`, `--reply`, `--react`, and `--archive`. It's resolved to Gmail's internal id via an
   `rfc822msgid:` search across All Mail, so it works whether the message is in the inbox, archived, or
   sent.
-- The load-bearing identifier for a **draft** is the **draft-id** that `--reply` / `--draft-new` print:
+- The load-bearing identifier for a **draft** is the **draft-id** that `--reply` / `--react` / `--draft-new` print:
   pass it to `--send-draft` and `--delete-draft`.
-- Drafts (`--reply` / `--draft-new`) land in **Drafts**. They go out only via `--send-draft` on Russ's
-  explicit say-so (see **Sending**); otherwise he reviews and sends in Gmail himself.
+- Drafts (`--reply` / `--react` / `--draft-new`) land in **Drafts**. They go out only via `--send-draft` on Russ's
+  explicit say-so (see **Sending**); otherwise he reviews and sends a reply or new draft in Gmail himself.

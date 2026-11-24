@@ -102,12 +102,8 @@
 //                 `attachment: <absolute path>` line per file after the draft-id, an inline image
 //                 marked `(inline)`.)
 // React:         node gmail.js --react=<message-id> [--emoji=❤️] [--exclude=<addr[,addr]>]
-//                (stages a Gmail emoji reaction to that message as a DRAFT; never sends; prints a draft-id
-//                 for --send-draft. Default emoji is 👍. A Gmail recipient sees an emoji on the message;
-//                 Outlook, and the sender's own Gmail, show a fallback email with the emoji, "<name> reacted
-//                 via Gmail", and the quoted original. It goes to the same people a reply-all would;
-//                 --exclude drops some. Refuses a message the account sent itself. A later --reply on the
-//                 thread replaces this draft.)
+//                (stages a Gmail emoji reaction as a DRAFT for --send-draft; never sends; default emoji 👍;
+//                 --exclude drops recipients. See react() below.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts - Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
@@ -140,7 +136,7 @@ const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
-const { pickLatest } = require('./threading');
+const { pickLatest, unfoldThreadHeaders, isSingleEmoji } = require('./threading');
 const { pickTextPart, partAsMime } = require('./body-part');
 
 const USER_ID = 'me';
@@ -782,16 +778,18 @@ const fromAccount = (orig, acct) => !!(orig.from && orig.from.value.some(a => a.
 // - someone else's message: To = its sender; CC = its other To+CC recipients (a reply-all).
 // - our OWN sent message: keep its recipients, so a follow-up goes to the people we wrote to, not back to ourselves.
 // --to overrides To, --cc adds to CC, and --exclude drops addresses from both.
-function replyRecipients(orig, acct) {
+// A reaction passes useReplyTo=false, since it answers the person who wrote the message.
+function replyRecipients(orig, acct, { useReplyTo = true } = {}) {
   const fromSelf = fromAccount(orig, acct);
   // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
   // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
   // prefer it automatically. --to still overrides both, for the cases a Reply-To doesn't catch.
+  const replyTo = useReplyTo && orig.replyTo && orig.replyTo.text;
   const to = args.to
     ? args.to
     : (fromSelf
         ? (orig.to ? fromList(orig.to.value) : '')
-        : ((orig.replyTo && orig.replyTo.text) ? orig.replyTo.text : (orig.from ? orig.from.text : '')));
+        : (replyTo || (orig.from ? orig.from.text : '')));
   const ccSource = fromSelf
     ? (orig.cc ? orig.cc.value : [])
     : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
@@ -811,7 +809,7 @@ function replyRecipients(orig, acct) {
 // scopes can't read), so the name on the newest sent message stands in, and the bare address after that.
 async function senderName(acct) {
   const sendAs = await gmail.users.settings.sendAs.list({ userId: USER_ID });
-  const setting = ((sendAs.data.sendAs || []).find(s => s.isDefault) || {}).displayName;
+  const setting = ((sendAs.data.sendAs || []).find(s => (s.sendAsEmail || '').toLowerCase() === acct) || {}).displayName;
   if (setting) return setting;
   const sent = await gmail.users.messages.list({ userId: USER_ID, labelIds: ['SENT'], maxResults: 10 });
   for (const m of sent.data.messages || []) {
@@ -823,17 +821,6 @@ async function senderName(acct) {
   return acct;
 }
 
-// MailComposer folds a long message id onto a line of its own, leaving "In-Reply-To:" or "References:" empty
-// on the header line. A reaction counts only when its In-Reply-To names the message it answers, so this
-// pulls the first id back onto the header line, the way Gmail's own reactions are written, rather than
-// trust every recipient's parser to unfold it.
-function unfoldThreadHeaders(raw) {
-  const s = raw.toString('utf8');
-  const end = s.indexOf('\r\n\r\n');
-  const head = s.slice(0, end).replace(/^(In-Reply-To|References):\r\n[ \t]+/gim, '$1: ');
-  return Buffer.from(head + s.slice(end), 'utf8');
-}
-
 // Stage a Gmail emoji reaction to one message as a draft, for --send-draft to send. A reaction is an
 // ordinary threaded reply whose multipart/alternative carries a text/vnd.google.email-reaction+json part
 // ({"emoji", "version": 1}) between a plain-text and an HTML fallback - the exact shape Gmail's own
@@ -842,13 +829,22 @@ function unfoldThreadHeaders(raw) {
 // The sender's own Gmail shows that fallback too, since it folds only reactions made in its UI.
 // It reacts to the given message as-is (no newest-in-thread resolution - the reaction belongs to that
 // message), and leaves any other draft on the thread alone, so a reply drafted alongside it survives.
+// It refuses the messages Gmail's own UI won't react to - a mailing-list message, one the account got only
+// by Bcc, one with more than 20 recipients - since there the fallback email would land on everyone.
 async function react() {
-  const emoji = typeof args.emoji === 'string' ? args.emoji : '👍';
+  if (typeof args.react !== 'string') throw new Error('--react requires =<message-id>');
+  const emoji = args.emoji === undefined ? '👍' : String(args.emoji);
+  if (!isSingleEmoji(emoji)) throw new Error(`--emoji must be exactly one emoji (got "${emoji}")`);
   const gid = await findMessageId(args.react);
   if (!gid) throw new Error('Message to react to not found in inbox or All Mail.');
   const { parsed: orig, threadId } = await getParsed(gid);
   const acct = await account();
   if (fromAccount(orig, acct)) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
+  if (!orig.messageId) throw new Error('That message has no Message-ID, so a reaction has nothing to attach to.');
+  if (orig.headers.has('list-id')) throw new Error('That message came through a mailing list; Gmail does not take reactions on list mail.');
+  const origRecips = [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])].map(a => (a.address || '').toLowerCase()).filter(Boolean);
+  if (!origRecips.includes(acct)) throw new Error('This account is not in that message\'s To or Cc (a Bcc or list copy), so Gmail does not take a reaction on it.');
+  if (new Set(origRecips).size > 20) throw new Error('That message has more than 20 recipients; Gmail does not take reactions on it.');
   const name = await senderName(acct);
   const when = orig.date ? orig.date.toUTCString() : '';
   const origFrom = orig.from ? orig.from.text : '';
@@ -856,12 +852,12 @@ async function react() {
   const text = `${emoji}\n\n${name} reacted via Gmail\n<${aboutUrl}>\n\nOn ${when}, ${origFrom} wrote:\n\n` +
     (orig.text || '').split('\n').map(l => `> ${l}`).join('\n') + '\n';
   const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const html = `<div><p style="font-size:50px;margin-top:0;margin-bottom:0">${emoji}</p>` +
+  const html = `<div><p style="font-size:50px;margin-top:0;margin-bottom:0">${escape(emoji)}</p>` +
     `<p style="margin-top:10px;margin-bottom:0">${escape(name)} reacted via <a href="${aboutUrl}">Gmail</a></p></div>` +
     `<br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${escape(when)}, ${escape(origFrom)} wrote:<br></div>` +
     `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">` +
     `${orig.html || escape(orig.text || '').replace(/\n/g, '<br>')}</blockquote></div>`;
-  const { to, cc } = replyRecipients(orig, acct);
+  const { to, cc } = replyRecipients(orig, acct, { useReplyTo: false });
   const subject = /^re:/i.test(orig.subject || '') ? orig.subject : `Re: ${orig.subject || ''}`;
   const raw = await new MailComposer({
     from: { name, address: acct }, to, cc: cc || undefined, subject,

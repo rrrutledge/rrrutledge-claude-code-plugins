@@ -1,6 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { isReaction, pickLatest } = require('./threading');
+const { isReaction, pickLatest, unfoldThreadHeaders, isSingleEmoji } = require('./threading');
+
+test('pulls a folded In-Reply-To and References id back onto the header line', () => {
+  const raw = Buffer.from('From: a@x\r\nIn-Reply-To:\r\n <long@id>\r\nReferences: \r\n <a@id>\r\n\t<b@id>\r\n\r\nIn-Reply-To:\r\n body stays');
+  assert.strictEqual(unfoldThreadHeaders(raw).toString(),
+    'From: a@x\r\nIn-Reply-To: <long@id>\r\nReferences: <a@id>\r\n\t<b@id>\r\n\r\nIn-Reply-To:\r\n body stays');
+});
+
+test('accepts exactly one emoji', () => {
+  for (const ok of ['👍', '❤️', '👍🏽', '👨‍👩‍👧']) assert.ok(isSingleEmoji(ok), ok);
+  for (const bad of ['', 'ok', '👍👍', 'a👍']) assert.ok(!isSingleEmoji(bad), bad);
+});
 
 const msg = (id, internalDate, extra = {}) => ({ id, internalDate: String(internalDate), labelIds: [], payload: { mimeType: 'text/html' }, ...extra });
 
