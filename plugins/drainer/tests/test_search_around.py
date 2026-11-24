@@ -37,6 +37,7 @@ def write_session(projects, sid, title, messages):
 
 check("CamelCase splits", search_around.term_words("AcmeCorp"), ["Acme", "Corp"])
 check("hyphen splits", search_around.term_words("acme-corp"), ["acme", "corp"])
+check("lowercase-led brand stays whole", search_around.term_words("eBay"), ["eBay"])
 check("acronym run splits", search_around.term_words("HSABank"), ["HSA", "Bank"])
 check("term matches whole words only",
       bool(search_around.compile_terms(["Dan"])[0][1].search("Jordan danced")), False)
@@ -44,7 +45,7 @@ check("empty terms dropped", [t for t, _ in search_around.compile_terms(["", "-"
 
 with tempfile.TemporaryDirectory() as tmp:
     projects = Path(tmp)
-    search_around.PROJECTS = projects
+    search_around.transcripts = lambda: projects.glob("*/*.jsonl")
     write_session(projects, "aaaa1111", "Find short-term coverage for the kids", [
         ("user", "Find the kids short-term coverage"),
         ("assistant", "Submitted the Acme Corp Basic policy for Jordan; the eSignature goes to Outlook."),
@@ -60,6 +61,10 @@ with tempfile.TemporaryDirectory() as tmp:
     write_session(projects, "cccc3333", "Gmail: unrelated sponsor reply", [
         ("user", "Handle the sponsor email.\nLive sessions:\n- Outlook: AcmeCorp has sent you an invite to sig (background, blocked)\n"),
         ("user", "Peer sessions (3):\n  Outlook: AcmeCorp has sent you an invite to sig [2173ea]  ·  bg  ·  idle  ·  started 5m ago\n"),
+    ])
+    write_session(projects, "gggg7777", "Paused peer listing", [
+        ("user", "Other work.\n- Outlook: AcmeCorp has sent you an invite (paused, resume id 1234)\n"
+                 "You were handed off from `Outlook: AcmeCorp invite`; it is not a duplicate"),
     ])
     write_session(projects, "dddd4444", "this worker", [("user", "acmecorp")])
     os.environ["CLAUDE_CODE_SESSION_ID"] = "dddd4444"
