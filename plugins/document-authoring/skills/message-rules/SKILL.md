@@ -642,10 +642,12 @@ These registers reach outside the palette, and most also stack past the one-emoj
 **`announcement` — broad post to a group or channel:**
 - Open with "Hey folks / everyone / guys", run into the first sentence with ` - `.
 - **When sharing news or status, open with the candid first-person account** — what happened and how you found it — not a packaged framing line ("wanted to give you a heads-up", "I'd rather you hear it from me").
-- **Tag @here or @channel when the ask needs the whole channel's eyes, not just whoever happens to be scrolling** — a favor-ask or call for volunteers is easy for busy members to miss otherwise.
+- **When relaying an outsider's criticism or feedback to the team, attribute it to the source and state it as they stated it**; include only the reasons the source gave, and close on your stance.
+- **Tag @here or @channel when the ask needs the whole channel's eyes, not just whoever happens to be scrolling** - a favor-ask or call for volunteers is easy for busy members to miss otherwise.
 - State what you did or want, then a tight bulleted list of specifics if needed, then a low-pressure call for feedback.
 - **Preliminary, not-yet-final news is shared tentatively and lean** — hedge that it isn't official yet ("still going through the paperwork to make it official, but a positive direction!") and leave out the hard specifics (a sponsorship's dollar amount) and the individual name-credits that a finalized or public announcement would carry.
-- **Close on the ask.** Name a genuine next step and add "let me know" only when there's a real one beyond the ask itself; a self-contained ask - a survey, a single request - is complete once stated with its link, so end there rather than appending a next-step-plus-"let me know" tail.
+- **When the post makes an ask, close on the ask.**
+  Name a genuine next step and add "let me know" only when there's a real one beyond the ask itself; a self-contained ask - a survey, a single request - is complete once stated with its link, so end there rather than appending a next-step-plus-"let me know" tail.
 - *Sample:* "Hey folks, I'm working with Lee on a training curriculum for our engineers on code review… I prepared [Code Review Training - Session Agenda](URL) with a draft. Is anyone here interested in reviewing and sharing feedback?"
 
 ### When unsure
