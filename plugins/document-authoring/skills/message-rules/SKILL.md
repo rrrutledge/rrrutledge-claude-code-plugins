@@ -141,6 +141,7 @@ Use for: Confluence specs, how-to guides, PRDs, PR descriptions, Word docs, publ
 - Neutral tone in reference data, tables, and specs; warm in narrative and intro sections.
 - Center the reader with "you/your"; use "we're" for the team or product, "I" for what Russell personally did or perceived, even when the same sentence goes on to a shared "we could".
 - **"We" for coordinating follow-up** — next steps that involve reaching out, scheduling, or connecting are "we'll", even when Russell executes them personally.
+  **A topic you may take up with the recipient later is "we can"**, which leaves it open as an offer.
 - Short sentences.
   One idea per sentence.
   Fragments are fine for rhythm.
