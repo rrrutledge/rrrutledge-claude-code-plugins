@@ -101,6 +101,9 @@
 //                 wrap a path with spaces in <>). --reply and --draft-new print one
 //                 `attachment: <absolute path>` line per file after the draft-id, an inline image
 //                 marked `(inline)`.)
+// React:         node gmail.js --react=<message-id> [--emoji=❤️] [--exclude=<addr[,addr]>]
+//                (stages a Gmail emoji reaction as a DRAFT for --send-draft; never sends; default emoji 👍;
+//                 --exclude drops recipients. See react() below.)
 // Send a draft:  node gmail.js --send-draft --draft-id=<draft-id>
 //                (promotes one already-staged draft: sends it, then removes it from Drafts - Gmail files
 //                 the sent copy in Sent. The <draft-id> is what --reply / --draft-new printed when it
@@ -133,7 +136,7 @@ const addressparser = require('nodemailer/lib/addressparser');
 const { withImap, exitIfStillRunningAfter } = require('./imap-client');
 const { getAuthedClient, assertAccountEmail, signInCommand, ACCOUNT_NAME } = require('./gmail-oauth');
 const { excludeAddresses } = require('./recipients');
-const { pickLatest } = require('./threading');
+const { isReaction, pickLatest, unfoldThreadHeaders, isSingleEmoji } = require('./threading');
 const { pickTextPart, partAsMime } = require('./body-part');
 
 const USER_ID = 'me';
@@ -769,6 +772,116 @@ async function dropDraftsInThread(threadId) {
   return stale.length;
 }
 
+const fromAccount = (orig, acct) => !!(orig.from && orig.from.value.some(a => a.address && a.address.toLowerCase() === acct));
+
+// The To and CC a reply to `orig` goes to, picked by who wrote it:
+// - someone else's message: To = its sender; CC = its other To+CC recipients (a reply-all).
+// - our OWN sent message: keep its recipients, so a follow-up goes to the people we wrote to, not back to ourselves.
+// --to overrides To, --cc adds to CC, and --exclude drops addresses from both.
+// A reaction passes reaction=true: it answers the person who wrote the message and the people it went to,
+// so Reply-To, --to, and --cc are ignored. `own` is every address of the account, left out of CC.
+function replyRecipients(orig, acct, { reaction = false, own = new Set([acct]) } = {}) {
+  const fromSelf = fromAccount(orig, acct);
+  // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
+  // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
+  // prefer it automatically. --to still overrides both, for the cases a Reply-To doesn't catch.
+  const replyTo = !reaction && orig.replyTo && orig.replyTo.text;
+  const to = args.to && !reaction
+    ? args.to
+    : (fromSelf
+        ? (orig.to ? fromList(orig.to.value) : '')
+        : (replyTo || (orig.from ? orig.from.text : '')));
+  const ccSource = fromSelf
+    ? (orig.cc ? orig.cc.value : [])
+    : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
+  const allRecips = ccSource
+    .map(a => a.address).filter(a => a && !own.has(a.toLowerCase()));
+  const ccList = args.cc && !reaction
+    ? [...new Set([args.cc, ...allRecips])].join(', ')
+    : allRecips.join(', ');
+  return {
+    to: args.exclude ? excludeAddresses(to, args.exclude) : to,
+    cc: args.exclude ? excludeAddresses(ccList, args.exclude) : ccList,
+  };
+}
+
+// The account owner's display name, for a From line and the reaction fallback's "<name> reacted via Gmail".
+// The send-as setting's name is often blank (Gmail then uses the Google account's name, which the granted
+// scopes can't read), so the name on the newest sent message stands in, and the bare address after that.
+// `sendAs` is the account's send-as list.
+async function senderName(acct, sendAs) {
+  const setting = (sendAs.find(s => (s.sendAsEmail || '').toLowerCase() === acct) || {}).displayName;
+  if (setting) return setting;
+  const sent = await gmail.users.messages.list({ userId: USER_ID, labelIds: ['SENT'], maxResults: 10 });
+  for (const m of sent.data.messages || []) {
+    const r = await gmail.users.messages.get({ userId: USER_ID, id: m.id, format: 'metadata', metadataHeaders: ['From'] });
+    const from = parseAddrs(hdr(indexHeaders(r.data.payload && r.data.payload.headers), 'from'))[0];
+    // A message composed through the API carries the bare address as its name; skip those.
+    if (from && from.name && !from.name.includes('@') && from.address.toLowerCase() === acct) return from.name;
+  }
+  return acct;
+}
+
+// Stage a Gmail emoji reaction to one message as a draft, for --send-draft to send. A reaction is an
+// ordinary threaded reply whose multipart/alternative carries a text/vnd.google.email-reaction+json part
+// ({"emoji", "version": 1}) between a plain-text and an HTML fallback - the exact shape Gmail's own
+// reaction button sends. How each client shows it is in SKILL.md.
+// It reacts to the given message as-is, since the reaction belongs to that message, and leaves any other
+// draft on the thread alone, so a reply drafted alongside it survives.
+// It refuses the messages Gmail's own UI won't react to - one the account sent, a mailing-list message,
+// one the account got only by Bcc, one with more than 20 recipients - since there the fallback email
+// would land on everyone - and a message that is itself a reaction.
+// It sends from whichever of the account's addresses the message was sent to, as Gmail's own button does.
+async function react() {
+  if (typeof args.react !== 'string') throw new Error('--react requires =<message-id>');
+  const emoji = args.emoji === undefined ? '👍' : String(args.emoji);
+  if (!isSingleEmoji(emoji)) throw new Error(`--emoji must be exactly one emoji (got "${emoji}")`);
+  const gid = await findMessageId(args.react);
+  if (!gid) throw new Error('Message to react to not found in inbox or All Mail.');
+  const { parsed: orig, threadId } = await getParsed(gid);
+  const acct = await account();
+  // The account's own addresses are its primary one plus every send-as alias.
+  const sendAs = (await gmail.users.settings.sendAs.list({ userId: USER_ID })).data.sendAs || [];
+  const own = new Set([acct, ...sendAs.map(s => (s.sendAsEmail || '').toLowerCase())]);
+  if (orig.from && orig.from.value.some(a => own.has((a.address || '').toLowerCase()))) throw new Error('That message is your own; Gmail reactions go on a message someone else sent.');
+  if (!orig.messageId) throw new Error('That message has no Message-ID, so a reaction has nothing to attach to.');
+  if (orig.headers.has('list-id')) throw new Error('That message came through a mailing list; Gmail does not take reactions on list mail.');
+  const origRecips = [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])].map(a => (a.address || '').toLowerCase()).filter(Boolean);
+  if (!origRecips.some(a => own.has(a))) throw new Error('This account is not in that message\'s To or Cc (a Bcc or list copy), so Gmail does not take a reaction on it.');
+  if (new Set(origRecips).size > 20) throw new Error('That message has more than 20 recipients; Gmail does not take reactions on it.');
+  const full = await gmail.users.messages.get({ userId: USER_ID, id: gid, format: 'full' });
+  if (isReaction(full.data.payload)) throw new Error('That message is itself an emoji reaction; react to the message it answers instead.');
+  const me = origRecips.find(a => own.has(a));
+  const name = await senderName(me, sendAs);
+  const when = orig.date ? orig.date.toUTCString() : '';
+  const origFrom = orig.from ? orig.from.text : '';
+  const aboutUrl = 'https://www.google.com/gmail/about/';
+  const text = `${emoji}\n\n${name} reacted via Gmail\n<${aboutUrl}>\n\nOn ${when}, ${origFrom} wrote:\n\n` +
+    (orig.text || htmlToPlainText(orig.html)).trimEnd().split('\n').map(l => `> ${l}`).join('\n') + '\n';
+  const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = `<div><p style="font-size:50px;margin-top:0;margin-bottom:0">${escape(emoji)}</p>` +
+    `<p style="margin-top:10px;margin-bottom:0">${escape(name)} reacted via <a href="${aboutUrl}">Gmail</a></p></div>` +
+    `<br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${escape(when)}, ${escape(origFrom)} wrote:<br></div>` +
+    `<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">` +
+    `${orig.html || escape(orig.text || '').replace(/\n/g, '<br>')}</blockquote></div>`;
+  const { to, cc } = replyRecipients(orig, acct, { reaction: true, own });
+  if (!to) throw new Error('--exclude removed the message\'s sender; a reaction goes to the person who wrote it.');
+  const subject = /^re:/i.test(orig.subject || '') ? orig.subject : `Re: ${orig.subject || ''}`;
+  const raw = await new MailComposer({
+    from: { name, address: me }, to, cc: cc || undefined, subject,
+    inReplyTo: `<${stripId(orig.messageId)}>`,
+    references: [orig.references, orig.messageId].flat().filter(Boolean).join(' '),
+    alternatives: [
+      { contentType: 'text/plain; charset=utf-8', content: text },
+      { contentType: 'text/vnd.google.email-reaction+json; charset=utf-8', content: JSON.stringify({ emoji, version: 1 }, null, 2) },
+      { contentType: 'text/html; charset=utf-8', content: html },
+    ],
+  }).compile().build();
+  const draftId = await createDraft(unfoldThreadHeaders(raw), threadId);
+  console.log(`Reaction ${emoji} staged in Drafts on "${clean(orig.subject).slice(0, 60)}" from ${origFrom}, to ${[to, cc].filter(Boolean).join(', ')}. Never sent.`);
+  console.log(`draft-id: ${draftId}`);
+}
+
 async function reply() {
   if (!args['message-id'] || !args['body-file']) {
     throw new Error('--reply requires --message-id and --body-file');
@@ -803,31 +916,7 @@ async function reply() {
   const refs = [orig.references, orig.messageId].flat().filter(Boolean).join(' ');
   const subject = /^re:/i.test(orig.subject || '') ? orig.subject : `Re: ${orig.subject || ''}`;
   const dropped = await dropDraftsInThread(threadId);
-  // Pick recipients by who wrote the message we're answering:
-  // - normal reply (someone else's message): To = its sender; CC = its other To+CC recipients.
-  // - follow-up to our OWN sent message (the most-recent message is ours): keep its recipients, so the
-  //   nudge goes to the people we wrote to (To/CC) rather than back to ourselves.
-  const fromSelf = orig.from && orig.from.value.some(
-    a => a.address && a.address.toLowerCase() === acct);
-  // When From is a relay/group address (e.g. a Google "shared a file" notification, or Google Groups'
-  // "'X' via <Group>" rewrite of an external sender), the real correspondent is usually in Reply-To -
-  // prefer it automatically. --to still overrides both, for the cases a Reply-To doesn't catch.
-  const to = args.to
-    ? args.to
-    : (fromSelf
-        ? (orig.to ? fromList(orig.to.value) : '')
-        : ((orig.replyTo && orig.replyTo.text) ? orig.replyTo.text : (orig.from ? orig.from.text : '')));
-  const ccSource = fromSelf
-    ? (orig.cc ? orig.cc.value : [])
-    : [...(orig.to ? orig.to.value : []), ...(orig.cc ? orig.cc.value : [])];
-  const allRecips = ccSource
-    .map(a => a.address).filter(a => a && a.toLowerCase() !== acct);
-  const ccList = args.cc
-    ? [...new Set([args.cc, ...allRecips])].join(', ')
-    : allRecips.join(', ');
-  // --exclude drops the listed addresses from the computed To and CC (a reply-all that leaves someone off).
-  const toFinal = args.exclude ? excludeAddresses(to, args.exclude) : to;
-  const ccFinal = args.exclude ? excludeAddresses(ccList, args.exclude) : ccList;
+  const { to: toFinal, cc: ccFinal } = replyRecipients(orig, acct);
   const raw = await buildMime({
     to: toFinal, cc: ccFinal || undefined, subject, html: withSignature(html + inlineImagesHtml()) + (args['no-quote'] ? '' : quoted),
     inReplyTo: orig.messageId, references: refs, bodyImages,
@@ -935,6 +1024,7 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args.auth) return await auth();
   if (args.thread) return await thread();
   if (args.reply) return await reply();
+  if (args.react) return await react();
   if (args['draft-new']) return await draftNew();
   if (args['send-draft']) return await sendDraft();
   if (args['delete-draft']) return await deleteDraft();
@@ -942,5 +1032,5 @@ const IMAP_RUN_DEADLINE_MS = 75 * 1000;
   if (args['list-sent']) return await listFolder('SENT', 'Sent Mail');
   if (args.search) return await search();
   if (args.check) return await check();
-  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --save-attachments-imap, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --draft-new, --send-draft, --delete-draft, --archive, or --check');
+  throw new Error('Specify --list-inbox, --list-inbox-imap, --list-sent, --search, --list-drafts, --save-attachments, --save-attachments-imap, --show, --show-imap, --auth, --auth-imap, --thread, --reply, --react, --draft-new, --send-draft, --delete-draft, --archive, or --check');
 })().catch(e => { console.error('Error:', describeError(e)); process.exit(1); });

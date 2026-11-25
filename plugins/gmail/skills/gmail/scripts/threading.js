@@ -1,4 +1,4 @@
-// Pick the message a --reply should thread off. Run the tests: node --test threading.test.js
+// Thread helpers for --reply and --react. Run the tests: node --test threading.test.js
 
 const REACTION_MIME = 'text/vnd.google.email-reaction+json';
 
@@ -18,4 +18,18 @@ function pickLatest(messages) {
   );
 }
 
-module.exports = { isReaction, pickLatest };
+// MailComposer folds a long message id onto a line of its own, leaving "In-Reply-To:" or "References:" empty
+// on the header line. A reaction counts only when its In-Reply-To names the message it answers, so this
+// pulls the first id back onto the header line, the way Gmail's own reactions are written, rather than
+// trust every recipient's parser to unfold it. Takes and returns the built MIME as a Buffer.
+function unfoldThreadHeaders(raw) {
+  const s = raw.toString('utf8');
+  const end = s.indexOf('\r\n\r\n');
+  const head = s.slice(0, end).replace(/^(In-Reply-To|References):[ \t]*\r\n[ \t]+/gim, '$1: ');
+  return Buffer.from(head + s.slice(end), 'utf8');
+}
+
+// True for exactly one emoji as Unicode's recommended emoji set defines it, the only reaction Gmail accepts.
+const isSingleEmoji = (s) => /^\p{RGI_Emoji}$/v.test(String(s));
+
+module.exports = { isReaction, pickLatest, unfoldThreadHeaders, isSingleEmoji };
