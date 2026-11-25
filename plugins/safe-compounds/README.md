@@ -69,7 +69,7 @@ For each tool call the hook produces one of:
   validatable alternative.
 - **Write/Edit** - approves `.tmp/` files, `.claude/{skills,commands,screenshots}`,
   and files inside a git repo's working tree; redirects stray temp-named files,
-  and new files in system temp (outside Claude Code's own `claude` folder there),
+  and new files in system temp (outside Claude Code's own folder there),
   into `.tmp/`.
 - **MCP** - approves read-only and reversible-write verbs; prompts on destructive
   verbs (`delete`, `purge`, …). Whole servers can be blanket-approved via config,

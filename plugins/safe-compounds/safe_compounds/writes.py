@@ -7,7 +7,7 @@ main-worktree/.tmp/scan.py) and no allow decision there can actually
 suppress Claude Code's own prompt anyway. Below that, a file inside .tmp/ or
 a .claude config dir is approved *before* the temp-name check, so e.g.
 ".tmp/commit_tmp.txt" is allowed rather than redirected. A new file in system
-temp is redirected only after every allow rule has had its say.
+temp is redirected only when no allow rule approves it.
 """
 import os
 import re
@@ -76,18 +76,23 @@ def _is_system_temp(file_path):
     """Whether the path is under system temp, outside Claude Code's own area there.
 
     That area (which holds the session scratchpad) is claude/ on Windows and
-    claude-<uid>/ on macOS and Linux. /tmp is compared unresolved, because
-    Windows Python would otherwise read it as a folder on the current drive.
+    claude-<uid>/ on macOS and Linux, under a temp dir or CLAUDE_CODE_TMPDIR.
+    /tmp is compared unresolved, because Windows Python would otherwise read it
+    as a folder on the current drive.
     """
+    temp_roots = [(tempfile.gettempdir(), True), ('/tmp', False)]
+    harness_roots = list(temp_roots)
+    if os.environ.get('CLAUDE_CODE_TMPDIR'):
+        harness_roots.append((os.environ['CLAUDE_CODE_TMPDIR'], True))
     harness_dirs = ['claude']
     if hasattr(os, 'getuid'):
         harness_dirs.append(f'claude-{os.getuid()}')
-    for temp, resolve_cwd in ((tempfile.gettempdir(), True), ('/tmp', False)):
-        if path_under(file_path, temp, resolve_cwd=resolve_cwd):
-            return not any(
-                path_under(file_path, f'{temp}/{name}', resolve_cwd=resolve_cwd) for name in harness_dirs
-            )
-    return False
+    if any(
+        path_under(file_path, f'{root}/{name}', resolve_cwd=resolve_cwd)
+        for root, resolve_cwd in harness_roots for name in harness_dirs
+    ):
+        return False
+    return any(path_under(file_path, root, resolve_cwd=resolve_cwd) for root, resolve_cwd in temp_roots)
 
 
 def _stray_root_reason(file_path):
