@@ -68,7 +68,8 @@ For each tool call the hook produces one of:
   `bash`/`sh` (rewrite as a `.tmp/` Python script). Each returns a message pointing at the
   validatable alternative.
 - **Write/Edit** - approves `.tmp/` files, `.claude/{skills,commands,screenshots}`,
-  and files inside a git repo's working tree; redirects stray temp-named files
+  and files inside a git repo's working tree; redirects stray temp-named files,
+  and new files in system temp (outside Claude Code's own `claude` folder there),
   into `.tmp/`.
 - **MCP** - approves read-only and reversible-write verbs; prompts on destructive
   verbs (`delete`, `purge`, …). Whole servers can be blanket-approved via config,

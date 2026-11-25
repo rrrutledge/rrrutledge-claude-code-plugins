@@ -33,6 +33,10 @@ def run_hook(payload, cwd_path, learned_path, trusted_path, home_path):
     # compare a {HOME}-rooted case path against the wrong base and never match.
     env["HOME"] = home_path
     env["USERPROFILE"] = home_path
+    # The fixtures themselves sit under this machine's temp dir, so the hook gets a
+    # sibling dir as "system temp" to keep {CWD} and {HOME} outside it.
+    systmp_path = os.path.join(os.path.dirname(home_path), "systmp")
+    env["TMPDIR"] = env["TEMP"] = env["TMP"] = systmp_path
     proc = subprocess.run(
         [sys.executable, HOOK],
         input=json.dumps(payload),

@@ -6,17 +6,19 @@ Precedence matters: the dirs in BLOCKED_CLAUDE_DIRS are checked *before* the
 main-worktree/.tmp/scan.py) and no allow decision there can actually
 suppress Claude Code's own prompt anyway. Below that, a file inside .tmp/ or
 a .claude config dir is approved *before* the temp-name check, so e.g.
-".tmp/commit_tmp.txt" is allowed rather than redirected.
+".tmp/commit_tmp.txt" is allowed rather than redirected. A new file in system
+temp is redirected only after every allow rule has had its say.
 """
 import os
 import re
+import tempfile
 
 from . import ai
 from .log import log_debug
 from .paths import (
     PLUGIN_CACHE_PATTERN, convert_msys_path_to_windows, is_in_git_repo, is_path_within_allowed_edits,
     is_path_within_cwd, is_path_within_trusted_destination, is_stray_root_file,
-    is_within_claude_jobs_dir, resolve_against_cwd,
+    is_within_claude_jobs_dir, path_under, resolve_against_cwd,
 )
 
 TEMP_FILE_NAME_PATTERNS = [
@@ -68,6 +70,24 @@ def _file_exists(file_path):
     if os.name == 'nt':
         path = convert_msys_path_to_windows(path)
     return os.path.exists(path)
+
+
+def _is_system_temp(file_path):
+    """Whether the path is under system temp, outside Claude Code's own area there.
+
+    That area (which holds the session scratchpad) is claude/ on Windows and
+    claude-<uid>/ on macOS and Linux. /tmp is compared unresolved, because
+    Windows Python would otherwise read it as a folder on the current drive.
+    """
+    harness_dirs = ['claude']
+    if hasattr(os, 'getuid'):
+        harness_dirs.append(f'claude-{os.getuid()}')
+    for temp, resolve_cwd in ((tempfile.gettempdir(), True), ('/tmp', False)):
+        if path_under(file_path, temp, resolve_cwd=resolve_cwd):
+            return not any(
+                path_under(file_path, f'{temp}/{name}', resolve_cwd=resolve_cwd) for name in harness_dirs
+            )
+    return False
 
 
 def _stray_root_reason(file_path):
@@ -174,6 +194,9 @@ def decide_write_edit(file_path):
     # was put there deliberately (or earlier), so editing it prompts as usual.
     if is_stray_root_file(file_path) and not exists:
         return 'block', _stray_root_reason(file_path)
+
+    if _is_system_temp(file_path) and not exists:
+        return 'block', _temp_redirect_reason(file_path)
 
     if ask_ai_if_temp_file(file_path):
         return 'block', _temp_redirect_reason(file_path)
