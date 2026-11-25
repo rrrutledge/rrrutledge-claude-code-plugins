@@ -124,7 +124,7 @@ Some commands are approved based on their *arguments*, not just their name:
   Creating a non-dotfile directly in the home folder or a drive root is BLOCKed, with an instruction to use `.tmp/` or a git repo, because a scratch file written there is almost always one whose intended directory was lost.
   Editing a file that already exists there prompts.
   Creating a file in system temp that no allow rule above covers is BLOCKed with an instruction to use `.tmp/`.
-  Claude Code's own folder there (`claude/`, or `claude-<uid>/` on macOS and Linux), which holds the session scratchpad, is exempt.
+  Claude Code's own folder (`claude/`, or `claude-<uid>/` on macOS and Linux) under a temp dir or `CLAUDE_CODE_TMPDIR`, which holds the session scratchpad, is exempt.
 - **`sed`** - approved for read-only use; `enforce_bash()` BLOCKs an in-place flag before this check runs (see the decision pipeline).
 
 #### 4. AI inspection + learned store (`commands.py` - `_ai_learn`, `learned.py`)
