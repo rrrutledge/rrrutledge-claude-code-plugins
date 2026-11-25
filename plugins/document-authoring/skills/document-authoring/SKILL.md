@@ -33,6 +33,7 @@ Skipping a step is what leaks the patterns these rules ban: reading once then co
    Find it in Russell's own past messages to them (sent mail, Slack DMs); when no prior message settles it, ask him about that person.
    **State only what the thread, the ask, or a source you actually read establishes, a reaction or verdict about the recipient or a third party included, even as the natural warm line to fill a gap.** When the draft would point to what an email or document says, open the source first.
    A routing choice or other logistic the ask left open follows `message-rules`' **When unsure**.
+   **Before closing a sponsor or partner message, search Russell's recent mail and Slack, and the agenda of any recent event, for an event contribution from someone in the sponsor's or partner's organization,** which `message-rules`' **Energizing close** may build the close on.
    **When the message reports on work you're doing yourself, finish that work first.** Draft the status update only once every action it describes is actually done, including a step only moments from finishing, since a draft written in parallel ends up describing something as upcoming that should already be done by the time the message goes out.
    **Check that every time-bound statement will still hold when Russell sends.**
    A staged draft can wait hours for him, so test the plan, offer, or deadline it names against the earliest plausible send time, and when the moment it was about may already have passed, say so in the hand-over.
