@@ -420,7 +420,7 @@ CASES = [
     {"id": "write_home_subdir", "tool": "Write", "file_path": "{HOME}/projects/data.json",
      "cwd": "plain", "expect": "PROMPT"},
 
-    # A new file in system temp is redirected to .tmp/. Claude Code's own claude/ area there, files
+    # A new file in system temp is redirected to .tmp/. Claude Code's own area there, files
     # that already exist, and anything an earlier allow rule covers are left alone.
     {"id": "write_system_temp_new", "tool": "Write", "file_path": "{SYSTMP}/site-graphics/render.py",
      "cwd": "plain", "expect": "BLOCK"},

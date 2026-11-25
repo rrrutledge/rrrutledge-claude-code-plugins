@@ -75,10 +75,10 @@ def _file_exists(file_path):
 def _is_system_temp(file_path):
     """Whether the path is under system temp, outside Claude Code's own area there.
 
-    That area (which holds the session scratchpad) is claude/ on Windows and
-    claude-<uid>/ on macOS and Linux, under a temp dir or CLAUDE_CODE_TMPDIR.
-    /tmp is compared unresolved, because Windows Python would otherwise read it
-    as a folder on the current drive.
+    That area (which holds the session scratchpad) is claude/ on every platform,
+    and also claude-<uid>/ on macOS and Linux, under the OS temp dir, /tmp, or
+    CLAUDE_CODE_TMPDIR. /tmp is compared unresolved, because Windows Python
+    would otherwise read it as a folder on the current drive.
     """
     temp_roots = [(tempfile.gettempdir(), True), ('/tmp', False)]
     harness_roots = list(temp_roots)
