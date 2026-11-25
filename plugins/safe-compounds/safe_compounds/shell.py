@@ -11,6 +11,15 @@ import shlex
 # Sentinel returned by first_word for a pure variable assignment (no command).
 ASSIGNMENT_ONLY = '__assignment__'
 
+# Segment emitted for text the splitter cannot parse; no allowlist trusts it.
+UNPARSEABLE_SEGMENT = '__unparseable_process_substitution__'
+
+# Commands that only read a process-substitution path as data (never run it).
+_DATA_CONSUMERS = frozenset({
+    'cat', 'comm', 'diff', 'cmp', 'sort', 'join', 'paste', 'grep', 'head', 'tail',
+    'wc', 'uniq', 'cut', 'column',
+})
+
 
 class ShellTokenizer:
     """Stateful character scanner with POSIX quote/escape tracking."""
@@ -90,15 +99,64 @@ def has_unquoted_windows_drive_path(segment):
     return False
 
 
-def split_segments(cmd):
+def _balanced_group(cmd, start):
+    """Given the index just past an opening `(`, return (inner_text, index just
+    past the matching `)`), honoring quotes, escapes, and nested parentheses.
+    Returns (None, start) when the group never closes."""
+    depth = 1
+    inner = ShellTokenizer(cmd[start:])
+    while not inner.at_end():
+        if inner.consume_escape():
+            continue
+        if inner.update_quote_state():
+            inner.advance()
+            continue
+        if not inner.in_quotes():
+            if inner.peek() == '(':
+                depth += 1
+            elif inner.peek() == ')':
+                depth -= 1
+                if depth == 0:
+                    return cmd[start:start + inner.pos], start + inner.pos + 1
+        inner.advance()
+    return None, start
+
+
+def _is_plain_data_argument(before, opener, inner):
+    """True when a `<(inner)` group, preceded by the outer segment text `before`,
+    is a plain positional input of a bare data-reading command: a closed group
+    with a simple body, an input `<(` (an output `>(` pipes the command's data
+    into another process), a bare command name (no path), no option that runs
+    or writes its argument, and the group starting its own word."""
+    if inner is None or opener != '<(' or re.search(r"(^|\s)#|\$'|\bcase\b", inner):
+        return False
+    if before and not before[-1].isspace():
+        return False
+    tokens = shell_tokenize(before)
+    while tokens and re.match(r'^\w+=', tokens[0]):
+        tokens.pop(0)
+    if not tokens or tokens[0] not in _DATA_CONSUMERS:
+        return False
+    return not any(re.match(r'^--?(o|output|compress-program|pre|pre-glob)(=|$)', t)
+                   for t in tokens[1:])
+
+
+def split_segments(cmd, process_substitution=False):
     """Split a compound command into segments on &&, ||, ;, |, and bare newline
     operators, only when those operators appear outside quotes -- matching real
     bash, where an unquoted newline terminates a statement exactly like `;`.
     A backslash-newline line continuation is consumed whole by consume_escape()
     before reaching this check, so it stays part of the current segment instead
     of splitting -- exactly like a `\\<newline>`-continued command runs as one
-    statement in bash."""
+    statement in bash.
+
+    With process_substitution=True (the trust check only), a `<(...)` after a
+    data-reading command is split out as its own segments; anything else with
+    `<(` or `>(` ends the split at that point with an untrusted segment, so the
+    call prompts.  The raw-text detectors in enforce.py keep the default and
+    see the command text unchanged."""
     segments = []
+    inner_segments = []
     current = []
     tok = ShellTokenizer(cmd)
 
@@ -115,6 +173,22 @@ def split_segments(cmd):
 
         if not tok.in_quotes():
             two = cmd[tok.pos:tok.pos + 2]
+            if process_substitution and two in ('<(', '>('):
+                # The inner command runs as a real process, so it is judged as
+                # its own segments, while the outer segment keeps a /dev/fd
+                # path where the substitution stood so its argument positions
+                # still match what bash runs.  That is only safe when the outer
+                # command reads the path as data; a command that can run or
+                # interpret it (source, awk -f, bash) or a group that never
+                # closes gets a segment no allowlist trusts, forcing a prompt.
+                inner, end = _balanced_group(cmd, tok.pos + 2)
+                if not _is_plain_data_argument(''.join(current), two, inner):
+                    segments.append(''.join(current))
+                    return segments + inner_segments + [UNPARSEABLE_SEGMENT]
+                inner_segments.extend(split_segments(inner, process_substitution=True))
+                current.append('/dev/fd/63')
+                tok.pos = end
+                continue
             if two in ('&&', '||'):
                 segments.append(''.join(current))
                 current = []
@@ -130,7 +204,7 @@ def split_segments(cmd):
         tok.advance()
 
     segments.append(''.join(current))
-    return segments
+    return segments + inner_segments
 
 
 def extract_substitutions(cmd):

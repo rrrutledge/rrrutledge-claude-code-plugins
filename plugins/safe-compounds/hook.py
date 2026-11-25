@@ -79,7 +79,7 @@ def handle_bash(command):
         log_debug(f"DECISION: Deny (enforce): {reason[:80]}")
         deny(reason)
 
-    segments = split_segments(command)
+    segments = split_segments(command, process_substitution=True)
     non_empty = [s for s in segments if s.strip()]
     if not non_empty:
         defer()
