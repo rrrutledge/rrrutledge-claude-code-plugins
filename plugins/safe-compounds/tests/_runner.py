@@ -49,6 +49,14 @@ def setup_case(root, case):
     """Materialize a case under `root`. Returns (cwd_path, payload dict)."""
     git_dir, plain_dir, home_dir = ensure_fixtures(root)
     cwd_path = git_dir if case.get("cwd", "git") == "git" else plain_dir
+    systmp_dir = os.path.join(root, "systmp")
+    os.makedirs(systmp_dir, exist_ok=True)
+
+    for rel, content in (case.get("systmp_files") or {}).items():
+        full = os.path.join(systmp_dir, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as f:
+            f.write(content)
 
     for rel, content in (case.get("files") or {}).items():
         full = os.path.join(cwd_path, rel)
@@ -63,7 +71,7 @@ def setup_case(root, case):
             f.write(content)
 
     def resolve(value):
-        return value.replace("{CWD}", cwd_path).replace("{HOME}", home_dir)
+        return value.replace("{CWD}", cwd_path).replace("{HOME}", home_dir).replace("{SYSTMP}", systmp_dir)
 
     payload = {"tool_name": case["tool"], "tool_input": {}}
     if "command" in case:

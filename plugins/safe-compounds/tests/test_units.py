@@ -23,6 +23,7 @@ from safe_compounds.commands import (  # noqa: E402
 )
 from safe_compounds.paths import is_safe_read_location  # noqa: E402
 from safe_compounds import paths  # noqa: E402
+from safe_compounds import writes  # noqa: E402
 from safe_compounds import procs  # noqa: E402
 from safe_compounds.mcp import classify_mcp_tool  # noqa: E402
 from safe_compounds.enforce import (  # noqa: E402
@@ -1319,6 +1320,14 @@ class TestCpFromSystemTemp:
         os.environ['CLAUDE_CWD'] = str(tmp_path)
         src = "C:/Windows/System32/drivers/etc/hosts"
         assert check_cwd_file_command(f'cp "{src}" ".tmp/hosts"', "cp") is False
+
+
+class TestSystemTempHarnessArea:
+    def test_scratchpad_under_relocated_claude_tmpdir_is_exempt(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CODE_TMPDIR", str(tmp_path / "relocated"))
+        assert writes._is_system_temp(str(tmp_path / "relocated" / "claude" / "x.py")) is False
+        assert writes._is_system_temp(str(tmp_path / "relocated" / "x.py")) is True
 
 
 class TestTouchRespectsAllowedEditDirs:

@@ -420,6 +420,19 @@ CASES = [
     {"id": "write_home_subdir", "tool": "Write", "file_path": "{HOME}/projects/data.json",
      "cwd": "plain", "expect": "PROMPT"},
 
+    # A new file in system temp is redirected to .tmp/. Claude Code's own area there, files
+    # that already exist, and anything an earlier allow rule covers are left alone.
+    {"id": "write_system_temp_new", "tool": "Write", "file_path": "{SYSTMP}/site-graphics/render.py",
+     "cwd": "plain", "expect": "BLOCK"},
+    {"id": "write_posix_tmp_new", "tool": "Write", "file_path": "/tmp/safe-compounds-no-such-dir/render.py",
+     "cwd": "plain", "expect": "BLOCK"},
+    {"id": "edit_system_temp_existing_file", "tool": "Edit", "file_path": "{SYSTMP}/site-graphics/render.py",
+     "systmp_files": {"site-graphics/render.py": "x"}, "cwd": "plain", "expect": "PROMPT"},
+    {"id": "write_system_temp_claude_scratchpad", "tool": "Write",
+     "file_path": "{SYSTMP}/claude/proj/session/scratchpad/render.py", "cwd": "plain", "expect": "PROMPT"},
+    {"id": "write_system_temp_dot_tmp", "tool": "Write", "file_path": "{SYSTMP}/work/.tmp/render.py",
+     "cwd": "plain", "expect": "ALLOW"},
+
     # --- PowerShell tool ----------------------------------------------------
     {"id": "powershell_tool", "tool": "PowerShell", "command": "Get-Process", "expect": "BLOCK"},
 ]
