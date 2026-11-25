@@ -208,7 +208,7 @@ Good news can brighten a close, but it modulates warmth *within* the relationshi
   - **Real voluntary work of their own earns the warm treatment anyway** - when they've contributed real voluntary work of their own (submitting a talk, volunteering real effort, agreeing to take on a role) rather than simply responding to or coordinating your ask, every message to them while they're doing that work, whatever its subject, keeps the warm register instead of the neutral close, with length and thanks governed by **Brevity** and **Light, genuine appreciation**, even though the relationship otherwise stays an exception (execute per the Core voice thanking-a-contributor rule).
     Whether someone reads as an individual acting personally is itself the signal - their own tone in reaching out (casual, personal, no corporate polish) earns this same warm, personal thanks even when the work was paid: "Thanks, Marco, for the awesome design!"
 
-### Brevity (overrides everything else)
+### Brevity (overrides everything but a bad-news response)
 
 Messages are **short**. Default to the fewest sentences that carry the point.
 Before finalizing, delete any sentence that restates something already clear from context, offers unrequested help or a next step, or softens an already-polite message further.
@@ -352,9 +352,9 @@ The specifics that most often separate a message that reads as Russell's from on
   A soft commitment ("I'll take a look") already signals no guarantee; cut a trailing caveat like "though I can't guarantee I'll reach out" and close instead with a light 👍 if more warmth is wanted.
   A firm, already-decided commitment doesn't need a vague timing word tacked on either - "We'll get the post up" states it plainly; appending "shortly" gives no timeframe a reader could act on, so it reads as less immediate.
 - **When someone mentions something negative, match your response to its role in the message:**
-  Bad news always gets a response, even a passing mention, since silence on it reads as insensitive.
+  Bad news always gets a response, even a passing mention and even where another rule calls a shorter reply complete, since silence on it reads as insensitive.
   - **Personal or career bad news (the main point):** acknowledge briefly ("sorry to hear it") and follow with a genuine check-in ("How are things going for you now?"). Don't narrate the impact on others.
-  - **Passing bad news no other case covers:** add one short line of sympathy or a well-wish after your answer and ahead of any closing thanks, even where another rule calls the shorter reply complete.
+  - **Passing bad news no other case covers:** add one short line of sympathy or a well-wish after your answer and ahead of any closing thanks.
   - **A stated constraint or caveat** (e.g. "budget climate is tough"): release the pressure plainly ("Either way is fine") and stop; don't echo the framing back.
     When an intermediary relays why a third party is silent (they're busy), name that reason and invite them to reach out once it clears — don't introduce a new or workaround ask.
     Relaying that someone else said the recipient never got back to them goes as a neutral checking question ("Did [name] reach out to you about it?"), so the recipient isn't put on the spot by the complaint itself.
