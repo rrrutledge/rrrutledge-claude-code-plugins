@@ -60,7 +60,7 @@ Git carries code changes: a worker that changes a repo opens its PR as usual and
 | Situation | What the session does | Shows as |
 |---|---|---|
 | Worker is working | Works. | `working` |
-| Worker needs something only Russell can give | Asks him and ends its turn. | `blocked`, the marker |
+| Worker needs something only Russell can give | Asks him and ends its turn; a sign-in follows `WORKER_CONTRACT` in `spawn-session.py`. | `blocked`, the marker |
 | Worker is done | Writes its result, runs `worker-done.py`. | Gone |
 | Coordinator is waiting on workers | Seals, then closes with `--pause`. | Off the live list |
 | Coordinator has everything staged for Russell | Asks for "send it" and ends its turn. | `blocked`, the marker |

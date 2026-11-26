@@ -25,7 +25,8 @@ Phone mode being on is Russell's say-so to park, so run these steps without aski
 
 1. **Check the switch** with `phone_mode.py status`.
    When it prints `off`, handle the sign-in as usual.
-2. **Write the card text** to a `.tmp/` file: what the work is and its source link, the sign-in URL, how far it got, the next step, and any resume command this session was handed to run when done.
+2. **Write the card text** to a `.tmp/` file: what the work is and its source link, the sign-in URL, how far it got, and the next step, an item CLEAR the sign-in blocks included.
+   Add what the session that finishes the card needs from this one: a resume instruction this session was handed, copied whole with absolute paths, and a `Recurs:` card's current Start, which its next occurrence counts from.
 3. **Park the work.**
    Each deliverable has one card, so a session working from a Trello card, or whose work an open card already tracks, parks that card:
 
@@ -34,10 +35,11 @@ Phone mode being on is Russell's say-so to park, so run these steps without aski
    Work with no card gets a new one on the board it belongs to per `trello-boards.yaml` (the `trello-outreach` skill's board registry), Personal Follow-Up by default:
 
    `phone_mode.py park --board <board id> --name "<card name>" --desc-file <file>`
-4. **Close up.**
-   Close the browser tabs this session opened (browser-chauffeur's `chauffeur.py --close-owned`), then:
+4. **Close up**, by the kind of session this is.
    - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d).
-     On a Trello item, the park is the CLEAR.
-   - **A session Russell is talking to right now**, a drainer worker included, tells him what it parked and closes by the normal close rules.
+     On a Trello item, the park is the CLEAR, and a CLEAR the sign-in blocks waits on the card.
+   - **A session Russell is talking to right now**, a drainer worker included, tells him what it parked, then closes with `session-mgr:close` once nothing else in the conversation is open.
    - **A drainer worker on its own** closes per worker-core "Close silently".
    - **Any other session** finishes the way its brief or worker contract names, and with `session-mgr:close` when it names none.
+
+   A session closes the browser tabs it opened (browser-chauffeur's `chauffeur.py --close-owned`) just before it closes.

@@ -1,4 +1,4 @@
-# drainer browser gate - report HELP_NEEDED, not a silent stall
+# drainer browser gate - a gate only Russell can clear
 
 Read this when browser-chauffeur work in this session hits a sign-in or other possible gate.
 `<skill>` means this drainer skill's root folder, the same absolute path your seed prompt gave you for `worker-core.md`.

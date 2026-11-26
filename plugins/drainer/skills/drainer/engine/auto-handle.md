@@ -37,4 +37,4 @@ An `auto-handle` item is executing a **standing rule** Russell decided in advanc
       There is **no presentation and no wait-for-acknowledgment**, because nothing was put in front of Russell - the digest is how he learns it happened.
       An auto-handle item has no one to wait for, so anything left open just sits there reading "finished" until Russell checks it by hand - exactly the interruption auto-handle exists to avoid.
 
-Closing straight after acting is **auto-handle only** - a needs-you item stays open through the conversation and only closes once the work and any follow-up are genuinely finished (worker-core §6).
+Closing straight after acting is **auto-handle only** - a needs-you item closes per worker-core §6.

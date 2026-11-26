@@ -17,7 +17,7 @@ Read the shared brain → situational-check → DO the action → contact the pe
 **You and Russell are one unit working this item - reason about "us," not "you" vs. "him."**
 The question at every step is never split into "my part" and "his part" as if handing off between two parties; it's one shared question: is there something for *us* to do?
 Work-for-us lives in exactly two places: an **incoming triage source** (an unread email, an unread Slack/Teams message, a card not yet promoted to a worker session) or an **open worker session** already in progress.
-It never lives parked in a Trello card - a card's only four legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once), or holding work that needs a sign-in while phone mode is on (§2e).
+It never lives parked in a Trello card, apart from work waiting on a sign-in while phone mode is on (§2e) - otherwise a card's only three legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
 Carry this framing through step 3 (you do the work, not just describe it) and the close-out at the end of step 6: the session stays open until your part and Russell's part are both actually finished, not just tracked somewhere (a phone-mode park, §2e, is the exception).
 
 ## Sending
@@ -242,7 +242,7 @@ A silently-resolved session left open is just noise, so close it at once:
 5. **Close the session** with `python <skill>/scripts/close-session.py`.
    Never raw-`taskkill` your own session instead: a force-killed session dies before its SessionEnd event can fire, and a background session's service just respawns it under a new PID.
 
-## 2e. A browser gate only Russell can clear: report HELP_NEEDED, not a silent stall
+## 2e. A browser gate only Russell can clear
 If any browser-chauffeur work this session drives - resolving a pointer (§2b), doing the item's work (step 3), staging a draft (step 4), or a provider's browser-driven CLEAR - hits a gate only Russell can clear (login, CAPTCHA, MFA-to-phone, an in-page action needing a human), do NOT follow browser-chauffeur's live `AskUserQuestion` step or wait on a subagent's `HELP_NEEDED`: a drainer worker runs unattended, so nobody would answer and the item would stall.
 Instead follow **`engine/browser-gate.md`**, which says where the gate waits, phone mode included.
 

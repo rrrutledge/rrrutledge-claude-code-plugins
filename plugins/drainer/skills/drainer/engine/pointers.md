@@ -26,7 +26,7 @@ The test is whether Claude can get the content, not whether a login exists: brow
 **A login wall on a site the persistent browser can be signed into is a gate, not a dead end.**
 Open the page in browser-chauffeur, and when it lands on a sign-in, follow `engine/browser-gate.md`.
 When that file keeps this session open, Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond.
-**The one time you don't reach that re-triage is content with no browser path at all** - it lives in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
+**Content with no browser path at all** - it lives in an app or on a phone - stays **needs-you**: hand the user the direct deep link.
 **A notice with no link is still a pointer.**
 "A new document/message/statement is available, log in to view" has no URL to follow, so take the destination from the sender's well-known site.
 Open it in browser-chauffeur and follow the sign-in gate above.

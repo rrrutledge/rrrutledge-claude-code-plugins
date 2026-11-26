@@ -104,7 +104,7 @@ Here it doesn't - the task is physical, so **Russell** does it, and your job is 
    If the item has a `repeatAfter`, say so as you close out ("this'll come back in about a week") - the Finished step queues that next one automatically (see REPEAT-AFTER-COMPLETION).
    If he says now isn't actually a good moment after all before step 3 ever ran (interrupted, the gap turned out to be needed for something else), leave the event exactly as it is, still queued, so it naturally comes back the next time a real gap opens.
    If step 3 already ran and then something interrupted him, still finish it (CLEAR "finished" now) rather than leaving a started-but-never-finished record sitting on the calendar.
-5. **Close out per the standard rules** (`../engine/worker-core.md` §6's close conditions) - this session stays open exactly as long as any other needs-you session would: until his part is genuinely done.
+5. **Close out per the standard rules** (`../engine/worker-core.md` §6's close conditions) - this session stays open exactly as long as any other needs-you session would.
 
 ## CLEAR
 Two ordinary-flow steps plus a recurring-only backlog sweep - everything acts on `eventId` from CAPTURE, and **nothing here ever deletes or archives the task itself**:
