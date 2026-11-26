@@ -78,7 +78,7 @@ The session runs rooted in the plugins repo clone, from the brief the outcome co
    A generic existing bullet that technically covers the edit still leaves the specific pattern unnamed enough to go unapplied, so fold in or sharpen a bullet even when a broader rule already brushes against the same case.
    Add a new top-level bullet **only** once that whole-file search has genuinely come up empty.
    **State the rule crisply as a single imperative bullet: a bold lead phrase plus one sentence, no before/after quote.**
-   Add a short concrete pointer only when the rule is genuinely unclear without one, built from invented names and details; default to none.
+   Add a short pointer only when the rule is genuinely unclear without one, written as a description of the situation with invented names and details so whoever drafts a later message under the rule chooses its wording; default to none.
    The goal is fewer, broader, crisper rules.
 4. **Open one PR carrying the rule changes.**
    Branch from `main` in the clone, never editing the installed snapshot under `~/.claude/plugins/`, which is thrown away on the next plugin update.
