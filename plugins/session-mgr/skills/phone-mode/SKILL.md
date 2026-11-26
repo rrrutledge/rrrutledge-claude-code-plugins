@@ -14,6 +14,7 @@ Below, `phone_mode.py` stands for `python "${CLAUDE_PLUGIN_ROOT}/skills/phone-mo
 Run the command that matches what Russell says.
 
 - **"Phone mode on" or "I'm on my phone":** run `phone_mode.py on` with a 600000 ms timeout, then tell Russell what it printed.
+  When this session is itself waiting on a sign-in, park it next.
 - **"Phone mode off" or "I'm back at my computer":** run `phone_mode.py off` and tell him.
   Each parked card comes up within the hour it was given.
 
@@ -27,6 +28,7 @@ Phone mode being on is Russell's say-so to park, so run these steps without aski
    When it prints `off`, handle the sign-in as usual.
 2. **Write the card text** to a `.tmp/` file: what the work is and its source link, the sign-in URL, how far it got, and the next step, an item CLEAR the sign-in blocks included.
    Add what the session that finishes the card needs from this one: a resume instruction this session was handed, copied whole with absolute paths, and a `Recurs:` card's current Start, which its next occurrence counts from.
+   Copy each file that session needs into the main checkout's `.tmp/`, which outlives this session's worktree, and name it in the text.
 3. **Park the work.**
    Each deliverable has one card, so a session working from a Trello card, or whose work an open card already tracks, parks that card:
 
@@ -38,7 +40,7 @@ Phone mode being on is Russell's say-so to park, so run these steps without aski
 4. **Close up**, by the kind of session this is.
    - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d).
      On a Trello item, the park is the CLEAR, and a CLEAR the sign-in blocks waits on the card.
-   - **A session Russell is talking to right now**, a drainer worker included, tells him what it parked, then closes with `session-mgr:close` once nothing else in the conversation is open.
+   - **A session Russell is talking to right now**, a drainer worker included, tells him what it parked, then, once nothing else in the conversation is open, closes the way its worker contract names, and with `session-mgr:close` when it has none.
    - **A drainer worker on its own** closes per worker-core "Close silently".
    - **Any other session** finishes the way its brief or worker contract names, and with `session-mgr:close` when it names none.
 

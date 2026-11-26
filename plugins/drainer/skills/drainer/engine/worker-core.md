@@ -230,7 +230,7 @@ Once you've cleared under this section, step 6 is a no-op for this item - nothin
 Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work when your source cleared at capture (§2), an item already over at its source when you wake from a wait (§2), a phone-mode park (§2e), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), or the item is a Trello card that already sits on a terminal list or is archived.
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), a phone-mode park already settled its CLEAR (§2e), or the item is a Trello card that already sits on a terminal list or is archived.
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
