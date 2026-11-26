@@ -7,10 +7,12 @@ live in CLAUDE.local.md. This module provides the generic API operations.
 
 import ctypes
 import json
+import mimetypes
 import os
 import re
 import urllib.request
 import urllib.parse
+import uuid
 from datetime import datetime, timezone
 
 BASE_URL = 'https://api.trello.com/1'
@@ -124,7 +126,8 @@ def get_trello_session():
     return api_key, token
 
 
-def trello_request(method, path, session, params=None, body=None):
+def trello_request(method, path, session, params=None, body=None, upload=None):
+    """`upload` is a ready-made (data, content_type) request body, sent in place of a form `body`."""
     archive = _archive_target(method, path, params, body)
     if archive:
         _refuse_unfinished_archive(archive, session)
@@ -142,7 +145,10 @@ def trello_request(method, path, session, params=None, body=None):
         url = f'{url}?{urllib.parse.urlencode(query)}'
         data = urllib.parse.urlencode(body).encode() if body else b''
 
-    req = urllib.request.Request(url, data=data, method=method)
+    headers = {}
+    if upload:
+        data, headers['Content-Type'] = upload
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
         raw = response.read().decode()
         if raw:
@@ -241,6 +247,37 @@ def add_comment(card_id, text, session):
     /actions/comments request."""
     return trello_request('POST', f'/cards/{card_id}/actions/comments', session,
                           body={'text': text})
+
+
+def _multipart_file(filename, content, fields):
+    """Encode text `fields` plus one `file` part as multipart/form-data; returns (data, content_type)."""
+    boundary = uuid.uuid4().hex
+    safe_name = filename.replace('\\', '\\\\').replace('"', '\\"').replace('\r', ' ').replace('\n', ' ')
+    mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+             for key, value in fields.items()]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
+                 f'Content-Type: {mime}\r\n\r\n'.encode())
+    parts.append(content)
+    parts.append(f'\r\n--{boundary}--\r\n'.encode())
+    return b''.join(parts), f'multipart/form-data; boundary={boundary}'
+
+
+def add_attachment(card_id, file_path, name, session):
+    """Upload a local file to a card as an attachment called `name`, then read it back. Returns the
+    stored attachment, and raises RuntimeError when its name or size differs from what was sent."""
+    with open(file_path, 'rb') as f:
+        content = f.read()
+    created = trello_request('POST', f'/cards/{card_id}/attachments', session,
+                             upload=_multipart_file(os.path.basename(file_path), content, {'name': name}))
+    stored = trello_request('GET', f'/cards/{card_id}/attachments/{created["id"]}', session,
+                            params={'fields': 'name,bytes,url'})
+    if stored.get('name') != name or stored.get('bytes') != len(content):
+        raise RuntimeError(
+            f"Attachment {created['id']} on card {card_id} read back as name {stored.get('name')!r}, "
+            f"{stored.get('bytes')} bytes; sent {name!r}, {len(content)} bytes."
+        )
+    return stored
 
 
 def get_board_cards(board_id, session, fields=None):
