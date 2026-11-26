@@ -17,6 +17,7 @@ Browser work that needs no sign-in, or runs on a page already signed in, carries
 
 The only state is whether phone mode is on, so it lives in one marker file, `~/.claude/phone-mode`: present means on.
 A session reaching a sign-in reads it to decide between parking and waiting for Russell.
+It's a file because a running process keeps the environment it started with, so only a file reaches sessions and the poller already running when the switch flips.
 The switch has four parts.
 
 - **One script does the mechanics:** `plugins/session-mgr/scripts/phone_mode.py`.
