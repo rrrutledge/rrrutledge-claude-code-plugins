@@ -641,6 +641,7 @@ These registers reach outside the palette, and most also stack past the one-emoj
 - Plain framing over clever phrasing — drop quoted catchphrases, and state what a commitment costs plainly rather than selling how small or easy it is.
 - **Don't pitch why someone or their org is a good fit when asking them to participate.**
   Trust the context; the ask stands on its own — cut the "your experience in A, B, C is exactly what we need" list.
+  In a reply answering their questions about taking part, also cut a sentence saying the project draws on their org's own work, since it pitches fit even when a source backs it.
 - **Cold outreach for a commitment: open with the soft ask, not the hard one.**
   Gauge interest and invite a conversation ("is this of interest?", "can we talk?"); name the commitment lightly and later, after they've engaged.
   Ask one thing, not a menu of next steps.
