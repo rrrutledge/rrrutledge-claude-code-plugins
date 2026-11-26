@@ -72,7 +72,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.dirname(SKILL_DIR))
 sys.path.insert(0, SCRIPT_DIR)
 from provider_base import (run_node, run_subprocess_bounded, NO_WINDOW, ProviderError, ProviderBase,  # noqa: E402
                            spawn_bg, spawn_silent, write_receipt, prompt_seed, session_name, claude_agents,
-                           duplicate_check_section, paused_sessions, holder_resolver,
+                           duplicate_check_section, paused_sessions, holder_resolver, live_agent, session_address, send_note,
                            band_rank, slug, self_directed, received_dt,
                            load_providers as base_load_providers, load_seen,
                            resolve_skill_dirs, session_mgr_script, bg_session)  # subprocess helpers + typed provider failure + session-mgr's background-session launcher + self-addressed predicate + shared adapter loader + seen-state reader + worker skill-dir resolution + background-session stop and transcript lookup
@@ -1659,40 +1659,6 @@ def _worker_items(runtime_dir, ids):
             yield hits, rec
 
 
-FORWARD_PROMPT = """Call the SendMessage tool exactly once, then stop.
-Its `to` is the exact text between the two markers below, copied character for character. Copy every backslash exactly as it appears; add, remove, or escape none.
->>>{to}<<<
-Its `message` is the exact text between these two markers, copied character for character:
->>>{message}<<<
-"""
-
-
-def _live_agent(receipt, agents):
-    """The live `claude agents` entry a worker receipt (short id or full guid) names, or None."""
-    return next((a for a in agents or []
-                 if receipt in (a.get("id"), a.get("sessionId")) and a.get("pid")), None)
-
-
-def session_address(receipt, agents):
-    """`(messaging pipe, config dir)` of the live session a worker receipt names, or None.
-
-    A session's cross-session inbox is the named pipe in its `<config dir>/sessions/<pid>.json`. That
-    pipe, as a `uds:` address, is the one SendMessage target that names exactly one session: titles
-    can repeat (two `Slack: @mention in #channel` workers), and SendMessage takes no session id."""
-    a = _live_agent(receipt, agents)
-    if not a:
-        return None
-    root = os.path.expanduser(a.get("configDir") or os.path.join("~", ".claude"))
-    try:
-        with open(os.path.join(root, "sessions", f"{a['pid']}.json"), encoding="utf-8") as f:
-            rec = json.load(f) or {}
-    except (OSError, ValueError):
-        return None
-    pipe = rec.get("messagingSocketPath")
-    ok = pipe and rec.get("sessionId") == a.get("sessionId")
-    return (pipe, root if a.get("configDir") else None) if ok else None
-
-
 def forward_note(iid, json_file, bucket):
     """The message a routed item's live worker receives. Built only from code-derived values (the item
     id, its path, its bucket), never the item's own text, so the delivery call reads no untrusted content.
@@ -1705,63 +1671,6 @@ def forward_note(iid, json_file, bucket):
             "Handle it as part of this conversation under worker-core before you close: fold it into the "
             "reply you are drafting, or work it as its own ask. This session is now its only tracker, and "
             "its source is still uncleared: run its provider's CLEAR on that item when you finish it.")
-
-
-def _forward_delivered(stream, to, message):
-    """True only when the delivery call's stream-json output shows a SendMessage call carrying exactly
-    `to` and `message` whose tool result reports success. Checking the call's own input means a model
-    that altered the address or the text never counts as a delivery."""
-    calls = set()
-    for line in (stream or "").splitlines():
-        try:
-            event = json.loads(line)
-        except ValueError:
-            continue
-        msg = event.get("message") if isinstance(event, dict) else None
-        content = msg.get("content") if isinstance(msg, dict) else None  # a status event's message is text
-        for block in content if isinstance(content, list) else []:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_use" and block.get("name") == "SendMessage":
-                args = block.get("input") or {}
-                if args.get("to") == to and (args.get("message") or "").strip() == message.strip():
-                    calls.add(block.get("id"))
-            elif block.get("type") == "tool_result" and block.get("tool_use_id") in calls:
-                result = block.get("content")
-                if isinstance(result, list):
-                    result = "".join(r.get("text", "") for r in result if isinstance(r, dict))
-                try:
-                    if json.loads(result or "{}").get("success") is True:
-                        return True
-                except (ValueError, AttributeError, TypeError):  # a result shape this check doesn't know
-                    continue
-    return False
-
-
-def forward_to_worker(address, message, repo):
-    """Deliver `message` to the live session at `address` (session_address's pair). A script has no way
-    to post to a session's inbox itself, so one `claude -p` call holding only the SendMessage tool makes
-    the send, under the account that holds the session and in the manual permission mode workers run in
-    (a peer in another mode holds the message for approval). No settings sources, so no hooks run. True
-    only on a verified delivery (_forward_delivered); any failure returns False and the caller launches
-    a worker as before."""
-    pipe, config_dir = address
-    to = f"uds:{pipe}"
-    claude = shutil.which("claude") or "claude"
-    env = {**os.environ, "CLAUDE_CONFIG_DIR": config_dir} if config_dir else None
-    try:
-        res = run_subprocess_bounded(
-            # Delivery is one SendMessage call with no judgment in it, so the smallest model makes it.
-            [claude, "-p", "--model", "haiku", "--permission-mode", "manual",
-             "--output-format", "stream-json", "--verbose", "--setting-sources", "",
-             "--allowedTools", "SendMessage", "--tools", "SendMessage"],
-            input=FORWARD_PROMPT.format(to=to, message=message),
-            timeout=90, cwd=repo, env=env, creationflags=NO_WINDOW)
-    except OSError:
-        return False
-    if getattr(res, "timed_out", False) or res.returncode != 0:
-        return False
-    return _forward_delivered(res.stdout, to, message)
 
 
 def _failed_forward(runtime_dir, iid):
@@ -1789,7 +1698,7 @@ def route_to_live_worker(it, provider, key, holder, agents, runtime_dir, repo):
     # A screen-flagged item is never routed, so only the owner-directive stamp a launch writes applies.
     _stamp_item_fields(json_file, conversationKey=key,
                        **({"selfAuthenticated": True} if it.get("_selfAuthenticated") else {}))
-    if not forward_to_worker(address, forward_note(iid, json_file, it["_bucket"]), repo):
+    if not send_note(address, forward_note(iid, json_file, it["_bucket"]), repo):
         print(f"{iid}: delivery to the live worker on its conversation failed; launching a worker instead.")
         _stamp_item_fields(json_file, forwardFailedTo=holder)  # read back by _failed_forward next cycle
         return False
@@ -2065,7 +1974,7 @@ def close_finished_workers(runtime_dir, providers, agents, dry_run=False):
     many workers it stopped (or would stop, under `dry_run`)."""
     held = {}
     for hits, rec in _worker_items(runtime_dir, live_session_ids(agents)):
-        agent = next(filter(None, (_live_agent(i, agents) for i, depth in reversed(hits) if not depth)), None)
+        agent = next(filter(None, (live_agent(i, agents) for i, depth in reversed(hits) if not depth)), None)
         if agent and agent.get("sessionId") and rec.get("id"):
             held.setdefault(agent["sessionId"], (agent, {}))[1][rec["id"]] = rec
     finished = {}
@@ -2803,7 +2712,7 @@ def dispatch_pass(cfg, prov, repo, config_repo, items, channel=None, now=False, 
                 return True
             # The hand-over failed, so this item gets its own worker; its seed names the live session
             # already on the conversation, so the two settle which one keeps it (worker-core §2).
-            it["_conversationHolder"] = ((_live_agent(holder, agents) or {}).get("name") or "").strip() or holder
+            it["_conversationHolder"] = ((live_agent(holder, agents) or {}).get("name") or "").strip() or holder
         return False
 
     # auto-handle first: a worker that executes a standing rule and clears the source immediately. Not

@@ -6,6 +6,11 @@ Read this when browser-chauffeur work in this session hits a sign-in or other po
 Any browser-chauffeur work this session drives - resolving a pointer's real content (`engine/pointers.md`), doing the item's work (worker-core step 3), staging a draft via message-draft (worker-core step 4), or a provider's browser-driven CLEAR - can hit a gate browser-chauffeur's own contract already defines (see browser-chauffeur's SKILL.md, **User Intervention** and **Running in a subagent → The return contract**).
 
 Before reporting, apply browser-chauffeur's **Email-delivered MFA codes** and **Readable mailboxes**.
+
+**A sign-in that remains goes through phone mode first.**
+Run all four steps under "Park a sign-in" in session-mgr's `/session-mgr:phone-mode`, the status check included.
+When that check prints `off`, and for every other kind of gate, continue here.
+
 Report as `HELP_NEEDED` only what remains, naming the step precisely in `reason` (including a fetch that still failed after its one retry), in this session's own open tab instead of following browser-chauffeur's `AskUserQuestion` step or waiting on a `HELP_NEEDED` result from a subagent you spawned (message-draft's teams mode runs one, per worker-core step 4).
 Both of those assume someone is watching this session live to answer.
 A drainer worker runs unattended, so nobody sees the prompt, the session parks on a question nobody will ever answer, and the item sits stuck with no signal Russell can find.
