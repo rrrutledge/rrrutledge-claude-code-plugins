@@ -188,10 +188,11 @@ Settle with that session before any other work, by the rule in `duplicate-sessio
 When a message wakes this session after it sat waiting, first run `date` and re-read the item's source as it stands now: for a card, its list, its Start, and its newest comments.
 What you last presented is as old as that wait, so a date you called upcoming may have passed and another session may have finished the work.
 Then do what the waking message asks.
-When it asks nothing beyond the item, and another session has since archived the card or moved it to a terminal list, close per "Close silently".
+When it asks nothing beyond the item, leaves Russell no step of his own (below), and another session has since archived the card or moved it to a terminal list, close per "Close silently".
 When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
-**A launched session's report with a `Russell still to do:` line leaves that step open in your session.**
-Present each such step to him in a visible message, with what he needs to do it, and stay open until he confirms it, whatever the card's state.
+**A launched session's report with a `Russell still to do:` line hands that step to your session.**
+Present each one to him in a visible message, set up per §3's "An ask only his own hands can finish".
+It is open work on this item: hold the CLEAR and stay open until he confirms it, even on a card already finished or archived.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
@@ -398,6 +399,7 @@ Decide by who's holding the conversation:
 The test: **if my next step cannot start until a session I launched or a named peer finishes, I hand that session the resume command and close paused now.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
 A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
+A step the report hands back on a `Russell still to do:` line is yours from the wake (§2).
 Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
