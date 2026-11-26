@@ -1,33 +1,39 @@
 #!/usr/bin/env python
-"""Merge a rrrutledge-claude-code-plugins PR and roll it out to this machine's Claude Code plugin cache.
+"""Merge a PR in any GitHub repo and sync that repo's main checkout; for the plugins repo, also roll the
+change out to this machine's Claude Code plugin cache.
 
 This is the whole ship-plugin chain; its SKILL.md covers the two calls a script can't make for itself.
 Every step checks the PR's current state first, so rerunning after any stop resumes where it left off.
 
-  1. Resolve the PR (`--pr`, else the open PR for the current branch) and print its title and the
-     plugins it touches.
+  1. Resolve the PR (`--pr`, else the open PR for the current branch) and print its title and, in the
+     plugins repo, the plugins it touches.
   2. If the session sits in a worktree on the PR's branch, require it clean and pushed, since the
      worktree is discarded after the merge.
-  3. Mark a draft ready, merge `main` into the branch on GitHub if it's behind, and wait for checks.
+  3. Mark a draft ready, merge the base branch into the PR branch on GitHub if it's behind, and wait
+     for checks.
   4. Squash-merge (falling back to `--auto` when branch protection holds it), wait for the merge, and
      delete the remote branch.
-  5. From inside a worktree, stop with exit code 3 and an `EXIT_WORKTREE` line: the pull writes to the
+  5. From inside a worktree, stop with exit code 3 and an `EXIT_WORKTREE` line: the sync writes to the
      main checkout, which a worktree-isolated session leaves to be rerun from there. The line is
      always `keep`: the session leaves without deleting anything, and step 6 removes the worktree.
   6. Remove each clean worktree on the merged branch and the local branch itself.
-  7. Wait for the version-bump run on the merge commit, then fast-forward `main` in the main checkout.
-  8. Refresh the marketplace and `claude plugin update` every installed plugin at its recorded scope,
-     then run the plugin-specific post-steps (Node deps, browser-chauffeur shim, drainer launcher) and
-     install Node dependencies in the local clone, where the drainer hands workers their skill paths.
-  9. Print each touched plugin's new version and how the change goes live.
+  7. In the plugins repo, wait for the version-bump run on the merge commit.
+  8. Fast-forward the base branch in the main checkout. Fast-forward only, so uncommitted work there
+     stays in place: when the checkout is on the base branch it pulls (git refuses, and this stops, if
+     the pull would touch a file with local changes); when it's on another branch it moves the base
+     branch ref alone and leaves the checkout as it is.
+  9. In the plugins repo, refresh the marketplace and `claude plugin update` every installed plugin at
+     its recorded scope, then run the plugin-specific post-steps (Node deps, browser-chauffeur shim,
+     drainer launcher) and install Node dependencies in the local clone, where the drainer hands
+     workers their skill paths. Print each touched plugin's new version and how the change goes live.
 
 Usage:
   python ship.py [--pr <n>] [--repo <path>] [--admin]   the whole chain
-  python ship.py --sync-only                             step 8 alone
+  python ship.py --sync-only                             step 9 alone
 
 `--admin` passes through to `gh pr merge` to override branch protection.
-The repo is `--repo` if given, else the main checkout of the git repo holding the current directory,
-provided its origin is this repo.
+The repo is the main checkout of `--repo` if given, else of the git repo holding the current directory;
+its `origin` remote names the GitHub repo the PR lives in.
 
 Exit codes: 0 shipped, 1 a line starting `ERR` needs attention, 3 `EXIT_WORKTREE` (see step 5).
 """
@@ -41,7 +47,8 @@ import time
 from pathlib import Path
 
 MARKETPLACE = 'rrrutledge-claude-code-plugins'
-GH_REPO = 'rrrutledge/rrrutledge-claude-code-plugins'
+PLUGINS_REPO = 'rrrutledge/rrrutledge-claude-code-plugins'
+GH_REPO = PLUGINS_REPO  # the PR's repo; ship() sets it from the checkout's origin
 BUMP_WORKFLOW = 'version-bump.yml'
 HOME = Path.home()
 PLUGINS_HOME = HOME / '.claude' / 'plugins'
@@ -113,11 +120,16 @@ def wait_for(probe, timeout, what):
 
 # --- where the session is ---------------------------------------------------------------------------
 
-def origin_is_this_repo(url):
+def github_slug(url):
+    """`owner/repo` (lowercased) from a GitHub remote URL in https or ssh form, else None."""
     url = url.strip().lower()
     if url.endswith('.git'):
         url = url[:-4]
-    return url.endswith('/' + GH_REPO) or url.endswith(':' + GH_REPO)
+    for prefix in ('https://github.com/', 'http://github.com/', 'git@github.com:', 'ssh://git@github.com/'):
+        if url.startswith(prefix):
+            parts = url[len(prefix):].strip('/').split('/')
+            return '/'.join(parts) if len(parts) == 2 and all(parts) else None
+    return None
 
 
 def worktree_entries(porcelain):
@@ -132,14 +144,14 @@ def worktree_entries(porcelain):
 
 
 def resolve_repo(explicit):
-    if explicit:
-        return Path(explicit)
-    entries = worktree_entries(git('worktree', 'list', '--porcelain') or '')
+    """(main checkout path, GitHub `owner/repo`) for `explicit` or the current directory, or
+    (None, None) when it isn't a checkout whose origin is on GitHub."""
+    entries = worktree_entries(git(*(['-C', explicit] if explicit else []), 'worktree', 'list', '--porcelain') or '')
     if not entries:
-        return None
+        return None, None
     path = entries[0]['path']
-    origin = git('-C', path, 'remote', 'get-url', 'origin')
-    return Path(path) if origin and origin_is_this_repo(origin) else None
+    slug = github_slug(git('-C', path, 'remote', 'get-url', 'origin') or '')
+    return (Path(path), slug) if slug else (None, None)
 
 
 def linked_worktree_branch():
@@ -276,12 +288,18 @@ def bump_run(sha):
     return runs[0].get('conclusion') or 'unknown'
 
 
-def pull_main(repo):
-    for cmd in (['fetch', 'origin'], ['checkout', 'main'], ['pull', '--ff-only', 'origin', 'main']):
-        r = run(['git', *cmd], cwd=str(repo))
-        if r.returncode != 0:
-            raise ShipError(f'pulling main in {repo}: git {" ".join(cmd)}: {last_line(r)}')
-    print(f'pulled: main in {repo}')
+def sync_base(repo, base):
+    """Fast-forward `base` in the main checkout without disturbing uncommitted work there."""
+    current = git('rev-parse', '--abbrev-ref', 'HEAD', cwd=str(repo))
+    on_base = current == base
+    cmd = ['pull', '--ff-only', 'origin', base] if on_base else ['fetch', 'origin', f'{base}:{base}']
+    r = run(['git', *cmd], cwd=str(repo))
+    if r.returncode != 0:
+        raise ShipError(f'syncing {base} in {repo}: git {" ".join(cmd)}: {last_line(r)}')
+    if on_base:
+        print(f'pulled: {base} in {repo}')
+    else:
+        print(f'pulled: {base} in {repo} (the checkout stays on {current})')
 
 
 def plugin_version(repo, name):
@@ -445,13 +463,17 @@ def print_sync(rows):
 # --- entry point ------------------------------------------------------------------------------------
 
 def ship(number, repo_arg, admin):
-    repo = resolve_repo(repo_arg)
+    global GH_REPO
+    repo, slug = resolve_repo(repo_arg)
     if not repo:
-        raise ShipError(f'run from a checkout of {GH_REPO}, or pass --repo <path>')
+        raise ShipError('run from a checkout of the PR\'s GitHub repo, or pass --repo <path>')
+    GH_REPO = slug
+    is_plugins = slug == PLUGINS_REPO
     pr = resolve_pr(number)
-    touched = plugins_touched([f['path'] for f in pr.get('files', [])])
+    touched = plugins_touched([f['path'] for f in pr.get('files', [])]) if is_plugins else []
     print(f'PR #{pr["number"]}: {pr["title"]}')
-    print(f'plugins: {", ".join(touched) or "none"}')
+    if is_plugins:
+        print(f'plugins: {", ".join(touched) or "none"}')
     in_worktree = linked_worktree_branch()
 
     if pr['state'] == 'OPEN':
@@ -467,14 +489,17 @@ def ship(number, repo_arg, admin):
 
     if in_worktree:
         print('EXIT_WORKTREE keep')
-        print(f'then rerun: python "{os.path.abspath(__file__)}" --pr {pr["number"]}')
+        print(f'then rerun: python "{os.path.abspath(__file__)}" --pr {pr["number"]} --repo "{repo}"')
         return EXIT_WORKTREE
 
     clean_up_local(repo, pr['headRefName'])
+    if not is_plugins:
+        sync_base(repo, pr['baseRefName'])
+        return 0
     conclusion = wait_for(lambda: bump_run(pr['mergeCommit']['oid']), BUMP_TIMEOUT, 'the version-bump run')
     if conclusion != 'success':
         print(f'ERR: version-bump run concluded {conclusion} - the version may not have moved')
-    pull_main(repo)
+    sync_base(repo, pr['baseRefName'])
     rows = sync() + ensure_checkout_node_deps(repo)
     print_sync(rows)
     for name in touched:
@@ -498,13 +523,13 @@ def main(argv=None):
     utf8_output()
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--pr', type=int, help='PR number (default: the open PR for the current branch)')
-    p.add_argument('--repo', help='path to a checkout of the plugins repo (default: from cwd)')
+    p.add_argument('--repo', help="path to a checkout of the PR's repo (default: from cwd)")
     p.add_argument('--admin', action='store_true', help='override branch protection when merging')
     p.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
     args = p.parse_args(argv)
     if args.sync_only:
-        repo = resolve_repo(args.repo)
-        print_sync(sync() + (ensure_checkout_node_deps(repo) if repo else []))
+        repo, slug = resolve_repo(args.repo)
+        print_sync(sync() + (ensure_checkout_node_deps(repo) if slug == PLUGINS_REPO else []))
         return 0
     try:
         return ship(args.pr, args.repo, args.admin)
