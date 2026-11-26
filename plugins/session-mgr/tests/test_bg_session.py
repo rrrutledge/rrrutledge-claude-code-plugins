@@ -7,6 +7,7 @@ Run directly: python plugins/session-mgr/tests/test_bg_session.py
 """
 import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -38,7 +39,7 @@ def check(name, condition, detail=""):
 
 
 @contextlib.contextmanager
-def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returncode=0, agents=None):
+def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returncode=0, agents=None, stderr=""):
     """Fake accounts (main + backup under a temp dir), a fake registry, a recording run_bounded, and
     a stubbed claude_agents. Yields a namespace with the temp paths and the recorded calls."""
     tmp = tempfile.mkdtemp(prefix="test-bg-session-")
@@ -50,7 +51,7 @@ def sandbox(registry=None, stdout=f"backgrounded · {SHORT} · name\n", returnco
 
     def fake_run(args, timeout, **kw):
         calls.append((list(args), kw))
-        return subprocess.CompletedProcess(args, returncode, stdout, "")
+        return subprocess.CompletedProcess(args, returncode, stdout, stderr)
 
     saved_attrs = {name: getattr(bg_session, name) for name in (
         "run_bounded", "_user_env", "_user_env_all", "DEFAULT_CONFIG_DIR", "ACCOUNTS_PATH", "claude_agents",
@@ -418,6 +419,39 @@ def test_short_id_parsing():
             check(label, got == want, f"got {got!r}")
 
 
+def test_failed_launch_says_why():
+    print("test: a failed launch leaves claude's own words in last_launch_error, and spawn-session prints them")
+    cases = {
+        "stderr and exit code": (dict(returncode=1, stdout="noise", stderr="\x1b[31mWorkspace not trusted.\x1b[0m\n"),
+                                 "claude exited 1: Workspace not trusted."),
+        "stdout when stderr is empty": (dict(returncode=2, stdout="bad flag\n"), "claude exited 2: bad flag"),
+        "exit 0 with no id": (dict(stdout="something else"), "claude exited 0: something else"),
+        "silent failure": (dict(returncode=1, stdout=""), "claude exited 1: no output"),
+    }
+    for label, (outcome, want) in cases.items():
+        with sandbox(**outcome) as s:
+            bg_session.spawn_bg("x", "m", s.tmp, "n")
+            check(label, bg_session.last_launch_error == want, repr(bg_session.last_launch_error))
+    with sandbox(returncode=1, stderr="wake refused") as s:
+        write_transcript(s.main)
+        write_job(s.main)
+        bg_session.spawn_bg(None, None, s.tmp, None, resume=GUID)
+        check("a failed wake says why", bg_session.last_launch_error == "claude exited 1: wake refused",
+              repr(bg_session.last_launch_error))
+    with sandbox() as s:
+        def missing(args, timeout, **kw):
+            raise FileNotFoundError("claude not found")
+        bg_session.run_bounded = missing
+        brief = os.path.join(s.tmp, "handoff.md")
+        with open(brief, "w", encoding="utf-8") as f:
+            f.write("brief")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = spawn_session.main(["--brief", brief, "--title", "t", "--model", "m", "--cwd", s.tmp])
+        check("spawn-session prints an OSError's reason",
+              rc == 1 and "could not run claude: claude not found" in out.getvalue(), out.getvalue())
+
+
 def test_launch_cwd_uses_on_disk_case():
     print("test: a launch cwd typed in the wrong case runs under the on-disk spelling")
     if os.name != "nt":
@@ -542,6 +576,7 @@ if __name__ == "__main__":
     test_accounts_discovered_not_named()
     test_launch_env_takes_user_vars_from_registry()
     test_short_id_parsing()
+    test_failed_launch_says_why()
     test_launch_cwd_uses_on_disk_case()
     test_write_receipt()
     test_claude_agents_merges_accounts()

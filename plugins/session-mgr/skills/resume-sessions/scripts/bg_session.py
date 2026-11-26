@@ -45,6 +45,9 @@ BG_DISALLOWED_TOOLS = "Artifact,Workflow,SendFeedback,PowerShell"
 _BG_ID_RE = re.compile(r"backgrounded[^0-9a-f]*([0-9a-f]{6,})", re.I)
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
+# Why the latest failed `claude --bg` call failed, for a caller that got None back and reports it.
+last_launch_error = ""
+
 # Vars a running Claude session sets for its own tool subprocesses. A launch from inside a session (a
 # handoff) inherits them. They are cleared from the launch env so the `claude --bg` client, and the
 # daemon that client starts when none is running yet, never take on the launching session's identity:
@@ -378,9 +381,28 @@ def canonical_cwd(path):
     return current
 
 
+def _run_claude_bg(args, cwd, env):
+    """Run one `claude --bg` command and return the short session id it prints. A failure returns None
+    and leaves the reason in `last_launch_error`: what claude said on stderr (stdout when stderr is
+    empty) with its exit code, or why it never ran."""
+    global last_launch_error
+    try:
+        res = run_bounded(args, timeout=120, cwd=canonical_cwd(cwd), env=env, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError) as e:
+        last_launch_error = f"could not run claude: {e}"
+        return None
+    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
+    if res.returncode == 0 and m:
+        return m.group(1)
+    said = (res.stderr or "").strip() or (res.stdout or "").strip()
+    last_launch_error = f"claude exited {res.returncode}: {_ANSI_RE.sub('', said) or 'no output'}"
+    return None
+
+
 def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     """Launch a headless background Claude session with `claude --bg` and return the short session id
-    claude prints (hand it to write_receipt), or None when the launch fails or the id can't be parsed.
+    claude prints (hand it to write_receipt), or None when the launch fails or the id can't be parsed
+    (`last_launch_error` then says why).
 
     Load-bearing details:
       - `--remote-control` is what puts the session on claude.ai/code and the phone app.
@@ -451,21 +473,15 @@ def spawn_bg(seed, model, cwd, name, resume=None, scratch_only=False):
     args += ["--settings", _settings_env(scratch_only), "--disallowedTools", BG_DISALLOWED_TOOLS]
     if seed:
         args += ["--", seed]
-    try:
-        res = run_bounded(args, timeout=120, cwd=canonical_cwd(cwd), env=env, creationflags=NO_WINDOW)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if res.returncode != 0:
-        return None
-    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
-    if m:
+    short_id = _run_claude_bg(args, cwd, env)
+    if short_id:
         remember_account(env.get("CLAUDE_CONFIG_DIR"))
-    if m and resume:
+    if short_id and resume:
         forget_session(resume)
         # A continuation's new guid; a session too new for `claude agents` is in its job record already.
-        new_guid = session_guid(m.group(1)) or (find_job(m.group(1))[1] or {}).get("sessionId")
+        new_guid = session_guid(short_id) or (find_job(short_id)[1] or {}).get("sessionId")
         record_resume(resume, continued_as=new_guid)
-    return m.group(1) if m else None
+    return short_id
 
 
 def _resumed_identity(session_guid):
@@ -493,18 +509,10 @@ def _wake(session_guid, config_dir, cwd):
     account `config_dir` holding the job. Returns the short id claude prints (the job's own), or
     None when the wake fails."""
     env = _account_env(config_dir, _launch_env())
-    try:
-        res = run_bounded(["claude", "--bg", "--resume", session_guid], timeout=120,
-                          cwd=canonical_cwd(cwd), env=env, creationflags=NO_WINDOW)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if res.returncode != 0:
-        return None
-    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
-    if not m:
-        return None
-    record_wake(session_guid)
-    return m.group(1)
+    short_id = _run_claude_bg(["claude", "--bg", "--resume", session_guid], cwd, env)
+    if short_id:
+        record_wake(session_guid)
+    return short_id
 
 
 REGISTRY_PATH = os.path.expanduser("~/.claude/session-mgr/live-sessions.json")
