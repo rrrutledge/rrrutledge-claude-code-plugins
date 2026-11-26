@@ -1,6 +1,7 @@
 # drainer browser gate - report HELP_NEEDED, not a silent stall
 
 Read this when browser-chauffeur work in this session hits a sign-in or other possible gate.
+Read it too when a page staged for Russell's final press expires before he reaches it, or the item's record carries a `Timer site:` line (**A site that times out**, below).
 `<skill>` means this drainer skill's root folder, the same absolute path your seed prompt gave you for `worker-core.md`.
 
 Any browser-chauffeur work this session drives - resolving a pointer's real content (`engine/pointers.md`), doing the item's work (worker-core step 3), staging a draft via message-draft (worker-core step 4), or a provider's browser-driven CLEAR - can hit a gate browser-chauffeur's own contract already defines (see browser-chauffeur's SKILL.md, **User Intervention** and **Running in a subagent → The return contract**).
@@ -33,3 +34,28 @@ Russell resumes this the same way he'd continue any open session.
 He finds this session waiting in his worker tabs, clears the gate, and tells it so.
 From there, resume exactly like message-draft's own `HELP_NEEDED` flow describes: re-find the tab with the `findTab` predicate, re-orient with a fresh read to confirm you're past the gate (browser-chauffeur's **After the user resolves the blocker** covers a tab left on the next sign-in step), and continue the flow from where you stopped.
 Then finish normally: complete the remaining work, draft any reply, clear the item per worker-core §6, and close up per §6's closing rules once your part and his are both done.
+
+## A site that times out
+
+A **timer site** is one whose sign-in or checkout expired before Russell reached the page staged for his final press.
+On such a site he approves a saved batch of what will be submitted, and this session presses the button once the re-staged flow matches it.
+Every sign-in along the way is a gate, parked as above.
+
+1. **Mark the site the first time it expires.**
+   Add the line `Timer site: <hostname> - drainer engine/browser-gate.md, "A site that times out"` to the description of the card tracking the work (trello provider, "Cache back to the card"), or to the provider record that tracks it.
+   An item with neither gets a card created straight into **Finished** to hold the line.
+   A later run finds it there when it searches the site's name (worker-core §2), and starts at step 2 on its first stage.
+2. **Build the batch on the next stage.**
+   Re-stage up to the final button with one capture script in `.tmp/` that, on every page, takes a screenshot and writes every value the page shows or holds to that page's own JSON file.
+   Save the batch, naming the pages in order and every file staged for upload:
+   `python <skill>/scripts/submit_batch.py save --manifest <path> --page <page1.json> --page <page2.json> --file <upload>`
+   Send every screenshot and every uploaded file to Russell in one `SendUserFile` call, and ask for his go-ahead on this submission.
+3. **Wait for his live go-ahead.**
+   It is the one he gives in this session after seeing this batch, to submit this submission if the re-staged flow matches it.
+4. **Re-stage, check, then press once.**
+   After he signs in, run the same capture script again, then compare the result with the batch:
+   `python <skill>/scripts/submit_batch.py check --manifest <path> --page <page1.json> --page <page2.json> --file <upload>`
+   Compare each new screenshot with the batch's too.
+   When the check prints `MATCH` and the screens show the same thing, press the final button with a script that first re-reads the final page's values and clicks only when they equal the ones just checked.
+   Any difference stops the submission: show Russell what changed, and go back to step 2 for a new batch and a new go-ahead.
+   The go-ahead is spent on that one press, so read the confirmation page to learn the result before doing anything further.
