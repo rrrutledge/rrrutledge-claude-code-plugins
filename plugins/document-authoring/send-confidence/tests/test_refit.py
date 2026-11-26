@@ -376,6 +376,34 @@ def test_a_reaction_reads_as_its_kind_and_never_as_a_short_draft():
     assert specs["word_count"]["n"] == 2
 
 
+def _v4_reaction_model():
+    """model-v4 cut down to the terms a logged Slack reaction touches. v4 learned a strong
+    negative claims_total effect, so drawing a reaction's missing claim counts from the
+    population spread its probabilities and held its floor under the bar."""
+    with open(os.path.join(HERE, "fixtures", "model-v4-reaction.json"), "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def test_a_reaction_clears_the_bar_under_the_v4_coefficients():
+    model = _v4_reaction_model()
+    result = scm.score(model["reaction_attributes"], model)
+    assert result["floor"] >= scm.AUTO_SEND_FLOOR and result["auto_send"] is True
+
+
+def test_a_reaction_enters_its_judged_attributes_at_the_center():
+    model = _v4_reaction_model()
+    attrs = model["reaction_attributes"]
+    undrawn = {**model, "latent": {}}
+    assert scm.set_probabilities(attrs, model) == scm.set_probabilities(attrs, undrawn)
+
+
+def test_a_written_draft_with_failed_readings_still_draws_from_the_population():
+    model = _v4_reaction_model()
+    attrs = {**model["reaction_attributes"], "kind": {"label": "thanks-ack", "agreement": 3}}
+    undrawn = {**model, "latent": {}}
+    assert scm.set_probabilities(attrs, model) != scm.set_probabilities(attrs, undrawn)
+
+
 def test_run_fits_a_corpus_holding_reactions():
     _seed_history()
     for i in range(12):
@@ -433,3 +461,5 @@ def test_real_fit_learns_a_reaction_kind_from_its_approvals():
     reaction_p = scm.score(_reaction_attrs(), model)["probability"]
     words_p = scm.score(_attrs(), model)["probability"]
     assert reaction_p > 0.7 > words_p
+    assert scm.set_probabilities(_reaction_attrs(), model) == scm.set_probabilities(
+        _reaction_attrs(), {**model, "latent": {}})

@@ -18,8 +18,11 @@ A flag reads the low median of a judged attribute's readings, so it sits on the 
 judge rates on; a missing attribute leaves its flag at 0 and the "no value" markers carry it.
 
 A reaction (an emoji added to a message) is a draft of kind `reaction`. It has no text, so its judged
-attributes and its word count are missing: they enter at the center, its `short` flag stays 0, and the
-`kind:reaction` term alone carries what sets a reaction apart from a written draft.
+attributes and its word count don't apply to it: they enter at the center in the fit and the scorer
+alike, never drawn from the population, its flags on them stay 0, and the `kind:reaction` term alone
+carries what sets a reaction apart from a written draft.
+A written draft whose judge reading failed is different: the attribute applies but went unread, so
+the fit and the scorer draw it from the population.
 """
 
 import itertools
@@ -236,6 +239,11 @@ def term_name(term):
     return " & ".join(term)
 
 
+def not_applicable(attrs, name):
+    """True when a draft has no text for a judged attribute to read: a reaction's."""
+    return name in JUDGED and _kind_label(attrs) in STAGER_KINDS
+
+
 def transform(name, value):
     return math.log1p(value) if TRANSFORMS[name] == "log1p" else float(value)
 
@@ -275,9 +283,10 @@ def set_probabilities(attrs, model, seed=0):
     """The draft's probability of going out near as-is under each coefficient set.
 
     Exact values and judged values with no noise figure enter as measured, a missing one at the
-    center. A judged value with a noise figure is drawn per set from its posterior given that
-    set's population mean and spread, the readings' mean, and the noise shrunk by the number of
-    readings; with no readings it is drawn from the population alone."""
+    center, as does a judged value that doesn't apply to the draft. A judged value with a noise
+    figure is drawn per set from its posterior given that set's population mean and spread, the
+    readings' mean, and the noise shrunk by the number of readings; with no readings it is drawn
+    from the population alone."""
     rng = random.Random(seed)
     xb = binary_row(attrs, model["binary_terms"])
     active = [j for j, v in enumerate(xb) if v]
@@ -287,7 +296,7 @@ def set_probabilities(attrs, model, seed=0):
     for j, name in enumerate(model["value_terms"]):
         spec = values[name]
         obs, k = observed_value(attrs, name)
-        if name in model.get("latent", {}):
+        if name in model.get("latent", {}) and not not_applicable(attrs, name):
             latent.append((n_binary + j, spec, obs, k, model["latent"][name]))
         else:
             fixed.append((n_binary + j, 0.0 if obs is None else (obs - spec["center"]) / spec["scale"]))
