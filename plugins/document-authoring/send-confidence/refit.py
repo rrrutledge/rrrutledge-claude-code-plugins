@@ -248,7 +248,7 @@ def fit(rows, binary_terms, noise, *, sampler=None, seed=1):
                     k = np.array([obs[i][1] for i in idx], dtype=float)
                     pm.Normal(f"obs_{name}", mu=x[idx], sigma=noise[name] / np.sqrt(k),
                               observed=np.array([obs[i][0] for i in idx]))
-                applies = np.array([not scm.not_applicable(r["attrs"], name) for r in rows])
+                applies = np.array([not scm.textless(r["attrs"]) for r in rows])
                 columns.append(pm.math.switch(applies, (x - spec["center"]) / spec["scale"], 0.0))
             else:
                 columns.append(np.array([0.0 if x is None else (x - spec["center"]) / spec["scale"]

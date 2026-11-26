@@ -21,8 +21,9 @@ A reaction (an emoji added to a message) is a draft of kind `reaction`. It has n
 attributes and its word count don't apply to it: they enter at the center in the fit and the scorer
 alike, never drawn from the population, its flags on them stay 0, and the `kind:reaction` term alone
 carries what sets a reaction apart from a written draft.
-A written draft whose judge reading failed is different: the attribute applies but went unread, so
-the fit and the scorer draw it from the population.
+A written draft with a judged attribute missing is different: the attribute applies but went
+unmeasured (a failed reading, or no ask to measure claims against), so the fit and the scorer draw it
+from the population.
 """
 
 import itertools
@@ -181,9 +182,15 @@ def outcome_class(outcome):
 
 # --- attributes to terms ---
 
+def textless(attrs):
+    """True for a draft with no text for the judge to read: a reaction."""
+    return _kind_label(attrs) in STAGER_KINDS
+
+
 def readings(attrs, name):
+    """A judged attribute's numeric readings; none for a textless draft, whatever it carries."""
     values = attrs.get(name)
-    if values is None:
+    if values is None or textless(attrs):
         return []
     values = values if isinstance(values, list) else [values]
     return [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
@@ -239,11 +246,6 @@ def term_name(term):
     return " & ".join(term)
 
 
-def not_applicable(attrs, name):
-    """True when a draft has no text for a judged attribute to read: a reaction's."""
-    return name in JUDGED and _kind_label(attrs) in STAGER_KINDS
-
-
 def transform(name, value):
     return math.log1p(value) if TRANSFORMS[name] == "log1p" else float(value)
 
@@ -296,7 +298,7 @@ def set_probabilities(attrs, model, seed=0):
     for j, name in enumerate(model["value_terms"]):
         spec = values[name]
         obs, k = observed_value(attrs, name)
-        if name in model.get("latent", {}) and not not_applicable(attrs, name):
+        if name in model.get("latent", {}) and not textless(attrs):
             latent.append((n_binary + j, spec, obs, k, model["latent"][name]))
         else:
             fixed.append((n_binary + j, 0.0 if obs is None else (obs - spec["center"]) / spec["scale"]))

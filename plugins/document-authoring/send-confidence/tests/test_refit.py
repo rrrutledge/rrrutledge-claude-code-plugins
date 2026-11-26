@@ -397,6 +397,12 @@ def test_a_reaction_enters_its_judged_attributes_at_the_center():
     assert scm.set_probabilities(attrs, model) == scm.set_probabilities(attrs, undrawn)
 
 
+def test_a_reaction_ignores_any_judged_reading_it_carries():
+    stray = {**_reaction_attrs(), "claims_total": [1], "stakes": [1]}
+    assert scm.flags(stray) == scm.flags(_reaction_attrs())
+    assert scm.observed_value(stray, "stakes") == (None, 0)
+
+
 def test_a_written_draft_with_failed_readings_still_draws_from_the_population():
     model = _v4_reaction_model()
     attrs = {**model["reaction_attributes"], "kind": {"label": "thanks-ack", "agreement": 3}}
