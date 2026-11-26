@@ -363,5 +363,6 @@ def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(errors="replace")  # claude's error text can hold characters the console can't encode
+    if sys.stdout:  # None under pythonw with no redirected handles
+        sys.stdout.reconfigure(errors="replace")  # claude's error text can hold characters the console can't encode
     sys.exit(main())

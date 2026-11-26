@@ -427,6 +427,8 @@ def test_failed_launch_says_why():
         "stdout when stderr is empty": (dict(returncode=2, stdout="bad flag\n"), "claude exited 2: bad flag"),
         "exit 0 with no id": (dict(stdout="something else"), "claude exited 0: something else"),
         "silent failure": (dict(returncode=1, stdout=""), "claude exited 1: no output"),
+        "color codes alone on stderr": (dict(returncode=1, stdout="refused", stderr="\x1b[0m"),
+                                        "claude exited 1: refused"),
     }
     for label, (outcome, want) in cases.items():
         with sandbox(**outcome) as s:

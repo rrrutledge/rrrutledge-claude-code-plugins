@@ -391,11 +391,11 @@ def _run_claude_bg(args, cwd, env):
     except (OSError, subprocess.SubprocessError) as e:
         last_launch_error = f"could not run claude: {e}"
         return None
-    m = _BG_ID_RE.search(_ANSI_RE.sub("", res.stdout or ""))
+    err, out = (_ANSI_RE.sub("", text or "").strip() for text in (res.stderr, res.stdout))
+    m = _BG_ID_RE.search(out)
     if res.returncode == 0 and m:
         return m.group(1)
-    said = (res.stderr or "").strip() or (res.stdout or "").strip()
-    last_launch_error = f"claude exited {res.returncode}: {_ANSI_RE.sub('', said) or 'no output'}"
+    last_launch_error = f"claude exited {res.returncode}: {err or out or 'no output'}"
     return None
 
 
