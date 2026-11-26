@@ -79,9 +79,10 @@ RESUME_ME = """
 """ + RESUME_ME_HEADING + """
 
 The session that launched you closed paused; its own next step waits on this work.
-The work is done once every step only Russell can take (print, sign, mail, send) is confirmed too, so after he approves a deliverable, present each such step and stay open for it.
-Once this work is genuinely done (Russell has submitted, merged, or confirmed whatever "done" means here), first write a report to `{report}` in your own working directory (your worktree, when you entered one): a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
-A step of his that waits on the launcher's own work, or that he puts off to later, counts as handed back: give each one its own report line starting `Russell still to do:`, so the launcher holds it open.
+This work is genuinely done once Russell has submitted, merged, or confirmed whatever "done" means here, along with every step only he can take (print, sign, mail, send) other than those you hand back.
+So after he approves a deliverable, present each such step and stay open for it.
+Hand back a step that waits on the launcher's own work, or that he puts off to later: it gets its own report line starting `Russell still to do:`, so the launcher holds it open.
+Once the work is done, first write a report to `{report}` in your own working directory (your worktree, when you entered one): a line or two on what is different in the world because you ran, with where to find it (path, link, card) and anything that differs from what the brief asked.
 Leave out the steps you took and your internal details.
 The command adds that report to the launcher's wake note, which the launcher reads when it wakes, with its own history but not yours, so the report is how it learns what happened.
 Then run this via the Bash tool without waiting to be asked, and tell Russell in one line which session you resumed:
