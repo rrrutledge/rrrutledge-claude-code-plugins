@@ -1,5 +1,5 @@
 """Test for submit_batch.py: a re-staged submission matches its saved batch only when every page value
-and every uploaded file is identical, and a capture that read nothing is refused.
+and every uploaded file is identical, and a capture that proves nothing is refused.
 
 Run directly:
     python plugins/drainer/tests/test_submit_batch.py
@@ -48,40 +48,57 @@ def run(command, manifest, pages, files=()):
 
 with tempfile.TemporaryDirectory() as tmp:
     manifest = os.path.join(tmp, "batch.json")
-    form = write(os.path.join(tmp, "page1.json"), json.dumps({"name": "Zoë Example", "year": "2020"}))
-    pay = write(os.path.join(tmp, "page2.json"), json.dumps({"amount": "$25.00"}))
-    upload = write(os.path.join(tmp, "return.pdf"), "original")
 
-    rc, _ = run("save", manifest, [form, pay], [upload])
+    def page(name, values):
+        return write(os.path.join(tmp, name), json.dumps(values))
+
+    def restaged(name, values):
+        """A page captured after the batch was saved."""
+        path = page(name, values)
+        later = os.path.getmtime(manifest) + 10
+        os.utime(path, (later, later))
+        return path
+
+    form = page("form.json", {"name": "Zoë Example", "year": "2020"})
+    pay = page("pay.json", {"amount": "$25.00"})
+    upload = write(os.path.join(tmp, "return.pdf"), "original")
+    schedule = write(os.path.join(tmp, "schedule.pdf"), "schedule")
+
+    rc, _ = run("save", manifest, [form, pay], [upload, schedule])
     check("save succeeds", rc, 0)
 
-    reordered = write(os.path.join(tmp, "page1b.json"), json.dumps({"year": "2020", "name": "Zoë Example"}))
-    check("same values and files match, key order aside",
-          run("check", manifest, [reordered, pay], [upload]), (0, "MATCH"))
+    os.utime(form, (0, 0))
+    os.utime(pay, (0, 0))
+    rc, out = run("check", manifest, [form, pay], [upload, schedule])
+    check("pages captured before the batch are refused", (rc, "captured before the batch" in out), (1, True))
 
-    changed = write(os.path.join(tmp, "page2b.json"), json.dumps({"amount": "$50.00", "fee": "$1.00"}))
+    form = restaged("form2.json", {"year": "2020", "name": "Zoë Example"})
+    pay = restaged("pay2.json", {"amount": "$25.00"})
+    both = [upload, schedule]
+    check("same values and files match, key order aside",
+          run("check", manifest, [form, pay], both), (0, "MATCH"))
+
+    changed = restaged("pay3.json", {"amount": "$50.00", "fee": "$1.00"})
     check("changed and added values are named",
-          run("check", manifest, [form, changed], [upload]),
+          run("check", manifest, [form, changed], both),
           (1, 'page 2, amount: "$25.00" -> "$50.00"\npage 2, fee: (absent) -> "$1.00"'))
 
-    rc, out = run("check", manifest, [form], [upload])
-    check("a missing page differs", (rc, out), (1, "page count: 2 -> 1"))
-    rc, _ = run("check", manifest, [pay, form], [upload])
+    check("a missing page differs", run("check", manifest, [form], both), (1, "page count: 2 -> 1"))
+    rc, _ = run("check", manifest, [pay, form], both)
     check("page order matters", rc, 1)
 
+    rc, out = run("check", manifest, [form, pay], [schedule, upload])
+    check("uploads in a different order differ", (rc, out.startswith("files: return.pdf (")), (1, True))
+    rc, _ = run("check", manifest, [form, pay], [upload])
+    check("a dropped upload differs", rc, 1)
     write(upload, "edited")
-    check("edited file differs",
-          run("check", manifest, [form, pay], [upload]), (1, "file return.pdf: differs from the batch"))
-    write(upload, "original")
-    check("a dropped upload differs",
-          run("check", manifest, [form, pay]), (1, "file return.pdf: differs from the batch"))
-    check("an extra copy of an upload differs",
-          run("check", manifest, [form, pay], [upload, upload]),
-          (1, "file return.pdf: differs from the batch"))
+    rc, out = run("check", manifest, [form, pay], both)
+    check("an edited file differs", (rc, out.startswith("files: ")), (1, True))
 
-    empty = write(os.path.join(tmp, "empty.json"), "{}")
-    rc, _ = run("save", os.path.join(tmp, "none.json"), [empty])
-    check("a page with no values is refused", (rc, os.path.exists(os.path.join(tmp, "none.json"))), (1, False))
+    for label, values in (("empty", {}), ("blank", {"amount": ""}), ("nested", {"url": "u", "fields": {}})):
+        target = os.path.join(tmp, f"{label}-batch.json")
+        rc, _ = run("save", target, [page(f"{label}.json", values)])
+        check(f"{label} capture is refused", (rc, os.path.exists(target)), (1, False))
     rc, _ = run("check", os.path.join(tmp, "unsaved.json"), [form])
     check("checking without a saved batch fails", rc, 1)
 

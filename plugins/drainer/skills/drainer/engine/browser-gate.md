@@ -38,22 +38,22 @@ Then finish normally: complete the remaining work, draft any reply, clear the it
 ## A site that times out
 
 A **timer site** is one whose sign-in or checkout expired before Russell reached the page staged for his final press.
-On such a site he approves a saved batch of what will be submitted, and this session presses the button once the re-staged flow matches it.
 Every sign-in along the way is a gate, parked as above.
 
 1. **Mark the site the first time it expires.**
-   Add the line `Timer site: <hostname> - drainer engine/browser-gate.md, "A site that times out"` to the description of the card tracking the work (trello provider, "Cache back to the card"), or to the provider record that tracks it.
-   An item with neither gets a card created straight into **Finished** to hold the line.
-   A later run finds it there when it searches the site's name (worker-core §2), and starts at step 2 on its first stage.
+   Add the comment `Timer site: <hostname> - drainer engine/browser-gate.md, "A site that times out"` to the card tracking the work (trello provider, "Cache back to the card"), or write the same line to the provider record that tracks it.
+   An item with neither gets a card named `Timer site: <hostname>`, created straight into **Finished**, to hold it.
+   A later run finds the line when it searches the site's name (worker-core §2), and starts at step 2 on its first stage.
 2. **Build the batch on the next stage.**
-   Re-stage up to the final button with one capture script in `.tmp/` that, on every page, takes a screenshot and writes every value the page shows or holds to that page's own JSON file.
+   Re-stage up to the final button with one capture script in `.tmp/`, each run writing into its own new folder.
+   On every page it takes a screenshot and writes that page's JSON file, a flat object of label to value: each field that will be submitted, and each amount, name, date, and term the page shows, leaving out per-session tokens, IDs, and clocks.
    Save the batch, naming the pages in order and every file staged for upload:
    `python <skill>/scripts/submit_batch.py save --manifest <path> --page <page1.json> --page <page2.json> --file <upload>`
    Send every screenshot and every uploaded file to Russell in one `SendUserFile` call, and ask for his go-ahead on this submission.
 3. **Wait for his live go-ahead.**
-   It is the one he gives in this session after seeing this batch, to submit this submission if the re-staged flow matches it.
+   It is the one he gives in this session, against the batch he has just seen, to submit this submission once the re-staged flow matches it.
 4. **Re-stage, check, then press once.**
-   After he signs in, run the same capture script again, then compare the result with the batch:
+   After he signs in, run the same capture script again, and once that run has captured every page, compare it with the batch:
    `python <skill>/scripts/submit_batch.py check --manifest <path> --page <page1.json> --page <page2.json> --file <upload>`
    Compare each new screenshot with the batch's too.
    When the check prints `MATCH` and the screens show the same thing, press the final button with a script that first re-reads the final page's values and clicks only when they equal the ones just checked.
