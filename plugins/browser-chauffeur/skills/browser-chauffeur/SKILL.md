@@ -91,6 +91,7 @@ It arrives in the orchestrator's brief or `SendMessage`, to the subagent that st
 The script that clicks first re-reads that target from the live page and clicks only when it matches, in a run relaying a go-ahead and an inline run alike.
 A target that differs ends as a `DONE` with a fail outcome naming the difference.
 Each go-ahead covers one press.
+A skill whose own contract is stage-only keeps its run at the staged state.
 
 ### The help-channel
 
@@ -113,7 +114,7 @@ Human gates are already natural seams, since the run pauses there anyway.
 Invoke the browser-chauffeur skill and run this one browser task inside your own context: <task>.
 Run the full Phase 0-5 loop yourself - launch/reuse the browser, orient, execute, verify, recover.
 End by returning DONE or HELP_NEEDED, carrying what the skill's "The return contract" section lists for each.
-Handle emailed sign-in codes per the skill's "Email-delivered MFA codes" section, stop at the final irreversible button until I relay the user's go-ahead for it as that section describes, and hand every gate only the user can clear back to me as HELP_NEEDED, whatever the rest of this brief says about asking - returning HELP_NEEDED is how you ask.
+Handle emailed sign-in codes per the skill's "Email-delivered MFA codes" section, stop at the final irreversible button until I relay the user's go-ahead for it as "The return contract" describes, and hand every gate only the user can clear back to me as HELP_NEEDED, whatever the rest of this brief says about asking - returning HELP_NEEDED is how you ask.
 ```
 
 ### When to run inline instead
