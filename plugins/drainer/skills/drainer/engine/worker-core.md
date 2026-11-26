@@ -192,7 +192,7 @@ When it asks nothing beyond the item, leaves Russell no step of his own (below),
 When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
 **A launched session's report with a `Russell still to do:` line hands that step to your session.**
 Present each one to him in a visible message, set up per §3's "An ask only his own hands can finish".
-It is open work on this item: hold the CLEAR and stay open until he confirms it, even on a card already finished or archived.
+It is open work on this item: hold the CLEAR and stay open until he confirms it.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
@@ -400,7 +400,7 @@ The test: **if my next step cannot start until a session I launched or a named p
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
 A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
 A step the report hands back on a `Russell still to do:` line is yours from the wake (§2).
-Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
+Sitting open while the other session works wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.
