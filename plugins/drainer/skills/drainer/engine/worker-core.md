@@ -190,6 +190,8 @@ What you last presented is as old as that wait, so a date you called upcoming ma
 Then do what the waking message asks.
 When it asks nothing beyond the item, and another session has since archived the card or moved it to a terminal list, close per "Close silently".
 When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
+**A launched session's report with a `Russell still to do:` line leaves that step open in your session.**
+Present each such step to him in a visible message, with what he needs to do it, and stay open until he confirms it, whatever the card's state.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
