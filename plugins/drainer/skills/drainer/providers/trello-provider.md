@@ -172,7 +172,7 @@ Then the card ends in exactly one of these:
    - a browser sign-in parked while phone mode is on, with the Start and comment set by session-mgr's `/session-mgr:phone-mode`
 
 **A party who hasn't replied gets a follow-up or a decision.**
-On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its last bullet).
+On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its held-ask bullet).
 
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 

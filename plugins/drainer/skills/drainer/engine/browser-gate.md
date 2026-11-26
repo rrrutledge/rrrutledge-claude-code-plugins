@@ -33,6 +33,7 @@ Park the gate where Russell already looks, the worker's own open session and tab
    A staged gate is squarely the "waiting on an answer from him" case worker-core §6's session-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact session and clearing the gate.
    Closing the session now would also cost you the browser tab you just left open: a launched session like this one owns its tabs by its own PID (see browser-chauffeur's **Tying tab ownership to a session**), and the sweep reaps an owned tab the moment its owning session ends.
    End your turn here instead of closing up.
+   Phone mode turning on while the gate is a sign-in sends it through "Park a sign-in" above.
 
 Russell resumes this the same way he'd continue any open session.
 He finds this session waiting in his worker tabs, clears the gate, and tells it so.

@@ -25,7 +25,7 @@ Reading it is YOUR job; never hand the lookup back to the user ("go read the mes
 The test is whether Claude can get the content, not whether a login exists: browser-chauffeur already holds live sessions for many authenticated surfaces, so open them and then re-triage what you find on its merits (the step below) - that is what sets the bucket.
 **A login wall on a site the persistent browser can be signed into is a gate, not a dead end.**
 Open the page in browser-chauffeur, and when it lands on a sign-in, follow `engine/browser-gate.md`.
-Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond.
+When that file keeps this session open, Russell signs in once (the browser profile keeps the login) and tells the session, and you carry on from there: read the content, re-triage it on its merits (the step below), and help him respond.
 **The one time you don't reach that re-triage is content with no browser path at all** - it lives in an app or on a phone - and then the pointer stays **needs-you**: hand the user the direct deep link.
 **A notice with no link is still a pointer.**
 "A new document/message/statement is available, log in to view" has no URL to follow, so take the destination from the sender's well-known site.

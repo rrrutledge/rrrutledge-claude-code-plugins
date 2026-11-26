@@ -6,8 +6,8 @@
     python phone_mode.py remind
 
 The switch is one marker file, ~/.claude/phone-mode: present means on. A running process keeps the
-environment it started with, so only a file reaches the sessions and the poller already running when
-the switch flips.
+environment it started with, so only a file reaches the sessions already running when the switch
+flips.
 
 `on` also sends a note to every other live session. `park` puts work on a Trello card whose Start is
 an hour from now, so the ordinary Trello drain picks it up again. `remind` is the awareness hook: one
@@ -15,8 +15,9 @@ line while the switch is on, nothing while it is off.
 """
 import argparse
 import datetime
-import importlib.util
+import importlib
 import os
+import pathlib
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -52,10 +53,7 @@ def turn_on():
 
 
 def turn_off():
-    try:
-        os.remove(MARKER)
-    except FileNotFoundError:
-        pass
+    pathlib.Path(MARKER).unlink(missing_ok=True)
     print("phone mode is off.")
 
 
@@ -82,10 +80,7 @@ def tell_open_sessions():
 
 def load_trello():
     """The trello plugin's trello_utils module, found the way worker-done.py finds it."""
-    spec = importlib.util.spec_from_file_location("worker_done", os.path.join(SESSION_SCRIPTS, "worker-done.py"))
-    worker_done = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(worker_done)
-    scripts = worker_done.trello_utils_dir()
+    scripts = importlib.import_module("worker-done").trello_utils_dir()
     if not scripts:
         sys.exit("phone_mode: the trello plugin's trello_utils.py was not found.")
     sys.path.insert(0, scripts)
@@ -93,19 +88,19 @@ def load_trello():
     return trello_utils
 
 
-def park(desc, board=None, name=None, card=None, list_name=None, now=None, trello=None):
+def park(desc, board=None, name=None, card=None, list_name=None):
     """Defer work by PARK_FOR: on the existing `card` (Start moved, `desc` added as a dated comment),
     else on a new card `name` on `board` carrying `desc`."""
-    trello = trello or load_trello()
+    trello = load_trello()
     session = trello.get_trello_session()
-    now = now or datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.timezone.utc)
     due = now + PARK_FOR
     start = due.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     if card:
         stamp = now.astimezone().strftime("%Y-%m-%d %H:%M %Z")
         # The comment lands first, so a card is never deferred without its note.
         trello.add_comment(card, f"Parked for phone mode, {stamp}\n\n{desc}", session)
-        url = (trello.update_card(card, {"start": start}, session) or {}).get("shortUrl") or card
+        url = trello.update_card(card, {"start": start}, session)["shortUrl"]
     else:
         lists = trello.get_board_lists(board, session)
         wanted = (list_name,) if list_name else PARK_LISTS
@@ -113,8 +108,8 @@ def park(desc, board=None, name=None, card=None, list_name=None, now=None, trell
         if not target:
             sys.exit(f"phone_mode: no list named {' or '.join(wanted)} on that board. Pass --list with one of: "
                      + ", ".join(lst["name"] for lst in lists))
-        made = trello.create_card(target["id"], {"title": name, "description": desc, "start": start}, session)
-        url = made.get("shortUrl") or made.get("id")
+        new = {"title": name, "description": desc, "start": start}
+        url = trello.create_card(target["id"], new, session)["shortUrl"]
     print(f"parked: {url} - starts {due.astimezone().strftime('%H:%M %Z')}.")
 
 
@@ -131,9 +126,6 @@ def main(argv=None):
     p.add_argument("--list", dest="list_name", help="the new card's list, when the board has none of the usual ones")
     p.add_argument("--desc-file", required=True, help="file holding the card description or comment")
     a = ap.parse_args(argv)
-    # Session and list names carry characters the Windows console encoding lacks.
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if a.command == "on":
         turn_on()
@@ -154,4 +146,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # Session and list names carry characters the Windows console encoding lacks.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

@@ -82,7 +82,7 @@ finally:
         os.environ["CLAUDE_CODE_SESSION_ID"] = real[3]
 
 
-class FakeTrello:
+class FakeTrello:  # stands in for the trello_utils module
     def __init__(self, lists=("Unaware", "To Do", "In Progress", "Finished")):
         self.lists, self.calls = [{"id": f"id-{n}", "name": n} for n in lists], []
 
@@ -105,20 +105,31 @@ class FakeTrello:
 
 
 def park(trello, **kw):
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        phone_mode.park("the description", trello=trello, now=NOW, **kw)
+    out, real_load = io.StringIO(), phone_mode.load_trello
+    phone_mode.load_trello = lambda: trello
+    try:
+        with contextlib.redirect_stdout(out):
+            phone_mode.park("the description", **kw)
+    finally:
+        phone_mode.load_trello = real_load
     return out.getvalue()
 
 
-NOW = datetime.datetime(2026, 11, 26, 23, 30, 15, tzinfo=datetime.timezone.utc)
+def an_hour_out(start):
+    due = datetime.datetime.fromisoformat(start.replace("Z", "+00:00"))
+    ahead = due - datetime.datetime.now(datetime.timezone.utc)
+    return datetime.timedelta(minutes=59) < ahead <= datetime.timedelta(hours=1)
+
+
 START = "2026-11-27T00:30:15.000Z"
 
 print("\npark --board: a new card on the working list, starting an hour from now")
 t = FakeTrello()
 out = park(t, board="B", name="Card name")
-check("created on In Progress", t.calls,
-      [("create", "id-In Progress", {"title": "Card name", "description": "the description", "start": START})])
+made = t.calls[0][2]
+check("one card, created on In Progress", [c[:2] for c in t.calls], [("create", "id-In Progress")])
+check("carries the name and description", (made["title"], made["description"]), ("Card name", "the description"))
+check("starts an hour from now", an_hour_out(made["start"]), True)
 check("prints the card link", "https://trello.com/c/new" in out, True)
 t = FakeTrello(("Applied", "Identified", "Job Search Admin"))
 park(t, board="B", name="n")
@@ -140,9 +151,10 @@ t = FakeTrello()
 out = park(t, card="C1")
 check("order", [c[0] for c in t.calls], ["comment", "update"])
 check("dated comment carries the description",
-      (t.calls[0][2].startswith("Parked for phone mode, 2026-11-2"), t.calls[0][2].endswith("\n\nthe description")),
+      (t.calls[0][2].startswith("Parked for phone mode, 20"), t.calls[0][2].endswith("\n\nthe description")),
       (True, True))
-check("only Start moves", t.calls[1], ("update", "C1", {"start": START}))
+check("only Start moves, an hour out",
+      (t.calls[1][1], list(t.calls[1][2]), an_hour_out(t.calls[1][2]["start"])), ("C1", ["start"], True))
 check("prints the card link", "https://trello.com/c/old" in out, True)
 
 print("\nthe trello plugin's own writers keep the hour, not just the day")

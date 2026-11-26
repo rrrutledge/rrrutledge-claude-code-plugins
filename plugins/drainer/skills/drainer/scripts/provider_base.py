@@ -383,9 +383,10 @@ def _own_chain_only():
 
 
 holder_resolver = getattr(bg_session, "holder_resolver", _own_chain_only)
-# Finding a live session and handing it a note. An older session-mgr offers neither, so no worker is
-# found to forward to and every item gets its own.
-live_agent = getattr(bg_session, "live_agent", lambda receipt, agents: None)
+# Finding a live session and handing it a note. An older session-mgr offers no note, so every item gets
+# its own worker; the live-entry lookup also serves the parked-worker close, so it has its own fallback.
+live_agent = getattr(bg_session, "live_agent", lambda receipt, agents: next(
+    (a for a in agents or [] if receipt in (a.get("id"), a.get("sessionId")) and a.get("pid")), None))
 session_address = getattr(bg_session, "session_address", lambda receipt, agents: None)
 send_note = getattr(bg_session, "send_note", lambda address, message, cwd: False)
 
