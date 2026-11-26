@@ -62,6 +62,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bg_session  # noqa: E402
 from bg_session import (DUPLICATE_CHECK_HEADING, claude_agents, duplicate_check_section, launch,  # noqa: E402
                         paused_record, record_handoff, session_name)
 import launch_marker  # noqa: E402
@@ -309,6 +310,7 @@ def main(argv=None):
                                prompt_file=prompt_file, lead=summary, resume=a.resume)
     if not short_id:
         print("spawn-session: `claude --bg` launch failed or returned no session id; nothing was launched.")
+        print(f"spawn-session: {bg_session.last_launch_error}")
         return 1
     if a.report_file and a.resume and prompt_file and os.path.isfile(a.report_file):
         os.remove(a.report_file)  # consumed, so a later run of a brief with the same name never picks it up
@@ -361,4 +363,6 @@ def _record_launch(a, short_id, receipt, title, resume_me, is_worker):
 
 
 if __name__ == "__main__":
+    if sys.stdout:  # None under pythonw with no redirected handles
+        sys.stdout.reconfigure(errors="replace")  # claude's error text can hold characters the console can't encode
     sys.exit(main())
