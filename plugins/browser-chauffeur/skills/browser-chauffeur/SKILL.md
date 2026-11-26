@@ -662,7 +662,7 @@ Take one image per problem, and Read each before handing it over to confirm the 
 ## Key Rules
 
 These are the rules the session applies while it drives.
-The rules for a script's code live in `script-quality-standards.md`, which also points to the three this file holds: getting a tab (Phase 1), closing it (Phase 3), and resolving packages (Prerequisite Check).
+The rules for a script's code live in `script-quality-standards.md`, which also points to the four this file holds: getting a tab (Phase 1), closing it (Phase 3), resolving packages (Prerequisite Check), and the final irreversible click (**The return contract**).
 
 **Verifying a change:** Re-read page state after every save or submit; a form can silently fail to save.
 A create, update, or delete counts as verified on either of two pieces of evidence:
