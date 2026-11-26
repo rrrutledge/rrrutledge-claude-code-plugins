@@ -39,7 +39,7 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    The command carries only paths and a guid, so it drops verbatim into a message or a doc without anything mangling it.
 
 2. **Hand that command to the peer with `SendMessage`.**
-   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to write a short report to `.tmp/<slug>.report.md` in its own working directory first (what it did, where to find it, anything that differed from the ask), then run the command via its Bash tool with `--report-file ".tmp/<slug>.report.md"` added, which adds the report to the note.
+   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task, every step only he can take included), then paste the command and tell the peer to write a short report to `.tmp/<slug>.report.md` in its own working directory first (what it did, where to find it, anything that differed from the ask, and a `Russell still to do:` line for each step of his still ahead), then run the command via its Bash tool with `--report-file ".tmp/<slug>.report.md"` added, which adds the report to the note.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    Leave a dated comment on the work's Trello card noting the pause and naming the session you handed the resume to, and keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
