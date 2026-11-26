@@ -25,6 +25,7 @@ BASE_URL = 'https://api.trello.com/1'
 # tab runs headless (pythonw) with no console to report to. A bounded timeout turns that into an
 # ordinary, per-cycle request failure the poller already catches and retries next cycle.
 REQUEST_TIMEOUT = 30
+UPLOAD_MIN_BYTES_PER_SECOND = 50_000
 
 # The lists a card may be archived from: the end of every funnel, plus a board's template parking
 # list. The drainer parks the same lists, so a card here is already out of the queue.
@@ -146,10 +147,13 @@ def trello_request(method, path, session, params=None, body=None, upload=None):
         data = urllib.parse.urlencode(body).encode() if body else b''
 
     headers = {}
+    timeout = REQUEST_TIMEOUT
     if upload:
         data, headers['Content-Type'] = upload
+        # The socket timeout caps the whole body send, so an upload gets time for its size.
+        timeout += len(data) // UPLOAD_MIN_BYTES_PER_SECOND
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         raw = response.read().decode()
         if raw:
             return json.loads(raw)
@@ -249,18 +253,15 @@ def add_comment(card_id, text, session):
                           body={'text': text})
 
 
-def _multipart_file(filename, content, fields):
-    """Encode text `fields` plus one `file` part as multipart/form-data; returns (data, content_type)."""
+def _multipart_file(filename, content):
+    """Encode one `file` part as multipart/form-data; returns (data, content_type)."""
     boundary = uuid.uuid4().hex
-    safe_name = filename.replace('\\', '\\\\').replace('"', '\\"').replace('\r', ' ').replace('\n', ' ')
     mime = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
-             for key, value in fields.items()]
-    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
-                 f'Content-Type: {mime}\r\n\r\n'.encode())
-    parts.append(content)
-    parts.append(f'\r\n--{boundary}--\r\n'.encode())
-    return b''.join(parts), f'multipart/form-data; boundary={boundary}'
+    quoted = filename.replace('"', '%22')
+    head = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{quoted}"\r\n'
+            f'Content-Type: {mime}\r\n\r\n')
+    data = head.encode() + content + f'\r\n--{boundary}--\r\n'.encode()
+    return data, f'multipart/form-data; boundary={boundary}'
 
 
 def add_attachment(card_id, file_path, name, session):
@@ -268,8 +269,8 @@ def add_attachment(card_id, file_path, name, session):
     stored attachment, and raises RuntimeError when its name or size differs from what was sent."""
     with open(file_path, 'rb') as f:
         content = f.read()
-    created = trello_request('POST', f'/cards/{card_id}/attachments', session,
-                             upload=_multipart_file(os.path.basename(file_path), content, {'name': name}))
+    created = trello_request('POST', f'/cards/{card_id}/attachments', session, params={'name': name},
+                             upload=_multipart_file(os.path.basename(file_path), content))
     stored = trello_request('GET', f'/cards/{card_id}/attachments/{created["id"]}', session,
                             params={'fields': 'name,bytes,url'})
     if stored.get('name') != name or stored.get('bytes') != len(content):

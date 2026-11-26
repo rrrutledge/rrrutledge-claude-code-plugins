@@ -38,19 +38,21 @@ class FakeTrello:
     def __init__(self, stored_bytes=None):
         self.stored_bytes = stored_bytes
         self.requests = []
-        self.parts = {}
+        self.timeouts = []
+        self.parts = []
+        self.name = None
 
     def __call__(self, req, timeout=None):
-        path = urllib.parse.urlparse(req.full_url).path.removeprefix("/1")
-        self.requests.append((req.get_method(), path))
+        url = urllib.parse.urlparse(req.full_url)
+        self.requests.append((req.get_method(), url.path.removeprefix("/1")))
+        self.timeouts.append(timeout)
         if req.get_method() == "POST":
             head = f"Content-Type: {req.get_header('Content-type')}\r\n\r\n".encode()
-            message = email.message_from_bytes(head + req.data, policy=email.policy.HTTP)
-            for part in message.iter_parts():
-                self.parts[part.get_param("name", header="content-disposition")] = part
+            self.parts = list(email.message_from_bytes(head + req.data, policy=email.policy.HTTP).iter_parts())
+            self.name = urllib.parse.parse_qs(url.query)["name"][0]
             return _Resp({"id": "A1"})
-        size = len(self.parts["file"].get_payload(decode=True))
-        return _Resp({"id": "A1", "name": self.parts["name"].get_payload(decode=True).decode(),
+        size = len(self.parts[0].get_payload(decode=True))
+        return _Resp({"id": "A1", "name": self.name,
                       "bytes": size if self.stored_bytes is None else self.stored_bytes})
 
 
@@ -77,7 +79,9 @@ with tempfile.TemporaryDirectory() as tmp:
     fake = FakeTrello()
     trello_utils.urllib.request.urlopen = fake
     stored = add_attachment("C1", image, "Front of the card ✓", SESSION)
-    file_part = fake.parts["file"]
+    file_part = fake.parts[0]
+    check("sends one part, the file", len(fake.parts) == 1
+          and file_part.get_param("name", header="content-disposition") == "file")
     check("posts to the card's attachments, then reads that attachment back",
           fake.requests == [("POST", "/cards/C1/attachments"), ("GET", "/cards/C1/attachments/A1")], fake.requests)
     check("uploads the file's exact bytes", file_part.get_payload(decode=True) == CONTENT)
@@ -86,6 +90,14 @@ with tempfile.TemporaryDirectory() as tmp:
           file_part.get_content_type())
     check("returns the stored attachment under the asked name",
           stored["id"] == "A1" and stored["name"] == "Front of the card ✓", stored)
+
+    with open(image, "wb") as f:
+        f.write(b"x" * 5_000_000)
+    fake = FakeTrello()
+    trello_utils.urllib.request.urlopen = fake
+    add_attachment("C1", image, "Big scan", SESSION)
+    check("a large upload gets a longer timeout than the read-back",
+          fake.timeouts[0] >= 120 and fake.timeouts[1] == trello_utils.REQUEST_TIMEOUT, fake.timeouts)
 
     trello_utils.urllib.request.urlopen = FakeTrello(stored_bytes=3)
     try:
