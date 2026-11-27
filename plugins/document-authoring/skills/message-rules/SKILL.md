@@ -514,6 +514,8 @@ The specifics that most often separate a message that reads as Russell's from on
   When the reply delivers the result or answer they were waiting on, that apology opens the reply; otherwise it goes near the sign-off.
   On a chat thread he plainly missed, the same acknowledgment opens the reply ("Sorry I missed this thread:") since a short message has no sign-off to carry it.
   **Deferring work you had said you'd do:** open on the honest state of it (you started, or you meant to), say another priority needs your focus now, promise only that you'll return to it afterward, and close on a short apology.
+- **Give your own bad news an upside.**
+  When you tell someone who helped or is rooting for you that something didn't go your way, say how Russell sees it and close the news on the good that remains, with a `[CONFIRM: …]` for either one no source gives (see **When unsure**).
 - **Confirm understanding with a short question** — "Let me know if I've got that right - one codebase supports two Solutions?"
 - **Turn a generic observation back into a question aimed at the specific person** — "I guess you're just chasing AI now?" lands more personal than "I guess everyone's chasing AI these days." Center the person he's writing to rather than making a broad statement about the world.
 - **Close with "let me know"** — a signature phrase used constantly.
