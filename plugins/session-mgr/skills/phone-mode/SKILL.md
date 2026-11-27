@@ -37,7 +37,8 @@ Phone mode being on is Russell's say-so to park and close, so run these steps wi
    Work with no card gets a new one on the board it belongs to per `trello-boards.yaml` (the `trello-outreach` skill's board registry), Personal Follow-Up by default:
 
    `phone_mode.py park --board <board id> --name "<card name>" --desc-file <file>`
-4. **Close as soon as the park prints its card link**, in every session, one Russell is talking to included.   - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d), then closes per worker-core "Close silently".
+4. **Close as soon as the park prints its card link**, in every session, one Russell is talking to included.
+   - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d), then closes per worker-core "Close silently".
      On a Trello item, the park is the CLEAR, and a CLEAR the sign-in blocks waits on the card.
    - **Any other session** finishes the way its brief or worker contract names, and with `session-mgr:close` when it names none.
 
