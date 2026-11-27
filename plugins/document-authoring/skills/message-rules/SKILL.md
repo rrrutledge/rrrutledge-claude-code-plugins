@@ -327,6 +327,7 @@ The specifics that most often separate a message that reads as Russell's from on
   That evidence only supports a decision already made; the asker wanted the answer, not the paper trail behind it.
   A yes to whether something they sent (an application, a submission) arrived still closes with the thank-you from **Brevity**.
 - **When Russell owns the next step, say "I'll" — not "we'll" — and drop the trailing offer.**
+  **Word a step he already committed to and the reader still awaits as one he knows he owes,** which shows he is still tracking it and holds over the "I can" exception below.
   Announce work already done actively in the first person ("I drafted the posts"), not agent-less passive ("the posts are drafted").
   **Exception - the step hangs on something the same message leaves open, or hands over a document still being made**: "I can" names his part in the plan without announcing it as settled, so it isn't a tail.
   The dependency is an open point in this message or the unfinished document itself; a deliverable tied to something the recipient or anyone else owes follows **Offer visibility, not a future action**.
@@ -348,7 +349,7 @@ The specifics that most often separate a message that reads as Russell's from on
 - **Offer visibility, not a future action.**
   "Let me know if you're blocked" asks to be kept informed and commits Russell to nothing; "let me know and I'll [do X]" promises a step tied to a response that hasn't come in yet.
   The same holds when what's missing is coming from someone else entirely - "I'll build theirs as soon as those come in" ties a deliverable to photos still missing, so name only what's missing now and leave the follow-through unstated.
-  A concrete deliverable tied to something not yet in hand is the trigger, with three named exceptions: an immediate, self-initiated "I'll" for work already decided or already underway, apart from handing over a document still being made (see **Holding the voice**'s next-step rule and **A commitment already carries its own strength** below), an "I can" under that same next-step rule's exception, and the one reciprocal future-ask case under **Persona modes**' `1on1` job-search-resource bullet.
+  A concrete deliverable tied to something not yet in hand is the trigger, with four named exceptions: a step already committed to and worded as owed under **Holding the voice**'s next-step rule, an immediate, self-initiated "I'll" for work already decided or already underway, apart from handing over a document still being made (see **Holding the voice**'s next-step rule and **A commitment already carries its own strength** below), an "I can" under that same next-step rule's exception, and the one reciprocal future-ask case under **Persona modes**' `1on1` job-search-resource bullet.
 - **Answer an own-side pending decision with "We'll let you know."**
   When the decision or list they're waiting on is still yours, say "We'll let you know" - it tells them what happens next.
   It promises an update rather than a concrete deliverable, so it sits outside the trigger in the **Offer visibility** bullet above.
