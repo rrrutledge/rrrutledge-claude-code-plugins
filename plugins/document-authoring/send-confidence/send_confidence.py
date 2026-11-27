@@ -501,10 +501,11 @@ def _backfill_feedback(drafts):
 
 def _plain_text(text):
     """Strip HTML markup from a staged body, so a Gmail draft staged as `<p>...</p>` compares
-    equal to the plain text the sent item reads back as. Slack's `<@U123>` mention and
-    `<#C123|name>` channel tokens become the `@Name` and `#name` a Slack read-back shows, so
-    the markup strip doesn't erase them and make a staged mention look like one Russell added."""
-    text = re.sub(r"<@([UW][A-Z0-9]+)(?:\|[^>]*)?>", lambda m: "@" + _slack_display_name(m.group(1)), text or "")
+    equal to the plain text the sent item reads back as. Slack's `<url|label>` link,
+    `<@U123>` mention, and `<#C123|name>` channel tokens become the `label`, `@Name`, and
+    `#name` a Slack read-back shows, so the markup strip keeps their words."""
+    text = re.sub(r"<(?:https?|mailto):[^|>]*\|([^>]+)>", r"\1", text or "")
+    text = re.sub(r"<@([UW][A-Z0-9]+)(?:\|[^>]*)?>", lambda m: "@" + _slack_display_name(m.group(1)), text)
     text = re.sub(r"<#[CG][A-Z0-9]+\|([^>]+)>", r"#\1", text)
     text = re.sub(r"<!(here|channel|everyone)(?:\|[^>]*)?>", r"@\1", text)
     text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text)
