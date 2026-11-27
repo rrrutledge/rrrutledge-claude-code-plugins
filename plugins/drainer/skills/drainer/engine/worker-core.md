@@ -457,7 +457,7 @@ When they've told you their part is done and you've finished any follow-up, clos
 If a tab you opened was never something the user needed to see - its content is already mirrored where they work (a Slack draft that shows in their own Slack) - close it as soon as that's clear rather than waiting.
 
 **Close your own session too, once truly finished - don't wait to be asked.**
-A phone-mode park (§2e) closes the session whatever Russell still has to do on the parked work.
+A phone-mode park (§2e) overrides every stay-open rule in this section: close by step 4 of "Park a sign-in" in `/session-mgr:phone-mode`.
 Apply the same "truly finished" bar to this session, not just to browser tabs opened along the way - and the bar is about what's still *live*, not about whether the eventual outcome has happened yet.
 The session and the source item are two different places to hold state, and they serve different jobs: the source item's own mechanism (a Trello Start date, a resurfaced email) is what brings the item back around on its own schedule, but **the open session is where the two of you hold your shared unfinished work on this item right now**, per the framing at the top of this file.
 Closing it early throws that away and substitutes nothing until whatever Start date you set eventually fires - far too late for something Russell meant to do today, like sending a draft you staged.

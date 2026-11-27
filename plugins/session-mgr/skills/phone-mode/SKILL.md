@@ -22,11 +22,11 @@ Run the command that matches what Russell says.
 
 A park starts at a page asking Russell to sign in, in the browser this session drives.
 Browser work that needs no sign-in, or runs on a page already signed in, carries on.
-Phone mode being on is Russell's say-so to park, so run these steps without asking him.
+Phone mode being on is Russell's say-so to park and close, so run these steps without asking him.
 
 1. **Check the switch** with `phone_mode.py status`.
    When it prints `off`, handle the sign-in as usual.
-2. **Write the card text** to a `.tmp/` file: what the work is and its source link, the sign-in URL, how far it got, and the next step, an item CLEAR the sign-in blocks included.
+2. **Write the card text** to a `.tmp/` file: what the work is and its source link, the sign-in URL, how far it got, and every step the session still has open, an item CLEAR the sign-in blocks included.
    Add what the session that finishes the card needs from this one: a resume instruction this session was handed, copied whole with absolute paths, and a `Recurs:` card's current Start, which its next occurrence counts from.
    Copy each file that session needs into the main checkout's `.tmp/`, which outlives this session's worktree, and name it in the text.
 3. **Park the work.**
@@ -37,11 +37,8 @@ Phone mode being on is Russell's say-so to park, so run these steps without aski
    Work with no card gets a new one on the board it belongs to per `trello-boards.yaml` (the `trello-outreach` skill's board registry), Personal Follow-Up by default:
 
    `phone_mode.py park --board <board id> --name "<card name>" --desc-file <file>`
-4. **Close up**, by the kind of session this is.
-   - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d).
+4. **Close as soon as the park prints its card link**, in every session, one Russell is talking to included.   - **A drainer worker** first clears its item, once the card covers all of the item's open work (worker-core §2d), then closes per worker-core "Close silently".
      On a Trello item, the park is the CLEAR, and a CLEAR the sign-in blocks waits on the card.
-   - **A session Russell is talking to right now**, a drainer worker included, tells him what it parked, then, once nothing else in the conversation is open, closes the way its worker contract names, and with `session-mgr:close` when it has none.
-   - **A drainer worker on its own** closes per worker-core "Close silently".
    - **Any other session** finishes the way its brief or worker contract names, and with `session-mgr:close` when it names none.
 
    A session closes the browser tabs it opened (browser-chauffeur's `chauffeur.py --close-owned`) just before it closes.

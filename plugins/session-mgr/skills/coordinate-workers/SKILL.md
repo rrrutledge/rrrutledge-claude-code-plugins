@@ -43,6 +43,7 @@ Anything meant for the other session goes in a result file.
    Pull a large file listed under Artifacts only when a step needs it, and hand any big read to a subagent.
    Remove any worker still listed in `claude agents` with `claude rm <short id>` (a sweep for stragglers).
    A `failed` result goes to Russell with its Open items, or back out as a fresh worker, your call.
+   One whose Open items link a parked card stays with that card, which brings the work back on its own.
 7. **Assemble everything** that reaches another person and stage it in one review round, then ask Russell for "send it" and end your turn.
    That question is for him, so the marker is correct.
 8. **After he has sent**, correct the card's Start date, then close and remove yourself with `session-mgr:close` (no `--pause`).
