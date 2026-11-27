@@ -11,34 +11,37 @@ Every step checks the PR's current state first, so rerunning after any stop resu
      worktree is discarded after the merge.
   3. Mark a draft ready, merge the base branch into the PR branch on GitHub if it's behind, and wait
      for checks.
-  4. Merge by the first method the repo allows of squash, merge commit, and rebase (falling back to
-     `--auto` when branch protection holds it), wait for the merge, and delete the remote branch.
+  4. Merge by the repo's default method for the viewer, else the first it allows of squash, merge
+     commit, and rebase (falling back to `--auto` when branch protection holds it), wait for the merge,
+     and delete the remote branch.
   5. From inside a worktree of the PR's repo, stop with exit code 3 and an `EXIT_WORKTREE` line: the
      sync writes to the main checkout, which a worktree-isolated session leaves to be rerun from there.
-     The line is always `keep`: the session leaves without deleting anything, and step 6 removes the
+     The line is always `keep`: the session leaves without deleting anything, and step 8 removes the
      worktree.
-  6. Remove each clean worktree on the merged branch and the local branch itself. Steps 4 and 6 delete
+  6. In the plugins repo, for a PR into `main`, wait for the version-bump run on the merge commit
+     (steps 6 and 9 run for a PR into `main` alone, since the bump and the marketplace follow `main`).
+  7. Fast-forward the base branch, fast-forward only, so uncommitted work stays in place: pull in the
+     checkout that has the base branch checked out (git refuses, and this stops, if the pull would
+     touch a file with local changes), or move the branch ref alone when no checkout has it. A clean
+     main checkout still on the merged branch switches to the base branch first.
+  8. Remove each clean worktree on the merged branch and the local branch itself. Steps 4 and 8 delete
      branches only for a PR whose head branch is in the PR's own repo, since a fork's branch name can
      match an unrelated branch here.
-  7. In the plugins repo, for a PR into `main`, wait for the version-bump run on the merge commit
-     (steps 7 and 9 run for a PR into `main` alone, since the bump and the marketplace follow `main`).
-  8. Fast-forward the base branch, fast-forward only, so uncommitted work stays in place: pull in the
-     checkout that has the base branch checked out (git refuses, and this stops, if the pull would
-     touch a file with local changes), or move the branch ref alone when no checkout has it. In the
-     plugins repo, a main checkout on another branch is an `ERR`, since its files predate the merge.
   9. In the plugins repo, refresh the marketplace and `claude plugin update` every installed plugin at
      its recorded scope, then run the plugin-specific post-steps (Node deps, browser-chauffeur shim,
      drainer launcher) and install Node dependencies in the local clone, where the drainer hands
      workers their skill paths. Print each touched plugin's new version and how the change goes live.
+     A main checkout on another branch is an `ERR` that skips the clone's Node install, since its files
+     predate the merge.
 
 Usage:
   python ship.py [--pr <n>] [--repo <path>] [--admin]   the whole chain
   python ship.py --sync-only                             step 9 alone
 
 `--admin` passes through to `gh pr merge` to override branch protection.
-The repo is the main checkout of `--repo` if given, else of the git repo holding the current directory;
-its `upstream` remote, or `origin` when it has none, names the GitHub repo the PR lives in. `--repo` takes `--pr` with it, since the
-open PR for the current branch belongs to the current directory's repo.
+The repo is the main checkout of `--repo` if given, else of the git repo holding the current directory.
+`--repo` takes `--pr` with it, since the open PR for the current branch belongs to the current
+directory's repo.
 
 Exit codes: 0 shipped, 1 a line starting `ERR` needs attention, 3 `EXIT_WORKTREE` (see step 5).
 """
@@ -126,14 +129,10 @@ def wait_for(probe, timeout, what):
 
 # --- where the session is ---------------------------------------------------------------------------
 
-def github_slug(url):
-    """`owner/repo` (lowercased) from a remote URL whose host is github.com or an ssh alias naming
-    github, in any https or ssh form, else None."""
-    m = re.match(r'(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)(?::\d+)?[:/]+([^/]+)/([^/]+?)(?:\.git)?/*$',
-                 url.strip().lower())
-    if not m or not (m.group(1) == 'github.com' or ('github' in m.group(1) and '.' not in m.group(1))):
-        return None
-    return f'{m.group(2)}/{m.group(3)}'
+def url_slug(url):
+    """`owner/repo` (lowercased) from the last two path segments of a remote URL, else None."""
+    m = re.search(r'[:/]([^/:@]+)/([^/:]+?)(?:\.git)?/*$', url.strip().lower())
+    return f'{m.group(1)}/{m.group(2)}' if m else None
 
 
 def worktree_entries(porcelain):
@@ -148,19 +147,22 @@ def worktree_entries(porcelain):
 
 
 def resolve_repo(explicit):
-    """(main checkout path, GitHub `owner/repo`, remote name) for `explicit` or the current directory,
-    or (None, None, None) when it isn't a checkout of a GitHub repo. The remote is `upstream` when the
-    checkout has one, since a fork checkout's PRs live there, else `origin`."""
+    """(main checkout path, GitHub `owner/repo`, remote name) for `explicit` or the current directory.
+    gh picks the repo, the same way it picks the current branch's PR (its `set-default` choice, else its
+    own remote order), so the PR number and the merge target always agree; the remote is the one whose
+    URL names that repo. Raises when gh can't pick one or no remote names it."""
     entries = worktree_entries(git(*(['-C', explicit] if explicit else []), 'worktree', 'list', '--porcelain') or '')
     if not entries:
-        return None, None, None
+        raise ShipError('run from a checkout of the PR\'s GitHub repo, or pass --repo <path>')
     path = entries[0]['path']
-    for remote in ('upstream', 'origin'):
-        url = git('-C', path, 'remote', 'get-url', remote)
-        if url:
-            slug = github_slug(url)
-            return (Path(path), slug, remote) if slug else (None, None, None)
-    return None, None, None
+    r = run(['gh', 'repo', 'view', '--json', 'nameWithOwner'], cwd=path)
+    if r.returncode != 0:
+        raise ShipError(f'finding the GitHub repo of {path}: {last_line(r)}')
+    slug = json.loads(r.stdout)['nameWithOwner'].lower()
+    for remote in (git('remote', cwd=path) or '').split():
+        if url_slug(git('remote', 'get-url', remote, cwd=path) or '') == slug:
+            return Path(path), slug, remote
+    raise ShipError(f'no remote of {path} points at {slug}')
 
 
 def common_dir(cwd=None):
@@ -248,11 +250,16 @@ def make_mergeable(pr):
 
 
 def merge_method():
-    """The first merge method the repo allows, of squash, merge commit, and rebase."""
-    r = run(['gh', 'repo', 'view', GH_REPO, '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'])
+    """The method the GitHub UI would default to, else the first the repo allows of squash, merge
+    commit, and rebase."""
+    r = run(['gh', 'repo', 'view', GH_REPO, '--json',
+             'viewerDefaultMergeMethod,squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'])
     if r.returncode != 0:
         raise ShipError(f'reading the repo\'s allowed merge methods: {last_line(r)}')
     allowed = json.loads(r.stdout or '{}')
+    default = (allowed.get('viewerDefaultMergeMethod') or '').lower()
+    if default in ('squash', 'merge', 'rebase'):
+        return default
     for key, method in (('squashMergeAllowed', 'squash'), ('mergeCommitAllowed', 'merge'), ('rebaseMergeAllowed', 'rebase')):
         if allowed.get(key):
             return method
@@ -317,11 +324,16 @@ def bump_run(sha):
     return runs[0].get('conclusion') or 'unknown'
 
 
-def sync_base(repo, base, remote):
+def sync_base(repo, base, remote, merged):
     """Fast-forward `base` without disturbing uncommitted work: pull in the checkout that has it checked
-    out, or move the branch ref alone when none does. Returns that checkout's path, or None."""
+    out, or move the branch ref alone when none does. A clean main checkout still on the `merged` branch
+    switches to `base` first, since that branch's work now lives in `base`. Returns the path of the
+    checkout on `base`, or None."""
     entries = worktree_entries(git('worktree', 'list', '--porcelain', cwd=str(repo)) or '')
     holder = next((e['path'] for e in entries if e['branch'] == base), None)
+    if (not holder and entries and entries[0]['branch'] == merged and not git('status', '--porcelain', cwd=str(repo))
+            and git('checkout', base, cwd=str(repo)) is not None):
+        holder = entries[0]['path']
     cmd = ['pull', '--ff-only', remote, base] if holder else ['fetch', remote, f'{base}:{base}']
     r = run(['git', *cmd], cwd=holder or str(repo))
     if r.returncode != 0:
@@ -495,8 +507,6 @@ def ship(number, repo_arg, admin):
     if repo_arg and number is None:
         raise ShipError('--repo needs --pr, since the open PR for the current branch is in this directory\'s repo')
     repo, slug, remote = resolve_repo(repo_arg)
-    if not repo:
-        raise ShipError('run from a checkout of the PR\'s GitHub repo, or pass --repo <path>')
     GH_REPO = slug
     is_plugins = slug == PLUGINS_REPO
     pr = resolve_pr(number)
@@ -525,25 +535,24 @@ def ship(number, repo_arg, admin):
         print(f'then rerun: python "{os.path.abspath(__file__)}" --pr {pr["number"]} --repo "{repo}"')
         return EXIT_WORKTREE
 
-    if own_branch:
-        clean_up_local(repo, pr['headRefName'])
     base = pr['baseRefName']
-    # The version bump and the marketplace both follow main alone, so only a PR into main rolls out.
     rollout = is_plugins and base == 'main'
     conclusion = 'success'
     if rollout:
         conclusion = wait_for(lambda: bump_run(pr['mergeCommit']['oid']), BUMP_TIMEOUT, 'the version-bump run')
         if conclusion != 'success':
             print(f'ERR: version-bump run concluded {conclusion} - the version may not have moved')
-    holder = sync_base(repo, base, remote)
+    holder = sync_base(repo, base, remote, pr['headRefName'] if own_branch else None)
+    if own_branch:
+        clean_up_local(repo, pr['headRefName'])
     if not rollout:
         return 0
     # The drainer hands workers skill paths in the main checkout, so its files must be the merged ones.
     off_base = not holder or Path(holder) != repo
     if off_base:
         print(f'ERR: the main checkout {repo} is not on {base}, so its files predate the merge - '
-              f'check out {base} there')
-    rows = sync() + ensure_checkout_node_deps(repo)
+              f'check out {base} there, then run --sync-only')
+    rows = sync() + ([] if off_base else ensure_checkout_node_deps(repo))
     print_sync(rows)
     for name in touched:
         print(f'version: {name} {plugin_version(repo, base, name) or "unknown"}')
@@ -571,7 +580,10 @@ def main(argv=None):
     p.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
     args = p.parse_args(argv)
     if args.sync_only:
-        repo, slug, _ = resolve_repo(args.repo)
+        try:
+            repo, slug, _ = resolve_repo(args.repo)
+        except ShipError:
+            repo = slug = None
         print_sync(sync() + (ensure_checkout_node_deps(repo) if slug == PLUGINS_REPO else []))
         return 0
     try:

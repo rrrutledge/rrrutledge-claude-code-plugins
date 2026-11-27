@@ -29,10 +29,12 @@ def done(stdout='', returncode=0, stderr=''):
     return subprocess.CompletedProcess([], returncode, stdout, stderr)
 
 
-def remotes(origin, upstream=None):
-    """An answer to `git remote get-url <name>` for a checkout with these remotes."""
-    return lambda cmd: done(upstream) if cmd[-1] == 'upstream' and upstream else (
-        done(origin) if cmd[-1] == 'origin' else done(returncode=2))
+def checkout(slug, **urls):
+    """Script lines for a main checkout at /r whose remotes have these URLs and for which gh picks
+    `slug`."""
+    return [(['gh', 'repo', 'view', '--json', 'nameWithOwner'], done(json.dumps({'nameWithOwner': slug}))),
+            (['git', 'remote', 'get-url'], lambda cmd: done(urls[cmd[-1]])),
+            (['git', 'remote'], done('\n'.join(urls)))]
 
 
 def pr_data(state='OPEN', draft=False, merge_sha=None):
@@ -101,15 +103,15 @@ class VersionOrdering(Base):
 
 
 class WhereTheSessionIs(Base):
-    def test_origin_forms(self):
+    def test_url_forms(self):
         for url in (ORIGIN + '\n', 'git@github.com:rrrutledge/rrrutledge-claude-code-plugins.git',
                     'https://github.com/RRRutledge/rrrutledge-claude-code-plugins'):
-            self.assertEqual(ship.github_slug(url), ship.PLUGINS_REPO, url)
-        for url in ('https://github.com/someone/fork.git', 'git@github-alias:someone/fork.git',
-                    'https://user@github.com/someone/fork/', 'ssh://git@github.com:22/someone/fork'):
-            self.assertEqual(ship.github_slug(url), 'someone/fork', url)
-        for url in ('C:\\remotes\\app', '/srv/git/app.git', 'https://ghe.corp.com/team/app', ''):
-            self.assertIsNone(ship.github_slug(url), url)
+            self.assertEqual(ship.url_slug(url), ship.PLUGINS_REPO, url)
+        for url in ('git@github-alias:someone/fork.git', 'https://user@github.com/someone/fork/',
+                    'ssh://git@ssh.github.com:443/someone/fork'):
+            self.assertEqual(ship.url_slug(url), 'someone/fork', url)
+        for url in ('C:\\remotes\\app', ''):
+            self.assertIsNone(ship.url_slug(url), url)
 
     def test_worktree_entries(self):
         porcelain = ('worktree C:/repo\nHEAD abc\nbranch refs/heads/main\n\n'
@@ -121,25 +123,34 @@ class WhereTheSessionIs(Base):
                           {'path': 'C:/detached', 'branch': None}])
 
     def test_resolves_main_checkout_from_a_worktree(self):
-        self.fake([(['git', 'worktree'], done('worktree /r\n\nworktree /r/.claude/worktrees/w\n')),
-                   (['git', '-C', '/r', 'remote'], remotes(ORIGIN))])
+        fake = self.fake([(['git', 'worktree'], done('worktree /r\n\nworktree /r/.claude/worktrees/w\n'))]
+                         + checkout('RRRutledge/rrrutledge-claude-code-plugins', origin=ORIGIN))
         self.assertEqual(ship.resolve_repo(None), (Path('/r'), ship.PLUGINS_REPO, 'origin'))
+        self.assertEqual(fake.calls[1][1], '/r')
 
-    def test_any_github_repo_resolves(self):
-        fake = self.fake([(['git', '-C', '/x', 'worktree'], done('worktree /r\n')),
-                          (['git', '-C', '/r', 'remote'], remotes('https://github.com/someone/else.git'))])
+    def test_explicit_repo_resolves(self):
+        fake = self.fake([(['git', '-C', '/x', 'worktree'], done('worktree /r\n'))]
+                         + checkout('someone/else', origin='https://github.com/someone/else.git'))
         self.assertEqual(ship.resolve_repo('/x'), (Path('/r'), 'someone/else', 'origin'))
         self.assertTrue(fake.ran(['git', '-C', '/x', 'worktree', 'list']))
 
-    def test_fork_checkout_resolves_to_upstream(self):
-        self.fake([(['git', 'worktree'], done('worktree /r\n')),
-                   (['git', '-C', '/r', 'remote'], remotes('git@github.com:me/app.git', 'https://github.com/org/app'))])
+    def test_the_remote_is_the_one_naming_ghs_repo(self):
+        self.fake([(['git', 'worktree'], done('worktree /r\n'))]
+                  + checkout('org/app', origin='git@github.com:me/app.git', upstream='https://github.com/org/app'))
         self.assertEqual(ship.resolve_repo(None), (Path('/r'), 'org/app', 'upstream'))
 
-    def test_origin_without_a_slug_is_refused(self):
+    def test_gh_failing_to_pick_a_repo_stops(self):
         self.fake([(['git', 'worktree'], done('worktree /r\n')),
-                   (['git', '-C', '/r', 'remote'], remotes('https://ghe.corp.com/team/app'))])
-        self.assertEqual(ship.resolve_repo(None), (None, None, None))
+                   (['gh', 'repo', 'view'], done(returncode=1, stderr='no git remotes found'))])
+        with self.assertRaises(ship.ShipError) as e:
+            ship.resolve_repo(None)
+        self.assertIn('no git remotes found', str(e.exception))
+
+    def test_no_remote_naming_ghs_repo_stops(self):
+        self.fake([(['git', 'worktree'], done('worktree /r\n'))]
+                  + checkout('org/app', origin='https://github.com/me/app'))
+        with self.assertRaises(ship.ShipError):
+            ship.resolve_repo(None)
 
     def worktree_of(self, *commons):
         """`commons` answers `--git-common-dir` in call order: the session's directory, then the repo."""
@@ -218,6 +229,13 @@ class BeforeTheMerge(Base):
             ship.merge(pr_data(), admin=False)
         self.assertEqual(fake.ran(['gh', 'pr', 'merge'])[0][-1], '--merge')
 
+    def test_merge_prefers_the_viewer_default_method(self):
+        fake = self.fake([(['gh', 'repo', 'view'], done(json.dumps({'viewerDefaultMergeMethod': 'REBASE',
+                                                                     'squashMergeAllowed': True})))])
+        with contextlib.redirect_stdout(io.StringIO()):
+            ship.merge(pr_data(), admin=False)
+        self.assertEqual(fake.ran(['gh', 'pr', 'merge'])[0][-1], '--rebase')
+
     def test_merge_refused_entirely(self):
         self.fake([(['gh', 'pr', 'merge'], done(returncode=1, stderr='not mergeable'))])
         with self.assertRaises(ship.ShipError):
@@ -248,7 +266,7 @@ class AfterTheMerge(Base):
         porcelain = 'worktree /r\nbranch refs/heads/wip\n\nworktree /r/m\nbranch refs/heads/main\n'
         fake = self.fake([(['git', 'worktree', 'list'], done(porcelain))])
         with contextlib.redirect_stdout(io.StringIO()):
-            ship.sync_base(Path('/r'), 'main', 'origin')
+            ship.sync_base(Path('/r'), 'main', 'origin', 'feature')
         self.assertEqual([c for c in fake.calls if c[0][1] == 'pull'],
                          [(['git', 'pull', '--ff-only', 'origin', 'main'], '/r/m')])
         self.assertFalse(fake.ran(['git', 'checkout']))
@@ -257,16 +275,32 @@ class AfterTheMerge(Base):
         fake = self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/wip\n'))])
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            ship.sync_base(Path('/r'), 'main', 'origin')
+            ship.sync_base(Path('/r'), 'main', 'origin', 'feature')
         self.assertTrue(fake.ran(['git', 'fetch', 'origin', 'main:main']))
         self.assertFalse(fake.ran(['git', 'pull']))
         self.assertIn('only the branch moved', out.getvalue())
+
+    def test_sync_moves_a_clean_main_checkout_off_the_merged_branch(self):
+        fake = self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/feature\n'))])
+        with contextlib.redirect_stdout(io.StringIO()):
+            holder = ship.sync_base(Path('/r'), 'main', 'origin', 'feature')
+        self.assertEqual(holder, '/r')
+        self.assertTrue(fake.ran(['git', 'checkout', 'main']))
+        self.assertTrue(fake.ran(['git', 'pull', '--ff-only', 'origin', 'main']))
+
+    def test_sync_leaves_a_dirty_main_checkout_on_the_merged_branch(self):
+        fake = self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/feature\n')),
+                          (['git', 'status'], done(' M wip.py'))])
+        with contextlib.redirect_stdout(io.StringIO()):
+            ship.sync_base(Path('/r'), 'main', 'origin', 'feature')
+        self.assertFalse(fake.ran(['git', 'checkout']))
+        self.assertTrue(fake.ran(['git', 'fetch', 'origin', 'main:main']))
 
     def test_sync_refused_by_local_changes_stops(self):
         self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/main\n')),
                    (['git', 'pull'], done(returncode=1, stderr='error: Your local changes would be overwritten'))])
         with self.assertRaises(ship.ShipError) as e:
-            ship.sync_base(Path('/r'), 'main', 'origin')
+            ship.sync_base(Path('/r'), 'main', 'origin', 'feature')
         self.assertIn('local changes', str(e.exception))
 
     def test_clean_up_keeps_a_dirty_worktree_and_removes_a_clean_one(self):
@@ -295,10 +329,10 @@ class WholeChain(Base):
         rev_parse = (['git', 'rev-parse', '--path-format=absolute'],
                      (lambda cmd: done('/r/.git/worktrees/w' if '--git-dir' in cmd else '/r/.git'))
                      if in_worktree else done('/r/.git'))
-        slug = ship.github_slug(origin)
+        slug = ship.url_slug(origin)
         return self.fake([
             (['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/main\n')),
-            (['git', '-C', '/r', 'remote'], remotes(origin)),
+            *checkout(slug, origin=origin),
             rev_parse,
             (['git', 'rev-parse', '--abbrev-ref'], done('feature')),
             (['git', 'rev-parse', 'HEAD'], done('headsha')),
@@ -446,7 +480,7 @@ class NonAsciiOutput(Base):
         title = 'drainer: \U0001f4b0 Money label'
         data = dict(pr_data(state='CLOSED'), title=title)
         self.fake([(['git', '-C', 'unused', 'worktree'], done('worktree /r\n')),
-                   (['git', '-C', '/r', 'remote'], done(ORIGIN)),
+                   *checkout(ship.PLUGINS_REPO, origin=ORIGIN),
                    (['gh', 'pr', 'view'], done(json.dumps(data)))])
         raw = io.BytesIO()
         saved = ship.sys.stdout, ship.sys.stderr
