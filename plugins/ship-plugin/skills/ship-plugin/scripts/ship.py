@@ -20,10 +20,12 @@ Every step checks the PR's current state first, so rerunning after any stop resu
   6. Remove each clean worktree on the merged branch and the local branch itself. Steps 4 and 6 delete
      branches only for a PR whose head branch is in the PR's own repo, since a fork's branch name can
      match an unrelated branch here.
-  7. In the plugins repo, for a PR into `main`, wait for the version-bump run on the merge commit.
+  7. In the plugins repo, for a PR into `main`, wait for the version-bump run on the merge commit
+     (steps 7 and 9 run for a PR into `main` alone, since the bump and the marketplace follow `main`).
   8. Fast-forward the base branch, fast-forward only, so uncommitted work stays in place: pull in the
      checkout that has the base branch checked out (git refuses, and this stops, if the pull would
-     touch a file with local changes), or move the branch ref alone when no checkout has it.
+     touch a file with local changes), or move the branch ref alone when no checkout has it. In the
+     plugins repo, a main checkout on another branch is an `ERR`, since its files predate the merge.
   9. In the plugins repo, refresh the marketplace and `claude plugin update` every installed plugin at
      its recorded scope, then run the plugin-specific post-steps (Node deps, browser-chauffeur shim,
      drainer launcher) and install Node dependencies in the local clone, where the drainer hands
@@ -35,7 +37,7 @@ Usage:
 
 `--admin` passes through to `gh pr merge` to override branch protection.
 The repo is the main checkout of `--repo` if given, else of the git repo holding the current directory;
-its `origin` remote names the GitHub repo the PR lives in. `--repo` takes `--pr` with it, since the
+its `upstream` remote, or `origin` when it has none, names the GitHub repo the PR lives in. `--repo` takes `--pr` with it, since the
 open PR for the current branch belongs to the current directory's repo.
 
 Exit codes: 0 shipped, 1 a line starting `ERR` needs attention, 3 `EXIT_WORKTREE` (see step 5).
@@ -125,14 +127,13 @@ def wait_for(probe, timeout, what):
 # --- where the session is ---------------------------------------------------------------------------
 
 def github_slug(url):
-    """`owner/repo` (lowercased) from the last two path segments of a remote URL, in any https or ssh
-    form (an ssh host alias included), else None. gh rejects a slug that isn't on GitHub."""
-    m = re.search(r'[:/]([^/:@]+)/([^/:]+?)(?:\.git)?/*$', url.strip().lower())
-    return f'{m.group(1)}/{m.group(2)}' if m else None
-
-
-def same_path(a, b):
-    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+    """`owner/repo` (lowercased) from a remote URL whose host is github.com or an ssh alias naming
+    github, in any https or ssh form, else None."""
+    m = re.match(r'(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)(?::\d+)?[:/]+([^/]+)/([^/]+?)(?:\.git)?/*$',
+                 url.strip().lower())
+    if not m or not (m.group(1) == 'github.com' or ('github' in m.group(1) and '.' not in m.group(1))):
+        return None
+    return f'{m.group(2)}/{m.group(3)}'
 
 
 def worktree_entries(porcelain):
@@ -147,22 +148,34 @@ def worktree_entries(porcelain):
 
 
 def resolve_repo(explicit):
-    """(main checkout path, GitHub `owner/repo`) for `explicit` or the current directory, or
-    (None, None) when it isn't a checkout whose origin is on GitHub."""
+    """(main checkout path, GitHub `owner/repo`, remote name) for `explicit` or the current directory,
+    or (None, None, None) when it isn't a checkout of a GitHub repo. The remote is `upstream` when the
+    checkout has one, since a fork checkout's PRs live there, else `origin`."""
     entries = worktree_entries(git(*(['-C', explicit] if explicit else []), 'worktree', 'list', '--porcelain') or '')
     if not entries:
-        return None, None
+        return None, None, None
     path = entries[0]['path']
-    slug = github_slug(git('-C', path, 'remote', 'get-url', 'origin') or '')
-    return (Path(path), slug) if slug else (None, None)
+    for remote in ('upstream', 'origin'):
+        url = git('-C', path, 'remote', 'get-url', remote)
+        if url:
+            slug = github_slug(url)
+            return (Path(path), slug, remote) if slug else (None, None, None)
+    return None, None, None
+
+
+def common_dir(cwd=None):
+    d = git('rev-parse', '--path-format=absolute', '--git-common-dir', cwd=cwd)
+    return os.path.normcase(os.path.realpath(d)) if d else None
 
 
 def linked_worktree_branch(repo):
     """The current branch when the working directory is a linked worktree of `repo` (not its main
     checkout), else None. A worktree of some other repo is never removed by the ship, so it is None too."""
     git_dir = git('rev-parse', '--path-format=absolute', '--git-dir')
-    common = git('rev-parse', '--path-format=absolute', '--git-common-dir')
-    if not git_dir or not common or Path(git_dir) == Path(common) or not same_path(Path(common).parent, repo):
+    common = common_dir()
+    if not git_dir or not common or os.path.normcase(os.path.realpath(git_dir)) == common:
+        return None
+    if common != common_dir(str(repo)):
         return None
     return git('rev-parse', '--abbrev-ref', 'HEAD')
 
@@ -237,7 +250,9 @@ def make_mergeable(pr):
 def merge_method():
     """The first merge method the repo allows, of squash, merge commit, and rebase."""
     r = run(['gh', 'repo', 'view', GH_REPO, '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'])
-    allowed = json.loads(r.stdout or '{}') if r.returncode == 0 else {}
+    if r.returncode != 0:
+        raise ShipError(f'reading the repo\'s allowed merge methods: {last_line(r)}')
+    allowed = json.loads(r.stdout or '{}')
     for key, method in (('squashMergeAllowed', 'squash'), ('mergeCommitAllowed', 'merge'), ('rebaseMergeAllowed', 'rebase')):
         if allowed.get(key):
             return method
@@ -302,23 +317,24 @@ def bump_run(sha):
     return runs[0].get('conclusion') or 'unknown'
 
 
-def sync_base(repo, base):
+def sync_base(repo, base, remote):
     """Fast-forward `base` without disturbing uncommitted work: pull in the checkout that has it checked
-    out, or move the branch ref alone when none does."""
+    out, or move the branch ref alone when none does. Returns that checkout's path, or None."""
     entries = worktree_entries(git('worktree', 'list', '--porcelain', cwd=str(repo)) or '')
     holder = next((e['path'] for e in entries if e['branch'] == base), None)
-    cmd = ['pull', '--ff-only', 'origin', base] if holder else ['fetch', 'origin', f'{base}:{base}']
+    cmd = ['pull', '--ff-only', remote, base] if holder else ['fetch', remote, f'{base}:{base}']
     r = run(['git', *cmd], cwd=holder or str(repo))
     if r.returncode != 0:
         raise ShipError(f'syncing {base} in {holder or repo}: git {" ".join(cmd)}: {last_line(r)}')
     print(f'pulled: {base} in {holder or repo}' + ('' if holder else ' (no checkout is on it, so only the branch moved)'))
+    return holder
 
 
 def plugin_version(repo, base, name):
     try:
         return json.loads(git('show', f'{base}:plugins/{name}/.claude-plugin/plugin.json', cwd=str(repo))
                           or '').get('version')
-    except (OSError, ValueError):
+    except ValueError:
         return None
 
 
@@ -478,7 +494,7 @@ def ship(number, repo_arg, admin):
     global GH_REPO
     if repo_arg and number is None:
         raise ShipError('--repo needs --pr, since the open PR for the current branch is in this directory\'s repo')
-    repo, slug = resolve_repo(repo_arg)
+    repo, slug, remote = resolve_repo(repo_arg)
     if not repo:
         raise ShipError('run from a checkout of the PR\'s GitHub repo, or pass --repo <path>')
     GH_REPO = slug
@@ -511,24 +527,31 @@ def ship(number, repo_arg, admin):
 
     if own_branch:
         clean_up_local(repo, pr['headRefName'])
+    base = pr['baseRefName']
+    # The version bump and the marketplace both follow main alone, so only a PR into main rolls out.
+    rollout = is_plugins and base == 'main'
     conclusion = 'success'
-    # The version-bump workflow runs on pushes to main alone.
-    if is_plugins and pr['baseRefName'] == 'main':
+    if rollout:
         conclusion = wait_for(lambda: bump_run(pr['mergeCommit']['oid']), BUMP_TIMEOUT, 'the version-bump run')
         if conclusion != 'success':
             print(f'ERR: version-bump run concluded {conclusion} - the version may not have moved')
-    sync_base(repo, pr['baseRefName'])
-    if not is_plugins:
+    holder = sync_base(repo, base, remote)
+    if not rollout:
         return 0
+    # The drainer hands workers skill paths in the main checkout, so its files must be the merged ones.
+    off_base = not holder or Path(holder) != repo
+    if off_base:
+        print(f'ERR: the main checkout {repo} is not on {base}, so its files predate the merge - '
+              f'check out {base} there')
     rows = sync() + ensure_checkout_node_deps(repo)
     print_sync(rows)
     for name in touched:
-        print(f'version: {name} {plugin_version(repo, pr['baseRefName'], name) or "unknown"}')
+        print(f'version: {name} {plugin_version(repo, base, name) or "unknown"}')
     print('live: after a restart of Claude Code or /reload-plugins')
     for name, scope, status in rows:
         if name in touched and scope in ('local', 'project') and status == 'ok':
             print(f'note: {name} is {scope}-scoped, so it takes effect only in that project')
-    return 1 if conclusion != 'success' or any(s.startswith('ERR') for _, _, s in rows) else 0
+    return 1 if conclusion != 'success' or off_base or any(s.startswith('ERR') for _, _, s in rows) else 0
 
 
 def utf8_output():
@@ -548,7 +571,7 @@ def main(argv=None):
     p.add_argument('--sync-only', action='store_true', help='only refresh the plugin cache')
     args = p.parse_args(argv)
     if args.sync_only:
-        repo, slug = resolve_repo(args.repo)
+        repo, slug, _ = resolve_repo(args.repo)
         print_sync(sync() + (ensure_checkout_node_deps(repo) if slug == PLUGINS_REPO else []))
         return 0
     try:

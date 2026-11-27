@@ -18,7 +18,6 @@ The version number moves in an auto-bump commit that the repo's workflow pushes 
 ## What the script does
 
 `scripts/ship.py`, under this skill's base directory, runs the whole chain; its docstring lists every step.
-In concept it lands the PR, then brings this machine current with the merged result, then, for the plugins repo, reports the new versions and how they go live.
 
 The session handles the two calls a script can't make: leaving a worktree through the harness, and resolving a conflict.
 
