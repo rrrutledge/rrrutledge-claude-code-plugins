@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0] - 2026-11-26
+
+### Changed
+- **A subagent presses on relayed consent.**
+  A browser subagent presses the final button on a go-ahead its orchestrator relays.
+  The relay quotes the user's words verbatim and names the exact staged target, and the clicking script re-reads that target from the live page before it clicks; see **The return contract** in `SKILL.md`.
+
 ## [1.20.0] - 2026-11-19
 
 ### Added
