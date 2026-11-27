@@ -30,6 +30,7 @@ A drainer session sends only in these scoped forms:
   Silence, or a generic go-ahead earlier in the conversation, doesn't count.
 - **A Slack reaction that passes send-confidence's auto-send test**, which `slack_reaction.py` adds itself (`providers/slack-provider.md`, REACTION-PROPOSAL).
 - **The acknowledgements Russell approves as a batch** in the ack review (`engine/ack-review.md`).
+- **A timer site's final submit**, on Russell's live go-ahead against its saved batch (`engine/browser-gate.md`, "A site that times out").
 
 Apart from the Slack reaction above, default, silence, and any autonomous drain (no live Russell present, e.g. an `auto-handle` item) mean draft-only, since there's no one there to give the go-ahead.
 Dispatching work to another session (step 3) moves *where* it runs, never *whether* it waits for Russell.
@@ -248,6 +249,7 @@ A silently-resolved session left open is just noise, so close it at once:
 ## 2e. A browser gate only Russell can clear: report HELP_NEEDED, not a silent stall
 If any browser-chauffeur work this session drives - resolving a pointer (§2b), doing the item's work (step 3), staging a draft (step 4), or a provider's browser-driven CLEAR - hits a gate only Russell can clear (login, CAPTCHA, MFA-to-phone, an in-page action needing a human), do NOT follow browser-chauffeur's live `AskUserQuestion` step or wait on a subagent's `HELP_NEEDED`: a drainer worker runs unattended, so nobody would answer and the item would stall.
 Instead park the gate and keep this session open, per **`engine/browser-gate.md`**.
+A page staged for his final press that expires before he reaches it, and an item whose record carries a `Timer site:` line, follow that file's **A site that times out**.
 
 ## 3. Do the action (you do the work WITH the user)
 
@@ -309,7 +311,7 @@ You open it.
 Filing its ticket?
 You file it.
 Completing a form?
-You fill it out, and Russell presses Submit.
+You fill it out, and Submit waits for Russell.
 Writing the code it calls for?
 You write it.
 **The user guides if needed, but you drive the keyboard.**
@@ -334,7 +336,7 @@ A draft carrying an attachment or inline image also sends each file to Russell i
 Send only as "Sending" above allows.
 
 **The reply reports the sender's ask done, in the past tense.**
-It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and Russell presses any staged final button before he sends it.
+It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and any staged final button is pressed, per "Sending" above, before he sends it.
 Before staging, confirm every ask the draft mentions is one step 3 finished; for any that isn't, return to step 3, do it, and rewrite the draft.
 When the ask depends on an input the sender or a system still owes (an invite not yet sent, a document still coming), tell Russell what it's waiting on and hold the reply until it can report the ask done.
 

@@ -18,7 +18,7 @@
     {
       "name": "trello",
       "source": "./plugins/trello",
-      "description": "The Trello API client for any board: read or write cards, comments, labels, checklists, and lists, plus the blocked-card dependency model, through trello_utils.py - never the REST API directly. The outreach-funnel process layer over these mechanics is the separate trello-outreach plugin."
+      "description": "The Trello API client for any board: read or write cards, comments, attachments, labels, checklists, and lists, plus the blocked-card dependency model, through trello_utils.py - never the REST API directly. The outreach-funnel process layer over these mechanics is the separate trello-outreach plugin."
     },
     {
       "name": "trello-outreach",
@@ -128,7 +128,7 @@
     {
       "name": "ship-plugin",
       "source": "./plugins/ship-plugin",
-      "description": "Merge a plugin PR from this repo and roll it out to the local machine in one command: waits for the auto-bump on main, pulls the main checkout, and updates every installed plugin from this marketplace at its recorded scope, including plugin-specific post-steps."
+      "description": "Ship a PR in any GitHub repo in one command: merge it and fast-forward the main checkout. For a PR in this repo, also wait for the auto-bump on main and update every installed plugin from this marketplace at its recorded scope, including plugin-specific post-steps."
     }
   ]
 }

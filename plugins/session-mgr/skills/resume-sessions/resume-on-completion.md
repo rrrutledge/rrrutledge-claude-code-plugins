@@ -12,6 +12,7 @@ Closing right away takes the blocked session off Russell's session list and, for
 **The test: my next step cannot start until a session I launched, or a named peer, finishes - so I hand that session the resume command and close paused, in the same turn.**
 It fires at the launch: a session whose own next step reports or builds on the launched work is blocked on that session from the launch on.
 A Russell-only step inside the launched session is that session's to wait on, so that session stays open for it and this one closes paused.
+A step of his that waits on your own work, or that he puts off to later, comes back to you on its own `Russell still to do:` line in that session's report.
 
 Reach for resume-on-completion only when a **specific, identifiable session** is doing the blocking work, so there is an exact session to resume against:
 
@@ -39,7 +40,7 @@ Steps 1 and 2 below are the by-hand path for an existing peer.
    The command carries only paths and a guid, so it drops verbatim into a message or a doc without anything mangling it.
 
 2. **Hand that command to the peer with `SendMessage`.**
-   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task), then paste the command and tell the peer to write a short report to `.tmp/<slug>.report.md` in its own working directory first (what it did, where to find it, anything that differed from the ask), then run the command via its Bash tool with `--report-file ".tmp/<slug>.report.md"` added, which adds the report to the note.
+   Say what the peer must confirm is done first (Russell submitted / merged / confirmed - whatever "done" means for that task, his own steps included per "When this pattern applies"), then paste the command and tell the peer to write a short report to `.tmp/<slug>.report.md` in its own working directory first (what it did, where to find it, anything that differed from the ask, and any `Russell still to do:` lines, telling the peer which of his steps go on them per that section), then run the command via its Bash tool with `--report-file ".tmp/<slug>.report.md"` added, which adds the report to the note.
 
 3. **Record a paper trail**, so the pause is recoverable if the other session never follows through.
    Leave a dated comment on the work's Trello card noting the pause and naming the session you handed the resume to, and keep the card in an active list with its Start set to when to check back (see the `trello` skill), so the drainer surfaces it again even if the resume never lands.
