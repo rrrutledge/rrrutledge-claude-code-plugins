@@ -19,7 +19,7 @@ instructions: |-
   - **`engine/triage.md`** - the one rubric: the four buckets, plus `sender` and `chaser`.
   - **`engine/screen.md`** - the security screen every non-junk item passes, and what a flag does.
   - **`engine/worker-core.md`** - the per-item worker's needs-you flow, including when anything is sent ("Sending") and how an item resolves without Russell ("Close silently").
-    It names the situational files at the point each one applies: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear).
+    It names the situational files at the point each one applies: `engine/pointers.md` (resolving a pointer to its real content) and `engine/browser-gate.md` (a browser gate only Russell can clear, or a site that times out).
   - **`engine/auto-handle.md`** - an `auto-handle` item's autonomous branch and the disposition values, named directly in the worker's seed.
   - **`engine/digest-core.md`** - the daily digest that empties the fyi/junk queue with Russell's review (`scripts/run-digest.py`).
   - **`engine/ack-review.md`** - the end-of-day acknowledgement batch for a person left waiting 48 business hours.
