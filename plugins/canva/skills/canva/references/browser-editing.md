@@ -75,4 +75,4 @@ Judge each result at full size and place a natural-looking one; when none is, us
 - **Version history:** File, Version history.
   It has no named restore points.
 - **Sharing a design with a person:** check that "Invite to team" is unticked before submitting.
-  Sharing reaches another person, so stage it and let the user press the final button.
+  Sharing reaches another person, so its final button follows browser-chauffeur's **The return contract**.

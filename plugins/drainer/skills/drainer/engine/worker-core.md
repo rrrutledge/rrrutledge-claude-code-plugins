@@ -30,6 +30,7 @@ A drainer session sends only in these scoped forms:
   Silence, or a generic go-ahead earlier in the conversation, doesn't count.
 - **A Slack reaction that passes send-confidence's auto-send test**, which `slack_reaction.py` adds itself (`providers/slack-provider.md`, REACTION-PROPOSAL).
 - **The acknowledgements Russell approves as a batch** in the ack review (`engine/ack-review.md`).
+- **A timer site's final submit**, on Russell's live go-ahead against its saved batch (`engine/browser-gate.md`, "A site that times out").
 
 Apart from the Slack reaction above, default, silence, and any autonomous drain (no live Russell present, e.g. an `auto-handle` item) mean draft-only, since there's no one there to give the go-ahead.
 Dispatching work to another session (step 3) moves *where* it runs, never *whether* it waits for Russell.
@@ -188,8 +189,11 @@ Settle with that session before any other work, by the rule in `duplicate-sessio
 When a message wakes this session after it sat waiting, first run `date` and re-read the item's source as it stands now: for a card, its list, its Start, and its newest comments.
 What you last presented is as old as that wait, so a date you called upcoming may have passed and another session may have finished the work.
 Then do what the waking message asks.
-When it asks nothing beyond the item, and another session has since archived the card or moved it to a terminal list, close per "Close silently".
+When it asks nothing beyond the item, leaves Russell no step of his own (below), and another session has since archived the card or moved it to a terminal list, close per "Close silently".
 When the event a card prepared for has passed, end it per the trello provider's DUE-CARD.
+**A launched session's report with a `Russell still to do:` line hands that step to your session.**
+Present each one to him in a visible message, set up per §3's "An ask only his own hands can finish".
+It is open work on this item: hold the CLEAR and stay open until he confirms it.
 
 ## 2b. Resolve a pointer - open the real content yourself
 If this item is a **pointer** (a stub linking to content that lives elsewhere - a newsletter "view in browser" link, a hosted PDF, a "X just messaged you" notification, a portal notice with no link; `triage.md` defines the kinds), open and read that underlying content yourself before doing anything else.
@@ -245,6 +249,7 @@ A silently-resolved session left open is just noise, so close it at once:
 ## 2e. A browser gate only Russell can clear: report HELP_NEEDED, not a silent stall
 If any browser-chauffeur work this session drives - resolving a pointer (§2b), doing the item's work (step 3), staging a draft (step 4), or a provider's browser-driven CLEAR - hits a gate only Russell can clear (login, CAPTCHA, MFA-to-phone, an in-page action needing a human), do NOT follow browser-chauffeur's live `AskUserQuestion` step or wait on a subagent's `HELP_NEEDED`: a drainer worker runs unattended, so nobody would answer and the item would stall.
 Instead park the gate and keep this session open, per **`engine/browser-gate.md`**.
+A page staged for his final press that expires before he reaches it, and an item whose record carries a `Timer site:` line, follow that file's **A site that times out**.
 
 ## 3. Do the action (you do the work WITH the user)
 
@@ -306,7 +311,7 @@ You open it.
 Filing its ticket?
 You file it.
 Completing a form?
-You fill it out, and Russell presses Submit.
+You fill it out, and Submit waits for Russell.
 Writing the code it calls for?
 You write it.
 **The user guides if needed, but you drive the keyboard.**
@@ -331,7 +336,7 @@ A draft carrying an attachment or inline image also sends each file to Russell i
 Send only as "Sending" above allows.
 
 **The reply reports the sender's ask done, in the past tense.**
-It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and Russell presses any staged final button before he sends it.
+It describes what step 3 finished - the form filled, the link or fact supplied, the invites accepted - and any staged final button is pressed, per "Sending" above, before he sends it.
 Before staging, confirm every ask the draft mentions is one step 3 finished; for any that isn't, return to step 3, do it, and rewrite the draft.
 When the ask depends on an input the sender or a system still owes (an invite not yet sent, a document still coming), tell Russell what it's waiting on and hold the reply until it can report the ask done.
 
@@ -396,7 +401,8 @@ Decide by who's holding the conversation:
 The test: **if my next step cannot start until a session I launched or a named peer finishes, I hand that session the resume command and close paused now.**
 Distinct from both "waiting on Russell in this session" (stay open, §6's closing rules) and "waiting on a third party" (tracker card, above): here the block is a **specific, identifiable session** doing work this item depends on - a peer session Russell redirected you to let finish first (find it with `ListAgents`), or a fresh session you spawn for that work.
 A Russell-only step that happens *inside* that session belongs to that session's wait: this session still closes paused, and the resume brings it back for the reply reporting the work done.
-Sitting open then wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
+A step the report hands back on a `Russell still to do:` line is yours from the wake (§2).
+Sitting open while the other session works wastes Russell's attention as he cycles through his sessions and holds one of the drainer's limited worker slots for nothing.
 Instead, hand that other session the instruction to resume you when its work is genuinely done, and close now
 - the **resume-on-completion** pattern in `session-mgr` (`skills/resume-sessions/resume-on-completion.md`), then close via `close-session.py --pause`, which stops the session instead of removing it so the resume finds its worktree.
   **Leave the card un-cleared**, its Start untouched or moved to the check-back date per `resume-on-completion.md` step 3 (`providers/trello-provider.md`, CAPTURE and DUE-CARD outcome 4): the work isn't done, and the resumed session is what CLEARs it once it finishes.

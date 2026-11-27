@@ -1,6 +1,6 @@
 # Script Quality Standards
 
-The rules for what a browser automation script's code contains live here, apart from getting and closing tabs and resolving packages, which SKILL.md holds (**Tabs and Packages** below points to each).
+The rules for what a browser automation script's code contains live here, apart from getting and closing tabs, resolving packages, and the final irreversible click, which SKILL.md holds (**Tabs and Packages** and **The Final Irreversible Click** below point to each).
 Write each script to these rules, and check it against them before it runs (SKILL.md Phase 5).
 `templates/script-template.js` is a complete script that satisfies all of them.
 
@@ -81,6 +81,10 @@ Many frameworks keep dialog DOM mounted and toggle `display: none` to hide close
 - Get every tab through `openTab` or `findTab` (SKILL.md Phase 1, **Getting a tab**).
 - Close the tabs the script opened with `closeTab` in a `finally` (SKILL.md Phase 3, **Tab cleanup**).
 - Resolve `browser-chauffeur-helpers`, and `playwright-core` when the script calls it directly, with the try/catch fallback (SKILL.md **Prerequisite Check**).
+
+## ✅ REQUIRED: The Final Irreversible Click
+
+A script that presses a Send, Submit, Pay, or Confirm button re-reads its target first (SKILL.md **The return contract**).
 
 ## ✅ REQUIRED: Browser Connection
 
