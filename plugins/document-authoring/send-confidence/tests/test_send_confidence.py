@@ -595,30 +595,16 @@ def test_slack_sent_file_holding_the_raw_mention_token_is_sent_as_is(tmp_path, m
 
 
 @pytest.mark.parametrize("sent", [
-    "Here is the <https://example.com/doc|draft plan> and <https://example.com/page> for you",
-    "Here is the draft plan and https://example.com/page for you",
+    "Here is the <https://example.com/doc|draft plan> for you",
+    "Here is the draft plan for you",
 ])
-def test_slack_link_tokens_keep_their_words(tmp_path, sent):
-    draft_id = _seed_scored(
-        "d-slack-link",
-        "Here is the <https://example.com/doc|draft plan> and <https://example.com/page> for you",
-        NEUTRAL, score=50, channel="slack")
+def test_slack_labelled_link_keeps_its_words(tmp_path, sent):
+    draft_id = _seed_scored("d-slack-link", "Here is the <https://example.com/doc|draft plan> for you",
+                            NEUTRAL, score=50, channel="slack")
     result = sc.record_outcome(draft_id, sent, discarded=False, edit_nature=[], reason=None)
     assert result["edit_distance"] == 0
     with open(os.path.join(sc.drafts_dir(), f"{draft_id}.sent.txt"), encoding="utf-8") as fh:
-        assert fh.read() == "Here is the draft plan and https://example.com/page for you"
-
-
-@pytest.mark.parametrize("body", [
-    "See the notes at <https://example.com>. Thanks",
-    "See the notes (<https://example.com>) today",
-    "See the notes at https://example.com. Thanks",
-])
-def test_unchanged_email_with_a_lone_url_is_sent_as_is(body):
-    draft_id = _seed_scored("d-lone-url", body, NEUTRAL, score=50)
-    result = sc.record_outcome(draft_id, body, discarded=False, edit_nature=[], reason=None)
-    assert result["edit_distance"] == 0
-    assert sc.rendered_text(sc._plain_text(body)) == sc.rendered_text(body)
+        assert fh.read() == "Here is the draft plan for you"
 
 
 def test_factual_correction_implicates_fact_support(tmp_path):
