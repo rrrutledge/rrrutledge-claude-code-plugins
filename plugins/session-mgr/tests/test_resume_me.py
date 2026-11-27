@@ -75,6 +75,7 @@ def test_appends_resume_command_once():
         check("resume runs in the launcher's own directory",
               f'--cwd "{os.getcwd().replace(chr(92), "/")}"' in text, text)
         check("appended only once", text.count(spawn_session.RESUME_ME_HEADING) == 1)
+        check("brief asks for Russell's remaining steps in the report", "`Russell still to do:`" in text, text)
 
 
 def test_command_carries_wake_note():
