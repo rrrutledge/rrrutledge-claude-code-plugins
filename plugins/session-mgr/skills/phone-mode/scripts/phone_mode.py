@@ -1,4 +1,5 @@
-"""Phone mode: the switch a session reads before waiting on a browser sign-in only Russell can do.
+"""Phone mode: the switch a session reads while Russell is at his phone. SKILL.md, one folder up,
+says which steps it parks.
 
     python phone_mode.py on | off | status
     python phone_mode.py park --board <id> --name <text> --desc-file <path> [--list <name>]
@@ -27,11 +28,10 @@ sys.path.insert(0, SESSION_SCRIPTS)
 import bg_session  # noqa: E402
 
 MARKER = os.path.expanduser("~/.claude/phone-mode")
-REMINDER = "Phone mode is on: park a browser sign-in per `/session-mgr:phone-mode`"
+REMINDER = "Phone mode is on: before waiting on Russell, check `/session-mgr:phone-mode` for whether it parks that step"
 NOTE = ("Russell turned phone mode on.\n"
-        "If this session is waiting on him to sign in on a browser page, park that work now per "
-        "/session-mgr:phone-mode, whose first step checks the switch.\n"
-        "Otherwise carry on, and park the same way if you reach a sign-in later.")
+        "If this session is waiting on him, check that step against /session-mgr:phone-mode now.\n"
+        "Otherwise carry on, and check the same way before you next wait on him.")
 # Each note costs one `claude -p` process, so this many go out side by side.
 NOTES_AT_ONCE = 6
 PARK_FOR = datetime.timedelta(hours=1)

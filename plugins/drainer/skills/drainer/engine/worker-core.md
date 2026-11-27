@@ -17,8 +17,8 @@ Read the shared brain → situational-check → DO the action → contact the pe
 **You and Russell are one unit working this item - reason about "us," not "you" vs. "him."**
 The question at every step is never split into "my part" and "his part" as if handing off between two parties; it's one shared question: is there something for *us* to do?
 Work-for-us lives in exactly two places: an **incoming triage source** (an unread email, an unread Slack/Teams message, a card not yet promoted to a worker session) or an **open worker session** already in progress.
-It never lives parked in a Trello card, apart from work waiting on a sign-in while phone mode is on (§2e) - otherwise a card's only three legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
-Carry this framing through step 3 (you do the work, not just describe it) and the close-out at the end of step 6: the session stays open until your part and Russell's part are both actually finished, not just tracked somewhere (a phone-mode park, §2e, is the exception).
+It never lives parked in a Trello card, apart from work phone mode parked (`/session-mgr:phone-mode`) - otherwise a card's only three legitimate jobs are tracking that a *third party* owes the next move (see "Waiting on someone else" in step 6), backing up a paused session's resume (see "Blocked on another in-flight session's work" in step 6), or holding a source's incoming items back purely for lack of open-session capacity (job-search outreach cards, which would already be live sessions if the drainer could run enough of them at once).
+Carry this framing through step 3 (you do the work, not just describe it) and the close-out at the end of step 6: the session stays open until your part and Russell's part are both actually finished, not just tracked somewhere (after a phone-mode park, `/session-mgr:phone-mode` decides whether the session stays open).
 
 ## Sending
 This section is the drainer's one statement of when anything goes out; every other drainer file points here.
@@ -227,10 +227,10 @@ What still must not slip: anything this session doesn't finish before ending nee
 Once you've cleared under this section, step 6 is a no-op for this item - nothing left to clear there, just present the result once the work and any draft are done.
 
 ## Close silently
-Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work when your source cleared at capture (§2), an item already over at its source when you wake from a wait (§2), a phone-mode park (§2e), completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
+Every item you resolve without surfacing it to Russell closes this way: a pointer re-triaged to fyi or junk (§2b), a content re-triage to fyi (§2c), a situational no-op close (nothing to do right now), standing down for a live peer already on the same work when your source cleared at capture (§2), an item already over at its source when you wake from a wait (§2), a phone-mode park that closes the session, completed work that left nothing for Russell (§6a), and an `auto-handle` item (`engine/auto-handle.md`).
 A silently-resolved session left open is just noise, so close it at once:
 
-1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), a phone-mode park already settled its CLEAR (§2e), or the item is a Trello card that already sits on a terminal list or is archived.
+1. **CLEAR the source item** per your provider's CLEAR op, unless §2d or step 6 already cleared it (a §6a close always comes after step 6's CLEAR), the path that sent you here leaves it for the daily digest (a resolved pointer does), a phone-mode park already settled its CLEAR, or the item is a Trello card that already sits on a terminal list or is archived.
 2. **When the path queues a digest entry, re-tag first.**
    Edit `items/<id>.json` (Edit tool) and set `triage` to the value the path names, so the digest files it correctly: the bucket you re-triaged to for §2b and §2c, `"auto-handle"` for §6a.
    An `auto-handle` entry also carries its `disposition` and `dispositionReason`, per `engine/auto-handle.md` step 4.
@@ -408,13 +408,13 @@ Instead, hand that other session the instruction to resume you when its work is 
 If the next step is something only Russell can produce - content only he has the judgment or standing to write, a decision only he can make - filing a card for it and moving on leaves it unfinished; see step 3, "you drive the keyboard."
 Stay in the session and make progress on it with him instead: draft an outline, ask him for the missing content live, start the piece you can start without him.
 Don't create a card for this kind of work unless he's told you, in this session, that he wants to pick it up later rather than now - and even then, per the next section, that doesn't clear you to close the session.
-Phone mode is his standing instruction to card a browser sign-in and close (§2e).
+Phone mode is his standing instruction to card what it parks, per `/session-mgr:phone-mode`.
 
 **A Trello card you create mid-session gets a future Start date - never today.**
 The poller holds no seen-state entry for a card it never dispatched, so a freshly-created card that's startable now (Start now-or-earlier, or no Start) is eligible for its own worker on the next feed cycle and dispatch pass - a second worker launched onto work this session is already doing.
 Set the card's Start out to when the work should genuinely next surface (the real follow-up date if you know it, otherwise tomorrow or later); it then stays out of the queue until this session has set that date for real or closed, and the poller picks it up on its own terms once the date arrives.
 This is the created card's correct starting date, not a claim bump on a card the poller already owns, which the trello provider's CAPTURE rules out.
-A phone-mode park (§2e) is the one same-day case: its script sets a Start an hour out, which holds the card the same way.
+A phone-mode park is the one same-day case: its script sets a Start an hour out, which holds the card the same way.
 
 **Before presenting, check whether there's anything left TO present** - see §6a.
 If there genuinely isn't, self-close there instead of continuing below.
@@ -457,7 +457,7 @@ When they've told you their part is done and you've finished any follow-up, clos
 If a tab you opened was never something the user needed to see - its content is already mirrored where they work (a Slack draft that shows in their own Slack) - close it as soon as that's clear rather than waiting.
 
 **Close your own session too, once truly finished - don't wait to be asked.**
-A phone-mode park (§2e) overrides every stay-open rule in this section: close by step 4 of "Park a sign-in" in `/session-mgr:phone-mode`.
+After a phone-mode park, `/session-mgr:phone-mode` alone decides whether this session closes.
 Apply the same "truly finished" bar to this session, not just to browser tabs opened along the way - and the bar is about what's still *live*, not about whether the eventual outcome has happened yet.
 The session and the source item are two different places to hold state, and they serve different jobs: the source item's own mechanism (a Trello Start date, a resurfaced email) is what brings the item back around on its own schedule, but **the open session is where the two of you hold your shared unfinished work on this item right now**, per the framing at the top of this file.
 Closing it early throws that away and substitutes nothing until whatever Start date you set eventually fires - far too late for something Russell meant to do today, like sending a draft you staged.

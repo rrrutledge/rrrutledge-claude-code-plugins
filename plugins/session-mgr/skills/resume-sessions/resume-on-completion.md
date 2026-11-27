@@ -11,7 +11,7 @@ Closing right away takes the blocked session off Russell's session list and, for
 
 **The test: my next step cannot start until a session I launched, or a named peer, finishes - so I hand that session the resume command and close paused, in the same turn.**
 It fires at the launch: a session whose own next step reports or builds on the launched work is blocked on that session from the launch on.
-A Russell-only step inside the launched session is that session's to wait on, so that session stays open for it (or parks a sign-in per `/session-mgr:phone-mode`) and this one closes paused.
+A Russell-only step inside the launched session is that session's to wait on, so that session stays open for it (or parks it per `/session-mgr:phone-mode`) and this one closes paused.
 
 Reach for resume-on-completion only when a **specific, identifiable session** is doing the blocking work, so there is an exact session to resume against:
 

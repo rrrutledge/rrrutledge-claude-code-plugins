@@ -7,9 +7,9 @@ Any browser-chauffeur work this session drives - resolving a pointer's real cont
 
 Before reporting, apply browser-chauffeur's **Email-delivered MFA codes** and **Readable mailboxes**.
 
-**A sign-in that remains goes through phone mode first.**
-Run all four steps under "Park a sign-in" in session-mgr's `/session-mgr:phone-mode`, the status check included.
-When that check prints `off`, and for every other kind of gate, continue here.
+**A gate that remains goes through phone mode first.**
+Check it against session-mgr's `/session-mgr:phone-mode`, the switch included, and when phone mode parks it, follow that skill's park steps.
+Otherwise continue here.
 
 Report as `HELP_NEEDED` only what remains, naming the step precisely in `reason` (including a fetch that still failed after its one retry), in this session's own open tab instead of following browser-chauffeur's `AskUserQuestion` step or waiting on a `HELP_NEEDED` result from a subagent you spawned (message-draft's teams mode runs one, per worker-core step 4).
 Both of those assume someone is watching this session live to answer.
@@ -33,7 +33,7 @@ Park the gate where Russell already looks, the worker's own open session and tab
    A staged gate is squarely the "waiting on an answer from him" case worker-core §6's session-closing guidance carves out: nothing else will reliably bring this item back to Russell besides him going to this exact session and clearing the gate.
    Closing the session now would also cost you the browser tab you just left open: a launched session like this one owns its tabs by its own PID (see browser-chauffeur's **Tying tab ownership to a session**), and the sweep reaps an owned tab the moment its owning session ends.
    End your turn here instead of closing up.
-   Phone mode turning on while the gate is a sign-in sends it through "Park a sign-in" above.
+   Phone mode turning on while this gate waits sends it through that same check.
 
 Russell resumes this the same way he'd continue any open session.
 He finds this session waiting in his worker tabs, clears the gate, and tells it so.
