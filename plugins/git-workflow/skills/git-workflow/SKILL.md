@@ -76,8 +76,8 @@ git worktree add .claude/worktrees/<name> -b <branch-name> main
 - **Review requested first** - Russell said "let me review first" or similar
 - **More work is coming** - the conversation suggests it
 
-**After user merges:**
-- **Sync main automatically** - `git checkout main && git pull`
+**Merging and syncing main run through the `ship-plugin` skill, in any repo.**
+Run it when Russell says to ship or merge a PR, and on a PR he merged himself.
 
 ## GitHub
 - **Repo deletion**: Always use browser chauffeur to delete repos through the GitHub UI (Settings → Delete this repository).
