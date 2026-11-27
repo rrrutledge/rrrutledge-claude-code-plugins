@@ -609,6 +609,18 @@ def test_slack_link_tokens_keep_their_words(tmp_path, sent):
         assert fh.read() == "Here is the draft plan and https://example.com/page for you"
 
 
+@pytest.mark.parametrize("body", [
+    "See the notes at <https://example.com>. Thanks",
+    "See the notes (<https://example.com>) today",
+    "See the notes at https://example.com. Thanks",
+])
+def test_unchanged_email_with_a_lone_url_is_sent_as_is(body):
+    draft_id = _seed_scored("d-lone-url", body, NEUTRAL, score=50)
+    result = sc.record_outcome(draft_id, body, discarded=False, edit_nature=[], reason=None)
+    assert result["edit_distance"] == 0
+    assert sc.rendered_text(sc._plain_text(body)) == sc.rendered_text(body)
+
+
 def test_factual_correction_implicates_fact_support(tmp_path):
     factors = {**NEUTRAL, "fact_support": 80}
     draft_id = _seed_scored("d-factual", "Original draft body text here today please now.", factors, score=56)

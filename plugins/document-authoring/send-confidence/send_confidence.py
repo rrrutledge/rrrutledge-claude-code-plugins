@@ -499,17 +499,12 @@ def _backfill_feedback(drafts):
         drafts[draft_id]["outcome"] = outcome
 
 
-# Slack's `<url|label>` link token, and a mail client's identically shaped one.
-_LABELLED_LINK = re.compile(r"<(?:https?|mailto):[^|>]*\|([^>]+)>")
-
-
 def _plain_text(text):
     """Strip HTML markup from a staged body, so a Gmail draft staged as `<p>...</p>` compares
     equal to the plain text the sent item reads back as. Slack's `<url|label>` and `<url>`
     links and its `<@U123>` mention and `<#C123|name>` channel tokens become the label, URL,
     `@Name`, and `#name` a Slack read-back shows, so the markup strip keeps their words."""
-    text = _LABELLED_LINK.sub(r"\1", text or "")
-    text = re.sub(r"<((?:https?|mailto):[^>]*)>", r"\1", text)
+    text = re.sub(r"<(?=https?:|mailto:)(?:[^|>]*\|)?([^>]+)>", r"\1", text or "")
     text = re.sub(r"<@([UW][A-Z0-9]+)(?:\|[^>]*)?>", lambda m: "@" + _slack_display_name(m.group(1)), text)
     text = re.sub(r"<#[CG][A-Z0-9]+\|([^>]+)>", r"#\1", text)
     text = re.sub(r"<!(here|channel|everyone)(?:\|[^>]*)?>", r"@\1", text)
@@ -1324,11 +1319,7 @@ def rendered_text(text):
     `- ` line, and a paragraph's source line breaks join into spaces, since rendering reflows
     them. The quoted original is cut off. A formatting round trip therefore reads the same on
     both sides, and only a change to the words shows."""
-    # A mail client's `<url>` trails its anchor text, so it drops out here, ahead of
-    # `_plain_text`, which reads a lone `<url>` as the URL itself.
-    text = _LABELLED_LINK.sub(r"\1", text or "")
-    text = re.sub(r"<(?:https?|mailto):[^>]*>", " ", text)
-    text = re.sub(r"(?i)<li\b[^>]*>", "\n- ", text)
+    text = re.sub(r"(?i)<li\b[^>]*>", "\n- ", text or "")
     text = re.sub(r"(?i)</li>", "", text)
     text = re.sub(r"(?i)</(?:p|blockquote|ul|ol|h[1-6])>", "\n\n", text)
     text = _plain_text(text).replace("\r\n", "\n")
@@ -1336,7 +1327,8 @@ def rendered_text(text):
     text = text[:cut]
     text = re.sub(r"\[image:[^\]]*\]", " ", text)
     text = re.sub(r"\[([^\]]+)\]\((?:[^)]+)\)", r"\1", text)
-    text = re.sub(r"\((?:https?|mailto):[^)]*\)|(?:https?|mailto):\S+", " ", text)
+    # A bare URL ends before its trailing punctuation, which belongs to the sentence.
+    text = re.sub(r"\((?:https?|mailto):[^)]*\)|(?:https?|mailto):\S*[^\s.,;:!?)]", " ", text)
     text = re.sub(r"(?m)^[ \t]*(?:>[ \t]?)+", "", text)
     text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+", "", text)
     text = re.sub(r"(?m)^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+", "\0", text)
