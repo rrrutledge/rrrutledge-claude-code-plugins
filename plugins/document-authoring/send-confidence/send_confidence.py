@@ -1319,9 +1319,10 @@ def rendered_text(text):
     `- ` line, and a paragraph's source line breaks join into spaces, since rendering reflows
     them. The quoted original is cut off. A formatting round trip therefore reads the same on
     both sides, and only a change to the words shows."""
-    # A mail client's `<url>` goes before the markup strip. A `<url|label>` stays for
-    # `_plain_text`, which reads it as its label.
-    text = re.sub(r"<(?:https?|mailto):[^|>]*>", " ", text or "")
+    # Slack's `<url|label>` and a mail client's `<url>` go before the markup strip, which would
+    # read them as tags and drop the label with them.
+    text = re.sub(r"<(?:https?|mailto):[^|>]*\|([^>]+)>", r"\1", text or "")
+    text = re.sub(r"<(?:https?|mailto):[^>]*>", " ", text)
     text = re.sub(r"(?i)<li\b[^>]*>", "\n- ", text)
     text = re.sub(r"(?i)</li>", "", text)
     text = re.sub(r"(?i)</(?:p|blockquote|ul|ol|h[1-6])>", "\n\n", text)

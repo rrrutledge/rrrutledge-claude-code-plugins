@@ -598,7 +598,7 @@ def test_slack_sent_file_holding_the_raw_mention_token_is_sent_as_is(tmp_path, m
     "Here is the <https://example.com/doc|draft plan> for you",
     "Here is the draft plan for you",
 ])
-def test_slack_labelled_link_keeps_its_words(tmp_path, sent):
+def test_slack_labelled_link_keeps_its_words(sent):
     draft_id = _seed_scored("d-slack-link", "Here is the <https://example.com/doc|draft plan> for you",
                             NEUTRAL, score=50, channel="slack")
     result = sc.record_outcome(draft_id, sent, discarded=False, edit_nature=[], reason=None)
