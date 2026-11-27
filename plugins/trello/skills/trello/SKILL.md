@@ -1,11 +1,11 @@
 ---
 skill: trello
-description: The Trello API client - use it for ANY Trello read or write (cards, comments, labels, checklists, lists, blocking) through trello_utils.py. Never call the Trello REST API directly. The outreach funnel, board registry, and when-to-open-a-card policy are the separate trello-outreach skill.
+description: The Trello API client - use it for ANY Trello read or write (cards, comments, attachments, labels, checklists, lists, blocking) through trello_utils.py. Never call the Trello REST API directly. The outreach funnel, board registry, and when-to-open-a-card policy are the separate trello-outreach skill.
 instructions: |-
   ## Trello client
 
-  This is the Trello API client for any Trello board. Every Trello read and every Trello write goes
-  through `trello_utils.py` here: cards, comments, labels, checklists, lists, and the blocking model.
+  This is the Trello API client for any Trello board.
+  Every Trello read and every Trello write goes through `trello_utils.py` here: cards, comments, attachments, labels, checklists, lists, and the blocking model.
   It owns the mechanics - credentials, the base URL, a bounded request timeout, and read-after-write
   verification - so a caller never handles any of that itself.
 
@@ -40,7 +40,7 @@ instructions: |-
   from trello_utils import (
       get_trello_session, trello_request,
       get_board_lists, get_board_cards, get_board_labels,
-      create_card, update_card, delete_card, retire_card, add_comment,
+      create_card, update_card, delete_card, retire_card, add_comment, add_attachment,
       create_label, add_label_to_card, get_or_create_list,
       find_card_by_name, create_card_from_template,
   )
@@ -49,10 +49,9 @@ instructions: |-
   `get_trello_session()` reads TRELLO_API_KEY and TRELLO_TOKEN from the environment or Windows Credential
   Manager - no credential handling needed in the script.
 
-  `add_comment(card_id, text, session)` posts a card comment - the dated status comment every advance or
-  nudge writes. Anything without a typed wrapper (checklists, and any endpoint added later) goes through
-  `trello_request(method, path, session, params=?, body=?)` directly, which still carries the shared
-  session, base URL, and timeout.
+  `add_comment(card_id, text, session)` posts a card comment - the dated status comment every advance or nudge writes.
+  `add_attachment(card_id, file_path, name, session)` uploads a local file to a card as an attachment called `name`.
+  Anything without a typed wrapper (checklists, and any endpoint added later) goes through `trello_request(method, path, session, params=?, body=?)` directly, which still carries the shared session, base URL, and timeout.
 
   `python <path-to-skill>/scripts/trello_utils.py related --board <id> [--board <id> ...] --name <text> [--desc <text>]` finds the cards on the same item or the same employer or person.
   Pass the item's employer, person, or title as `--name` and any text carrying its links as `--desc`.
