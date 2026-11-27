@@ -30,11 +30,11 @@ The session handles the two calls a script can't make: leaving a worktree throug
    Add `--admin` only when Russell explicitly says to override branch protection.
 2. **On exit code 3, leave the worktree and rerun.**
    The script has printed `EXIT_WORKTREE` (docstring step 5 says why).
-   Call `ExitWorktree` with `action: keep`; this call is part of shipping, covered by the authorization above.
+   Call `ExitWorktree` with `action: keep`.
    Then run the `then rerun:` command it printed, which resumes after the merge.
 3. **On exit code 1, handle the `ERR` line.**
    A merge conflict is resolved by merging `origin/main` into the branch, fixing the conflicts, and pushing; then rerun.
-   Any other `ERR` goes to Russell as printed, including a sync git refused because a pull would overwrite uncommitted work in the main checkout.
+   Any other `ERR` goes to Russell as printed.
 4. **Relay the result.**
    Pass on the script's `PR`, `pulled`, `version`, `live`, and `note` lines.
 

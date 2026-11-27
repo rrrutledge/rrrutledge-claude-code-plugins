@@ -99,8 +99,10 @@ class WhereTheSessionIs(Base):
         for url in (ORIGIN + '\n', 'git@github.com:rrrutledge/rrrutledge-claude-code-plugins.git',
                     'https://github.com/RRRutledge/rrrutledge-claude-code-plugins'):
             self.assertEqual(ship.github_slug(url), ship.PLUGINS_REPO, url)
-        self.assertEqual(ship.github_slug('https://github.com/someone/fork.git'), 'someone/fork')
-        for url in ('https://gitlab.com/a/b.git', 'https://github.com/a', ''):
+        for url in ('https://github.com/someone/fork.git', 'git@github-alias:someone/fork.git',
+                    'https://user@github.com/someone/fork/', 'ssh://git@github.com:22/someone/fork'):
+            self.assertEqual(ship.github_slug(url), 'someone/fork', url)
+        for url in ('C:\\remotes\\app', ''):
             self.assertIsNone(ship.github_slug(url), url)
 
     def test_worktree_entries(self):
@@ -123,20 +125,27 @@ class WhereTheSessionIs(Base):
         self.assertEqual(ship.resolve_repo('/x'), (Path('/r'), 'someone/else'))
         self.assertTrue(fake.ran(['git', '-C', '/x', 'worktree', 'list']))
 
-    def test_non_github_origin_is_refused(self):
+    def test_origin_without_a_slug_is_refused(self):
         self.fake([(['git', 'worktree'], done('worktree /r\n')),
-                   (['git', '-C', '/r', 'remote'], done('https://gitlab.com/someone/else.git'))])
+                   (['git', '-C', '/r', 'remote'], done('C:\\remotes\\app'))])
         self.assertEqual(ship.resolve_repo(None), (None, None))
 
-    def test_linked_worktree_branch(self):
-        self.fake([(['git', 'rev-parse', '--path-format=absolute', '--git-dir'], done('/r/.git/worktrees/w')),
-                   (['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], done('/r/.git')),
+    def worktree_of(self, common):
+        self.fake([(['git', 'rev-parse', '--path-format=absolute', '--git-dir'], done(common + '/worktrees/w')),
+                   (['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], done(common)),
                    (['git', 'rev-parse', '--abbrev-ref'], done('feature'))])
-        self.assertEqual(ship.linked_worktree_branch(), 'feature')
+
+    def test_linked_worktree_branch(self):
+        self.worktree_of('/r/.git')
+        self.assertEqual(ship.linked_worktree_branch('/r'), 'feature')
+
+    def test_worktree_of_another_repo_does_not_count(self):
+        self.worktree_of('/other/.git')
+        self.assertIsNone(ship.linked_worktree_branch('/r'))
 
     def test_main_checkout_is_not_a_linked_worktree(self):
         self.fake([(['git', 'rev-parse', '--path-format=absolute'], done('/r/.git'))])
-        self.assertIsNone(ship.linked_worktree_branch())
+        self.assertIsNone(ship.linked_worktree_branch('/r'))
 
     def test_require_pushed(self):
         self.fake([(['git', 'status'], done(' M x.py'))])
@@ -190,6 +199,13 @@ class BeforeTheMerge(Base):
             ship.merge(pr_data(), admin=False)
         self.assertEqual(fake.ran(['gh', 'pr', 'merge'])[-1][-1], '--auto')
 
+    def test_merge_uses_a_method_the_repo_allows(self):
+        fake = self.fake([(['gh', 'repo', 'view'], done(json.dumps({'squashMergeAllowed': False,
+                                                                     'mergeCommitAllowed': True})))])
+        with contextlib.redirect_stdout(io.StringIO()):
+            ship.merge(pr_data(), admin=False)
+        self.assertEqual(fake.ran(['gh', 'pr', 'merge'])[0][-1], '--merge')
+
     def test_merge_refused_entirely(self):
         self.fake([(['gh', 'pr', 'merge'], done(returncode=1, stderr='not mergeable'))])
         with self.assertRaises(ship.ShipError):
@@ -216,25 +232,26 @@ class AfterTheMerge(Base):
         files = ['plugins/a/x.md', 'plugins/b/c/d.py', 'plugins/a/y.md', 'README.md', 'plugins/top.md']
         self.assertEqual(ship.plugins_touched(files), ['a', 'b'])
 
-    def test_sync_on_base_pulls_fast_forward_only(self):
-        fake = self.fake([(['git', 'rev-parse', '--abbrev-ref'], done('main'))])
+    def test_sync_pulls_in_the_checkout_that_holds_the_base(self):
+        porcelain = 'worktree /r\nbranch refs/heads/wip\n\nworktree /r/m\nbranch refs/heads/main\n'
+        fake = self.fake([(['git', 'worktree', 'list'], done(porcelain))])
         with contextlib.redirect_stdout(io.StringIO()):
             ship.sync_base(Path('/r'), 'main')
-        self.assertTrue(fake.ran(['git', 'pull', '--ff-only', 'origin', 'main']))
+        self.assertEqual([c for c in fake.calls if c[0][1] == 'pull'],
+                         [(['git', 'pull', '--ff-only', 'origin', 'main'], '/r/m')])
         self.assertFalse(fake.ran(['git', 'checkout']))
 
-    def test_sync_off_base_moves_the_ref_and_leaves_the_checkout(self):
-        fake = self.fake([(['git', 'rev-parse', '--abbrev-ref'], done('wip'))])
+    def test_sync_with_no_checkout_on_base_moves_the_ref_alone(self):
+        fake = self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/wip\n'))])
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             ship.sync_base(Path('/r'), 'main')
         self.assertTrue(fake.ran(['git', 'fetch', 'origin', 'main:main']))
         self.assertFalse(fake.ran(['git', 'pull']))
-        self.assertFalse(fake.ran(['git', 'checkout']))
-        self.assertIn('stays on wip', out.getvalue())
+        self.assertIn('only the branch moved', out.getvalue())
 
     def test_sync_refused_by_local_changes_stops(self):
-        self.fake([(['git', 'rev-parse', '--abbrev-ref'], done('main')),
+        self.fake([(['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/main\n')),
                    (['git', 'pull'], done(returncode=1, stderr='error: Your local changes would be overwritten'))])
         with self.assertRaises(ship.ShipError) as e:
             ship.sync_base(Path('/r'), 'main')
@@ -263,8 +280,6 @@ class AfterTheMerge(Base):
 
 class WholeChain(Base):
     def chain(self, view_answers, in_worktree, origin=ORIGIN):
-        """`git rev-parse --abbrev-ref` answers `feature` for the worktree and `main` for the main
-        checkout, so a run outside a worktree sees the main checkout on main."""
         rev_parse = (['git', 'rev-parse', '--path-format=absolute'],
                      (lambda cmd: done('/r/.git/worktrees/w' if '--git-dir' in cmd else '/r/.git'))
                      if in_worktree else done('/r/.git'))
@@ -273,7 +288,7 @@ class WholeChain(Base):
             (['git', 'worktree', 'list'], done('worktree /r\nbranch refs/heads/main\n')),
             (['git', '-C', '/r', 'remote'], done(origin)),
             rev_parse,
-            (['git', 'rev-parse', '--abbrev-ref'], done('feature' if in_worktree else 'main')),
+            (['git', 'rev-parse', '--abbrev-ref'], done('feature')),
             (['git', 'rev-parse', 'HEAD'], done('headsha')),
             (['gh', 'pr', 'view'], view_answers),
             (['gh', 'api', f'repos/{slug}/compare/main...feature'], done('{"behind_by": 0}')),
@@ -281,11 +296,35 @@ class WholeChain(Base):
             (['gh', 'run', 'list'], done(json.dumps([{'status': 'completed', 'conclusion': 'success'}]))),
         ])
 
-    def run_ship(self):
+    def run_ship(self, argv=('--pr', '7')):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = ship.main(['--pr', '7'])
+            code = ship.main(list(argv))
         return code, out.getvalue()
+
+    def test_repo_without_pr_stops_before_any_lookup(self):
+        fake = self.chain([done(json.dumps(pr_data()))], in_worktree=False)
+        code, out = self.run_ship(['--repo', '/r'])
+        self.assertEqual(code, 1, out)
+        self.assertIn('--repo needs --pr', out)
+        self.assertFalse(fake.ran(['gh']))
+
+    def test_fork_pr_leaves_same_named_branches_alone(self):
+        merged = dict(pr_data('MERGED', merge_sha='m1'), isCrossRepository=True)
+        fake = self.chain([done(json.dumps(merged))], in_worktree=False, origin='https://github.com/someone/app')
+        code, out = self.run_ship()
+        self.assertEqual(code, 0, out)
+        self.assertFalse(fake.ran(['gh', 'api', '-X', 'DELETE']))
+        self.assertFalse(fake.ran(['git', 'branch', '-D']))
+
+    def test_plugins_pr_into_another_base_skips_the_bump_wait(self):
+        ship.INSTALLED.write_text(json.dumps({'plugins': {}}), encoding='utf-8')
+        merged = dict(pr_data('MERGED', merge_sha='m1'), baseRefName='stack')
+        fake = self.chain([done(json.dumps(merged))], in_worktree=False)
+        code, out = self.run_ship()
+        self.assertEqual(code, 0, out)
+        self.assertFalse(fake.ran(['gh', 'run', 'list']))
+        self.assertTrue(fake.ran(['git', 'fetch', 'origin', 'stack:stack']))
 
     def test_from_a_worktree_it_merges_then_stops_for_exit_worktree(self):
         fake = self.chain([done(json.dumps(pr_data())), done(json.dumps(pr_data('MERGED', merge_sha='m1')))],
