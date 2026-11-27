@@ -158,6 +158,7 @@ Then the card ends in exactly one of these:
 2. **It didn't happen, and someone else owns the next step** - draft the ping to that person, staged for Russell per DRAFT-MODE; once he sends it, CLEAR's nudge sets Start to the next check under the nudge cadence below.
    That person can be an outreach contact, a ⏳ Waiting card's party, a business, a colleague, or a family member.
 3. **It didn't happen, and Russell or you own the next step** - a needs-you item: a PR to review or merge, an institution login or MFA only he can do, a decision, a purchase, a call to make, an unmet hold condition, or the task itself.
+   A step among these that phone mode parks (session-mgr's `/session-mgr:phone-mode`) takes outcome 4.
    Do every part you can do alone first (worker-core step 3), then present what Russell needs to do now, in order ("review and merge PR #417, then let's do the bank logins together").
    Its Start stays put, and it never self-closes through worker-core §6a.
 4. **One of the listed events has set a later date** - set Start to that date, and name in the comment what happened and when.
@@ -169,9 +170,10 @@ Then the card ends in exactly one of these:
    - the card's work handed to a session this worker launched, named in the comment along with the fact that it resets Start when it finishes
    - the card's work kept by a live peer session, with the comment and check-back date set per session-mgr's `duplicate-sessions.md` step 6
    - another unanswered ask to the same contact, held under worker-core's "One active ask per person at a time", with Start set to that ask's next check
+   - work phone mode parked, with the Start and comment set by session-mgr's `/session-mgr:phone-mode`
 
 **A party who hasn't replied gets a follow-up or a decision.**
-On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its last bullet).
+On any card, silence from the party who owns the next step ends the card in outcome 2 while its cadence allows another follow-up, in outcome 3 once the follow-ups are spent (see "When the follow-ups are spent" under Nudge cadence), and in outcome 4 only while another ask to the same contact is held (its held-ask bullet).
 
 A `Recurs:` card that has fallen behind - its own records show the last completed occurrence is well past one cadence ago - says so in the result, with how far behind it is, so the backlog is visible instead of rolling forward one occurrence at a time.
 

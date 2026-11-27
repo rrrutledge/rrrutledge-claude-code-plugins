@@ -72,14 +72,14 @@ DEFAULT_CONFIG_DIR = "~/.claude"
 ACCOUNTS_PATH = os.path.expanduser("~/.claude/session-mgr/accounts.json")
 
 
-def run_bounded(args, timeout, **kw):
+def run_bounded(args, timeout, input=None, **kw):
     """Run `args` with a hard `timeout`, killing the whole process tree on expiry (a lone kill can leave
-    a grandchild holding the output pipes open, so the wait never ends). Returns a CompletedProcess;
-    a timeout comes back as returncode 1."""
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                            encoding="utf-8", errors="replace", **kw)
+    a grandchild holding the output pipes open, so the wait never ends). `input` is text for its stdin.
+    Returns a CompletedProcess; a timeout comes back as returncode 1."""
+    proc = subprocess.Popen(args, stdin=None if input is None else subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **kw)
     try:
-        out, err = proc.communicate(timeout=timeout)
+        out, err = proc.communicate(input=input, timeout=timeout)
         return subprocess.CompletedProcess(args, proc.returncode, out, err)
     except subprocess.TimeoutExpired:
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True,
@@ -316,6 +316,97 @@ def claude_agents():
             seen.add(key)
             merged.append({**a, "configDir": d})
     return merged if any_ok else None
+
+
+# --------------------------------------------------------------------------- a note to a live session
+
+NOTE_PROMPT = """Call the SendMessage tool exactly once, then stop.
+Its `to` is the exact text between the two markers below, copied character for character. Copy every backslash exactly as it appears; add, remove, or escape none.
+>>>{to}<<<
+Its `message` is the exact text between these two markers, copied character for character:
+>>>{message}<<<
+"""
+
+
+def live_agent(receipt, agents):
+    """The live `claude agents` entry a session receipt (short id or full guid) names, or None."""
+    return next((a for a in agents or []
+                 if receipt in (a.get("id"), a.get("sessionId")) and a.get("pid")), None)
+
+
+def session_address(receipt, agents):
+    """`(messaging pipe, config dir)` of the live session a receipt names, or None.
+
+    A session's cross-session inbox is the named pipe in its `<config dir>/sessions/<pid>.json`. That
+    pipe, as a `uds:` address, is the one SendMessage target that names exactly one session: titles
+    can repeat (two `Slack: @mention in #channel` workers), and SendMessage takes no session id."""
+    a = live_agent(receipt, agents)
+    if not a:
+        return None
+    root = os.path.expanduser(a.get("configDir") or os.path.join("~", ".claude"))
+    try:
+        with open(os.path.join(root, "sessions", f"{a['pid']}.json"), encoding="utf-8") as f:
+            rec = json.load(f) or {}
+    except (OSError, ValueError):
+        return None
+    pipe = rec.get("messagingSocketPath")
+    ok = pipe and rec.get("sessionId") == a.get("sessionId")
+    return (pipe, root if a.get("configDir") else None) if ok else None
+
+
+def _note_delivered(stream, to, message):
+    """True only when the delivery call's stream-json output shows a SendMessage call carrying exactly
+    `to` and `message` whose tool result reports success. Checking the call's own input means a model
+    that altered the address or the text never counts as a delivery."""
+    calls = set()
+    for line in (stream or "").splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        msg = event.get("message") if isinstance(event, dict) else None
+        content = msg.get("content") if isinstance(msg, dict) else None  # a status event's message is text
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use" and block.get("name") == "SendMessage":
+                args = block.get("input") or {}
+                if args.get("to") == to and (args.get("message") or "").strip() == message.strip():
+                    calls.add(block.get("id"))
+            elif block.get("type") == "tool_result" and block.get("tool_use_id") in calls:
+                result = block.get("content")
+                if isinstance(result, list):
+                    result = "".join(r.get("text", "") for r in result if isinstance(r, dict))
+                try:
+                    if json.loads(result or "{}").get("success") is True:
+                        return True
+                except (ValueError, AttributeError, TypeError):  # a result shape this check doesn't know
+                    continue
+    return False
+
+
+def send_note(address, message, cwd):
+    """Deliver `message` to the live session at `address` (session_address's pair). A script has no way
+    to post to a session's inbox itself, so one `claude -p` call holding only the SendMessage tool makes
+    the send, under the account that holds the session and in the manual permission mode launched
+    sessions run in (a peer in another mode holds the message for approval). No settings sources, so no
+    hooks run. True only on a verified delivery (_note_delivered)."""
+    pipe, config_dir = address
+    to = f"uds:{pipe}"
+    claude = shutil.which("claude") or "claude"
+    # A sender running inside a session must not hand the call that session's identity.
+    env = _account_env(config_dir, _launch_env())
+    try:
+        res = run_bounded(
+            # Delivery is one SendMessage call with no judgment in it, so the smallest model makes it.
+            [claude, "-p", "--model", "haiku", "--permission-mode", "manual",
+             "--output-format", "stream-json", "--verbose", "--setting-sources", "",
+             "--allowedTools", "SendMessage", "--tools", "SendMessage"],
+            timeout=90, input=NOTE_PROMPT.format(to=to, message=message), cwd=cwd, env=env,
+            creationflags=NO_WINDOW)
+    except OSError:
+        return False
+    return res.returncode == 0 and _note_delivered(res.stdout, to, message)
 
 
 # ---------------------------------------------------------------------------------------- the launch

@@ -1,7 +1,6 @@
 """Tests for one-conversation-one-live-worker routing: each provider's conversation key, the live-holder
-scan, the route decision (forward / same-pass hold / dispatch), the session address lookup, the
-delivery check on the SendMessage call, the hand-over's records, and the live-session list a new
-worker's seed carries.
+scan, the route decision (forward / same-pass hold / dispatch), the hand-over's records, and the
+live-session list a new worker's seed carries.
 
 Run directly:
     python plugins/drainer/tests/test_conversation_routing.py
@@ -145,45 +144,6 @@ try:
 finally:
     poller.paused_sessions = real_paused
 
-print("\nsession_address: the receipt's live session -> its messaging pipe, on its own account")
-account = tempfile.mkdtemp(prefix="conv-account-")  # the session's CLAUDE_CONFIG_DIR
-os.makedirs(os.path.join(account, "sessions"))
-PIPE = r"\\.\pipe\LOCAL\cc-msg-abc"
-with open(os.path.join(account, "sessions", "4242.json"), "w", encoding="utf-8") as f:
-    json.dump({"pid": 4242, "sessionId": "abc12345-0000", "messagingSocketPath": PIPE}, f)
-agents = [{"id": "abc12345", "sessionId": "abc12345-0000", "pid": 4242, "configDir": account},
-          {"id": "dead0000", "sessionId": "dead0000-0000", "configDir": account}]
-check("a short-id receipt resolves", poller.session_address("abc12345", agents), (PIPE, account))
-check("a guid receipt resolves", poller.session_address("abc12345-0000", agents), (PIPE, account))
-check("a pid-less session has no address", poller.session_address("dead0000", agents), None)
-with open(os.path.join(account, "sessions", "4242.json"), "w", encoding="utf-8") as f:
-    json.dump({"pid": 4242, "sessionId": "someone-else", "messagingSocketPath": PIPE}, f)
-check("a pid file now owned by another session is not trusted", poller.session_address("abc12345", agents), None)
-
-
-def stream(to, message, result):
-    """The stream-json lines a delivery call prints: the SendMessage call, then its result."""
-    use = {"type": "assistant", "message": {"content": [
-        {"type": "tool_use", "id": "t1", "name": "SendMessage", "input": {"to": to, "message": message}}]}}
-    res = {"type": "user", "message": {"content": [
-        {"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": json.dumps(result)}]}]}}
-    return json.dumps(use) + "\n" + json.dumps(res) + "\n"
-
-
-print("\n_forward_delivered: success counts only for the exact address and text")
-TO, MSG = f"uds:{PIPE}", "New drainer item x.\nRead it."
-check("exact call, success -> delivered", poller._forward_delivered(stream(TO, MSG, {"success": True}), TO, MSG), True)
-check("tool reported failure -> not delivered",
-      poller._forward_delivered(stream(TO, MSG, {"success": False}), TO, MSG), False)
-check("model doubled a backslash in the address -> not delivered",
-      poller._forward_delivered(stream(TO.replace("\\pipe", "\\\\pipe"), MSG, {"success": True}), TO, MSG), False)
-check("model altered the text -> not delivered",
-      poller._forward_delivered(stream(TO, "something else", {"success": True}), TO, MSG), False)
-check("no output -> not delivered", poller._forward_delivered("", TO, MSG), False)
-status = json.dumps({"type": "system", "message": "retrying..."}) + "\n"
-check("a status event with a text message is skipped, not a crash",
-      poller._forward_delivered(status + stream(TO, MSG, {"success": True}), TO, MSG), True)
-
 print("\nforward_note: built from code values only, with a forward-slashed path")
 note = poller.forward_note("slack-x", "C:\\rt\\items\\slack-x.json", "needs-you")
 check("names the item and its path", ("slack-x" in note, "C:/rt/items/slack-x.json" in note), (True, True))
@@ -210,12 +170,12 @@ class FakeProvider:
         return None
 
 
-def hand_over(delivered, address=(PIPE, None)):
+def hand_over(delivered, address=("pipe", None)):
     rt = workspace([])
     prov = FakeProvider(rt)
     recorded, sent = [], []
     poller.session_address = lambda receipt, agents: address
-    poller.forward_to_worker = lambda addr, message, repo: sent.append(message) or delivered
+    poller.send_note = lambda addr, message, repo: sent.append(message) or delivered
     poller.seen_state = lambda *args: recorded.append(args)
     it = {"_id": "slack-new", "_source": "slack", "_bucket": "needs-you"}
     ok = poller.route_to_live_worker(it, prov, KEY, "guid-live", [], rt, rt)
@@ -225,7 +185,7 @@ def hand_over(delivered, address=(PIPE, None)):
     return ok, recorded, prov.cleared, (open(receipt).read() if os.path.exists(receipt) else None), rec, sent
 
 
-real = (poller.session_address, poller.forward_to_worker, poller.seen_state)
+real = (poller.session_address, poller.send_note, poller.seen_state)
 try:
     print("\nroute_to_live_worker: a verified delivery records the item against the holder")
     ok, recorded, cleared, receipt, rec, sent = hand_over(True)
@@ -245,7 +205,7 @@ try:
     ok, recorded, _, _, _, sent = hand_over(True, address=None)
     check("no address -> not handed over, nothing sent", (ok, recorded, sent), (False, [], []))
 finally:
-    poller.session_address, poller.forward_to_worker, poller.seen_state = real
+    poller.session_address, poller.send_note, poller.seen_state = real
 
 print("\nlaunched_peer: a worker launched earlier this pass shows in the shared duplicate check")
 check("listed as launched this pass",

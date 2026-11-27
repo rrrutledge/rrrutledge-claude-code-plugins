@@ -147,7 +147,9 @@ WORKER_CONTRACT = """
 
 You are a worker for the coordinator of job `{job}`; you report to it, not to Russell.
 Ask Russell only for what only he can give; anything else goes in your result file.
-At a browser gate only Russell can clear, leave the tab open on it, ask Russell to clear it, and once he has, re-read the page before carrying on.
+While phone mode is on, take a step that /session-mgr:phone-mode parks through that skill's park steps.
+When they close the session, finish by writing your result as failed, with the card link under Open items.
+At any other browser gate only Russell can clear, leave the tab open on it, ask Russell to clear it, and once he has, re-read the page before carrying on.
 Stage nothing that reaches another person - write drafts as files and list them under Artifacts.
 
 Write your result to `{result}`, in this shape:
